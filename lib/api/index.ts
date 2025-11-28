@@ -457,6 +457,8 @@ export const facesApi = {
           person_id: tag.personId,
           bbox: tag.bbox || tag.insightface_bbox,
           insightface_bbox: tag.insightface_bbox,
+          insightface_confidence: tag.insightface_confidence,
+          recognition_confidence: tag.recognition_confidence,
           embedding: tag.embedding,
           verified: tag.verified ?? true,
         })),

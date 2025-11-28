@@ -13,7 +13,7 @@ class PeopleClient:
                 query = """
                     SELECT 
                         p.*,
-                        COUNT(DISTINCT pf.id) as photo_count,
+                        COUNT(DISTINCT pf.id) as faces_count,
                         COUNT(DISTINCT pf.photo_id) as gallery_count
                     FROM people p
                     LEFT JOIN photo_faces pf ON p.id = pf.person_id
@@ -35,7 +35,7 @@ class PeopleClient:
             query = """
                 SELECT 
                     p.*,
-                    COUNT(DISTINCT pf.id) as photo_count,
+                    COUNT(DISTINCT pf.id) as faces_count,
                     COUNT(DISTINCT pf.photo_id) as gallery_count,
                     AVG(pf.recognition_confidence) as avg_confidence
                 FROM people p

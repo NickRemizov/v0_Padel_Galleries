@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import logging
 
-from services.postgres_client import PostgresClient
+from services.postgres_client import db_client
 from models.schemas import PersonCreate, PersonUpdate, PersonResponse, ClusterFace, PersonFromClusterCreate
 
 logger = logging.getLogger(__name__)
@@ -27,8 +27,7 @@ async def get_all_people(include_stats: bool = True):
         List of people with optional stats
     """
     try:
-        db = PostgresClient()
-        people = await db.get_all_people(include_stats=include_stats)
+        people = await db_client.get_all_people(include_stats=include_stats)
         
         logger.info(f"[PeopleAPI] Found {len(people)} people")
         return people
@@ -44,8 +43,7 @@ async def get_person_by_id(person_id: str):
     Получить человека по ID.
     """
     try:
-        db = PostgresClient()
-        person = await db.get_person_by_id(person_id)
+        person = await db_client.get_person_by_id(person_id)
         
         if not person:
             raise HTTPException(status_code=404, detail=f"Person {person_id} not found")
@@ -66,8 +64,7 @@ async def create_person(data: PersonCreate):
     Создать нового человека.
     """
     try:
-        db = PostgresClient()
-        person = await db.create_person(data.model_dump())
+        person = await db_client.create_person(data.model_dump())
         
         logger.info(f"[PeopleAPI] Created person: {person['id']}")
         return person
@@ -83,8 +80,7 @@ async def update_person(person_id: str, data: PersonUpdate):
     Обновить информацию о человеке.
     """
     try:
-        db = PostgresClient()
-        person = await db.update_person(person_id, data.model_dump(exclude_unset=True))
+        person = await db_client.update_person(person_id, data.model_dump(exclude_unset=True))
         
         if not person:
             raise HTTPException(status_code=404, detail=f"Person {person_id} not found")
@@ -106,8 +102,7 @@ async def delete_person(person_id: str):
     Также удаляет все связанные лица и дескрипторы.
     """
     try:
-        db = PostgresClient()
-        success = await db.delete_person(person_id)
+        success = await db_client.delete_person(person_id)
         
         if not success:
             raise HTTPException(status_code=404, detail=f"Person {person_id} not found")
@@ -131,8 +126,7 @@ async def get_person_photos(person_id: str):
         List of gallery images where person appears
     """
     try:
-        db = PostgresClient()
-        await db.connect()
+        await db_client.connect()
         
         # Получаем все фото где есть лица этой персоны
         query = """
@@ -154,7 +148,7 @@ async def get_person_photos(person_id: str):
             ORDER BY g.shoot_date DESC, gi.created_at DESC
         """
         
-        rows = await db.fetch(query, person_id)
+        rows = await db_client.fetch(query, person_id)
         photos = [dict(row) for row in rows]
         
         logger.info(f"[PeopleAPI] Found {len(photos)} photos for person {person_id}")
@@ -171,8 +165,7 @@ async def update_person_avatar(person_id: str, avatar_url: str):
     Обновить аватар персоны.
     """
     try:
-        db = PostgresClient()
-        person = await db.update_person(person_id, {"avatar_url": avatar_url})
+        person = await db_client.update_person(person_id, {"avatar_url": avatar_url})
         
         if not person:
             raise HTTPException(status_code=404, detail=f"Person {person_id} not found")
@@ -200,8 +193,7 @@ async def create_person_from_cluster(data: PersonFromClusterCreate):
         Created person
     """
     try:
-        db = PostgresClient()
-        person = await db.create_person_from_cluster(
+        person = await db_client.create_person_from_cluster(
             data.person_name,
             [face.model_dump() for face in data.cluster_faces]
         )

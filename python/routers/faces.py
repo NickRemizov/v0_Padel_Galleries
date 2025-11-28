@@ -385,6 +385,8 @@ async def save_face_tags(request: SaveFaceTagsRequest):
             if descriptor and len(descriptor) > 0:
                 descriptor_str = '[' + ','.join(map(str, descriptor)) + ']'
             
+            logger.info(f"[SaveFaceTags] Inserting face {i}: person_id={tag.person_id}, verified={tag.verified}")
+
             face_result = await db.fetchone(
                 """
                 INSERT INTO photo_faces (
@@ -392,7 +394,7 @@ async def save_face_tags(request: SaveFaceTagsRequest):
                     insightface_confidence, recognition_confidence, verified
                 )
                 VALUES ($1, $2, $3, $4::vector, $5, $6, $7)
-                RETURNING id
+                RETURNING id, person_id
                 """,
                 photo_id,
                 tag.person_id,
@@ -403,7 +405,12 @@ async def save_face_tags(request: SaveFaceTagsRequest):
                 tag.verified
             )
             
-            photo_face_id = face_result['id'] if face_result else None
+            if face_result:
+                logger.info(f"[SaveFaceTags] Inserted face {face_result['id']}: person_id={face_result['person_id']}")
+                photo_face_id = face_result['id']
+            else:
+                logger.error(f"[SaveFaceTags] Failed to insert face {i}")
+                photo_face_id = None
             
             if tag.person_id and descriptor and len(descriptor) > 0 and photo_face_id:
                 await db.execute(
