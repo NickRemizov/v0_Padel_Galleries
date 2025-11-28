@@ -13,10 +13,12 @@ class PeopleClient:
                 query = """
                     SELECT 
                         p.*,
-                        COUNT(DISTINCT pf.id) as faces_count,
-                        COUNT(DISTINCT pf.photo_id) as gallery_count
+                        COUNT(DISTINCT CASE WHEN pf.verified = true THEN pf.id END) as verified_photos_count,
+                        COUNT(DISTINCT CASE WHEN pf.recognition_confidence >= 0.8 AND pf.verified = false THEN pf.id END) as high_confidence_photos_count,
+                        COUNT(DISTINCT fd.id) as descriptor_count
                     FROM people p
                     LEFT JOIN photo_faces pf ON p.id = pf.person_id
+                    LEFT JOIN face_descriptors fd ON p.id = fd.person_id
                     GROUP BY p.id
                     ORDER BY p.real_name
                 """
@@ -24,7 +26,13 @@ class PeopleClient:
                 query = "SELECT * FROM people ORDER BY real_name"
             
             results = await self.fetch(query)
-            return [dict(row) for row in results]
+            people = []
+            for row in results:
+                person_dict = dict(row)
+                if 'id' in person_dict:
+                    person_dict['id'] = str(person_dict['id'])
+                people.append(person_dict)
+            return people
         except Exception as e:
             logger.error(f"[PeopleClient] Error getting all people: {e}")
             return []
@@ -44,7 +52,12 @@ class PeopleClient:
                 GROUP BY p.id
             """
             result = await self.fetchone(query, person_id)
-            return dict(result) if result else None
+            if result:
+                person_dict = dict(result)
+                if 'id' in person_dict:
+                    person_dict['id'] = str(person_dict['id'])
+                return person_dict
+            return None
         except Exception as e:
             logger.error(f"[PeopleClient] Error getting person {person_id}: {e}")
             return None

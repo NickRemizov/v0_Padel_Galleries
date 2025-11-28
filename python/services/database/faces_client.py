@@ -185,7 +185,6 @@ class FacesClient:
             faces = []
             for row in rows:
                 face = dict(row)
-                # Parse insightface_bbox if it's a string
                 if face.get('insightface_bbox') and isinstance(face['insightface_bbox'], str):
                     try:
                         face['insightface_bbox'] = json.loads(face['insightface_bbox'])
@@ -212,7 +211,7 @@ class FacesClient:
                     pf.insightface_bbox,
                     pf.recognition_confidence,
                     pf.verified,
-                    p.real_name as person_name
+                    p.real_name as person_real_name
                 FROM photo_faces pf
                 LEFT JOIN people p ON pf.person_id = p.id
                 WHERE pf.photo_id = ANY($1)
