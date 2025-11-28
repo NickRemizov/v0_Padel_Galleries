@@ -344,13 +344,16 @@ export const organizersApi = {
 
 export const peopleApi = {
   /**
-   * Получить всех людей
-   * @param includeStats - включить статистику (количество фото)
+   * Получить всех людей с необязательной статистикой
    */
-  async getAll(includeStats = true): Promise<Person[]> {
+  async getAll(includeStats = false): Promise<Person[]> {
     const params = new URLSearchParams()
-    if (includeStats) params.append("include_stats", "true")
-    return apiFetch<Person[]>(`/api/crud/people?${params}`)
+    if (includeStats) {
+      params.append("include_stats", "true")
+    }
+
+    const url = `/api/people${params.toString() ? `?${params.toString()}` : ""}`
+    return apiFetch<Person[]>(url)
   },
 
   /**

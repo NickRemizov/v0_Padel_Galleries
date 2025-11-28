@@ -500,17 +500,16 @@ export function FaceTaggingDialog({
         })),
       )
 
-      // Build tags array for batch save
       const tags = taggedFaces
         .filter((tf) => tf.person_id) // Only faces with assigned person
         .map((tf) => ({
-          person_id: tf.person_id!,
+          personId: tf.person_id!, // Changed from person_id to personId
           insightface_bbox: tf.face.insightface_bbox,
-          bbox: tf.face.insightface_bbox, // Added bbox for Python endpoint
+          bbox: tf.face.insightface_bbox,
           insightface_confidence: tf.confidence_score ?? 1.0,
           recognition_confidence: 1.0,
           verified: true,
-          embedding: null, // Embedding generated on backend
+          embedding: null,
         }))
 
       console.log("[v5.0] Sending", tags.length, "tags to saveFaceTagsAction")
