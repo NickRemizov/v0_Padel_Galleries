@@ -1,15 +1,14 @@
 # Текущий статус системы распознавания лиц
 
-**Дата обновления:** 15 февраля 2025  
+**Дата обновления:** 16 февраля 2025  
 **Версия системы:** 5.0  
-**Версия админпанели:** 1.0.0  
+**Версия админпанели:** 1.1.0  
 **Статус:** ✅ СТАБИЛЬНАЯ
 
 ---
 
 ## Что работает
 
-... existing code ...
 
 ### ✅ Управление галереями событий (v0.7.0-1.0.0)
 
@@ -33,11 +32,9 @@
     - ✅ **Фиксированная ширина кнопки** - кнопка удаления не меняет размер (v0.7.9)
     - ✅ **Выравнивание текста** - текст в кнопке удаления выровнен по левому краю (v0.7.9)
 
-... existing code ...
 
 ### ✅ Исправленные проблемы
 
-... existing code ...
 
 11. ~~Tooltip на кнопке сохранения в окне тегирования~~ ✅ ИСПРАВЛЕНО (v0.7.6-0.7.8)
 12. ~~Квадратные скобки в названии галереи~~ ✅ ИСПРАВЛЕНО (v0.8.1)
@@ -49,12 +46,12 @@
 18. ~~Множественные одновременные запросы при автосохранении~~ ✅ ИСПРАВЛЕНО (v1.0.0)
 19. ~~Битые файлы ломают весь процесс загрузки~~ ✅ ИСПРАВЛЕНО (v1.0.0)
 
-... existing code ...
 
 ## Версии компонентов
 
 **Фронтенд:**
-- `app/admin/page.tsx` - v1.0.0
+- `app/admin/page.tsx` - v1.1.0
+- `components/admin/galleries-manager.tsx` - v1.1.0 (рефакторинг логирования)
 - `components/admin/gallery-images-manager.tsx` - v0.9.0
 - `components/admin/person-gallery-dialog.tsx` - v0.8.1
 - `components/admin/person-list.tsx` - v0.7.9
@@ -63,16 +60,19 @@
 - `components/admin/auto-recognition-dialog.tsx` - v3.15
 - `components/admin/unknown-faces-review-dialog.tsx` - v3.10
 - `components/admin/database-integrity-checker.tsx` - v5.0
-- `app/admin/actions.ts` - deletePersonAction v4.2, getRecognitionStatsAction v1.0, deleteAllGalleryImagesAction v5.0
+- `app/admin/actions.ts` - v1.1 (частичный рефакторинг первых 3 функций), deletePersonAction v4.2, getRecognitionStatsAction v1.0, deleteAllGalleryImagesAction v5.0
 - `lib/apiClient.ts` - v2.0
-- `lib/logger.ts` - v1.0 (NEW)
-- `lib/debounce.ts` - v1.0 (NEW)
+- `lib/logger.ts` - v2.0 (UPDATED - добавлена проверка NODE_ENV)
+- `lib/debounce.ts` - v1.0
+- `lib/supabase/with-supabase.ts` - v1.0 (NEW - декоратор для server actions)
+- `lib/supabase/server.ts` - v2.0 (UPDATED - убран возврат null)
+- `lib/supabase/client.ts` - v2.0 (UPDATED - убраны non-null assertions)
+- `lib/types/result.ts` - v1.0 (NEW - стандартный тип Result<T>)
 
-... existing code ...
 
 ---
 
 **Дата создания документа:** 1 февраля 2025  
-**Последнее обновление:** 15 февраля 2025  
-**Версия:** 1.0.0  
+**Последнее обновление:** 16 февраля 2025  
+**Версия:** 1.1.0  
 **Следующее обновление:** После завершения следующей фазы разработки

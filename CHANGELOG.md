@@ -5,6 +5,34 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 и проект придерживается [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.1.0] - 2025-02-16
+
+### 🔴 КРИТИЧЕСКИЙ РЕФАКТОРИНГ
+
+### Добавлено
+- `lib/supabase/with-supabase.ts` (v1.0) - Декоратор для server actions с автоматическим созданием Supabase клиента
+- `lib/types/result.ts` (v1.0) - Стандартный тип Result<T> для единообразной обработки ошибок
+- Helper функции `success(data)` и `failure(error)` для создания Result объектов
+
+### Улучшено
+- `lib/supabase/server.ts` (v2.0): теперь бросает ошибку вместо возврата null, использует logger
+- `lib/supabase/client.ts` (v2.0): убраны non-null assertions (!), добавлены проверки переменных окружения
+- `lib/logger.ts` (v2.0): добавлена проверка NODE_ENV, debug логи только в development
+- `app/admin/actions.ts` (v1.1): первые 3 функции используют новые паттерны (withSupabase, Result<T>)
+- `components/admin/galleries-manager.tsx` (v1.1): заменены console.log на logger.debug
+- `CONTRIBUTING.md`: добавлены примеры с новыми паттернами
+
+### Исправлено
+- Убрана возможность null от createClient() - теперь бросает явную ошибку с описанием проблемы
+- Устранено дублирование кода создания клиента (было 60+ раз, стало ~10 через декоратор)
+- Стандартизирован формат ошибок (3 разных формата → 1 единый Result<T>)
+- Удалены console.log из production кода в критических компонентах
+
+### Технические детали
+- Тип возврата `createClient()`: `Promise<SupabaseClient | null>` → `Promise<SupabaseClient>`
+- Формат ошибок: `{ error: string }` или `{ success: false, error: string }` → единый `Result<T>`
+- Логирование: `console.log("[v0] ...")` → `logger.debug("context", "message")`
+
 ## [1.0.0] - 2025-02-15
 
 ### Добавлено
