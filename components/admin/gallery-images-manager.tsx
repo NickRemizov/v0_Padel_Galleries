@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { Images, Trash2, Upload, UserPlus, Scan, Download } from "lucide-react"
+import { Images, Trash2, Upload, UserPlus, Scan, Download } from 'lucide-react'
 
 import {
   addGalleryImagesAction,
@@ -35,9 +35,9 @@ import {
   updateGallerySortOrderAction,
   getGalleryFaceRecognitionStatsAction,
   getBatchPhotoFacesAction,
-  getGalleryImagesAction,
 } from "@/app/admin/actions"
 import type { GalleryImage } from "@/lib/types"
+import { createClient } from "@/lib/supabase/client"
 import { FaceTaggingDialog } from "./face-tagging-dialog"
 import { AutoRecognitionDialog } from "./auto-recognition-dialog"
 import { UnknownFacesReviewDialog } from "./unknown-faces-review-dialog"
@@ -55,13 +55,7 @@ function formatFileSize(bytes: number | null): string {
   return `${kb.toFixed(1)} KB`
 }
 
-interface PhotoFace {
-  verified: boolean
-  confidence: number
-  person_id: string | null
-}
-
-const PhotoCard = memo(function PhotoCard({
+const GalleryImageCard = memo(function GalleryImageCard({
   image,
   photoFacesMap,
   recognitionStats,
@@ -71,8 +65,8 @@ const PhotoCard = memo(function PhotoCard({
   onToggleSelect,
 }: {
   image: GalleryImage
-  photoFacesMap: Record<string, PhotoFace[]>
-  recognitionStats: Record<string, { fullyRecognized: boolean }>
+  photoFacesMap: Record<string, { verified: boolean; confidence: number; person_id: string | null }[]>
+  recognitionStats: Record<string, { total: number; recognized: number; fullyRecognized: boolean }>
   onTag: (id: string, url: string) => void
   onDelete: (id: string) => void
   isSelected: boolean
@@ -96,18 +90,6 @@ const PhotoCard = memo(function PhotoCard({
   const unknownCount = faces?.filter((f) => f.person_id === null).length || 0
   const recognizedCount = faces?.filter((f) => f.person_id !== null).length || 0
   const totalCount = faces?.length || 0
-
-  let badgeType: "verified" | "recognized" | "partial" | "nfd" | "none" = "none"
-
-  if (isFullyRecognized || hasVerified) {
-    badgeType = "verified" // Highest priority: all faces verified
-  } else if (hasDetected && hasUnknown && !isFullyRecognized) {
-    badgeType = "partial" // Some faces recognized, some unknown
-  } else if (confidence !== null && !hasUnknown && !isFullyRecognized) {
-    badgeType = "recognized" // All recognized but not verified
-  } else if (hasBeenProcessed && !hasDetected) {
-    badgeType = "nfd" // Processed but no faces found
-  }
 
   return (
     <div
@@ -164,22 +146,22 @@ const PhotoCard = memo(function PhotoCard({
             {image.download_count}
           </div>
         )}
-        {badgeType === "nfd" && (
+        {hasBeenProcessed && !hasDetected && (
           <div className="absolute left-2 bottom-2 bg-gray-500 text-white rounded px-2 py-1 text-xs font-semibold shadow-lg z-10">
             NFD
           </div>
         )}
-        {badgeType === "partial" && (
+        {hasDetected && hasUnknown && !isFullyRecognized && !hasVerified && (
           <div className="absolute left-2 bottom-2 bg-orange-500 text-white rounded px-2 py-1 text-xs font-semibold shadow-lg z-10">
-            {recognizedCount}/{unknownCount}/{totalCount}
+            {unknownCount}/{recognizedCount}/{totalCount}
           </div>
         )}
-        {badgeType === "recognized" && (
+        {confidence !== null && !hasUnknown && !isFullyRecognized && !hasVerified && (
           <div className="absolute left-2 bottom-2 bg-blue-500 text-white rounded px-2 py-1 text-xs font-semibold shadow-lg z-10">
             {confidence}%
           </div>
         )}
-        {badgeType === "verified" && (
+        {(isFullyRecognized || hasVerified) && (
           <div className="absolute left-2 bottom-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm shadow-lg z-10">
             ✓
           </div>
@@ -189,14 +171,7 @@ const PhotoCard = memo(function PhotoCard({
         <p className="text-xs font-medium truncate" title={image.original_filename}>
           {image.original_filename}
         </p>
-        <div className="flex items-center justify-between mt-1">
-          <p className="text-xs text-muted-foreground">{new Date(image.created_at).toLocaleDateString("ru-RU")}</p>
-          {image.width && image.height && (
-            <p className="text-xs text-muted-foreground">
-              {image.width}×{image.height}
-            </p>
-          )}
-        </div>
+        <p className="text-xs text-muted-foreground">{formatFileSize(image.file_size)}</p>
       </div>
     </div>
   )
@@ -218,8 +193,12 @@ export function GalleryImagesManager({
   const [taggingImage, setTaggingImage] = useState<{ id: string; url: string } | null>(null)
   const [autoRecognitionMode, setAutoRecognitionMode] = useState<"all" | "remaining" | null>(null)
   const [showUnknownFaces, setShowUnknownFaces] = useState(false)
-  const [recognitionStats, setRecognitionStats] = useState<Record<string, { fullyRecognized: boolean }>>({})
-  const [photoFacesMap, setPhotoFacesMap] = useState<Record<string, PhotoFace[]>>({})
+  const [recognitionStats, setRecognitionStats] = useState<
+    Record<string, { total: number; recognized: number; fullyRecognized: boolean }>
+  >({})
+  const [photoFacesMap, setPhotoFacesMap] = useState<
+    Record<string, { verified: boolean; confidence: number; person_id: string | null }[]>
+  >({})
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set())
@@ -249,21 +228,18 @@ export function GalleryImagesManager({
 
   async function loadImages() {
     setLoading(true)
-    try {
-      console.log("[v0] Loading images for gallery:", galleryId)
-      const result = await getGalleryImagesAction(galleryId)
-      console.log("[v0] getGalleryImagesAction result:", result)
-      console.log("[v0] result.success:", result.success)
-      console.log("[v0] result.data:", result.data)
-      console.log("[v0] result.data length:", result.data?.length)
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("gallery_images")
+      .select(
+        "id, image_url, original_url, original_filename, file_size, width, height, display_order, gallery_id, created_at, download_count, has_been_processed",
+      )
+      .eq("gallery_id", galleryId)
+      .order("display_order", { ascending: true })
 
-      if (result.success && result.data) {
-        console.log("[v0] Setting images:", result.data.length, "items")
-        setImages(result.data)
-      } else {
-        console.error("[v0] Error loading images:", result.error)
-      }
-    } catch (error) {
+    if (!error && data) {
+      setImages(data)
+    } else if (error) {
       console.error("[v0] Error loading images:", error)
     }
     setLoading(false)
@@ -292,7 +268,7 @@ export function GalleryImagesManager({
     })
 
     if (result.success && result.data) {
-      const facesMap: Record<string, PhotoFace[]> = {}
+      const facesMap: Record<string, { verified: boolean; confidence: number; person_id: string | null }[]> = {}
 
       for (const face of result.data) {
         console.log("[v4.6] GalleryImagesManager: Face from DB:", {
@@ -415,6 +391,11 @@ export function GalleryImagesManager({
     setUploading(true)
     setUploadProgress(`Загрузка 0 из ${files.length}...`)
 
+    const uploadResults = {
+      success: [] as File[],
+      failed: [] as { file: File; error: string }[],
+    }
+
     try {
       const uploadedImages: {
         imageUrl: string
@@ -429,49 +410,68 @@ export function GalleryImagesManager({
         const file = files[i]
         setUploadProgress(`Загрузка ${i + 1} из ${files.length}...`)
 
-        const dimensions = await getImageDimensions(file)
+        try {
+          const dimensions = await getImageDimensions(file)
 
-        const formData = new FormData()
-        formData.append("file", file)
+          const formData = new FormData()
+          formData.append("file", file)
 
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        })
+          const response = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+          })
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
 
-          if (errorData.code === "QUOTA_EXCEEDED") {
-            throw new Error(errorData.error || "Квота хранилища исчерпана")
+            if (errorData.code === "QUOTA_EXCEEDED") {
+              throw new Error(errorData.error || "Квота хранилища исчерпана")
+            }
+
+            throw new Error(errorData.error || `Ошибка загрузки ${file.name}`)
           }
 
-          throw new Error(errorData.error || `Ошибка загрузки ${file.name}`)
-        }
+          const data = await response.json()
+          uploadedImages.push({
+            imageUrl: data.url,
+            originalUrl: data.url,
+            originalFilename: file.name,
+            fileSize: file.size,
+            width: dimensions.width,
+            height: dimensions.height,
+          })
 
-        const data = await response.json()
-        uploadedImages.push({
-          imageUrl: data.url,
-          originalUrl: data.url,
-          originalFilename: file.name,
-          fileSize: file.size,
-          width: dimensions.width,
-          height: dimensions.height,
-        })
+          uploadResults.success.push(file)
+        } catch (uploadError) {
+          const errorMessage = uploadError instanceof Error ? uploadError.message : "Неизвестная ошибка"
+          console.error(`[v0.9.0] Failed to upload ${file.name}:`, errorMessage)
+          uploadResults.failed.push({ file, error: errorMessage })
+        }
       }
 
-      const result = await addGalleryImagesAction(galleryId, uploadedImages)
+      if (uploadResults.failed.length > 0) {
+        const failedNames = uploadResults.failed.map((f) => f.file.name).join(", ")
+        alert(
+          `Загружено: ${uploadResults.success.length} из ${files.length}\nОшибки: ${failedNames.substring(0, 200)}${failedNames.length > 200 ? "..." : ""}`,
+        )
+      }
 
-      if (result.success) {
-        await loadImages()
-        await loadRecognitionStats()
-        await loadPhotoFaces()
-        setUploadProgress("")
-      } else {
-        alert("Ошибка при сохранении изображений")
+      if (uploadedImages.length > 0) {
+        const result = await addGalleryImagesAction(galleryId, uploadedImages)
+
+        if (result.success) {
+          await loadImages()
+          await loadRecognitionStats()
+          await loadPhotoFaces()
+          setUploadProgress("")
+        } else {
+          alert("Ошибка при сохранении изображений")
+        }
+      } else if (uploadResults.failed.length === files.length) {
+        alert("Не удалось загрузить ни одного файла")
       }
     } catch (error) {
-      console.error("Error uploading images:", error)
+      console.error("[v0.9.0] Error uploading images:", error)
       const errorMessage = error instanceof Error ? error.message : "Ошибка загрузки изображений"
       alert(errorMessage)
     } finally {
@@ -717,7 +717,7 @@ export function GalleryImagesManager({
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {sortedImages.map((image) => (
-                  <PhotoCard
+                  <GalleryImageCard
                     key={image.id}
                     image={image}
                     photoFacesMap={photoFacesMap}
@@ -806,7 +806,6 @@ export function GalleryImagesManager({
         <FaceTaggingDialog
           imageId={taggingImage.id}
           imageUrl={taggingImage.url}
-          hasBeenProcessed={images.find((img) => img.id === taggingImage.id)?.has_been_processed || false}
           open={!!taggingImage}
           onOpenChange={async (open) => {
             if (!open) {
@@ -818,7 +817,6 @@ export function GalleryImagesManager({
             console.log("[v0] GalleryImagesManager: FaceTaggingDialog onSave called")
             await loadRecognitionStats()
             await loadPhotoFaces()
-            console.log("[v0] GalleryImagesManager: Data reloaded after face save")
           }}
         />
       )}

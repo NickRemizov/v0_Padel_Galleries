@@ -4,15 +4,10 @@ from typing import Optional, List, Dict
 from datetime import datetime
 
 from services.training_service import TrainingService
-from services.postgres_client import db_client
 
 router = APIRouter()
-training_service = None  # Will be set by main.py
+training_service = TrainingService()
 
-def set_training_service(service: TrainingService):
-    """Set training service instance from main.py"""
-    global training_service
-    training_service = service
 
 # Pydantic models for validation
 
@@ -50,6 +45,10 @@ class ConfigUpdate(BaseModel):
     auto_retrain_percentage: Optional[float] = None
     quality_filters: Optional[Dict[str, float]] = None
 
+
+class BatchRecognitionRequest(BaseModel):
+    gallery_ids: Optional[List[str]] = None  # Specific galleries, or None for all unverified
+    confidence_threshold: Optional[float] = None  # Override default threshold
 
 
 # Endpoints
@@ -151,36 +150,78 @@ async def get_training_history(limit: int = 10, offset: int = 0):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
-@router.get("/statistics")
-async def get_training_statistics():
+@router.post("/recognize/batch")
+async def batch_recognize_photos(
+    request: BatchRecognitionRequest,
+    background_tasks: BackgroundTasks
+):
     """
-    Получить статистику обученных данных.
+    Пакетное распознавание фото без ручной верификации.
     
-    Возвращает количество людей с дескрипторами, общее количество лиц и т.д.
+    Обрабатывает только фото где verified = false или NULL.
+    Использует confidence_threshold для фильтрации результатов.
     """
     try:
-        if training_service is None:
-            return {
-                "people_count": 0,
-                "total_faces": 0,
-                "unique_photos": 0,
-                "error": "Training service not initialized"
-            }
+        # Get confidence threshold from request or config
+        if request.confidence_threshold is not None:
+            threshold = request.confidence_threshold
+        else:
+            config = await training_service.supabase.get_recognition_config()
+            threshold = config.get('confidence_threshold', 0.60)
         
-        await db_client.connect()
-        stats = await training_service.get_training_statistics()
-        return stats
-    except HTTPException:
-        raise
+        # Start batch recognition
+        result = await training_service.batch_recognize(
+            gallery_ids=request.gallery_ids,
+            confidence_threshold=threshold
+        )
+        
+        return result
+    
     except Exception as e:
-        import traceback
-        print(f"[ERROR] Statistics endpoint failed: {str(e)}")
-        print(f"[ERROR] Traceback:\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/config")
+async def get_config():
+    """
+    Получить текущую конфигурацию распознавания.
+    """
+    try:
+        # Try from Supabase first
+        config = await training_service.supabase.get_recognition_config()
+        
+        return config
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/config")
+async def update_config(updates: ConfigUpdate):
+    """
+    Обновить конфигурацию распознавания.
+    """
+    try:
+        settings = {}
+        
+        if updates.confidence_thresholds is not None:
+            settings['confidence_thresholds'] = updates.confidence_thresholds
+        if updates.context_weight is not None:
+            settings['context_weight'] = updates.context_weight
+        if updates.min_faces_per_person is not None:
+            settings['min_faces_per_person'] = updates.min_faces_per_person
+        if updates.auto_retrain_threshold is not None:
+            settings['auto_retrain_threshold'] = updates.auto_retrain_threshold
+        if updates.auto_retrain_percentage is not None:
+            settings['auto_retrain_percentage'] = updates.auto_retrain_percentage
+        if updates.quality_filters is not None:
+            settings['quality_filters'] = updates.quality_filters
+        
+        if settings:
+            await training_service.supabase.update_recognition_config(settings)
+        
         return {
-            "people_count": 0,
-            "total_faces": 0,
-            "unique_photos": 0,
-            "error": str(e)
+            'success': True,
+            'updated_at': datetime.now().isoformat()
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

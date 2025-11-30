@@ -1,6 +1,6 @@
 {
   "name": "my-v0-project",
-  "version": "0.6.6",
+  "version": "0.3.1",
   "private": true,
   "scripts": {
     "build": "next build",
@@ -10,8 +10,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "latest",
-    "@aws-sdk/s3-request-presigner": "3.934.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -41,7 +39,7 @@
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
     "@supabase/ssr": "latest",
-    "@supabase/supabase-js": "^2.47.10",
+    "@supabase/supabase-js": "latest",
     "@vercel/analytics": "latest",
     "@vercel/blob": "latest",
     "abort-controller": "3.0.0",
@@ -62,7 +60,6 @@
     "next-themes": "^0.4.6",
     "package.json": "2.0.1",
     "path": "0.12.7",
-    "postgres": "latest",
     "react": "19.1.0",
     "react-day-picker": "9.8.0",
     "react-dom": "19.1.0",

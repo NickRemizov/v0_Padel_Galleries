@@ -1,93 +1,166 @@
-## [0.7.0] - 2025-11-27
+# Changelog
 
-### Критические изменения - Полная миграция на Python API
+Все значимые изменения в проекте документируются в этом файле.
 
-**ВАЖНО: Все операции с данными теперь идут через Python API (FastAPI на Hetzner)**
+Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
+и проект придерживается [Semantic Versioning](https://semver.org/lang/ru/).
 
-#### Мигрированные actions (app/admin/actions.ts):
-- `getPeopleAction` → `peopleApi.getAll()` через Python API
-- `getPeopleWithStatsAction` → `peopleApi.getAll({ include_stats: true })`
-- `getPersonAction` → Python API `/api/crud/people/{id}`
-- `getBatchPhotoFacesAction` → Python API `/api/faces/get-batch-photo-faces`
-- `deletePhotoFaceAction` → Python API `/api/faces/delete/{id}`
-- `saveFaceTagsAction` → Python API `/api/faces/save-face-tags`
-- `addPersonAction` → `peopleApi.create()` через Python API
-- `deletePersonAction` → `peopleApi.delete()` через Python API
-- `createPersonFromClusterAction` → Python API `/api/crud/people/from-cluster`
+## [1.0.0] - 2025-02-15
 
-#### Новые Python endpoints (python/routers/):
-- `POST /api/crud/people/from-cluster` - создание человека из кластера с дескрипторами
-- `POST /api/faces/get-batch-photo-faces` - получение лиц для нескольких фото
-- `DELETE /api/faces/delete/{face_id}` - удаление лица
-- `POST /api/faces/save-face-tags` - batch сохранение тегов с генерацией embedding на бэкенде
+### Добавлено
+- Унифицированная система логирования (lib/logger.ts) с уровнями DEBUG/INFO/ERROR
+- Утилита debounce (lib/debounce.ts) для оптимизации автосохранений
+- Retry механизм с exponential backoff в API client (до 3 попыток)
+- Корректная обработка таймаутов (408) и server errors (503)
 
-#### Архитектурные изменения:
-- **Embedding генерируется ТОЛЬКО на бэкенде** - фронтенд больше не работает с embedding
-- `/api/faces/save` принимает `image_url` вместо `insightface_descriptor` - бэкенд сам генерирует embedding
-- `face-tagging-dialog.tsx` использует `saveFaceTagsAction` вместо цикла delete+save
-
-#### Исправления NFD (No Faces Detected):
-- При удалении всех лиц с фото вызывается `saveFaceTagsAction` с пустым массивом tags
-- Бэкенд устанавливает `has_been_processed = true` и удаляет все записи photo_faces
-- Фото получает статус NFD корректно
-
-### Файлы для синхронизации на сервер:
-- `python/routers/faces.py`
-- `python/routers/crud.py`
-- `python/services/postgres_client.py`
-- `python/models/schemas.py`
-
-## [0.6.6] - 2025-02-02
+### Улучшено
+- API client (v2.0): добавлен retry с задержками 1s → 2s → 4s (макс 10s)
+- deletePersonAction (v4.2): теперь удаляет orphaned face_descriptors и перестраивает индекс
+- getRecognitionStatsAction (v1.0): оптимизирован N+1 query через единый запрос дескрипторов
+- gallery-images-manager (v0.9.0): улучшена обработка ошибок при batch upload с продолжением загрузки
+- face-tagging-dialog (v3.11): добавлен debounce 500ms на автосохранение для предотвращения множественных запросов
+- deleteAllGalleryImagesAction (v5.0): исправлен порядок удаления данных для предотвращения race conditions
 
 ### Исправлено
-- **КРИТИЧЕСКОЕ: Парсинг JSONB bbox при загрузке из БД**
-  - `getPhotoFacesAction` теперь проверяет тип `insightface_bbox` и парсит JSON строку в объект
-  - Проблема: PostgreSQL возвращал JSONB как строку `"{\"x\":476,...}"` → код обращался к `bbox.x` → undefined
-  - Исправление: добавлена проверка `typeof face.insightface_bbox === 'string'` с JSON.parse()
-  - **Результат:** Боксы корректно отображаются при повторном открытии фото
+- Supabase server client теперь корректно возвращает null при отсутствии env переменных
+- Race condition при batch удалении данных галереи
+- Orphaned face descriptors при удалении игроков
+- Множественные одновременные запросы при быстром переключении между лицами
+- Битые файлы больше не ломают весь процесс batch загрузки
 
-- **NFD статус при удалении всех лиц с фото**
-  - Когда админ удаляет все лица и сохраняет (tags.length === 0), фото должно получить статус "No Faces Detected"
-  - Проблема: фото оставалось с оранжевым бейджем 0/1/1 вместо NFD
-  - Исправление: добавлена ранняя проверка в `saveFaceTagsAction` для установки `processing_status = 'NFD'` и `verified = true`
-  - **Результат:** Фото без лиц корректно маркируется как NFD
+## [0.8.2] - 2025-02-01
 
-- **Улучшено логирование процесса сохранения дескрипторов**
-  - Добавлены детальные console.log для отслеживания backend descriptor vs embedding
-  - Явное использование дескриптора из backend response: `const backendDescriptor = generatedDescriptors[i]?.descriptor`
-  - Логи показывают: наличие backend дескриптора, длину массива, успех/неудачу сохранения в face_descriptors
+### Изменено
+- Обновлена вся документация проекта с изменениями за 1 февраля 2025
+- Подготовлен полный архив проекта для скачивания
 
-### Технические детали
+## [0.8.1] - 2025-02-01
 
-**bbox парсинг (getPhotoFacesAction):**
-\`\`\`typescript
-// Проверка типа и парсинг JSONB строки
-let parsedBbox = face.insightface_bbox
+### Исправлено
+- Убраны квадратные скобки из названия галереи в просмотре галереи игрока
+- Формат изменен с "[Название галереи] ДД.ММ" на "Название галереи ДД.ММ"
 
-if (typeof face.insightface_bbox === 'string') {
-  try {
-    parsedBbox = JSON.parse(face.insightface_bbox)
-  } catch (e) {
-    console.error('[v0] Failed to parse bbox:', face.insightface_bbox)
-    parsedBbox = null
-  }
-}
-\`\`\`
+## [0.8.0] - 2025-02-01
 
-**NFD статус (saveFaceTagsAction):**
-\`\`\`typescript
-// Ранний выход если нет тегов
-if (tags.length === 0) {
-  await sql`UPDATE gallery_images SET processing_status = 'NFD', verified = true WHERE id = ${photoId}`
-  return { success: true, message: "All faces removed, photo marked as NFD" }
-}
-\`\`\`
+### Добавлено
+- Клик на картинку галереи в разделе "Галереи" теперь открывает галерею управления фотографиями
 
-**Логирование дескрипторов:**
-\`\`\`typescript
-const backendDescriptor = generatedDescriptors[i]?.descriptor
-const descriptor = backendDescriptor || tag.embedding
-console.log(`[v0] Processing tag ${i}: has backend descriptor:`, !!backendDescriptor, "length:", descriptor?.length)
-\`\`\`
+### Изменено
+- Формат информации под фото в галерее игрока изменен на "Название галереи ДД.ММ"
 
-## [0.6.5] - 2025-02-02
+## [0.7.9] - 2025-02-01
+
+### Добавлено
+- Динамическая кнопка удаления в галерее игрока: "Удалить игрока с ХХ фото" при выборе чекбоксов
+- Информация под фото в галерее игрока: название файла и название галереи с датой
+- Клик на аватар игрока в разделе "Люди" теперь открывает галерею
+
+### Исправлено
+- Опечатки в переменных: imagesToToInsert → imagesToInsert, tagsToToInsert → tagsToInsert
+- Кнопка удаления имеет фиксированную ширину и выравнивание текста по левому краю
+
+## [0.7.8] - 2025-01-31
+
+### Добавлено
+- Полная документация для архива проекта
+- DOWNLOAD-INSTRUCTIONS.md - инструкции по скачиванию и установке
+- ARCHITECTURE.md - подробная архитектура проекта
+- CHANGELOG.md - история изменений
+- CONTRIBUTING.md - правила контрибуции
+
+### Исправлено
+- AlertDialog для удаления единичных файлов теперь открывается на правильном уровне
+- Защита родительских Dialog от закрытия при открытом AlertDialog
+
+## [0.7.7] - 2025-01-31
+
+### Исправлено
+- Диалоги подтверждения удаления заменены на AlertDialog
+- Исправлена логика верификации лиц (все лица должны быть верифицированы)
+- Минимальный blur score изменен с 30 на 10
+
+## [0.7.6] - 2025-01-30
+
+### Исправлено
+- Tooltip на кнопке сохранения в диалоге тегирования
+
+## [0.7.3] - 2025-01-30
+
+### Добавлено
+- Удаление выбранных фото в галерее событий
+- Массовое удаление с подтверждением
+
+## [0.7.1] - 2025-01-29
+
+### Добавлено
+- Sticky header в галерее событий для удобной навигации
+
+## [5.0] - 2025-01-28
+
+### Добавлено
+- Проверка целостности базы данных (15 проверок)
+- Автоматическое исправление проблем (7 автоисправлений)
+- Детальные отчеты о проблемах
+
+## [4.3] - 2025-01-27
+
+### Улучшено
+- UI галереи игрока
+- Отображение статусов верификации
+- Навигация между фотографиями
+
+## [4.0] - 2025-01-26
+
+### Изменено
+- Стандартизация источников данных
+- Унификация API endpoints
+- Улучшена типизация TypeScript
+
+## [3.2.8] - 2025-01-25
+
+### Добавлено
+- Инструкции по развертыванию FastAPI на Hetzner
+- Автоматические скрипты деплоя
+
+## [3.2.7] - 2025-01-24
+
+### Исправлено
+- Проблемы с CORS в FastAPI
+- Обработка ошибок при загрузке изображений
+
+## [3.0] - 2025-01-20
+
+### Добавлено
+- Кластеризация неизвестных лиц с HDBSCAN
+- Пакетное подтверждение кластеров
+- Улучшенный UI для работы с неизвестными лицами
+
+## [2.5] - 2025-01-15
+
+### Добавлено
+- Автоматическое распознавание лиц с InsightFace
+- HNSWLIB индекс для быстрого поиска
+- Настройки качества распознавания
+
+## [2.0] - 2025-01-10
+
+### Добавлено
+- Telegram бот для отправки фотографий
+- Интеграция с Telegram Bot API
+- Webhook для получения сообщений
+
+## [1.5] - 2025-01-05
+
+### Добавлено
+- Управление людьми (игроками)
+- Профили с рейтингами и соцсетями
+- Связывание людей с фотографиями
+
+## [1.0] - 2025-01-01
+
+### Добавлено
+- Базовая структура проекта
+- Управление галереями событий
+- Загрузка фотографий в Vercel Blob
+- Supabase интеграция
+- Google OAuth аутентификация

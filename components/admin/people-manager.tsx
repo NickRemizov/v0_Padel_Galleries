@@ -1,18 +1,119 @@
-import { getPeopleWithStatsAction } from "@/app/admin/actions"
-import { PersonList } from "./person-list"
+import { createClient } from "@/lib/supabase/server"
 import { AddPersonDialog } from "./add-person-dialog"
+import { PersonList } from "./person-list"
 import { GenerateMissingDescriptorsDialog } from "./generate-missing-descriptors-dialog"
+import type { Person } from "@/lib/types"
 
-export type PersonWithStats = {
-  id: string
-  real_name: string
-  photos_count: number
+type PersonWithStats = Person & {
+  verified_photos_count: number
+  high_confidence_photos_count: number
   descriptor_count: number
 }
 
 export async function PeopleManager() {
-  const result = await getPeopleWithStatsAction()
-  const peopleWithStats = result.success && result.data ? result.data : []
+  const supabase = await createClient()
+
+  const { data: people } = await supabase.from("people").select("*").order("real_name", { ascending: true })
+
+  let allPhotoFaces: Array<{
+    person_id: string
+    photo_id: string
+    verified: boolean | null
+    confidence: number | null
+  }> = []
+
+  const pageSize = 1000
+  let page = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const from = page * pageSize
+    const to = from + pageSize - 1
+
+    const { data: pageData } = await supabase
+      .from("photo_faces")
+      .select("person_id, photo_id, verified, confidence")
+      .range(from, to)
+
+    if (pageData && pageData.length > 0) {
+      allPhotoFaces = [...allPhotoFaces, ...pageData]
+      page++
+
+      if (pageData.length < pageSize) {
+        hasMore = false
+      }
+    } else {
+      hasMore = false
+    }
+  }
+
+  let allDescriptors: Array<{ person_id: string }> = []
+  let descriptorPage = 0
+  let hasMoreDescriptors = true
+
+  while (hasMoreDescriptors) {
+    const from = descriptorPage * pageSize
+    const to = from + pageSize - 1
+
+    const { data: descriptorPageData } = await supabase.from("face_descriptors").select("person_id").range(from, to)
+
+    if (descriptorPageData && descriptorPageData.length > 0) {
+      allDescriptors = [...allDescriptors, ...descriptorPageData]
+      descriptorPage++
+
+      if (descriptorPageData.length < pageSize) {
+        hasMoreDescriptors = false
+      }
+    } else {
+      hasMoreDescriptors = false
+    }
+  }
+
+  const descriptorCountMap = new Map<string, number>()
+  for (const descriptor of allDescriptors) {
+    descriptorCountMap.set(descriptor.person_id, (descriptorCountMap.get(descriptor.person_id) || 0) + 1)
+  }
+
+  const peopleWithStats: PersonWithStats[] = (people || []).map((person) => {
+    const personFaces = allPhotoFaces.filter((face) => face.person_id === person.id)
+
+    const photoIdsMap = new Map<string, { hasVerified: boolean; hasHighConfidence: boolean }>()
+
+    for (const face of personFaces) {
+      const meetsDisplayCriteria = face.verified === true || (face.confidence !== null && face.confidence >= 0.6)
+
+      if (!meetsDisplayCriteria) {
+        continue
+      }
+
+      if (!photoIdsMap.has(face.photo_id)) {
+        photoIdsMap.set(face.photo_id, { hasVerified: false, hasHighConfidence: false })
+      }
+
+      const photoData = photoIdsMap.get(face.photo_id)!
+
+      if (face.verified === true) {
+        photoData.hasVerified = true
+      }
+
+      if (face.confidence !== null && face.confidence >= 0.6) {
+        photoData.hasHighConfidence = true
+      }
+    }
+
+    const verifiedPhotosCount = Array.from(photoIdsMap.values()).filter((data) => data.hasVerified).length
+
+    const highConfidencePhotosCount = Array.from(photoIdsMap.values()).filter(
+      (data) => !data.hasVerified && data.hasHighConfidence,
+    ).length
+
+    return {
+      ...person,
+      verified_photos_count: verifiedPhotosCount,
+      high_confidence_photos_count: highConfidencePhotosCount,
+      descriptor_count: descriptorCountMap.get(person.id) || 0,
+    }
+  })
 
   return (
     <div className="space-y-6">

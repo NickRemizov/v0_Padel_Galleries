@@ -11,7 +11,7 @@ import { RefreshCw, Loader2, CheckCircle2, AlertCircle, TrendingUp, AlertTriangl
 import { TrainingHistoryList } from "./training-history-list"
 import { TrainingStatsCard } from "./training-stats-card"
 
-const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL!
+const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
 
 interface TrainingSession {
   id: string
@@ -41,7 +41,6 @@ interface Config {
     min_detection_score: number
     min_face_size: number
     min_blur_score: number
-    verified_threshold: number
   }
 }
 
@@ -70,7 +69,6 @@ const DEFAULT_CONFIG: Config = {
     min_detection_score: 0.7,
     min_face_size: 80,
     min_blur_score: 100.0,
-    verified_threshold: 0.99,
   },
 }
 
@@ -596,33 +594,6 @@ export function FaceTrainingManager() {
                 />
                 <p className="text-xs text-muted-foreground">
                   10 - размытые лица | 60-80 - рекомендуемый | 150 - только четкие
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">Порог автоверификации (verified threshold)</Label>
-                  <span className="text-sm font-medium">
-                    {((localConfig.quality_filters?.verified_threshold || 0.99) * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <Slider
-                  value={[(localConfig.quality_filters?.verified_threshold || 0.99) * 100]}
-                  onValueChange={([value]) =>
-                    setLocalConfig({
-                      ...localConfig,
-                      quality_filters: {
-                        ...localConfig.quality_filters!,
-                        verified_threshold: value / 100,
-                      },
-                    })
-                  }
-                  min={60}
-                  max={99}
-                  step={1}
-                />
-                <p className="text-xs text-muted-foreground">
-                  60% - мягкий | 85% - средний | 99% - строгий (практически идентичные фото)
                 </p>
               </div>
             </div>

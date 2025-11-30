@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+import { redirect } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GalleriesManager } from "@/components/admin/galleries-manager"
 import { PhotographersManager } from "@/components/admin/photographers-manager"
@@ -9,13 +9,13 @@ import { PeopleManager } from "@/components/admin/people-manager"
 // UNUSED: Batch recognition disabled - code kept for future reference
 // import { BatchRecognitionManager } from "@/components/admin/batch-recognition-manager"
 import { RecognitionStatsDialog } from "@/components/admin/recognition-stats-dialog"
-import { LogOut } from "lucide-react"
+import { LogOut } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { signOutAction } from "@/app/admin/actions"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "0.8.2" // Updated version to 0.8.2 after documentation update
+const APP_VERSION = "1.0.0" // Updated version to 1.0.0 after quick improvements and critical fixes
 
 export const dynamic = "force-dynamic"
 

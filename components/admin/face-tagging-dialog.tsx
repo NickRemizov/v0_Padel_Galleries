@@ -2,45 +2,40 @@
 
 import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { FaceRecognitionDetailsDialog, type DetailedFace } from "./face-recognition-details-dialog"
-import type { TaggedFace } from "@/lib/types" // Declare the TaggedFace variable here
-import { useState, useEffect, useRef } from "react"
+
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from "lucide-react"
-import {
-  savePhotoFaceAction,
-  getPhotoFacesAction,
-  deletePhotoFaceAction,
-  getPeopleAction,
-  getPersonAction,
-  saveFaceTagsAction,
-} from "@/app/admin/actions"
-import type { Person } from "@/lib/types"
+import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from 'lucide-react'
+import { savePhotoFaceAction, getPhotoFacesAction, deletePhotoFaceAction } from "@/app/admin/actions"
+import { createClient } from "@/lib/supabase/client"
+import type { Person, DetectedFace } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
-import { toast } from "@/components/ui/use-toast"
+import { debounce } from "@/lib/debounce"
 
-const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL!
+const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
 
 interface FaceTaggingDialogProps {
   imageId: string
   imageUrl: string
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave?: () => Promise<void>
-  hasBeenProcessed?: boolean
+  onSave?: () => void
 }
 
-export function FaceTaggingDialog({
-  imageId,
-  imageUrl,
-  open,
-  onOpenChange,
-  onSave,
-  hasBeenProcessed,
-}: FaceTaggingDialogProps) {
+interface TaggedFace {
+  id?: string
+  face: DetectedFace
+  personId: string | null
+  personName: string | null
+  recognitionConfidence: number | null
+  verified: boolean
+}
+
+export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSave }: FaceTaggingDialogProps) {
   const [people, setPeople] = useState<Person[]>([])
   const [taggedFaces, setTaggedFaces] = useState<TaggedFace[]>([])
   const [selectedFaceIndex, setSelectedFaceIndex] = useState<number | null>(null)
@@ -55,6 +50,13 @@ export function FaceTaggingDialog({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  
+  const debouncedSave = useMemo(
+    () => debounce((faces: TaggedFace[]) => {
+      console.log("[v3.11] Debounced save triggered for", faces.length, "faces")
+    }, 500),
+    []
+  )
 
   const getDisplayFileName = () => {
     try {
@@ -86,7 +88,7 @@ export function FaceTaggingDialog({
     if (open) {
       loadPeopleAndExistingFaces()
     }
-  }, [open]) // Removed imageId from dependencies - it should NOT trigger reload
+  }, [open])
 
   useEffect(() => {
     if (!showAddPerson && open) {
@@ -94,10 +96,15 @@ export function FaceTaggingDialog({
     }
   }, [showAddPerson, open])
 
+  useEffect(() => {
+    loadFacesAndPeople()
+  }, [imageId])
+
   async function loadPeople() {
-    const result = await getPeopleAction()
-    if (result.success && result.data) {
-      setPeople(result.data as Person[])
+    const supabase = createClient()
+    const { data } = await supabase.from("people").select("*").order("real_name", { ascending: true })
+    if (data) {
+      setPeople(data)
     }
   }
 
@@ -108,33 +115,65 @@ export function FaceTaggingDialog({
     const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
 
     if (existingFaces.length > 0) {
-      const tagged: TaggedFace[] = existingFaces.map((existing) => {
-        return {
-          face: {
-            insightface_bbox: existing.insightface_bbox || { x: 0, y: 0, width: 0, height: 0 },
-            confidence: existing.recognition_confidence || 0,
-            blur_score: undefined,
-            distance_to_nearest: undefined,
-            top_matches: undefined,
-          },
-          id: existing.id,
-          person_id: existing.person_id || null,
-          person_real_name: existing.person_real_name || "",
-          recognition_source: existing.recognition_source || "manual",
-          confidence_score: existing.confidence_score || null,
-          verified: existing.verified !== undefined ? existing.verified : false,
-        }
-      })
+      const tagged: TaggedFace[] = existingFaces.map((existing) => ({
+        id: existing.id,
+        face: {
+          boundingBox: existing.insightface_bbox,
+          confidence: existing.recognition_confidence || 0,
+          blur_score: existing.blur_score,
+          embedding: [],
+        },
+        personId: existing.person_id,
+        personName: existing.people?.real_name || null,
+        recognitionConfidence: existing.recognition_confidence,
+        verified: existing.verified,
+      }))
 
       setTaggedFaces(tagged)
       drawFaces(tagged)
     } else {
-      if (!hasBeenProcessed) {
-        console.log("[v0] No existing faces and photo not processed, triggering auto-detection")
-        await detectAndRecognizeFaces()
-      } else {
-        console.log("[v0] No existing faces but photo already processed, skipping auto-detection")
-      }
+      await detectAndRecognizeFaces()
+    }
+  }
+
+  async function loadFacesAndPeople() {
+    await loadPeople()
+
+    const existingResult = await getPhotoFacesAction(imageId)
+    const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
+
+    console.log("[v3.22] Loading existing faces for image:", imageId)
+    console.log("[v3.22] Existing faces from DB:", existingFaces)
+
+    if (existingFaces.length > 0) {
+      const tagged: TaggedFace[] = existingFaces.map((existing) => ({
+        id: existing.id,
+        face: {
+          boundingBox: existing.insightface_bbox,
+          confidence: existing.recognition_confidence || 0,
+          blur_score: existing.blur_score,
+          embedding: [],
+        },
+        personId: existing.person_id,
+        personName: existing.people?.real_name || null,
+        recognitionConfidence: existing.recognition_confidence,
+        verified: existing.verified,
+      }))
+
+      console.log(
+        "[v3.22] Tagged faces after mapping:",
+        tagged.map((f) => ({
+          personId: f.personId,
+          personName: f.personName,
+          recognitionConfidence: f.recognitionConfidence,
+          verified: f.verified,
+        })),
+      )
+
+      setTaggedFaces(tagged)
+      drawFaces(tagged)
+    } else {
+      await detectAndRecognizeFaces()
     }
   }
 
@@ -146,17 +185,15 @@ export function FaceTaggingDialog({
         faces.map(async (face) => {
           const recognition = await recognizeFaceInsightFace(face.embedding)
           console.log("[v4.0] FaceTaggingDialog: Recognition result for face:", {
-            face_bbox: face.insightface_bbox,
-            detection_confidence: face.confidence,
-            recognition_confidence: recognition?.confidence ?? null,
+            face_bbox: face.boundingBox,
+            recognition_confidence: recognition?.confidence,
             person_name: recognition?.person_name,
           })
           return {
             face,
-            person_id: recognition?.person_id || null,
-            person_real_name: recognition?.person_name || "",
-            recognition_source: "insightface",
-            confidence_score: recognition?.confidence || null,
+            personId: recognition?.person_id || null,
+            personName: recognition?.person_name || null,
+            recognitionConfidence: recognition?.confidence || null,
             verified: false,
           }
         }),
@@ -165,29 +202,14 @@ export function FaceTaggingDialog({
       console.log(
         "[v4.0] FaceTaggingDialog: All faces after detection:",
         tagged.map((t) => ({
-          person_id: t.person_id,
-          person_real_name: t.person_real_name,
-          recognition_source: t.recognition_source,
-          confidence_score: t.confidence_score,
+          personId: t.personId,
+          personName: t.personName,
+          recognitionConfidence: t.recognitionConfidence,
           verified: t.verified,
         })),
       )
 
       setTaggedFaces(tagged)
-      const detailed: DetailedFace[] = tagged.map((t) => ({
-        insightface_bbox: t.face.insightface_bbox,
-        size: t.face.insightface_bbox.width,
-        blur_score: t.face.blur_score,
-        detection_score: t.face.confidence || 0,
-        insightface_confidence: t.confidence_score || undefined,
-        person_name: t.person_real_name || undefined,
-        verified: t.verified,
-        distance_to_nearest: t.face.distance_to_nearest,
-        top_matches: t.face.top_matches,
-        embedding_quality: (t.face as any).embedding_quality,
-      }))
-      setDetailedFaces(detailed)
-      setHasRedetectedData(true)
       drawFaces(tagged)
     } catch (error) {
       console.error("Error detecting faces:", error)
@@ -196,12 +218,12 @@ export function FaceTaggingDialog({
     }
   }
 
-  async function detectFacesInsightFace(imageUrl: string, applyFilters = true): Promise<any[]> {
+  async function detectFacesInsightFace(imageUrl: string): Promise<DetectedFace[]> {
     const apiUrl = `/api/face-detection/detect`
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_url: imageUrl, apply_quality_filters: applyFilters }),
+      body: JSON.stringify({ image_url: imageUrl, apply_quality_filters: true }),
     })
 
     if (!response.ok) {
@@ -213,13 +235,10 @@ export function FaceTaggingDialog({
     const data = await response.json()
 
     return data.faces.map((face: any) => ({
-      insightface_bbox: face.insightface_bbox,
+      boundingBox: face.insightface_bbox,
       confidence: face.confidence,
       blur_score: face.blur_score,
       embedding: face.embedding,
-      distance_to_nearest: face.distance_to_nearest,
-      top_matches: face.top_matches,
-      embedding_quality: face.embedding_quality,
     }))
   }
 
@@ -245,39 +264,35 @@ export function FaceTaggingDialog({
       return null
     }
 
-    let person = people.find((p) => p.id === data.person_id)
-
-    if (!person) {
-      console.log("[v4.0] FaceTaggingDialog: Person not in cache, fetching from DB:", data.person_id)
-      const result = await getPersonAction(data.person_id)
-      if (result.success && result.data) {
-        person = result.data as Person
-        setPeople((prev) => [...prev, person!])
-      }
-    }
+    const supabase = createClient()
+    const { data: person } = await supabase.from("people").select("real_name").eq("id", data.person_id).single()
 
     return {
       person_id: data.person_id,
-      person_name: person?.real_name || "Unknown",
+      person_name: person?.real_name || null,
       confidence: data.confidence,
     }
   }
 
   function calculateIoU(box1: any, box2: any): number {
+    if (!box1 || !box2) {
+      console.log("[v0] calculateIoU: one of the boxes is null", { box1, box2 })
+      return 0
+    }
+
     const x1 = Math.max(box1.x, box2.x)
     const y1 = Math.max(box1.y, box2.y)
     const x2 = Math.min(box1.x + box1.width, box2.x + box2.width)
     const y2 = Math.min(box1.y + box1.height, box2.y + box2.height)
 
-    const intersectionWidth = Math.max(0, x2 - x1)
-    const intersectionHeight = Math.max(0, y2 - y1)
-    const intersectionArea = intersectionWidth * intersectionHeight
+    if (x2 < x1 || y2 < y1) return 0
 
-    const box1Area = box1.width * box1.height
-    const box2Area = box2.width * box2.height
-    const unionArea = box1Area + box2Area - intersectionArea
+    const intersection = (x2 - x1) * (y2 - y1)
+    const area1 = box1.width * box1.height
+    const area2 = box2.width * box2.height
+    const union = area1 + area2 - intersection
 
-    return unionArea > 0 ? intersectionArea / unionArea : 0
+    return intersection / union
   }
 
   function getFaceColor(index: number): string {
@@ -308,62 +323,30 @@ export function FaceTaggingDialog({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(image, 0, 0)
 
-    console.log("[v0] drawFaces: Total faces to draw:", faces.length)
-
     faces.forEach((taggedFace, index) => {
-      const { insightface_bbox } = taggedFace.face
-
-      console.log(`[v0] drawFaces: Face ${index}:`, {
-        has_bbox: !!insightface_bbox,
-        bbox_value: insightface_bbox,
-        bbox_type: typeof insightface_bbox,
-        person_real_name: taggedFace.person_real_name,
-        verified: taggedFace.verified,
-      })
-
-      if (!insightface_bbox) {
-        console.log(`[v0] drawFaces: Skipping face ${index} - no bbox`)
-        return
-      }
-
-      if (insightface_bbox.width === 0 || insightface_bbox.height === 0) {
-        console.log(`[v0] drawFaces: Skipping face ${index} - zero-sized bbox:`, insightface_bbox)
-        return
-      }
+      const { boundingBox } = taggedFace.face
+      if (!boundingBox) return
 
       const isSelected = index === selectedFaceIndex
 
       const faceColor = getFaceColor(index)
       ctx.strokeStyle = isSelected ? "#3b82f6" : faceColor
       ctx.lineWidth = isSelected ? 8 : 4
+      ctx.strokeRect(boundingBox.x, boundingBox.y, boundingBox.width, boundingBox.height)
 
-      console.log(`[v0] drawFaces: Drawing bbox for face ${index}:`, {
-        x: insightface_bbox.x,
-        y: insightface_bbox.y,
-        width: insightface_bbox.width,
-        height: insightface_bbox.height,
-        color: ctx.strokeStyle,
-      })
-
-      ctx.strokeRect(insightface_bbox.x, insightface_bbox.y, insightface_bbox.width, insightface_bbox.height)
-
-      if (taggedFace.person_real_name || taggedFace.confidence_score) {
-        const confidenceText = taggedFace.verified
-          ? " (100%)"
-          : taggedFace.confidence_score
-            ? ` (${Math.round(taggedFace.confidence_score * 100)}%)`
-            : ""
-
-        const nameText = taggedFace.person_real_name || "Unknown"
-        const label = `${nameText}${confidenceText}`
+      if (taggedFace.personName) {
+        const confidenceText = taggedFace.recognitionConfidence
+          ? ` (${Math.round(taggedFace.recognitionConfidence * 100)}%)`
+          : ""
+        const label = `${taggedFace.personName}${confidenceText}`
 
         ctx.font = "bold 20px sans-serif"
         const textWidth = ctx.measureText(label).width
         const padding = 10
         const labelHeight = 32
 
-        const labelX = insightface_bbox.x
-        const labelY = insightface_bbox.y - labelHeight - 5
+        const labelX = boundingBox.x
+        const labelY = boundingBox.y - labelHeight - 5
 
         ctx.fillStyle = isSelected ? "#3b82f6" : faceColor
         ctx.fillRect(labelX, labelY, textWidth + padding * 2, labelHeight)
@@ -387,12 +370,14 @@ export function FaceTaggingDialog({
     const updated = [...taggedFaces]
     updated[selectedFaceIndex] = {
       ...updated[selectedFaceIndex],
-      person_id: person.id,
-      person_real_name: person.real_name,
+      personId: person.id,
+      personName: person.real_name,
       verified: true,
     }
     setTaggedFaces(updated)
     drawFaces(updated)
+    
+    debouncedSave(updated)
   }
 
   function handleRemoveFace(index: number) {
@@ -400,84 +385,66 @@ export function FaceTaggingDialog({
     setTaggedFaces(updated)
     setSelectedFaceIndex(null)
     drawFaces(updated)
+    
+    debouncedSave(updated)
   }
 
   async function handleSaveWithoutClose() {
+    if (saving) {
+      console.log("[v3.11] Save already in progress, ignoring")
+      return
+    }
+    
     setSaving(true)
     try {
       const existingResult = await getPhotoFacesAction(imageId)
       const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
 
-      console.log("[v4.1] handleSaveWithoutClose: Starting save process")
-      console.log(
-        "[v4.1] Existing faces from DB:",
-        existingFaces.map((f) => ({ id: f.id, person_id: f.person_id, verified: f.verified })),
-      )
-      console.log(
-        "[v4.1] Current taggedFaces in state:",
-        taggedFaces.map((f) => ({
-          person_id: f.person_id,
-          person_real_name: f.person_real_name,
-          verified: f.verified,
-        })),
-      )
-
       for (const face of existingFaces) {
-        console.log("[v4.1] Deleting face:", face.id)
         await deletePhotoFaceAction(face.id)
       }
 
-      console.log("[v4.1] All existing faces deleted, now saving new faces")
-
       if (taggedFaces.length === 0) {
-        console.log("[v4.1] No tagged faces to save, completing")
-        console.log("[v4.1] Save process completed successfully, closing dialog")
-        console.log("[v4.1] Calling onSave callback to reload gallery data")
-        onSave()
-        onOpenChange(false)
-        return
+        const result = await savePhotoFaceAction(imageId, null, null, [], null, null, false)
+
+        if (!result.success) {
+          console.error("Save failed:", result.error)
+          alert(`Ошибка сохранения: ${result.error}`)
+          setSaving(false)
+          return
+        }
       } else {
         for (const taggedFace of taggedFaces) {
-          if (!taggedFace.person_id) continue
+          if (!taggedFace.personId) continue
 
           const isVerified = true
-          const insightfaceConfidenceToSave = taggedFace.confidence_score ?? 1.0
-          const recognitionConfidenceToSave = 1.0
-
-          console.log("[v4.1] Saving face for person:", {
-            person_id: taggedFace.person_id,
-            person_real_name: taggedFace.person_real_name,
-            insightfaceConfidence: insightfaceConfidenceToSave,
-            recognitionConfidence: recognitionConfidenceToSave,
-          })
+          const recognitionConfidenceToSave = taggedFace.recognitionConfidence ?? 1.0
+          const confidenceToSave = taggedFace.face.confidence ?? 1.0
 
           const result = await savePhotoFaceAction(
             imageId,
-            taggedFace.person_id,
-            taggedFace.face.insightface_bbox,
-            insightfaceConfidenceToSave,
+            taggedFace.personId,
+            taggedFace.face.boundingBox,
+            taggedFace.face.embedding,
+            confidenceToSave,
             recognitionConfidenceToSave,
             isVerified,
-            imageUrl,
           )
 
           if (!result.success) {
             console.error("Save failed:", result.error)
+            if (result.errorDetail) {
+              console.error("Error details:", result.errorDetail)
+            }
             alert(`Ошибка сохранения: ${result.error}`)
             setSaving(false)
             return
           }
-
-          console.log("[v4.1] Face saved successfully")
         }
       }
 
-      console.log("[v4.1] Save process completed successfully")
-
       if (onSave) {
-        console.log("[v4.1] Calling onSave callback to reload gallery data")
-        await onSave()
-        console.log("[v4.1] onSave completed, data reloaded")
+        onSave()
       }
     } catch (error) {
       console.error("Error saving face tags:", error)
@@ -488,145 +455,169 @@ export function FaceTaggingDialog({
   }
 
   async function handleSave() {
+    if (saving) {
+      console.log("[v3.11] Save already in progress, ignoring")
+      return
+    }
+    
     setSaving(true)
     try {
-      console.log("[v5.0] handleSave: Starting save process with saveFaceTagsAction")
-      console.log(
-        "[v5.0] Current taggedFaces:",
-        taggedFaces.map((f) => ({
-          person_id: f.person_id,
-          person_real_name: f.person_real_name,
-          verified: f.verified,
-        })),
-      )
+      const existingResult = await getPhotoFacesAction(imageId)
+      const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
 
-      const tags = taggedFaces
-        .filter((tf) => tf.person_id) // Only faces with assigned person
-        .map((tf) => ({
-          personId: tf.person_id!, // Changed from person_id to personId
-          insightface_bbox: tf.face.insightface_bbox,
-          bbox: tf.face.insightface_bbox,
-          insightface_confidence: tf.confidence_score ?? 1.0,
-          recognition_confidence: 1.0,
-          verified: true,
-          embedding: null,
-        }))
-
-      console.log("[v5.0] Sending", tags.length, "tags to saveFaceTagsAction")
-
-      const result = await saveFaceTagsAction(imageId, imageUrl, tags)
-
-      if (result.error) {
-        const errorMessage = typeof result.error === "string" ? result.error : JSON.stringify(result.error)
-        console.error("[v5.0] Save failed:", errorMessage)
-        alert(`Ошибка сохранения: ${errorMessage}`)
-        setSaving(false)
-        return
+      for (const face of existingFaces) {
+        await deletePhotoFaceAction(face.id)
       }
 
-      console.log("[v5.0] Save completed successfully")
+      if (taggedFaces.length === 0) {
+        const result = await savePhotoFaceAction(imageId, null, null, [], null, null, false)
 
-      if (onSave) {
-        console.log("[v5.0] Calling onSave callback to reload gallery data")
-        await onSave()
+        if (!result.success) {
+          console.error("Save failed:", result.error)
+          alert(`Ошибка сохранения: ${result.error}`)
+          setSaving(false)
+          return
+        }
+      } else {
+        for (const taggedFace of taggedFaces) {
+          if (!taggedFace.personId) continue
+
+          const isVerified = true
+          const recognitionConfidenceToSave = taggedFace.recognitionConfidence ?? 1.0
+          const confidenceToSave = taggedFace.face.confidence ?? 1.0
+
+          const result = await savePhotoFaceAction(
+            imageId,
+            taggedFace.personId,
+            taggedFace.face.boundingBox,
+            taggedFace.face.embedding,
+            confidenceToSave,
+            recognitionConfidenceToSave,
+            isVerified,
+          )
+
+          if (!result.success) {
+            console.error("Save failed:", result.error)
+            if (result.errorDetail) {
+              console.error("Error details:", result.errorDetail)
+            }
+            alert(`Ошибка сохранения: ${result.error}`)
+            setSaving(false)
+            return
+          }
+        }
       }
+
       onOpenChange(false)
-    } catch (error: any) {
-      const errorMessage = error?.message || JSON.stringify(error) || "Unknown error"
-      console.error("[v5.0] Error in handleSave:", errorMessage)
-      alert(`Ошибка: ${errorMessage}`)
+      if (onSave) {
+        onSave()
+      }
+    } catch (error) {
+      console.error("Error saving face tags:", error)
+      alert("Ошибка при сохранении тегов")
     } finally {
       setSaving(false)
     }
   }
 
   async function handleRedetect() {
-    if (!imageUrl) return
-
     try {
-      setDetecting(true)
-      const faces = await detectFacesInsightFace(imageUrl, true)
+      setRedetecting(true)
+      const faces = await detectFacesInsightFace(imageUrl)
       const tagged: TaggedFace[] = await Promise.all(
         faces.map(async (face) => {
           const recognition = await recognizeFaceInsightFace(face.embedding)
           return {
             face,
-            person_id: recognition?.person_id || null,
-            person_real_name: recognition?.person_name || "",
-            recognition_source: "insightface",
-            confidence_score: recognition?.confidence || null,
+            personId: recognition?.person_id || null,
+            personName: recognition?.person_name || null,
+            recognitionConfidence: recognition?.confidence || null,
+            verified: false,
+          }
+        }),
+      )
+      setTaggedFaces(tagged)
+      setSelectedFaceIndex(0)
+      setHasRedetectedData(true)
+    } catch (error) {
+      console.error("Error redetecting faces:", error)
+    } finally {
+      setRedetecting(false)
+    }
+  }
+
+  async function handleRedetectWithoutFilters() {
+    try {
+      setRedetecting(true)
+      console.log("[v0] Redetecting faces WITHOUT quality filters")
+
+      const apiUrl = `/api/face-detection/detect`
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_url: imageUrl,
+          apply_quality_filters: false,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to detect faces")
+      }
+
+      const data = await response.json()
+      console.log("[v0] Redetection result:", data)
+
+      const faces: DetectedFace[] = data.faces.map((face: any) => ({
+        boundingBox: face.insightface_bbox,
+        confidence: face.confidence,
+        blur_score: face.blur_score,
+        embedding: face.embedding,
+      }))
+
+      const tagged: TaggedFace[] = await Promise.all(
+        faces.map(async (face) => {
+          const recognition = await recognizeFaceInsightFace(face.embedding)
+          return {
+            face,
+            personId: recognition?.person_id || null,
+            personName: recognition?.person_name || null,
+            recognitionConfidence: recognition?.confidence || null,
             verified: false,
           }
         }),
       )
 
       setTaggedFaces(tagged)
-      const detailed: DetailedFace[] = tagged.map((t) => ({
-        insightface_bbox: t.face.insightface_bbox,
-        size: t.face.insightface_bbox.width,
-        blur_score: t.face.blur_score,
-        detection_score: t.face.confidence || 0,
-        insightface_confidence: t.confidence_score || undefined,
-        person_name: t.person_real_name || undefined,
-        verified: t.verified,
-        distance_to_nearest: t.face.distance_to_nearest,
-        top_matches: t.face.top_matches,
-        embedding_quality: (t.face as any).embedding_quality,
-      }))
-      setDetailedFaces(detailed)
-      setHasRedetectedData(true)
-    } catch (error) {
-      console.error("Error redetecting faces:", error)
-    } finally {
-      setDetecting(false)
-    }
-  }
+      drawFaces(tagged)
 
-  async function handleRedetectWithoutFilters() {
-    if (!imageUrl) return
+      const detailed: DetailedFace[] = data.faces.map((face: any, index: number) => {
+        const bbox = face.insightface_bbox
+        const size = Math.min(bbox.width, bbox.height)
 
-    try {
-      setDetecting(true)
-      const faces = await detectFacesInsightFace(imageUrl, false)
-      const recognized = await Promise.all(
-        faces.map(async (face) => {
-          const recognition = await recognizeFaceInsightFace(face.embedding)
-          return {
-            face,
-            person_id: recognition?.person_id || null,
-            person_real_name: recognition?.person_name || "",
-            recognition_source: "insightface",
-            confidence_score: recognition?.confidence || null,
-            verified: false,
-          }
-        }),
-      )
-
-      const newTagged = mergeFaces(taggedFaces, recognized)
-      setTaggedFaces(newTagged)
-      const detailed: DetailedFace[] = newTagged.map((t) => ({
-        insightface_bbox: t.face.insightface_bbox,
-        size: t.face.insightface_bbox.width,
-        blur_score: t.face.blur_score,
-        detection_score: t.face.confidence || 0,
-        insightface_confidence: t.confidence_score || undefined,
-        person_name: t.person_real_name || undefined,
-        verified: t.verified,
-        distance_to_nearest: t.face.distance_to_nearest,
-        top_matches: t.face.top_matches,
-        embedding_quality: (t.face as any).embedding_quality,
-      }))
-      setDetailedFaces(detailed)
-      setHasRedetectedData(true)
-    } catch (error) {
-      console.error("Error redetecting without filters:", error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось обнаружить лица без фильтров",
-        variant: "destructive",
+        return {
+          boundingBox: bbox,
+          size: size,
+          blur_score: face.blur_score,
+          detection_score: face.confidence,
+          recognition_confidence: tagged[index].recognitionConfidence || undefined,
+          embedding_quality: face.embedding
+            ? Math.sqrt(face.embedding.reduce((sum: number, val: number) => sum + val * val, 0))
+            : undefined,
+          distance_to_nearest: face.distance_to_nearest,
+          top_matches: face.top_matches || [],
+          person_name: tagged[index].personName || undefined,
+        }
       })
+
+      console.log("[v0] Detailed faces:", detailed)
+      setDetailedFaces(detailed)
+      setHasRedetectedData(true)
+    } catch (error) {
+      console.error("[v0] Error redetecting faces:", error)
+      alert("Ошибка при повторном распознавании")
     } finally {
-      setDetecting(false)
+      setRedetecting(false)
     }
   }
 
@@ -636,7 +627,7 @@ export function FaceTaggingDialog({
     }
   }, [imageFitMode])
 
-  const hasUnassignedFaces = taggedFaces.some((face) => !face.person_id)
+  const hasUnassignedFaces = taggedFaces.some((face) => !face.personId)
   const canSave = !saving && !hasUnassignedFaces
 
   return (
@@ -744,13 +735,13 @@ export function FaceTaggingDialog({
                     const imageY = ((clickY - offsetY) / renderedHeight) * canvas.height
 
                     const clickedIndex = taggedFaces.findIndex((taggedFace) => {
-                      const { insightface_bbox } = taggedFace.face
-                      if (!insightface_bbox) return false
+                      const { boundingBox } = taggedFace.face
+                      if (!boundingBox) return false
                       return (
-                        imageX >= insightface_bbox.x &&
-                        imageX <= insightface_bbox.x + insightface_bbox.width &&
-                        imageY >= insightface_bbox.y &&
-                        imageY <= insightface_bbox.y + insightface_bbox.height
+                        imageX >= boundingBox.x &&
+                        imageX <= boundingBox.x + boundingBox.width &&
+                        imageY >= boundingBox.y &&
+                        imageY <= boundingBox.y + boundingBox.height
                       )
                     })
 
@@ -762,17 +753,15 @@ export function FaceTaggingDialog({
               </div>
 
               <div className="flex items-center gap-3 px-1 min-h-[52px]">
-                {taggedFaces.some((face) => face.person_real_name) && (
+                {taggedFaces.some((face) => face.personName) && (
                   <div className="flex flex-wrap gap-2">
                     {taggedFaces.map((taggedFace, index) => {
-                      if (!taggedFace.person_real_name) return null
+                      if (!taggedFace.personName) return null
                       const faceColor = getFaceColor(index)
                       const isSelected = index === selectedFaceIndex
-                      const confidenceText = taggedFace.verified
-                        ? " (100%)"
-                        : taggedFace.confidence_score
-                          ? ` (${Math.round(taggedFace.confidence_score * 100)}%)`
-                          : ""
+                      const confidenceText = taggedFace.recognitionConfidence
+                        ? ` (${Math.round(taggedFace.recognitionConfidence * 100)}%)`
+                        : ""
                       return (
                         <Badge
                           key={index}
@@ -782,7 +771,7 @@ export function FaceTaggingDialog({
                           }`}
                           onClick={() => handleFaceClick(index)}
                         >
-                          {taggedFace.person_real_name}
+                          {taggedFace.personName}
                           {confidenceText}
                         </Badge>
                       )
@@ -792,7 +781,7 @@ export function FaceTaggingDialog({
 
                 {selectedFaceIndex !== null && (
                   <div className="flex items-center gap-2 ml-auto">
-                    <Select value={taggedFaces[selectedFaceIndex].person_id || ""} onValueChange={handlePersonSelect}>
+                    <Select value={taggedFaces[selectedFaceIndex].personId || ""} onValueChange={handlePersonSelect}>
                       <SelectTrigger className="w-[250px]">
                         <SelectValue placeholder="Выберите человека" />
                       </SelectTrigger>
@@ -805,15 +794,12 @@ export function FaceTaggingDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    {taggedFaces[selectedFaceIndex].person_id &&
-                      (taggedFaces[selectedFaceIndex].verified ||
-                        (taggedFaces[selectedFaceIndex].confidence_score !== null &&
-                          !isNaN(taggedFaces[selectedFaceIndex].confidence_score!) &&
-                          taggedFaces[selectedFaceIndex].confidence_score! > 0)) && (
+                    {taggedFaces[selectedFaceIndex].personId &&
+                      taggedFaces[selectedFaceIndex].recognitionConfidence !== null &&
+                      !isNaN(taggedFaces[selectedFaceIndex].recognitionConfidence!) &&
+                      taggedFaces[selectedFaceIndex].recognitionConfidence! > 0 && (
                         <Badge variant="secondary" className="whitespace-nowrap">
-                          {taggedFaces[selectedFaceIndex].verified
-                            ? "100%"
-                            : `${Math.round(taggedFaces[selectedFaceIndex].confidence_score! * 100)}%`}
+                          {Math.round(taggedFaces[selectedFaceIndex].recognitionConfidence! * 100)}%
                         </Badge>
                       )}
                     <Button variant="destructive" size="icon" onClick={() => handleRemoveFace(selectedFaceIndex)}>
@@ -900,7 +886,7 @@ export function FaceTaggingDialog({
         open={showDetailsDialog}
         onOpenChange={setShowDetailsDialog}
         faces={detailedFaces}
-        imageUrl={imageUrl} // Pass imageUrl for face preview
+        imageUrl={imageUrl}
       />
     </Dialog>
   )
@@ -943,13 +929,4 @@ function getRenderedImageDimensions(canvas: HTMLCanvasElement, mode: "contain" |
   }
 
   return { renderedWidth, renderedHeight, offsetX, offsetY }
-}
-
-function mergeFaces(existingFaces: TaggedFace[], newFaces: TaggedFace[]): TaggedFace[] {
-  // Implement the logic to merge faces here
-  // This is a placeholder implementation
-  return newFaces.map((newFace) => {
-    const existingFace = existingFaces.find((face) => face.id === newFace.id)
-    return existingFace ? { ...existingFace, ...newFace } : newFace
-  })
 }

@@ -16,7 +16,7 @@ import {
   deletePhotoFaceAction,
   markPhotoAsProcessedAction, // Added import for marking photo as processed
 } from "@/app/admin/actions"
-import { calculateIoU } from "@/lib/face-recognition/utils"
+import { calculateIoU } from "@/lib/face-recognition/face-storage"
 import type { GalleryImage } from "@/lib/types"
 
 const VERSION = "v3.15" // Updated version to track has_been_processed marking
@@ -69,9 +69,9 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     return data.faces
       .filter((face: any) => face.insightface_bbox && face.insightface_bbox.x !== undefined)
       .map((face: any) => ({
-        insightface_bbox: face.insightface_bbox, // Use insightface_bbox from backend
-        insightface_confidence: face.confidence, // Map from API response
-        insightface_descriptor: face.embedding, // Map from API response
+        boundingBox: face.insightface_bbox, // Use insightface_bbox from backend
+        confidence: face.confidence,
+        embedding: face.embedding,
       }))
   }
 
@@ -190,16 +190,16 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
         for (let j = 0; j < faces.length; j++) {
           const face = faces[j]
 
-          if (!face.insightface_bbox || face.insightface_bbox.x === undefined) {
+          if (!face.boundingBox || face.boundingBox.x === undefined) {
             console.warn(`[${VERSION}] Skipping face with invalid bounding box`)
             continue
           }
 
-          const match = await recognizeFaceInsightFace(face.insightface_descriptor)
+          const match = await recognizeFaceInsightFace(face.embedding)
 
           const overlappingFace = existingFaces.find((existing) => {
             if (!existing.insightface_bbox) return false
-            const iou = calculateIoU(face.insightface_bbox, existing.insightface_bbox)
+            const iou = calculateIoU(face.boundingBox, existing.insightface_bbox)
             return iou > 0.5
           })
 
@@ -219,11 +219,10 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
               if (match.confidence < 1.0) {
                 allFacesFullConfidence = false
               }
-              await saveFaceDescriptorAction(match.personId, face.insightface_descriptor, image.id)
+              await saveFaceDescriptorAction(match.personId, face.embedding, image.id)
               await updatePhotoFaceAction(overlappingFace.id, {
                 person_id: match.personId,
-                insightface_confidence: face.insightface_confidence, // Detection confidence from detector
-                recognition_confidence: match.confidence, // Recognition confidence from matching
+                confidence: match.confidence,
                 verified: false,
               })
               recognizedCount++
@@ -231,7 +230,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
               allFacesFullConfidence = false
               await updatePhotoFaceAction(overlappingFace.id, {
                 person_id: null,
-                recognition_confidence: null, // No recognition confidence when not matched
+                confidence: null,
                 verified: false,
               })
             }
@@ -242,28 +241,20 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
             if (match.confidence < 1.0) {
               allFacesFullConfidence = false
             }
-            await saveFaceDescriptorAction(match.personId, face.insightface_descriptor, image.id)
+            await saveFaceDescriptorAction(match.personId, face.embedding, image.id)
             await savePhotoFaceAction(
               image.id,
               match.personId,
-              face.insightface_bbox,
-              face.insightface_descriptor,
-              face.insightface_confidence, // Detection confidence
-              match.confidence, // Recognition confidence
+              face.boundingBox,
+              face.embedding,
+              face.confidence,
+              match.confidence,
               false,
             )
             recognizedCount++
           } else {
             allFacesFullConfidence = false
-            await savePhotoFaceAction(
-              image.id,
-              null,
-              face.insightface_bbox,
-              face.insightface_descriptor,
-              face.insightface_confidence,
-              0, // Recognition confidence is 0 when not recognized
-              false,
-            )
+            await savePhotoFaceAction(image.id, null, face.boundingBox, face.embedding, face.confidence, 0, false)
           }
         }
 

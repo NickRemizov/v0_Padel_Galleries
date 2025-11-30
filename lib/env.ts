@@ -3,7 +3,6 @@ import { z } from "zod"
 const envSchema = z.object({
   // Server-side only
   FASTAPI_URL: z.string().url("FASTAPI_URL must be a valid URL"),
-  API_SECRET_KEY: z.string().min(1, "API_SECRET_KEY is required for Python API auth"),
 
   // Supabase (required)
   NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL"),

@@ -1,4 +1,4 @@
-from fastapi import HTTPException, Security, Depends, Header
+from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
@@ -16,31 +16,6 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change_this_secret_key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 часа
-
-API_SECRET_KEY = os.getenv("API_SECRET_KEY")
-
-
-async def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
-    """Проверка API ключа для server-to-server запросов"""
-    if not API_SECRET_KEY:
-        raise HTTPException(
-            status_code=500, 
-            detail="API_SECRET_KEY not configured on server"
-        )
-    
-    if not x_api_key:
-        raise HTTPException(
-            status_code=401, 
-            detail="X-API-Key header required"
-        )
-    
-    if x_api_key != API_SECRET_KEY:
-        raise HTTPException(
-            status_code=403, 
-            detail="Invalid API key"
-        )
-    
-    return {"authenticated": True, "method": "api_key"}
 
 
 async def verify_google_token(token: str) -> dict:

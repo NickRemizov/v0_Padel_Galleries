@@ -18,7 +18,9 @@ import zipfile
 from pathlib import Path
 
 import models.schemas
-from services.postgres_client import db_client  # Using only PostgresClient now
+from services.database import PlayerDatabase
+from services.supabase_database import SupabaseDatabase
+from services.supabase_client import SupabaseClient  # Added import for SupabaseClient to access config methods
 
 
 class FaceRecognitionService:
@@ -26,6 +28,13 @@ class FaceRecognitionService:
         """Инициализация сервиса распознавания лиц"""
         print("[v0] Инициализация FaceRecognitionService...")
         self.app = None
+        self.db = PlayerDatabase()
+        try:
+            self.supabase_db = SupabaseDatabase()
+            print("[v3.0] SupabaseDatabase connected successfully")
+        except Exception as e:
+            print(f"[v3.0] WARNING: Could not connect to Supabase: {e}")
+            self.supabase_db = None
         
         # Хранилище эмбеддингов и данных (для временных операций)
         self.embeddings_store: Dict[str, List[np.ndarray]] = {}
@@ -38,11 +47,15 @@ class FaceRecognitionService:
         self.quality_filters = {
             "min_detection_score": 0.7,
             "min_face_size": 80,
-            "min_blur_score": 80,
-            "verified_threshold": 0.6  # Threshold for verified faces
+            "min_blur_score": 80  # Updated default min_blur_score from 10 to 80
         }
         
-        print("[v0] Using PostgreSQL client for face recognition")
+        try:
+            self.supabase_client = SupabaseClient()
+            print("[v3.2.7] SupabaseClient connected successfully")
+        except Exception as e:
+            print(f"[v3.2.7] WARNING: Could not connect to SupabaseClient: {e}")
+            self.supabase_client = None
         
         print("[v0] Сервис распознавания лиц создан (ожидает инициализации)")
     
@@ -247,43 +260,40 @@ class FaceRecognitionService:
     
     def _load_players_index(self):
         """
-        Загрузка индекса известных игроков из PostgreSQL.
-        Приоритет: PostgreSQL, затем файлы на диске.
+        Загрузка индекса известных игроков из Supabase PostgreSQL.
+        Приоритет: Supabase PostgreSQL, затем файлы на диске, затем локальная SQLite БД.
         """
-        print("[v0] Загрузка индекса игроков...")
+        print("[v3.0] Загрузка индекса игроков...")
         
-        try:
-            print("[v0] Loading embeddings from PostgreSQL (both photo_faces and face_descriptors tables)...")
-            player_ids, embeddings = db_client.get_all_player_embeddings()
-            
-            if len(embeddings) > 0:
-                print(f"[v0] ✓ Loaded {len(embeddings)} embeddings from PostgreSQL")
-                print(f"[v0] Unique people: {len(set(player_ids))}")
-                print(f"[v0] Sample person IDs: {list(set(player_ids))[:5]}")
+        if self.supabase_db:
+            try:
+                print("[v3.0] Loading embeddings from Supabase PostgreSQL...")
+                player_ids, embeddings = self.supabase_db.get_all_player_embeddings()
                 
-                # Create HNSW index
-                dim = len(embeddings[0])
-                self.players_index = hnswlib.Index(space='cosine', dim=dim)
-                self.players_index.init_index(
-                    max_elements=len(embeddings) * 2,
-                    ef_construction=200,
-                    M=16
-                )
-                
-                embeddings_array = np.array(embeddings)
-                self.players_index.add_items(embeddings_array, np.arange(len(embeddings)))
-                self.players_index.set_ef(50)
-                
-                self.player_ids_map = player_ids
-                print(f"[v0] ✓ HNSW index created: {len(embeddings)} embeddings for {len(set(player_ids))} unique people")
-                return
-            else:
-                print("[v0] No embeddings found in PostgreSQL, trying fallback to disk...")
-        except Exception as e:
-            print(f"[v0] ERROR loading from PostgreSQL: {e}")
-            import traceback
-            print(f"[v0] Traceback:\n{traceback.format_exc()}")
-            print("[v0] Falling back to disk...")
+                if len(embeddings) > 0:
+                    print(f"[v3.0] ✓ Loaded {len(embeddings)} embeddings from Supabase")
+                    
+                    # Create HNSW index
+                    dim = len(embeddings[0])
+                    self.players_index = hnswlib.Index(space='cosine', dim=dim)
+                    self.players_index.init_index(
+                        max_elements=len(embeddings) * 2,
+                        ef_construction=200,
+                        M=16
+                    )
+                    
+                    embeddings_array = np.array(embeddings)
+                    self.players_index.add_items(embeddings_array, np.arange(len(embeddings)))
+                    self.players_index.set_ef(50)
+                    
+                    self.player_ids_map = player_ids
+                    print(f"[v3.0] ✓ HNSW index created: {len(embeddings)} embeddings for {len(set(player_ids))} unique people")
+                    return
+                else:
+                    print("[v3.0] No embeddings found in Supabase, trying fallback methods...")
+            except Exception as e:
+                print(f"[v3.0] ERROR loading from Supabase: {e}")
+                print("[v3.0] Falling back to disk/SQLite...")
         
         models_dir = '/home/nickr/python/models'
         index_path = os.path.join(models_dir, 'players_index.bin')
@@ -297,7 +307,7 @@ class FaceRecognitionService:
                 with open(map_path, 'r') as f:
                     self.player_ids_map = json.load(f)
                 
-                # Load HNSSWLIB index
+                # Load HNSWLIB index
                 self.players_index = hnswlib.Index(space='cosine', dim=512)
                 self.players_index.load_index(index_path)
                 self.players_index.set_ef(50)
@@ -307,12 +317,32 @@ class FaceRecognitionService:
                 
             except Exception as e:
                 print(f"[v0] Failed to load index from disk: {e}")
-                print(f"[v0] Index will remain empty")
+                print(f"[v0] Falling back to database...")
         
-        # If we reach here, no index was loaded
-        print("[v0] База игроков пуста - индекс не создан")
-        self.players_index = None
-        self.player_ids_map = []
+        print("[v0] Loading index from database...")
+        player_ids, embeddings = self.db.get_all_player_embeddings()
+        
+        if len(embeddings) == 0:
+            print("[v0] База игроков пуста")
+            self.players_index = None
+            self.player_ids_map = []
+            return
+        
+        # Создаем HNSW индекс для быстрого поиска
+        dim = len(embeddings[0])
+        self.players_index = hnswlib.Index(space='cosine', dim=dim)
+        self.players_index.init_index(
+            max_elements=len(embeddings) * 2,
+            ef_construction=200,
+            M=16
+        )
+        
+        embeddings_array = np.array(embeddings)
+        self.players_index.add_items(embeddings_array, np.arange(len(embeddings)))
+        self.players_index.set_ef(50)
+        
+        self.player_ids_map = player_ids
+        print(f"[v0] Загружено {len(embeddings)} эмбеддингов для {len(set(player_ids))} игроков из БД")
     
     def is_ready(self) -> bool:
         """Проверка готовности сервиса"""
@@ -707,31 +737,31 @@ class FaceRecognitionService:
         Returns:
             Tuple of (person_id, confidence) or (None, None) if below threshold
         """
-        try:
-            print(f"[v0] Checking PostgreSQL for verified faces (threshold={confidence_threshold:.2f})...")
-            await db_client.connect()
-            verified_match = await db_client.find_verified_face_by_embedding(
-                embedding, 
-                similarity_threshold=confidence_threshold
-            )
-            
-            if verified_match:
-                person_id, confidence = verified_match
-                print(f"[v0] ✓ Found verified face: person_id={person_id}, confidence={confidence:.3f}")
-                return person_id, confidence
-            else:
-                print("[v0] No verified face match found, checking unverified...")
-        except Exception as e:
-            print(f"[v0] Error checking PostgreSQL for verified faces: {e}")
-            print("[v0] Falling back to HNSWLIB index...")
+        if self.supabase_db:
+            try:
+                print(f"[v3.22] Checking Supabase for verified faces (threshold={confidence_threshold:.2f})...")
+                verified_match = await self.supabase_db.find_verified_face_by_embedding(
+                    embedding, 
+                    similarity_threshold=confidence_threshold  # Use slider value for verified
+                )
+                
+                if verified_match:
+                    person_id, confidence = verified_match
+                    print(f"[v3.22] ✓ Found verified face: person_id={person_id}, confidence={confidence:.3f}")
+                    return person_id, confidence
+                else:
+                    print("[v3.22] No verified face match found, checking unverified...")
+            except Exception as e:
+                print(f"[v3.22] Error checking Supabase for verified faces: {e}")
+                print("[v3.22] Falling back to HNSWLIB index...")
         
         if self.players_index is None or len(self.player_ids_map) == 0:
-            print("[v0] Players index not loaded or empty - no trained faces available")
+            print("[v3.22] Players index not loaded or empty - no trained faces available")
             return None, None
         
         try:
             unverified_threshold = confidence_threshold + 0.15
-            print(f"[v0] Searching in HNSWLIB index (threshold={unverified_threshold:.2f} for unverified)")
+            print(f"[v3.22] Searching in HNSWLIB index (threshold={unverified_threshold:.2f} for unverified)")
             
             # Find nearest neighbor
             labels, distances = self.players_index.knn_query(
@@ -745,24 +775,24 @@ class FaceRecognitionService:
             
             person_id = self.player_ids_map[labels[0][0]]
             
-            print(f"[v0] HNSWLIB result: person_id={person_id}, confidence={confidence:.3f}, threshold={unverified_threshold:.2f}")
+            print(f"[v3.22] HNSWLIB result: person_id={person_id}, confidence={confidence:.3f}, threshold={unverified_threshold:.2f}")
             
             if confidence >= unverified_threshold:
-                print(f"[v0] ✓ Confidence above unverified threshold, returning match")
+                print(f"[v3.22] ✓ Confidence above unverified threshold, returning match")
                 return person_id, confidence
             else:
-                print(f"[v0] Confidence {confidence:.3f} below unverified threshold {unverified_threshold:.2f}, returning None")
+                print(f"[v3.22] Confidence {confidence:.3f} below unverified threshold {unverified_threshold:.2f}, returning None")
                 return None, None
                 
         except Exception as e:
-            print(f"[v0] Error during recognition: {type(e).__name__}: {str(e)}")
+            print(f"[v3.22] Error during recognition: {type(e).__name__}: {str(e)}")
             import traceback
-            print(f"[v0] Traceback:\n{traceback.format_exc()}")
+            print(f"[v3.22] Traceback:\n{traceback.format_exc()}")
             return None, None
 
     async def rebuild_players_index(self) -> Dict:
         """
-        Rebuild the HNSWLIB index from PostgreSQL database.
+        Rebuild the HNSWLIB index from Supabase database.
         Call this after adding new face descriptors to make them available for recognition.
         
         Returns:
@@ -967,91 +997,34 @@ class FaceRecognitionService:
     
     async def load_quality_filters(self):
         """Load quality filters from database config"""
-        try:
-            print(f"[v0] Loading quality filters from PostgreSQL...")
-            await db_client.connect()
-            config = await db_client.get_recognition_config()
-            
-            if "quality_filters" in config:
-                self.quality_filters = config["quality_filters"]
-                print(f"[v0] Quality filters loaded from DB: {self.quality_filters}")
-            else:
-                print(f"[v0] No quality_filters in config, using defaults: {self.quality_filters}")
-        except Exception as e:
-            print(f"[v0] Error loading quality filters: {e}, using defaults: {self.quality_filters}")
-            import traceback
-            print(f"[v0] Traceback:\n{traceback.format_exc()}")
+        if self.supabase_client:
+            try:
+                print(f"[v3.2.7] Loading quality filters from SupabaseClient...")
+                config = await self.supabase_client.get_recognition_config()
+                if "quality_filters" in config:
+                    self.quality_filters = config["quality_filters"]
+                    print(f"[v3.2.7] Quality filters loaded from DB: {self.quality_filters}")
+                else:
+                    print(f"[v3.2.7] No quality_filters in config, using defaults: {self.quality_filters}")
+            except Exception as e:
+                print(f"[v3.2.7] Error loading quality filters: {e}, using defaults: {self.quality_filters}")
+                import traceback
+                print(f"[v3.2.7] Traceback:\n{traceback.format_exc()}")
+        else:
+            print(f"[v3.2.7] No supabase_client connection, using default filters: {self.quality_filters}")
     
     async def update_quality_filters(self, filters: Dict):
         """Update quality filters in database and cache"""
-        try:
-            await db_client.connect()
-            await db_client.update_recognition_config({
-                "quality_filters": filters
-            })
-            self.quality_filters = filters
-            print(f"[v0] Quality filters updated in DB: {filters}")
-        except Exception as e:
-            print(f"[v0] Error updating quality filters: {e}")
-            raise
-
-    async def find_person_by_embedding(self, embedding: np.ndarray, confidence_threshold: float = 0.75) -> Optional[tuple]:
-        """
-        Поиск персоны по embedding с учетом verified_threshold
-        
-        Returns:
-            tuple: (person_id, confidence, is_verified) или None
-        """
-        if self.players_index is None or not self.player_ids_map:
-            print("[v0] HNSWLIB index not initialized or empty")
-            return None
-
-        try:
-            verified_threshold = self.quality_filters.get("verified_threshold", 0.6)
-            unverified_threshold = confidence_threshold + 0.15
-            print(f"[v0] Searching in HNSWLIB index (verified_threshold={verified_threshold:.2f}, unverified_threshold={unverified_threshold:.2f})")
-            
-            # Нормализуем embedding
-            embedding_norm = embedding / np.linalg.norm(embedding)
-            
-            # Ищем ближайшего соседа
-            labels, distances = self.players_index.knn_query(embedding_norm, k=1)
-            
-            if len(labels) == 0 or len(labels[0]) == 0:
-                print("[v0] No neighbors found in HNSWLIB index")
-                return None
-            
-            person_id = self.player_ids_map[labels[0][0]]
-            distance = distances[0][0]
-            confidence = 1 - distance
-            
-            print(f"[v0] HNSWLIB result: person_id={person_id}, confidence={confidence:.3f}, verified_threshold={verified_threshold:.2f}, unverified_threshold={unverified_threshold:.2f}")
-            
-            # Проверяем, является ли персона verified (есть ли у неё хотя бы один verified face)
-            db = db_client
-            await db.connect()
-            
-            is_verified_query = """
-                SELECT EXISTS(
-                    SELECT 1 FROM photo_faces 
-                    WHERE person_id = $1 AND verified = true
-                ) as is_verified
-            """
-            result = await db.fetchrow(is_verified_query, person_id)
-            is_verified = result['is_verified'] if result else False
-            
-            # Используем соответствующий threshold
-            threshold = verified_threshold if is_verified else unverified_threshold
-            
-            if confidence >= threshold:
-                print(f"[v0] Match found: person_id={person_id}, confidence={confidence:.3f}, is_verified={is_verified}, threshold={threshold:.2f}")
-                return (person_id, confidence, is_verified)
-            else:
-                print(f"[v0] Confidence {confidence:.3f} below threshold {threshold:.2f} (is_verified={is_verified}), returning None")
-                return None
-                
-        except Exception as e:
-            print(f"[v0] ERROR in find_person_by_embedding: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
+        if self.supabase_client:
+            try:
+                await self.supabase_client.update_recognition_config({
+                    "quality_filters": filters
+                })
+                self.quality_filters = filters
+                print(f"[v3.2.7] Quality filters updated in DB: {filters}")
+            except Exception as e:
+                print(f"[v3.2.7] Error updating quality filters: {e}")
+                raise
+        else:
+            print(f"[v3.2.7] No supabase_client connection, cannot update filters")
+            raise RuntimeError("Database connection not available")

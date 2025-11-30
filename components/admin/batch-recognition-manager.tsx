@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Scan, CheckCircle2, XCircle } from "lucide-react"
-import { saveBatchRecognitionResultsAction } from "@/app/admin/actions"
+import { createClient } from "@/lib/supabase/client"
 import type { Gallery } from "@/lib/types"
 
 interface ProcessingResult {
@@ -41,14 +41,14 @@ export function BatchRecognitionManager() {
   }, [])
 
   async function loadGalleries() {
-    try {
-      const { getGalleriesAction } = require("@/app/admin/actions") // Dynamic import to avoid build error if not there yet
-      const result = await getGalleriesAction()
-      if (result.success) {
-        setGalleries(result.data)
-      }
-    } catch (e) {
-      console.error("Failed to load galleries", e)
+    const supabase = createClient()
+    const { data } = await supabase
+      .from("galleries")
+      .select("id, title, shoot_date, _count:gallery_images(count)")
+      .order("created_at", { ascending: false })
+
+    if (data) {
+      setGalleries(data as any)
     }
   }
 
@@ -147,7 +147,6 @@ export function BatchRecognitionManager() {
           }
 
           let recognizedCount = 0
-          const faceDataArray: any[] = []
 
           for (const face of faces) {
             try {
@@ -168,22 +167,41 @@ export function BatchRecognitionManager() {
               const recognition = await recognizeResponse.json()
               console.log(`[v2.20] Recognition result:`, recognition)
 
-              const faceData = {
-                person_id:
-                  recognition.person_id && recognition.confidence >= confidenceThreshold ? recognition.person_id : null,
-                insightface_bbox: face.insightface_bbox,
-                insightface_descriptor: `[${face.embedding.join(",")}]`,
-                insightface_confidence: face.confidence,
-                recognition_confidence: recognition.confidence,
-                embedding: face.embedding,
-              }
-
-              faceDataArray.push(faceData)
+              const supabase = createClient()
 
               if (recognition.person_id && recognition.confidence >= confidenceThreshold) {
+                const vectorString = `[${face.embedding.join(",")}]`
+
+                await supabase.from("photo_faces").insert({
+                  photo_id: image.id,
+                  person_id: recognition.person_id,
+                  insightface_bbox: face.insightface_bbox,
+                  insightface_descriptor: vectorString,
+                  insightface_confidence: face.confidence,
+                  recognition_confidence: recognition.confidence,
+                  verified: false,
+                })
+
+                await supabase.from("face_descriptors").insert({
+                  person_id: recognition.person_id,
+                  descriptor: face.embedding,
+                  source_photo_id: image.id,
+                })
+
                 recognizedCount++
                 console.log(`[v2.20] Saved recognized face: ${recognition.person_id} (${recognition.confidence})`)
               } else {
+                const vectorString = `[${face.embedding.join(",")}]`
+
+                await supabase.from("photo_faces").insert({
+                  photo_id: image.id,
+                  person_id: null,
+                  insightface_bbox: face.insightface_bbox,
+                  insightface_descriptor: vectorString,
+                  insightface_confidence: face.confidence,
+                  recognition_confidence: recognition.confidence,
+                  verified: false,
+                })
                 console.log(`[v2.20] Saved unknown face (confidence: ${recognition.confidence})`)
               }
             } catch (faceError) {
@@ -203,9 +221,6 @@ export function BatchRecognitionManager() {
                 : r,
             ),
           )
-
-          // Save batch recognition results using server action
-          await saveBatchRecognitionResultsAction(image.id, faceDataArray)
         } catch (error) {
           console.error("[v2.20] Error processing image:", error)
           setResults((prev) =>

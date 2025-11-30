@@ -12,7 +12,7 @@ interface FaceRecognitionDetailsDialogProps {
 }
 
 export interface DetailedFace {
-  insightface_bbox: { x: number; y: number; width: number; height: number }
+  boundingBox: { x: number; y: number; width: number; height: number }
   size: number
   blur_score?: number
   detection_score: number
@@ -25,7 +25,6 @@ export interface DetailedFace {
     similarity: number
   }>
   person_name?: string // Added person_name for recognized faces
-  verified?: boolean // Added verified field
 }
 
 export function FaceRecognitionDetailsDialog({
@@ -43,71 +42,56 @@ export function FaceRecognitionDetailsDialog({
 
         <div className="space-y-6">
           {faces.map((face, index) => (
-            <Card key={index} className={face.verified ? "border-green-500 border-2" : ""}>
+            <Card key={index}>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>{face.person_name || `Лицо ${index + 1}`}</span>
-                  {face.verified && <span className="text-green-600 text-sm font-bold">✓ ВРУЧНУЮ ПОДТВЕРЖДЕНО</span>}
-                </CardTitle>
+                <CardTitle>{face.person_name || `Лицо ${index + 1}`}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-6 items-start">
+                <div className="flex gap-6">
                   <div className="flex-shrink-0">
-                    {imageUrl && <FacePreview imageUrl={imageUrl} insightface_bbox={face.insightface_bbox} />}
+                    {imageUrl && <FacePreview imageUrl={imageUrl} boundingBox={face.boundingBox} />}
                   </div>
 
-                  <div className="flex-1 grid grid-cols-2 gap-x-8 gap-y-4">
+                  <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-3">
                     <div>
-                      <p className="text-sm text-muted-foreground mb-1">Размер лица</p>
+                      <p className="text-sm text-muted-foreground">Размер лица</p>
+                      <p className="text-lg font-semibold">{face.size.toFixed(2)} px</p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-muted-foreground">Blur score</p>
                       <p className="text-lg font-semibold">
-                        {face.size !== undefined && face.size !== null ? face.size.toFixed(2) : "N/A"} px
+                        {face.blur_score !== undefined ? face.blur_score.toFixed(1) : "N/A"}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-sm text-muted-foreground mb-1">Blur score</p>
+                      <p className="text-sm text-muted-foreground">Detection score</p>
+                      <p className="text-lg font-semibold">{face.detection_score.toFixed(2)}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-muted-foreground">Recognition confidence</p>
                       <p className="text-lg font-semibold">
-                        {face.blur_score !== undefined && face.blur_score !== null ? face.blur_score.toFixed(1) : "N/A"}
+                        {face.recognition_confidence !== undefined && face.recognition_confidence > 0
+                          ? face.recognition_confidence >= 0.999
+                            ? "Exact Match"
+                            : face.recognition_confidence.toFixed(2)
+                          : "Unknown face"}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-sm text-muted-foreground mb-1">Detection score</p>
+                      <p className="text-sm text-muted-foreground">Качество эмбеддинга</p>
                       <p className="text-lg font-semibold">
-                        {face.detection_score !== undefined && face.detection_score !== null
-                          ? face.detection_score.toFixed(2)
-                          : "N/A"}
+                        {face.embedding_quality !== undefined ? face.embedding_quality.toFixed(2) : "N/A"}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-sm text-muted-foreground mb-1">Recognition confidence</p>
-                      <p className={`text-lg font-semibold ${face.verified ? "text-green-600" : ""}`}>
-                        {face.verified
-                          ? "100% (Verified)"
-                          : face.recognition_confidence !== undefined &&
-                              face.recognition_confidence !== null &&
-                              face.recognition_confidence > 0
-                            ? face.recognition_confidence >= 0.999
-                              ? "Exact Match"
-                              : face.recognition_confidence.toFixed(2)
-                            : "Unknown face"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Качество эмбеддинга</p>
+                      <p className="text-sm text-muted-foreground">Расстояние до ближайшего</p>
                       <p className="text-lg font-semibold">
-                        {face.embedding_quality !== undefined && face.embedding_quality !== null
-                          ? face.embedding_quality.toFixed(2)
-                          : "N/A"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Расстояние до ближайшего</p>
-                      <p className="text-lg font-semibold">
-                        {face.distance_to_nearest !== undefined && face.distance_to_nearest !== null
+                        {face.distance_to_nearest !== undefined
                           ? face.distance_to_nearest < 0.001
                             ? "Exact Match"
                             : face.distance_to_nearest.toFixed(2)
@@ -118,20 +102,12 @@ export function FaceRecognitionDetailsDialog({
                 </div>
 
                 {face.top_matches && face.top_matches.length > 0 && (
-                  <div className="mt-6 pt-4 border-t">
-                    <p className="text-sm text-muted-foreground mb-2 font-medium">Топ-3 похожих лиц:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-sm">
+                  <div className="mt-4 pt-4 border-t">
+                    <p className="text-sm text-muted-foreground mb-2">Топ-3 похожих лиц:</p>
+                    <ol className="list-decimal list-inside space-y-1">
                       {face.top_matches.map((match, i) => (
-                        <li key={i} className="text-foreground">
-                          <span className="font-medium">{match.name}</span>
-                          <span className="text-muted-foreground">
-                            {" "}
-                            (similarity:{" "}
-                            {match.similarity !== undefined && match.similarity !== null
-                              ? match.similarity.toFixed(2)
-                              : "N/A"}
-                            )
-                          </span>
+                        <li key={i}>
+                          {match.name} (similarity: {match.similarity.toFixed(2)})
                         </li>
                       ))}
                     </ol>
@@ -148,8 +124,8 @@ export function FaceRecognitionDetailsDialog({
 
 function FacePreview({
   imageUrl,
-  insightface_bbox,
-}: { imageUrl: string; insightface_bbox: { x: number; y: number; width: number; height: number } }) {
+  boundingBox,
+}: { imageUrl: string; boundingBox: { x: number; y: number; width: number; height: number } }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -164,10 +140,10 @@ function FacePreview({
 
     img.onload = () => {
       const padding = 0.2
-      const paddedWidth = insightface_bbox.width * (1 + padding * 2)
-      const paddedHeight = insightface_bbox.height * (1 + padding * 2)
-      const paddedX = Math.max(0, insightface_bbox.x - insightface_bbox.width * padding)
-      const paddedY = Math.max(0, insightface_bbox.y - insightface_bbox.height * padding)
+      const paddedWidth = boundingBox.width * (1 + padding * 2)
+      const paddedHeight = boundingBox.height * (1 + padding * 2)
+      const paddedX = Math.max(0, boundingBox.x - boundingBox.width * padding)
+      const paddedY = Math.max(0, boundingBox.y - boundingBox.height * padding)
 
       const cropX = Math.max(0, paddedX)
       const cropY = Math.max(0, paddedY)
@@ -192,7 +168,7 @@ function FacePreview({
     }
 
     img.src = imageUrl
-  }, [imageUrl, insightface_bbox])
+  }, [imageUrl, boundingBox])
 
   return <canvas ref={canvasRef} className="border rounded-lg" style={{ width: 150, height: 150 }} />
 }

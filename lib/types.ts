@@ -28,7 +28,6 @@ export interface GalleryImage {
   display_order: number
   download_count: number
   created_at: string
-  has_been_processed?: boolean
 }
 
 export interface Gallery {
@@ -130,7 +129,7 @@ export interface TournamentResult {
 export interface FaceDescriptor {
   id: string
   person_id: string
-  insightface_descriptor: number[]
+  descriptor: number[]
   source_image_id: string | null
   created_at: string
   people?: Person
@@ -140,15 +139,13 @@ export interface PhotoFace {
   id: string
   photo_id: string
   person_id: string | null
-  recognition_confidence?: number | null
-  insightface_confidence?: number | null
-  insightface_bbox?: {
+  insightface_bbox: {
     x: number
     y: number
     width: number
     height: number
   }
-  insightface_descriptor?: number[] | string
+  confidence: number | null
   verified: boolean
   created_at: string
   updated_at: string
@@ -157,16 +154,10 @@ export interface PhotoFace {
 }
 
 export interface DetectedFace {
-  insightface_bbox: { x: number; y: number; width: number; height: number }
+  boundingBox: { x: number; y: number; width: number; height: number }
   confidence: number
   blur_score?: number
   embedding: number[]
-  distance_to_nearest?: number | null
-  top_matches?: Array<{
-    person_id: string
-    name: string
-    similarity: number
-  }>
 }
 
 export interface UnknownFaceCluster {
@@ -178,11 +169,14 @@ export interface UnknownFaceCluster {
 export interface UnknownFace {
   photo_id: string
   photo_url: string
-  insightface_bbox: {
+  bbox: {
     x: number
     y: number
     width: number
     height: number
   }
-  insightface_descriptor: number[]
+  descriptor: number[]
 }
+
+export type { Result } from "./types/result"
+export { success, failure, isSuccess, isFailure } from "./types/result"
