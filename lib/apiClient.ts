@@ -20,6 +20,14 @@ interface ApiFetchOptions extends RequestInit {
 export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const { timeout = 30000, retries = 3, headers = {}, ...fetchOptions } = options
 
+  if (!env.FASTAPI_URL) {
+    throw new ApiError(
+      503,
+      "FASTAPI_URL_MISSING",
+      "FASTAPI_URL environment variable is not set. Please configure it in Vercel dashboard.",
+    )
+  }
+
   const normalizedPath = path.startsWith("/") ? path : `/${path}`
   const url = `${env.FASTAPI_URL}${normalizedPath}`
 
@@ -63,10 +71,12 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         }
 
         const shouldRetry = (response.status >= 500 || response.status === 503) && attemptNumber < retries
-        
+
         if (shouldRetry) {
           const backoffDelay = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000)
-          console.warn(`[apiClient] Request ${requestId} failed with ${response.status}, retrying after ${backoffDelay}ms...`)
+          console.warn(
+            `[apiClient] Request ${requestId} failed with ${response.status}, retrying after ${backoffDelay}ms...`,
+          )
           await new Promise((resolve) => setTimeout(resolve, backoffDelay))
           return fetchWithTimeout(attemptNumber + 1)
         }
