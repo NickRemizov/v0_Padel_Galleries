@@ -47,14 +47,19 @@ class SupabaseDatabase:
             
             print(f"[v2.5] Found {len(response.data)} verified faces with embeddings")
             print(f"[v2.5] First 3 person_ids from DB: {[row['person_id'] for row in response.data[:3]]}")
+            print(f"[v2.5] Last 3 person_ids from DB: {[row['person_id'] for row in response.data[-3:]]}")
             
             person_ids = []
             embeddings = []
             skipped_count = 0
             
+            person_id_counts = {}
+            
             for row in response.data:
                 person_id = row["person_id"]
                 descriptor = row["insightface_descriptor"]
+                
+                person_id_counts[person_id] = person_id_counts.get(person_id, 0) + 1
                 
                 # Convert descriptor to numpy array
                 # InsightFace descriptors are stored as arrays in PostgreSQL
@@ -83,6 +88,9 @@ class SupabaseDatabase:
             if skipped_count > 0:
                 print(f"[v2.5] Skipped {skipped_count} invalid embeddings")
             print(f"[v2.5] Unique person IDs in index: {unique_people}")
+            
+            top_people = sorted(person_id_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            print(f"[v2.5] Top 5 people by descriptor count: {top_people}")
             
             return person_ids, embeddings
             

@@ -83,6 +83,8 @@ async def save_face(request: SaveFaceRequest):
             vector_string = f"[{','.join(map(str, request.embedding))}]"
             insert_data["insightface_descriptor"] = vector_string
             logger.info(f"[Faces API] Adding descriptor (dimension: {len(request.embedding)})")
+            logger.info(f"[Faces API] Embedding sample (first 5): {request.embedding[:5]}")
+            logger.info(f"[Faces API] Embedding sample (last 5): {request.embedding[-5:]}")
         
         logger.info(f"[Faces API] Insert data keys: {list(insert_data.keys())}")
         logger.info(f"[Faces API] Verified={insert_data.get('verified')}, Person ID={insert_data.get('person_id')}, Has descriptor={('insightface_descriptor' in insert_data)}")
@@ -100,8 +102,24 @@ async def save_face(request: SaveFaceRequest):
             )
         
         saved_face = response.data[0]
-        logger.info(f"[Faces API] ✓ Face saved with ID: {saved_face.get('id')}")
+        saved_id = saved_face.get('id')
+        logger.info(f"[Faces API] ✓ Face saved with ID: {saved_id}")
         logger.info(f"[Faces API] Saved face verification status: verified={saved_face.get('verified')}, person_id={saved_face.get('person_id')}")
+        
+        import asyncio
+        logger.info("[Faces API] Waiting 1 second for database to commit...")
+        await asyncio.sleep(1)
+        
+        verify_response = supabase_db.client.table("photo_faces").select(
+            "id, person_id, verified, insightface_descriptor"
+        ).eq("id", saved_id).execute()
+        
+        if verify_response.data:
+            verified_record = verify_response.data[0]
+            has_descriptor = verified_record.get('insightface_descriptor') is not None
+            logger.info(f"[Faces API] ✓ Verified record exists: id={saved_id}, person_id={verified_record.get('person_id')}, verified={verified_record.get('verified')}, has_descriptor={has_descriptor}")
+        else:
+            logger.error(f"[Faces API] ⚠️ Could not verify record {saved_id} was saved!")
         
         index_updated = False
         if request.verified and request.person_id and request.embedding and len(request.embedding) > 0:
@@ -122,6 +140,7 @@ async def save_face(request: SaveFaceRequest):
                     if new_count == old_count:
                         logger.warning(f"[Faces API] ⚠️ WARNING: Descriptor count unchanged! Expected increase from {old_count} to {old_count + 1}")
                         logger.warning(f"[Faces API] This means the new descriptor was NOT added to the index")
+                        logger.warning(f"[Faces API] Saved record ID: {saved_id}, person_id: {request.person_id}")
                     elif new_count == old_count + 1:
                         logger.info(f"[Faces API] ✓ Descriptor count increased as expected")
                     else:
