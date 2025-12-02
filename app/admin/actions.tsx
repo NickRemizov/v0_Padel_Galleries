@@ -3014,3 +3014,63 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
     return { error: error.message || "Failed to unlink person from photo" }
   }
 }
+
+export async function deleteGalleryImageAction(photoId: string, galleryId: string) {
+  try {
+    const supabase = await createClient()
+
+    // 1. Get image details before deletion
+    const { data: image, error: imageError } = await supabase
+      .from("gallery_images")
+      .select("image_url, blob_url")
+      .eq("id", photoId)
+      .single()
+
+    if (imageError) {
+      return { error: `Не удалось найти изображение: ${imageError.message}` }
+    }
+
+    // 2. Check if there are any face descriptors to delete (to know if we need to rebuild index)
+    const { data: photoFaces, error: facesError } = await supabase
+      .from("photo_faces")
+      .select("id")
+      .eq("photo_id", photoId)
+
+    const hasFaces = photoFaces && photoFaces.length > 0
+
+    // 3. Delete all face descriptors and photo_faces through FastAPI
+    if (hasFaces) {
+      for (const face of photoFaces) {
+        await apiFetch(`/api/faces/delete`, {
+          method: "POST",
+          body: JSON.stringify({ face_id: face.id }),
+        })
+      }
+    }
+
+    // 4. Delete the image record from gallery_images
+    const { error: deleteError } = await supabase.from("gallery_images").delete().eq("id", photoId)
+
+    if (deleteError) {
+      return { error: `Ошибка при удалении изображения: ${deleteError.message}` }
+    }
+
+    // 5. Delete blob file if exists
+    if (image.blob_url) {
+      try {
+        await fetch(`/api/blob/delete`, {
+          method: "POST",
+          body: JSON.stringify({ url: image.blob_url }),
+        })
+      } catch (error) {
+        console.error("Failed to delete blob:", error)
+        // Continue anyway, blob cleanup can fail
+      }
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error in deleteGalleryImageAction:", error)
+    return { error: error.message || "Не удалось удалить изображение" }
+  }
+}
