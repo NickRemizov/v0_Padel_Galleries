@@ -421,6 +421,7 @@ export async function addGalleryImagesAction(
     display_order: index,
   }))
 
+  // </CHANGE> Fixed typo: imagesToToInsert → imagesToInsert
   const { error } = await supabase.from("gallery_images").insert(imagesToInsert)
 
   if (error) {
@@ -847,9 +848,19 @@ export async function deletePhotoFaceAction(faceId: string) {
   const supabase = await createClient()
 
   try {
+    const { data: face } = await supabase.from("photo_faces").select("verified").eq("id", faceId).single()
+
+    const wasVerified = face?.verified === true
+
     await deletePhotoFace(supabase, faceId)
+
+    if (wasVerified) {
+      logger.info("admin/actions", "Rebuilding recognition index after deleting verified face", { faceId })
+      await rebuildRecognitionIndexAction()
+    }
+
     revalidatePath("/admin")
-    logger.info("admin/actions", "Photo face deleted successfully", { faceId })
+    logger.info("admin/actions", "Photo face deleted successfully", { faceId, wasVerified })
     return { success: true }
   } catch (error: any) {
     logger.error("admin/actions", "Error deleting photo face", error)
@@ -1277,6 +1288,15 @@ export async function deleteFaceDescriptorsForPhotoAction(photoId: string, perso
   const supabase = await createClient()
 
   try {
+    const { data: verifiedFaces } = await supabase
+      .from("photo_faces")
+      .select("id")
+      .eq("photo_id", photoId)
+      .eq("person_id", personId)
+      .eq("verified", true)
+
+    const hasVerifiedFaces = verifiedFaces && verifiedFaces.length > 0
+
     const { error: descError } = await supabase
       .from("face_descriptors")
       .delete()
@@ -1293,8 +1313,17 @@ export async function deleteFaceDescriptorsForPhotoAction(photoId: string, perso
 
     if (faceError) throw faceError
 
+    if (hasVerifiedFaces) {
+      logger.info("admin/actions", "Rebuilding recognition index after deleting verified faces", { photoId, personId })
+      await rebuildRecognitionIndexAction()
+    }
+
     revalidatePath("/admin")
-    logger.info("admin/actions", "Face descriptors and faces deleted successfully", { photoId, personId })
+    logger.info("admin/actions", "Face descriptors and faces deleted successfully", {
+      photoId,
+      personId,
+      hadVerified: hasVerifiedFaces,
+    })
     return { success: true }
   } catch (error: any) {
     logger.error("admin/actions", "Error deleting face descriptors for photo", error)
@@ -1589,7 +1618,7 @@ export async function debugPhotoFacesAction(filename: string) {
 
     photoFaces?.forEach((face, index) => {
       const personName = face.people?.real_name || face.people?.telegram_name || "Unknown"
-      logger.debug(`\n[v0] Face ${index + 1}:`)
+      logger.debug("\n[v0] Face", index + 1, ":")
       logger.debug(`[v0]   Person: ${personName}`)
       logger.debug(`[v0]   Person ID: ${face.person_id}`)
       logger.debug(`[v0]   Verified: ${face.verified}`)
