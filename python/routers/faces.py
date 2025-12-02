@@ -117,10 +117,7 @@ async def save_face(
         logger.info(f"[Faces API] ✓ Face saved with ID: {saved_id}")
         logger.info(f"[Faces API] Saved face verification status: verified={saved_face.get('verified')}, person_id={saved_face.get('person_id')}")
         
-        import asyncio
-        logger.info("[Faces API] Waiting 2 seconds for database to commit...")
-        await asyncio.sleep(2)
-        
+        # Verify the record was saved
         verify_response = supabase_db.client.table("photo_faces").select(
             "id, person_id, verified, insightface_descriptor"
         ).eq("id", saved_id).execute()
