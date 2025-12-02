@@ -3065,3 +3065,52 @@ export async function deleteAllGalleryImagesAction(galleryId: string) {
     return { error: error.message || "Не удалось удалить фото" }
   }
 }
+
+export async function addGalleryImagesAction(
+  galleryId: string,
+  images: Array<{
+    imageUrl: string
+    originalUrl: string
+    originalFilename: string
+    fileSize: number
+    width: number
+    height: number
+  }>,
+) {
+  try {
+    const supabase = await createClient()
+
+    // Get current max display_order
+    const { data: maxOrderData } = await supabase
+      .from("gallery_images")
+      .select("display_order")
+      .eq("gallery_id", galleryId)
+      .order("display_order", { ascending: false })
+      .limit(1)
+      .single()
+
+    let currentOrder = maxOrderData?.display_order ?? 0
+
+    // Prepare images for insertion
+    const imagesToInsert = images.map((img) => ({
+      gallery_id: galleryId,
+      image_url: img.imageUrl,
+      original_url: img.originalUrl,
+      original_filename: img.originalFilename,
+      file_size: img.fileSize,
+      width: img.width,
+      height: img.height,
+      display_order: ++currentOrder,
+    }))
+
+    const { error: insertError } = await supabase.from("gallery_images").insert(imagesToInsert)
+
+    if (insertError) throw insertError
+
+    revalidatePath("/admin/galleries")
+    return { success: true }
+  } catch (error) {
+    console.error("Error adding gallery images:", error)
+    return { success: false, error: "Не удалось добавить изображения" }
+  }
+}
