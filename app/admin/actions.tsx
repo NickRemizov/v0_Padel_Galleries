@@ -34,7 +34,7 @@ export async function savePhotoFaceAction(
     const response = await apiFetch("/api/faces/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: JSON.JSON.stringify({
         photo_id: photoId,
         person_id: personId,
         bounding_box: boundingBox,
@@ -79,7 +79,7 @@ export async function savePhotoFaceTagsAction(
     const response = await apiFetch("/api/faces/batch-save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: JSON.JSON.stringify({
         photo_id: photoId,
         faces: tags.map((tag) => ({
           photo_id: photoId,
@@ -3019,11 +3019,9 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
 // </CHANGE> Закрываем функцию deleteGalleryImageAction правильно
 export async function deleteGalleryImageAction(photoId: string, galleryId: string) {
   try {
-    const response = await apiFetch(`/api/images/${photoId}`, {
+    const result = await apiFetch(`/api/images/${photoId}`, {
       method: "DELETE",
     })
-
-    const result = await response.json()
 
     if (!result.success) {
       return { error: result.message || "Не удалось удалить изображение" }
