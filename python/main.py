@@ -111,7 +111,7 @@ async def health_check():
     }
 
 app.include_router(training.router, prefix="/api/v2", tags=["training"])
-app.include_router(recognition.router, prefix="", tags=["recognition"])
+app.include_router(recognition.router, prefix="/api/recognition", tags=["recognition"])
 app.include_router(faces.router, prefix="/api/faces", tags=["faces"])
 app.include_router(config.router, tags=["config"])
 
