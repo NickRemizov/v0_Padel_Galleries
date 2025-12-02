@@ -15,7 +15,10 @@ import shutil
 import re
 
 from services.face_recognition import FaceRecognitionService
-from routers import training, recognition, faces
+from services.training_service import TrainingService
+from services.supabase_database import SupabaseDatabase
+from services.supabase_client import SupabaseClient
+from routers import training, recognition, faces, config
 
 from models.schemas import (
     RecognitionResponse,
@@ -51,7 +54,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-face_service = FaceRecognitionService()
+print("[Main] Creating singleton service instances...")
+
+# 1. Создаем базовые сервисы (без зависимостей)
+supabase_db = SupabaseDatabase()
+supabase_client = SupabaseClient()
+print("[Main] ✓ Created SupabaseDatabase and SupabaseClient")
+
+# 2. Создаем FaceRecognitionService с передачей supabase_db
+face_service = FaceRecognitionService(supabase_db=supabase_db)
+print("[Main] ✓ Created FaceRecognitionService")
+
+# 3. Создаем TrainingService с передачей face_service и supabase_client
+training_service = TrainingService(face_service=face_service, supabase_client=supabase_client)
+print("[Main] ✓ Created TrainingService")
+
+# 4. Устанавливаем глобальные экземпляры в роутерах
+training.set_training_service(training_service)
+config.set_supabase_client(supabase_client)
+faces.set_services(face_service, supabase_db)
+recognition.set_services(face_service, supabase_client)
+print("[Main] ✓ Service instances injected into all routers")
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("static", exist_ok=True)
@@ -61,6 +84,18 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 def get_face_service() -> FaceRecognitionService:
     """Dependency injection для FaceRecognitionService"""
     return face_service
+
+def get_training_service() -> TrainingService:
+    """Dependency injection для TrainingService"""
+    return training_service
+
+def get_supabase_db() -> SupabaseDatabase:
+    """Dependency injection для SupabaseDatabase"""
+    return supabase_db
+
+def get_supabase_client() -> SupabaseClient:
+    """Dependency injection для SupabaseClient"""
+    return supabase_client
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -78,6 +113,7 @@ async def health_check():
 app.include_router(training.router, prefix="/api/v2", tags=["training"])
 app.include_router(recognition.router, prefix="", tags=["recognition"])
 app.include_router(faces.router, prefix="/api/faces", tags=["faces"])
+app.include_router(config.router, tags=["config"])
 
 if __name__ == "__main__":
     host = os.getenv("SERVER_HOST", "0.0.0.0")

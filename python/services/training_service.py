@@ -15,10 +15,10 @@ from services.face_recognition import FaceRecognitionService
 
 
 class TrainingService:
-    def __init__(self):
+    def __init__(self, face_service: 'FaceRecognitionService' = None, supabase_client: 'SupabaseClient' = None):
         """Инициализация сервиса обучения"""
-        self.face_service = FaceRecognitionService()
-        self.supabase = SupabaseClient()
+        self.face_service = face_service if face_service else FaceRecognitionService()
+        self.supabase = supabase_client if supabase_client else SupabaseClient()
         self.current_session_id = None
         self.current_progress = {'current': 0, 'total': 0, 'step': ''}
         print("[TrainingService] Initialized")

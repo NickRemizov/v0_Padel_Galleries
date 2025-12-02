@@ -15,17 +15,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-supabase_client = SupabaseClient()
+# supabase_client = SupabaseClient()
+# async def get_face_service():
+#     return FaceRecognitionService()
 
-# Dependency injection for FaceRecognitionService
-async def get_face_service():
-    return FaceRecognitionService()
+face_service_instance = None
+supabase_client_instance = None
 
-# ... existing code ...
+def set_services(face_service: FaceRecognitionService, supabase_client: SupabaseClient):
+    global face_service_instance, supabase_client_instance
+    face_service_instance = face_service
+    supabase_client_instance = supabase_client
 
 class DetectFacesRequest(BaseModel):
     image_url: str
-    apply_quality_filters: bool = True  # Added parameter to control quality filtering
+    apply_quality_filters: bool = True
 
 
 class RecognizeFaceRequest(BaseModel):
@@ -36,7 +40,7 @@ class RecognizeFaceRequest(BaseModel):
 class BatchRecognizeRequest(BaseModel):
     gallery_ids: List[str]
     confidence_threshold: float = 0.60
-    apply_quality_filters: bool = True  # Added parameter to control quality filtering
+    apply_quality_filters: bool = True
 
 
 class GenerateDescriptorsRequest(BaseModel):
@@ -54,7 +58,10 @@ class FaceRecognitionResponse(BaseModel):
 
 
 @router.post("/detect-faces", response_model=FaceDetectionResponse)
-async def detect_faces(request: DetectFacesRequest, face_service: FaceRecognitionService = Depends(get_face_service)):
+async def detect_faces(
+    request: DetectFacesRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+):
     """Detect faces on an image using InsightFace"""
     try:
         logger.info("=" * 80)
@@ -99,14 +106,14 @@ async def detect_faces(request: DetectFacesRequest, face_service: FaceRecognitio
                             if i >= 3:  # Only top 3
                                 break
                             
-                            if not hasattr(face_service, 'players_id_map') or len(face_service.players_id_map) == 0:
-                                logger.warning(f"[v3.1] players_id_map is empty or not available")
+                            if not hasattr(face_service, 'player_ids_map') or len(face_service.player_ids_map) == 0:
+                                logger.warning(f"[v3.1] player_ids_map is empty or not available")
                                 break
                             
-                            person_id_match = face_service.players_id_map[int(label_idx)]
+                            person_id_match = face_service.player_ids_map[int(label_idx)]
                             
                             # Get person name from database
-                            person_response = supabase_client.client.table("people").select(
+                            person_response = supabase_client_instance.client.table("people").select(
                                 "real_name"
                             ).eq("id", person_id_match).execute()
                             
@@ -157,7 +164,10 @@ async def detect_faces(request: DetectFacesRequest, face_service: FaceRecognitio
 
 
 @router.post("/recognize-face", response_model=FaceRecognitionResponse)
-async def recognize_face(request: RecognizeFaceRequest, face_service: FaceRecognitionService = Depends(get_face_service)):
+async def recognize_face(
+    request: RecognizeFaceRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+):
     """Recognize a single face using the trained model"""
     try:
         logger.info("=" * 80)
@@ -201,7 +211,10 @@ async def recognize_face(request: RecognizeFaceRequest, face_service: FaceRecogn
 
 
 @router.post("/batch-recognize")
-async def batch_recognize(request: BatchRecognizeRequest, face_service: FaceRecognitionService = Depends(get_face_service)):
+async def batch_recognize(
+    request: BatchRecognizeRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+):
     """Batch recognize faces in galleries"""
     try:
         logger.info(f"[v3.22] ===== BATCH RECOGNIZE REQUEST =====")
@@ -209,7 +222,7 @@ async def batch_recognize(request: BatchRecognizeRequest, face_service: FaceReco
         logger.info(f"[v3.22] Confidence Threshold: {request.confidence_threshold}")
         logger.info(f"[v3.22] Apply quality filters: {request.apply_quality_filters}")
         
-        config = await supabase_client.get_recognition_config()
+        config = await supabase_client_instance.get_recognition_config()
         quality_filters = config.get('quality_filters', {})
         min_detection_score = quality_filters.get('min_detection_score', 0.7)
         min_face_size = quality_filters.get('min_face_size', 80.0)
@@ -221,7 +234,7 @@ async def batch_recognize(request: BatchRecognizeRequest, face_service: FaceReco
         logger.info(f"[v3.22]   min_blur_score: {min_blur_score}")
         
         # Get all images from galleries without verified faces
-        images = await supabase_client.get_unverified_images(request.gallery_ids)
+        images = await supabase_client_instance.get_unverified_images(request.gallery_ids)
         
         logger.info(f"[v3.22] Found {len(images)} images to process")
         
@@ -279,7 +292,7 @@ async def batch_recognize(request: BatchRecognizeRequest, face_service: FaceReco
                             "height": float(face["bbox"][3] - face["bbox"][1]),
                         }
                         
-                        await supabase_client.save_photo_face(
+                        await supabase_client_instance.save_photo_face(
                             photo_id=image["id"],
                             person_id=person_id,
                             insightface_bbox=bbox,
@@ -298,7 +311,7 @@ async def batch_recognize(request: BatchRecognizeRequest, face_service: FaceReco
                             "height": float(face["bbox"][3] - face["bbox"][1]),
                         }
                         
-                        await supabase_client.save_photo_face(
+                        await supabase_client_instance.save_photo_face(
                             photo_id=image["id"],
                             person_id=None,
                             insightface_bbox=bbox,
@@ -329,7 +342,11 @@ async def batch_recognize(request: BatchRecognizeRequest, face_service: FaceReco
 
 
 @router.post("/cluster-unknown-faces")
-async def cluster_unknown_faces(gallery_id: str = Query(...), min_cluster_size: int = Query(2), face_service: FaceRecognitionService = Depends(get_face_service)):
+async def cluster_unknown_faces(
+    gallery_id: str = Query(...),
+    min_cluster_size: int = Query(2),
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+):
     """
     Cluster unknown faces in a gallery by similarity
     Returns clusters sorted by size (largest first)
@@ -339,7 +356,7 @@ async def cluster_unknown_faces(gallery_id: str = Query(...), min_cluster_size: 
         logger.info(f"[v3.23] Gallery ID: {gallery_id}")
         logger.info(f"[v3.23] Min cluster size: {min_cluster_size}")
         
-        unknown_faces = await supabase_client.get_unknown_faces_from_gallery(gallery_id)
+        unknown_faces = await supabase_client_instance.get_unknown_faces_from_gallery(gallery_id)
         
         if len(unknown_faces) < min_cluster_size:
             logger.info(f"[v3.23] Not enough faces to cluster ({len(unknown_faces)} < {min_cluster_size})")
@@ -392,7 +409,7 @@ async def cluster_unknown_faces(gallery_id: str = Query(...), min_cluster_size: 
             normalized_faces = []
             for face in faces:
                 # Get image dimensions from gallery_images
-                photo_response = supabase_client.client.table("gallery_images").select(
+                photo_response = supabase_client_instance.client.table("gallery_images").select(
                     "width, height"
                 ).eq("id", face["photo_id"]).execute()
                 
@@ -446,7 +463,7 @@ async def reject_face_cluster(
     face_ids: List[str],
     rejected_by: str,
     reason: Optional[str] = None,
-    face_service: FaceRecognitionService = Depends(get_face_service)
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
 ):
     """
     Reject a cluster of faces as not interesting
@@ -462,7 +479,7 @@ async def reject_face_cluster(
         photo_ids = []
         
         for face_id in face_ids:
-            response = supabase_client.client.table("photo_faces").select(
+            response = supabase_client_instance.client.table("photo_faces").select(
                 "photo_id, insightface_descriptor"
             ).eq("id", face_id).execute()
             
@@ -479,7 +496,7 @@ async def reject_face_cluster(
                 photo_ids.append(face["photo_id"])
         
         # Save to rejected_faces table
-        success = await supabase_client.reject_face_cluster(
+        success = await supabase_client_instance.reject_face_cluster(
             descriptors=descriptors,
             gallery_id=gallery_id,
             photo_ids=photo_ids,
@@ -490,7 +507,7 @@ async def reject_face_cluster(
         if success:
             # Delete the photo_faces records
             for face_id in face_ids:
-                supabase_client.client.table("photo_faces").delete().eq("id", face_id).execute()
+                supabase_client_instance.client.table("photo_faces").delete().eq("id", face_id).execute()
             
             logger.info(f"[v3.23] ✓ Successfully rejected and deleted {len(face_ids)} faces")
         
@@ -502,7 +519,7 @@ async def reject_face_cluster(
 
 
 @router.post("/generate-descriptors")
-async def generate_descriptors(request: GenerateDescriptorsRequest, face_service: FaceRecognitionService = Depends(get_face_service)):
+async def generate_descriptors(request: GenerateDescriptorsRequest, face_service: FaceRecognitionService = Depends(lambda: face_service_instance)):
     """
     Generate descriptors for manually tagged faces
     Called when admin manually assigns people to faces
@@ -552,7 +569,7 @@ async def generate_descriptors(request: GenerateDescriptorsRequest, face_service
                 photo_id = tagged_face.get("photo_id")
                 
                 if photo_id:
-                    success = await supabase_client.save_face_descriptor(
+                    success = await supabase_client_instance.save_face_descriptor(
                         person_id=person_id,
                         descriptor=descriptor,
                         source_image_id=photo_id
@@ -581,7 +598,7 @@ async def generate_descriptors(request: GenerateDescriptorsRequest, face_service
 
 
 @router.post("/rebuild-index")
-async def rebuild_index(face_service: FaceRecognitionService = Depends(get_face_service)):
+async def rebuild_index(face_service: FaceRecognitionService = Depends(lambda: face_service_instance)):
     """
     Rebuild the HNSWLIB index from database.
     Call this after adding new face descriptors to make them available for recognition.
@@ -609,7 +626,7 @@ async def rebuild_index(face_service: FaceRecognitionService = Depends(get_face_
 
 
 @router.post("/regenerate-unknown-descriptors")
-async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_service: FaceRecognitionService = Depends(get_face_service)):
+async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_service: FaceRecognitionService = Depends(lambda: face_service_instance)):
     """
     Regenerate insightface_descriptor for unknown faces that don't have one.
     This fixes faces that were saved without descriptors during batch recognition.
@@ -621,7 +638,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
         logger.info(f"[v3.24] Gallery ID: {gallery_id}")
         
         # Get all photo_ids from gallery
-        gallery_photos_response = supabase_client.client.table("gallery_images").select(
+        gallery_photos_response = supabase_client_instance.client.table("gallery_images").select(
             "id"
         ).eq("gallery_id", gallery_id).execute()
         
@@ -639,7 +656,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
         logger.info(f"[v3.24] Found {len(photo_ids)} photos in gallery")
         
         # Get faces without descriptors (person_id = NULL AND insightface_descriptor IS NULL)
-        faces_response = supabase_client.client.table("photo_faces").select(
+        faces_response = supabase_client_instance.client.table("photo_faces").select(
             "id, photo_id, insightface_bbox, insightface_descriptor, "
             "gallery_images(id, image_url)"
         ).in_("photo_id", photo_ids).is_("person_id", "null").execute()
@@ -724,7 +741,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
                     descriptor_str = f"[{','.join(map(str, descriptor))}]"
                     
                     # Update in database
-                    supabase_client.client.table("photo_faces").update({
+                    supabase_client_instance.client.table("photo_faces").update({
                         "insightface_descriptor": descriptor_str,
                         "insightface_confidence": float(best_match["det_score"])
                     }).eq("id", face_id).execute()

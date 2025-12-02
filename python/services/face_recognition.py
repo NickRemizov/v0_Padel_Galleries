@@ -28,11 +28,11 @@ from services.supabase_database import SupabaseDatabase
 class FaceRecognitionService:
     """Сервис для детекции и распознавания лиц на фотографиях"""
     
-    def __init__(self):
+    def __init__(self, supabase_db: 'SupabaseDatabase' = None):
         """Инициализация модели InsightFace"""
         print("[FaceRecognition] Initializing FaceAnalysis model...")
         self.app = None
-        self.supabase_db = SupabaseDatabase()
+        self.supabase_db = supabase_db if supabase_db else SupabaseDatabase()
         print("[v3.0] SupabaseDatabase connected successfully")
         
         # Хранилище эмбеддингов и данных (для временных операций)

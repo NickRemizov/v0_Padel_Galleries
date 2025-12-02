@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -6,8 +6,7 @@ from datetime import datetime
 from services.training_service import TrainingService
 
 router = APIRouter()
-training_service = TrainingService()
-
+# training_service = TrainingService()  # УДАЛЕНО - теперь через DI
 
 # Pydantic models for validation
 
@@ -54,7 +53,10 @@ class BatchRecognitionRequest(BaseModel):
 # Endpoints
 
 @router.post("/train/prepare")
-async def prepare_training(request: PrepareRequest):
+async def prepare_training(
+    request: PrepareRequest,
+    training_service: TrainingService = Depends(lambda: training_service_instance)
+):
     """
     Подготовка датасета для обучения (без запуска обучения).
     
@@ -73,7 +75,8 @@ async def prepare_training(request: PrepareRequest):
 @router.post("/train/execute")
 async def execute_training(
     request: ExecuteRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
     """
     Запуск обучения модели.
@@ -123,7 +126,10 @@ async def execute_training(
 
 
 @router.get("/train/status/{session_id}")
-async def get_training_status(session_id: str):
+async def get_training_status(
+    session_id: str,
+    training_service: TrainingService = Depends(lambda: training_service_instance)
+):
     """
     Получить статус обучения по session_id.
     """
@@ -139,7 +145,11 @@ async def get_training_status(session_id: str):
 
 
 @router.get("/train/history")
-async def get_training_history(limit: int = 10, offset: int = 0):
+async def get_training_history(
+    limit: int = 10,
+    offset: int = 0,
+    training_service: TrainingService = Depends(lambda: training_service_instance)
+):
     """
     Получить историю обучений.
     """
@@ -153,7 +163,8 @@ async def get_training_history(limit: int = 10, offset: int = 0):
 @router.post("/recognize/batch")
 async def batch_recognize_photos(
     request: BatchRecognitionRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
     """
     Пакетное распознавание фото без ручной верификации.
@@ -182,7 +193,9 @@ async def batch_recognize_photos(
 
 
 @router.get("/config")
-async def get_config():
+async def get_config(
+    training_service: TrainingService = Depends(lambda: training_service_instance)
+):
     """
     Получить текущую конфигурацию распознавания.
     """
@@ -196,7 +209,10 @@ async def get_config():
 
 
 @router.put("/config")
-async def update_config(updates: ConfigUpdate):
+async def update_config(
+    updates: ConfigUpdate,
+    training_service: TrainingService = Depends(lambda: training_service_instance)
+):
     """
     Обновить конфигурацию распознавания.
     """
@@ -225,3 +241,9 @@ async def update_config(updates: ConfigUpdate):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+training_service_instance = None
+
+def set_training_service(service: TrainingService):
+    global training_service_instance
+    training_service_instance = service

@@ -14,8 +14,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# face_service = FaceRecognitionService()  # УДАЛЕНО
-supabase_db = SupabaseDatabase()
+# supabase_db = SupabaseDatabase()
+
+face_service_instance = None
+supabase_db_instance = None
+
+def set_services(face_service: FaceRecognitionService, supabase_db: SupabaseDatabase):
+    global face_service_instance, supabase_db_instance
+    face_service_instance = face_service
+    supabase_db_instance = supabase_db
 
 
 class SaveFaceRequest(BaseModel):
@@ -47,7 +54,11 @@ class DeleteFaceRequest(BaseModel):
 
 
 @router.post("/save", response_model=SaveFaceResponse)
-async def save_face(request: SaveFaceRequest, face_service: FaceRecognitionService = Depends()):
+async def save_face(
+    request: SaveFaceRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
     """
     Save a face with descriptor to database and automatically update recognition index.
     This is the single source of truth for face data - all face saves must go through here.
@@ -108,7 +119,7 @@ async def save_face(request: SaveFaceRequest, face_service: FaceRecognitionServi
         
         import asyncio
         logger.info("[Faces API] Waiting 2 seconds for database to commit...")
-        await asyncio.sleep(2)  # Увеличена задержка с 1 до 2 секунд
+        await asyncio.sleep(2)
         
         verify_response = supabase_db.client.table("photo_faces").select(
             "id, person_id, verified, insightface_descriptor"
@@ -137,7 +148,7 @@ async def save_face(request: SaveFaceRequest, face_service: FaceRecognitionServi
             logger.info(f"[Faces API] Newly saved face ID: {saved_id}")
             
             try:
-                old_count = len(face_service.players_embeddings) if hasattr(face_service, 'players_embeddings') else 0
+                old_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
                 logger.info(f"[Faces API] Current index size before rebuild: {old_count}")
                 
                 rebuild_result = await face_service.rebuild_players_index()
@@ -195,7 +206,11 @@ async def save_face(request: SaveFaceRequest, face_service: FaceRecognitionServi
 
 
 @router.post("/update")
-async def update_face(request: UpdateFaceRequest, face_service: FaceRecognitionService = Depends()):
+async def update_face(
+    request: UpdateFaceRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
     """Update an existing face record"""
     try:
         logger.info(f"[Faces API] Updating face {request.face_id}")
@@ -225,12 +240,15 @@ async def update_face(request: UpdateFaceRequest, face_service: FaceRecognitionS
 
 
 @router.post("/delete")
-async def delete_face(request: DeleteFaceRequest, face_service: FaceRecognitionService = Depends()):
+async def delete_face(
+    request: DeleteFaceRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+):
     """Delete a face record"""
     try:
         logger.info(f"[Faces API] Deleting face {request.face_id}")
         
-        response = supabase_db.client.table("photo_faces").delete().eq(
+        response = supabase_db_instance.client.table("photo_faces").delete().eq(
             "id", request.face_id
         ).execute()
         

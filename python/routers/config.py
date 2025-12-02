@@ -15,14 +15,20 @@ class QualityConfig(BaseModel):
     min_detection_score: Optional[float] = None
     min_blur_score: Optional[int] = None
 
+supabase_client_instance = None
+
+def set_supabase_client(client: SupabaseClient):
+    global supabase_client_instance
+    supabase_client_instance = client
+
 @router.get("/config")
-async def get_config():
+async def get_config(
+    supabase_client: SupabaseClient = Depends(lambda: supabase_client_instance)
+):
     """Получение текущей конфигурации распознавания"""
     try:
-        supabase = SupabaseClient()
-        
         # Получаем настройки из БД
-        response = supabase.client.table('recognition_settings').select('*').eq('key', 'quality_filters').single().execute()
+        response = supabase_client.client.table('recognition_settings').select('*').eq('key', 'quality_filters').single().execute()
         
         if response.data:
             return response.data.get('value', {})
@@ -38,15 +44,16 @@ async def get_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/config")
-async def update_config(config: QualityConfig):
+async def update_config(
+    config: QualityConfig,
+    supabase_client: SupabaseClient = Depends(lambda: supabase_client_instance)
+):
     """Обновление конфигурации распознавания"""
     try:
-        supabase = SupabaseClient()
-        
         # Обновляем настройки в БД
         config_dict = config.dict(exclude_none=True)
         
-        supabase.client.table('recognition_settings').upsert({
+        supabase_client.client.table('recognition_settings').upsert({
             'key': 'quality_filters',
             'value': config_dict
         }, on_conflict='key').execute()
