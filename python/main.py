@@ -18,7 +18,7 @@ from services.face_recognition import FaceRecognitionService
 from services.training_service import TrainingService
 from services.supabase_database import SupabaseDatabase
 from services.supabase_client import SupabaseClient
-from routers import training, recognition, faces, config
+from routers import training, recognition, faces, config, images
 
 from models.schemas import (
     RecognitionResponse,
@@ -74,6 +74,7 @@ training.set_training_service(training_service)
 config.set_supabase_client(supabase_client)
 faces.set_services(face_service, supabase_db)
 recognition.set_services(face_service, supabase_client)
+images.set_services(supabase_db, face_service)
 print("[Main] ✓ Service instances injected into all routers")
 
 os.makedirs("uploads", exist_ok=True)
@@ -114,6 +115,7 @@ app.include_router(training.router, prefix="/api/v2", tags=["training"])
 app.include_router(recognition.router, prefix="/api/recognition", tags=["recognition"])
 app.include_router(faces.router, prefix="/api/faces", tags=["faces"])
 app.include_router(config.router, prefix="/api", tags=["config"])
+app.include_router(images.router, prefix="/api/images", tags=["images"])
 
 if __name__ == "__main__":
     host = os.getenv("SERVER_HOST", "0.0.0.0")

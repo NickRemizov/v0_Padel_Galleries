@@ -3017,61 +3017,25 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
 
 export async function deleteGalleryImageAction(photoId: string, galleryId: string) {
   try {
-    const supabase = await createClient()
+    const response = await apiFetch(`/api/images/${photoId}`, {
+      method: "DELETE",
+    })
 
-    const { data: image, error: imageError } = await supabase
-      .from("gallery_images")
-      .select("image_url, blob_url")
-      .eq("id", photoId)
-      .single()
-
-    if (imageError) {
-      return { error: `Не удалось найти изображение: ${imageError.message}` }
+    if (!response.ok) {
+      const error = await response.json()
+      return { error: error.detail || "Не удалось удалить изображение" }
     }
 
-    const { data: photoFaces, error: facesError } = await supabase
-      .from("photo_faces")
-      .select("id, insightface_descriptor")
-      .eq("photo_id", photoId)
+    const result = await response.json()
 
-    const facesWithDescriptors = photoFaces?.filter((f) => f.insightface_descriptor != null) || []
-    const hasDescriptorsToDelete = facesWithDescriptors.length > 0
-
-    console.log(`[v0] Deleting photo ${photoId}: ${facesWithDescriptors.length} faces with descriptors`)
-
-    const { error: deleteError } = await supabase.from("gallery_images").delete().eq("id", photoId)
-
-    if (deleteError) {
-      return { error: `Ошибка при удалении изображения: ${deleteError.message}` }
-    }
-
-    if (hasDescriptorsToDelete) {
-      console.log(`[v0] Rebuilding index after deleting ${facesWithDescriptors.length} descriptors`)
-      try {
-        await apiFetch(`/api/recognition/rebuild-index`, {
-          method: "POST",
-        })
-      } catch (error) {
-        console.error("[v0] Failed to rebuild index:", error)
-        // Continue anyway - index will rebuild on next recognition
-      }
-    }
-
-    if (image.blob_url) {
-      try {
-        await fetch(`/api/blob/delete`, {
-          method: "POST",
-          body: JSON.JSON.stringify({ url: image.blob_url }),
-        })
-      } catch (error) {
-        console.error("[v0] Failed to delete blob:", error)
-        // Continue anyway
-      }
-    }
+    console.log(`[deleteGalleryImage] Image deleted:`, {
+      had_descriptors: result.had_descriptors,
+      index_rebuilt: result.index_rebuilt,
+    })
 
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error in deleteGalleryImageAction:", error)
+    console.error("[deleteGalleryImage] Error:", error)
     return { error: error.message || "Не удалось удалить изображение" }
   }
 }
