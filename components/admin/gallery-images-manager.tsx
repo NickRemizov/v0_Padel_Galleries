@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { Images, Trash2, Upload, UserPlus, Scan, Download } from 'lucide-react'
+import { Images, Trash2, Upload, UserPlus, Scan, Download } from "lucide-react"
 
 import {
   addGalleryImagesAction,
@@ -521,29 +521,21 @@ export function GalleryImagesManager({
   async function confirmBatchDelete() {
     if (selectedPhotos.size > 0) {
       for (const photoId of selectedPhotos) {
-        await deleteGalleryImageAction(photoId, galleryId)
+        const result = await deleteGalleryImageAction(photoId, galleryId)
+        if (result.error) {
+          console.error("Failed to delete photo:", result.error)
+        }
       }
       setSelectedPhotos(new Set())
     } else {
-      await deleteAllGalleryImagesAction(galleryId)
+      const result = await deleteAllGalleryImagesAction(galleryId)
+      if (result.error) {
+        console.error("Failed to delete all photos:", result.error)
+      }
     }
     setConfirmDialog({ open: false, action: null, count: 0 })
     await loadImages()
     await loadPhotoFaces()
-  }
-
-  function handleClearSelection() {
-    setSelectedPhotos(new Set())
-  }
-
-  function handleCancelConfirmation(e: React.MouseEvent) {
-    e.stopPropagation()
-    setConfirmDialog({ open: false, action: null, count: 0 })
-  }
-
-  async function handleConfirmAction(e: React.MouseEvent) {
-    e.stopPropagation()
-    await confirmBatchDelete()
   }
 
   async function handleSortChange(value: string) {
@@ -572,6 +564,18 @@ export function GalleryImagesManager({
       }
       return newSet
     })
+  }
+
+  function handleClearSelection() {
+    setSelectedPhotos(new Set())
+  }
+
+  function handleCancelConfirmation() {
+    setConfirmDialog({ open: false, action: null, count: 0 })
+  }
+
+  function handleConfirmAction() {
+    confirmBatchDelete()
   }
 
   const allPhotosVerified = useMemo(() => {

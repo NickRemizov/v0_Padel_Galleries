@@ -176,7 +176,7 @@ export async function deletePhotoFaceAction(faceId: string) {
     const response = await apiFetch("/api/faces/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ face_id: faceId }),
+      body: JSON.JSON.stringify({ face_id: faceId }),
     })
 
     if (!response.success) {
@@ -3004,7 +3004,7 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
       .select()
 
     if (faceError) throw faceError
-    logger.debug("admin/actions", "unlinkPersonFromPhotoAction: Updated photo_faces", { updatedFaces })
+    logger.debug("unlinkPersonFromPhotoAction: Updated photo_faces", { updatedFaces })
 
     revalidatePath("/admin")
     logger.info("admin/actions", "Person unlinked from photo successfully", { photoId, personId })
@@ -3033,9 +3033,54 @@ export async function deleteGalleryImageAction(photoId: string, galleryId: strin
       index_rebuilt: result.index_rebuilt,
     })
 
-    return { success: true }
+    // </CHANGE> Возвращаем result чтобы UI мог обработать успешное удаление
+    return { success: true, result }
   } catch (error: any) {
     console.error("[deleteGalleryImage] Error:", error)
     return { error: error.message || "Не удалось удалить изображение" }
+  }
+}
+
+// </CHANGE> Добавлена недостающая функция для массового удаления фото
+export async function deleteAllGalleryImagesAction(galleryId: string) {
+  try {
+    const supabase = createClient()
+
+    // Получаем все фото из галереи
+    const { data: images, error: fetchError } = await supabase
+      .from("gallery_images")
+      .select("id")
+      .eq("gallery_id", galleryId)
+
+    if (fetchError) {
+      return { error: fetchError.message }
+    }
+
+    if (!images || images.length === 0) {
+      return { success: true, deletedCount: 0 }
+    }
+
+    // Удаляем каждое фото через API
+    let deletedCount = 0
+    let hasErrors = false
+
+    for (const image of images) {
+      const result = await deleteGalleryImageAction(image.id, galleryId)
+      if (result.success) {
+        deletedCount++
+      } else {
+        hasErrors = true
+        console.error(`Failed to delete image ${image.id}:`, result.error)
+      }
+    }
+
+    return {
+      success: !hasErrors,
+      deletedCount,
+      message: hasErrors ? "Некоторые фото не удалось удалить" : "Все фото удалены",
+    }
+  } catch (error: any) {
+    console.error("[deleteAllGalleryImages] Error:", error)
+    return { error: error.message || "Не удалось удалить фото" }
   }
 }

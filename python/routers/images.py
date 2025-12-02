@@ -66,17 +66,21 @@ async def delete_image(image_id: str):
         
         print(f"[Images API] ✓ Image deleted from DB")
         
-        # 4. Удаляем blob файл
         if image_url:
             try:
                 blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
                 if blob_token and image_url.startswith("https://"):
                     async with httpx.AsyncClient() as client:
-                        await client.delete(
+                        # Vercel Blob API требует POST с параметром _method=DELETE
+                        delete_response = await client.post(
                             image_url,
+                            params={"_method": "DELETE"},
                             headers={"Authorization": f"Bearer {blob_token}"}
                         )
-                    print(f"[Images API] ✓ Blob file deleted")
+                        if delete_response.status_code in [200, 204]:
+                            print(f"[Images API] ✓ Blob file deleted")
+                        else:
+                            print(f"[Images API] Warning: Blob delete returned {delete_response.status_code}")
             except Exception as e:
                 print(f"[Images API] Warning: Failed to delete blob: {e}")
         
