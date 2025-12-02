@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from services.supabase_database import SupabaseDatabase
 from services.face_recognition import FaceRecognitionService
@@ -33,11 +33,7 @@ class BatchDeleteResponse(BaseModel):
     message: str
 
 @router.delete("/{image_id}", response_model=DeleteImageResponse)
-async def delete_image(
-    image_id: str,
-    supabase_db: SupabaseDatabase = Depends(get_supabase_db),
-    face_service: FaceRecognitionService = Depends(get_face_service)
-):
+async def delete_image(image_id: str):
     """
     Удаляет фото и все связанные данные (photo_faces, face_descriptors через CASCADE).
     Автоматически перестраивает индекс если были дескрипторы.
