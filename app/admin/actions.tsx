@@ -7,7 +7,6 @@ import {
   getAllFaceDescriptors,
   saveFaceDescriptor,
   getPhotoFaces,
-  deletePhotoFace,
   updatePhotoFace,
 } from "@/lib/face-recognition/face-storage"
 import { safeSupabaseCall } from "@/lib/supabase/safe-call"
@@ -844,16 +843,24 @@ export async function getBatchPhotoFacesAction(photoIds: string[]) {
 }
 
 export async function deletePhotoFaceAction(faceId: string) {
-  const supabase = await createClient()
-
   try {
-    await deletePhotoFace(supabase, faceId)
+    logger.info("admin/actions", "Deleting face via API", { faceId })
 
-    logger.info("admin/actions", "Rebuilding recognition index after deleting face", { faceId })
-    await rebuildRecognitionIndexAction()
+    const response = await apiFetch("/api/faces/delete", {
+      method: "POST",
+      body: JSON.stringify({ face_id: faceId }),
+    })
+
+    if (!response.success) {
+      throw new Error(response.error || "Failed to delete face")
+    }
+
+    logger.info("admin/actions", "Face deleted successfully via API", {
+      faceId,
+      indexUpdated: response.index_updated,
+    })
 
     revalidatePath("/admin")
-    logger.info("admin/actions", "Photo face deleted successfully", { faceId })
     return { success: true }
   } catch (error: any) {
     logger.error("admin/actions", "Error deleting photo face", error)
@@ -1278,9 +1285,34 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
 }
 
 export async function deleteFaceDescriptorsForPhotoAction(photoId: string, personId: string) {
-  const supabase = await createClient()
-
   try {
+    logger.info("admin/actions", "Deleting face descriptors for photo via API", { photoId, personId })
+
+    const supabase = await createClient()
+    const { data: faces, error: fetchError } = await supabase
+      .from("photo_faces")
+      .select("id")
+      .eq("photo_id", photoId)
+      .eq("person_id", personId)
+
+    if (fetchError) throw fetchError
+
+    if (!faces || faces.length === 0) {
+      logger.info("admin/actions", "No faces found to delete", { photoId, personId })
+      return { success: true }
+    }
+
+    for (const face of faces) {
+      const response = await apiFetch("/api/faces/delete", {
+        method: "POST",
+        body: JSON.JSON.stringify({ face_id: face.id }),
+      })
+
+      if (!response.success) {
+        throw new Error(response.error || `Failed to delete face ${face.id}`)
+      }
+    }
+
     const { error: descError } = await supabase
       .from("face_descriptors")
       .delete()
@@ -1289,22 +1321,13 @@ export async function deleteFaceDescriptorsForPhotoAction(photoId: string, perso
 
     if (descError) throw descError
 
-    const { error: faceError } = await supabase
-      .from("photo_faces")
-      .delete()
-      .eq("photo_id", photoId)
-      .eq("person_id", personId)
-
-    if (faceError) throw faceError
-
-    logger.info("admin/actions", "Rebuilding recognition index after deleting faces", { photoId, personId })
-    await rebuildRecognitionIndexAction()
-
-    revalidatePath("/admin")
-    logger.info("admin/actions", "Face descriptors and faces deleted successfully", {
+    logger.info("admin/actions", "Face descriptors and faces deleted successfully via API", {
       photoId,
       personId,
+      facesDeleted: faces.length,
     })
+
+    revalidatePath("/admin")
     return { success: true }
   } catch (error: any) {
     logger.error("admin/actions", "Error deleting face descriptors for photo", error)

@@ -239,23 +239,81 @@ async def update_face(
 @router.post("/delete")
 async def delete_face(
     request: DeleteFaceRequest,
-    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
 ):
-    """Delete a face record"""
+    """
+    Delete a face record and automatically rebuild recognition index.
+    This is the single source of truth for face deletion - all deletions must go through here.
+    """
     try:
-        logger.info(f"[Faces API] Deleting face {request.face_id}")
+        logger.info("=" * 80)
+        logger.info("[Faces API] ===== DELETE FACE REQUEST START =====")
+        logger.info(f"[Faces API] Face ID: {request.face_id}")
         
-        response = supabase_db_instance.client.table("photo_faces").delete().eq(
+        check_response = supabase_db.client.table("photo_faces").select(
+            "id, person_id, verified, insightface_descriptor"
+        ).eq("id", request.face_id).execute()
+        
+        had_descriptor = False
+        if check_response.data and len(check_response.data) > 0:
+            face_data = check_response.data[0]
+            had_descriptor = face_data.get('insightface_descriptor') is not None
+            logger.info(f"[Faces API] Face before deletion: verified={face_data.get('verified')}, person_id={face_data.get('person_id')}, has_descriptor={had_descriptor}")
+        else:
+            logger.warning(f"[Faces API] Face {request.face_id} not found")
+            return {"success": False, "error": "Face not found"}
+        
+        old_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
+        logger.info(f"[Faces API] Current index size before deletion: {old_count}")
+        
+        # Delete the face
+        response = supabase_db.client.table("photo_faces").delete().eq(
             "id", request.face_id
         ).execute()
         
         logger.info(f"[Faces API] ✓ Face deleted: {request.face_id}")
         
-        # Rebuild index after deletion
-        await face_service.rebuild_players_index()
+        index_updated = False
+        if had_descriptor:
+            logger.info("[Faces API] Face had descriptor - rebuilding recognition index...")
+            
+            try:
+                rebuild_result = await face_service.rebuild_players_index()
+                
+                if rebuild_result.get("success"):
+                    index_updated = True
+                    new_count = rebuild_result.get('new_descriptor_count', 0)
+                    people_count = rebuild_result.get('unique_people_count', 0)
+                    
+                    logger.info(f"[Faces API] ✓ Index rebuilt: {old_count} -> {new_count} descriptors for {people_count} people")
+                    
+                    expected_count = old_count - 1
+                    if new_count == old_count:
+                        logger.error(f"[Faces API] ❌ CRITICAL: Descriptor count DID NOT DECREASE!")
+                        logger.error(f"[Faces API] Expected: {expected_count}, Got: {new_count}")
+                    elif new_count == expected_count:
+                        logger.info(f"[Faces API] ✓ Descriptor count decreased correctly: {old_count} -> {new_count}")
+                    else:
+                        logger.warning(f"[Faces API] ⚠️ Unexpected descriptor count change: expected {expected_count}, got {new_count}")
+                else:
+                    logger.error(f"[Faces API] Index rebuild failed: {rebuild_result.get('error')}")
+            except Exception as index_error:
+                logger.error(f"[Faces API] Error rebuilding index: {str(index_error)}", exc_info=True)
+        else:
+            logger.info(f"[Faces API] Face had no descriptor - skipping index rebuild")
         
-        return {"success": True}
+        logger.info("[Faces API] ===== DELETE FACE REQUEST END =====")
+        logger.info("=" * 80)
+        
+        return {"success": True, "index_updated": index_updated}
         
     except Exception as e:
-        logger.error(f"[Faces API] Error deleting face: {str(e)}", exc_info=True)
+        logger.error("=" * 80)
+        logger.error(f"[Faces API] ❌ ERROR in delete_face")
+        logger.error(f"[Faces API] Error type: {type(e).__name__}")
+        logger.error(f"[Faces API] Error message: {str(e)}")
+        logger.error(f"[Faces API] Traceback:", exc_info=True)
+        logger.error("=" * 80)
+        
         return {"success": False, "error": str(e)}
