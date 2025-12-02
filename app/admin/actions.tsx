@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
 import {
   getAllFaceDescriptors,
   saveFaceDescriptor,
@@ -11,727 +10,16 @@ import {
 } from "@/lib/face-recognition/face-storage"
 import { safeSupabaseCall } from "@/lib/supabase/safe-call"
 import { apiFetch } from "@/lib/apiClient"
-import { withSupabase } from "@/lib/supabase/with-supabase"
-import { success, failure, type Result } from "@/lib/types"
 import { logger } from "@/lib/logger"
 import { env } from "@/lib/env"
 
-export async function savePhotoFaceAction(
-  photoId: string,
-  personId: string | null,
-  boundingBox: { x: number; y: number; width: number; height: number } | null,
-  embedding: number[],
-  confidence: number | null,
-  recognitionConfidence: number | null,
-  verified: boolean,
-) {
-  logger.debug("admin/actions", "SAVE PHOTO FACE ACTION STARTED")
-  logger.debug("admin/actions", "savePhotoFaceAction called:", {
-    photoId,
-    personId,
-    verified,
-    hasEmbedding: embedding.length > 0,
-  })
-
-  // This ensures index is automatically updated when verified faces are saved
-  try {
-    const response = await fetch(`${env.FASTAPI_URL}/api/faces/save`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.JSON.stringify({
-        photo_id: photoId,
-        person_id: personId,
-        bounding_box: boundingBox,
-        embedding: embedding,
-        confidence: confidence,
-        recognition_confidence: recognitionConfidence,
-        verified: verified,
-      }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: "Failed to parse error" }))
-      logger.error("admin/actions", "FastAPI error:", errorData)
-      return {
-        success: false,
-        error: errorData.error || `HTTP ${response.status}: ${response.statusText}`,
-      }
-    }
-
-    const result = await response.json()
-
-    if (!result.success) {
-      logger.error("admin/actions", "Failed to save face:", result.error)
-      return {
-        success: false,
-        error: result.error,
-      }
-    }
-
-    logger.info("admin/actions", "Face saved successfully:", {
-      faceId: result.data?.id,
-      indexUpdated: result.index_updated,
-    })
-
-    if (result.index_updated) {
-      logger.info("admin/actions", "Recognition index automatically updated")
-    }
-
-    revalidatePath("/admin")
-
-    return {
-      success: true,
-      data: result.data,
-    }
-  } catch (error) {
-    logger.error("admin/actions", "Error calling FastAPI:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    }
-  }
+// Define ClusterFace type for rejectFaceClusterAction
+interface ClusterFace {
+  photo_id: string
+  descriptor?: number[] | null
 }
 
-export async function signInAction(formData: FormData) {
-  const email = formData.get("email") as string
-  const password = formData.get("password") as string
-
-  logger.debug("admin/actions", `Sign in attempt for: ${email}`)
-
-  const supabase = await createClient()
-
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
-
-  if (error) {
-    logger.warn("admin/actions", `Sign in error for ${email}:`, error.message)
-    return { error: error.message }
-  }
-
-  logger.info("admin/actions", `Sign in successful for ${email}`)
-  revalidatePath("/admin", "layout")
-  redirect("/admin")
-}
-
-export async function signUpAction(formData: FormData) {
-  const email = formData.get("email") as string
-  const password = formData.get("password") as string
-
-  logger.debug("admin/actions", `Sign up attempt for: ${email}`)
-
-  const supabase = await createClient()
-
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo:
-        process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${process.env.NEXT_PUBLIC_SUPABASE_URL}/admin`,
-      data: {
-        email_confirm: false,
-      },
-    },
-  })
-
-  if (error) {
-    logger.warn("admin/actions", `Sign up error for ${email}:`, error.message)
-    return { error: error.message }
-  }
-
-  logger.info("admin/actions", `Sign up successful for ${email}`)
-  return { success: true }
-}
-
-export async function signOutAction() {
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  redirect("/admin/login")
-}
-
-export async function addGalleryAction(formData: FormData): Promise<Result<void>> {
-  return withSupabase(async (supabase) => {
-    const title = formData.get("title") as string
-    const shootDate = formData.get("shoot_date") as string
-    const galleryUrl = (formData.get("gallery_url") as string) || ""
-    const externalGalleryUrl = (formData.get("external_gallery_url") as string) || null
-    const coverImageUrl = formData.get("cover_image_url") as string
-    const coverImageSquareUrl = (formData.get("cover_image_square_url") as string) || null
-    const photographerId = formData.get("photographer_id") as string
-    const locationId = formData.get("location_id") as string
-    const organizerId = formData.get("organizer_id") as string
-
-    logger.debug("admin/actions", "Adding new gallery", { title, shootDate })
-
-    const { error } = await supabase.from("galleries").insert({
-      title,
-      shoot_date: shootDate,
-      gallery_url: galleryUrl,
-      external_gallery_url: externalGalleryUrl,
-      cover_image_url: coverImageUrl,
-      cover_image_square_url: coverImageSquareUrl,
-      photographer_id: photographerId && photographerId !== "none" ? photographerId : null,
-      location_id: locationId && locationId !== "none" ? locationId : null,
-      organizer_id: organizerId && organizerId !== "none" ? organizerId : null,
-    })
-
-    if (error) {
-      logger.error("admin/actions", "Error adding gallery", error)
-      return failure(error.message)
-    }
-
-    revalidatePath("/")
-    revalidatePath("/admin")
-    logger.info("admin/actions", "Gallery added successfully", { title })
-    return success(undefined)
-  })
-}
-
-export async function updateGalleryAction(id: string, formData: FormData): Promise<Result<void>> {
-  return withSupabase(async (supabase) => {
-    const title = formData.get("title") as string
-    const shootDate = formData.get("shoot_date") as string
-    const galleryUrl = (formData.get("gallery_url") as string) || ""
-    const externalGalleryUrl = (formData.get("external_gallery_url") as string) || null
-    const coverImageUrl = formData.get("cover_image_url") as string
-    const coverImageSquareUrl = (formData.get("cover_image_square_url") as string) || null
-    const photographerId = formData.get("photographer_id") as string
-    const locationId = formData.get("location_id") as string
-    const organizerId = formData.get("organizer_id") as string
-
-    logger.debug("admin/actions", "Updating gallery", { id, title })
-
-    const { error } = await supabase
-      .from("galleries")
-      .update({
-        title,
-        shoot_date: shootDate,
-        gallery_url: galleryUrl,
-        external_gallery_url: externalGalleryUrl,
-        cover_image_url: coverImageUrl,
-        cover_image_square_url: coverImageSquareUrl,
-        photographer_id: photographerId === "none" ? null : photographerId,
-        location_id: locationId === "none" ? null : locationId,
-        organizer_id: organizerId === "none" ? null : organizerId,
-      })
-      .eq("id", id)
-
-    if (error) {
-      logger.error("admin/actions", "Error updating gallery", error)
-      return failure(error.message)
-    }
-
-    revalidatePath("/")
-    revalidatePath("/admin")
-    logger.info("admin/actions", "Gallery updated successfully", { id, title })
-    return success(undefined)
-  })
-}
-
-export async function deleteGalleryAction(id: string): Promise<Result<void>> {
-  return withSupabase(async (supabase) => {
-    logger.debug("admin/actions", "Deleting gallery", { id })
-
-    const { error } = await supabase.from("galleries").delete().eq("id", id)
-
-    if (error) {
-      logger.error("admin/actions", "Error deleting gallery", error)
-      return failure(error.message)
-    }
-
-    revalidatePath("/")
-    revalidatePath("/admin")
-    logger.info("admin/actions", "Gallery deleted successfully", { id })
-    return success(undefined)
-  })
-}
-
-export async function addPhotographerAction(formData: FormData) {
-  const supabase = await createClient()
-
-  const name = formData.get("name") as string
-
-  const { error } = await supabase.from("photographers").insert({ name })
-
-  if (error) {
-    logger.error("admin/actions", "Error adding photographer", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Photographer added successfully", { name })
-  return { success: true }
-}
-
-export async function updatePhotographerAction(id: string, formData: FormData) {
-  const supabase = await createClient()
-
-  const name = formData.get("name") as string
-
-  const { error } = await supabase.from("photographers").update({ name }).eq("id", id)
-
-  if (error) {
-    logger.error("admin/actions", "Error updating photographer", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Photographer updated successfully", { id, name })
-  return { success: true }
-}
-
-export async function deletePhotographerAction(id: string) {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from("photographers").delete().eq("id", id)
-
-  if (error) {
-    logger.error("admin/actions", "Error deleting photographer", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Photographer deleted successfully", { id })
-  return { success: true }
-}
-
-export async function addLocationAction(formData: FormData) {
-  const supabase = await createClient()
-
-  const name = formData.get("name") as string
-
-  const { error } = await supabase.from("locations").insert({ name })
-
-  if (error) {
-    logger.error("admin/actions", "Error adding location", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Location added successfully", { name })
-  return { success: true }
-}
-
-export async function updateLocationAction(id: string, formData: FormData) {
-  const supabase = await createClient()
-
-  const name = formData.get("name") as string
-
-  const { error } = await supabase.from("locations").update({ name }).eq("id", id)
-
-  if (error) {
-    logger.error("admin/actions", "Error updating location", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Location updated successfully", { id, name })
-  return { success: true }
-}
-
-export async function deleteLocationAction(id: string) {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from("locations").delete().eq("id", id)
-
-  if (error) {
-    logger.error("admin/actions", "Error deleting location", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Location deleted successfully", { id })
-  return { success: true }
-}
-
-export async function addOrganizerAction(formData: FormData) {
-  const supabase = await createClient()
-
-  const name = formData.get("name") as string
-
-  const { error } = await supabase.from("organizers").insert({ name })
-
-  if (error) {
-    logger.error("admin/actions", "Error adding organizer", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Organizer added successfully", { name })
-  return { success: true }
-}
-
-export async function updateOrganizerAction(id: string, formData: FormData) {
-  const supabase = await createClient()
-
-  const name = formData.get("name") as string
-
-  const { error } = await supabase.from("organizers").update({ name }).eq("id", id)
-
-  if (error) {
-    logger.error("admin/actions", "Error updating organizer", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Organizer updated successfully", { id, name })
-  return { success: true }
-}
-
-export async function deleteOrganizerAction(id: string) {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from("organizers").delete().eq("id", id)
-
-  if (error) {
-    logger.error("admin/actions", "Error deleting organizer", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Organizer deleted successfully", { id })
-  return { success: true }
-}
-
-export async function addGalleryImagesAction(
-  galleryId: string,
-  imageUrls: {
-    imageUrl: string
-    originalUrl: string
-    originalFilename: string
-    fileSize: number
-    width: number
-    height: number
-  }[],
-) {
-  const supabase = await createClient()
-
-  const imagesToInsert = imageUrls.map((img, index) => ({
-    gallery_id: galleryId,
-    image_url: img.imageUrl,
-    original_url: img.originalUrl,
-    original_filename: img.originalFilename,
-    file_size: img.fileSize,
-    width: img.width,
-    height: img.height,
-    display_order: index,
-  }))
-
-  const { error } = await supabase.from("gallery_images").insert(imagesToInsert)
-
-  if (error) {
-    logger.error("admin/actions", "Error adding gallery images", error)
-    return { error: error.message }
-  }
-
-  revalidatePath(`/gallery/${galleryId}`)
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Gallery images added successfully", { galleryId, count: imageUrls.length })
-  return { success: true }
-}
-
-export async function deleteGalleryImageAction(imageId: string, galleryId: string) {
-  const supabase = await createClient()
-
-  const { data: verifiedFaces } = await supabase
-    .from("photo_faces")
-    .select("id")
-    .eq("photo_id", imageId)
-    .eq("verified", true)
-
-  const hasVerifiedFaces = verifiedFaces && verifiedFaces.length > 0
-
-  // This ensures cleanup even if CASCADE doesn't work properly
-  const { error: descriptorError } = await supabase.from("face_descriptors").delete().eq("source_image_id", imageId)
-
-  if (descriptorError) {
-    logger.error("admin/actions", "Error deleting face descriptors", descriptorError)
-  } else {
-    logger.debug("admin/actions", "Deleted face descriptors for image", imageId)
-  }
-
-  // Delete photo_faces records (should cascade, but being explicit)
-  const { error: facesError } = await supabase.from("photo_faces").delete().eq("photo_id", imageId)
-
-  if (facesError) {
-    logger.error("admin/actions", "Error deleting photo faces", facesError)
-  } else {
-    logger.debug("admin/actions", "Deleted photo_faces for image", imageId)
-  }
-
-  // Finally delete the image itself
-  const { error } = await supabase.from("gallery_images").delete().eq("id", imageId)
-
-  if (error) {
-    logger.error("admin/actions", "Error deleting gallery image", error)
-    return { error: error.message }
-  }
-
-  if (hasVerifiedFaces) {
-    logger.info("admin/actions", "Rebuilding recognition index after deleting verified faces")
-    await rebuildRecognitionIndexAction()
-  }
-
-  revalidatePath(`/gallery/${galleryId}`)
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Gallery image deleted successfully", { imageId, galleryId })
-  return { success: true }
-}
-
-export async function deleteAllGalleryImagesAction(galleryId: string) {
-  const supabase = await createClient()
-
-  if (!supabase) {
-    logger.error("admin/actions", "Supabase client is null")
-    return { error: "Database connection failed" }
-  }
-
-  try {
-    // Get all images first
-    const { data: images, error: fetchError } = await supabase
-      .from("gallery_images")
-      .select("id")
-      .eq("gallery_id", galleryId)
-
-    if (fetchError) {
-      logger.error("admin/actions", "Error fetching gallery images", fetchError)
-      return { error: fetchError.message }
-    }
-
-    if (!images || images.length === 0) {
-      logger.info("admin/actions", "No images to delete for gallery", galleryId)
-      return { success: true }
-    }
-
-    const imageIds = images.map((img) => img.id)
-    logger.debug(
-      "admin/actions",
-      `Starting deletion of ${imageIds.length} images and related data for gallery`,
-      galleryId,
-    )
-
-    // Delete in correct order to avoid FK violations
-    // 1. Delete face_descriptors (references gallery_images)
-    const { error: descriptorError } = await supabase.from("face_descriptors").delete().in("source_image_id", imageIds)
-
-    if (descriptorError) {
-      logger.error("admin/actions", "Error deleting face descriptors", descriptorError)
-      return { error: `Failed to delete face descriptors: ${descriptorError.message}` }
-    }
-    logger.debug("admin/actions", `Deleted face descriptors for ${imageIds.length} images`)
-
-    // 2. Delete photo_faces (references gallery_images)
-    const { error: facesError } = await supabase.from("photo_faces").delete().in("photo_id", imageIds)
-
-    if (facesError) {
-      logger.error("admin/actions", "Error deleting photo faces", facesError)
-      return { error: `Failed to delete photo faces: ${facesError.message}` }
-    }
-    logger.debug("admin/actions", `Deleted photo_faces for ${imageIds.length} images`)
-
-    // 3. Finally delete gallery_images
-    const { error: imagesError } = await supabase.from("gallery_images").delete().eq("gallery_id", galleryId)
-
-    if (imagesError) {
-      logger.error("admin/actions", "Error deleting gallery images", imagesError)
-      return { error: `Failed to delete images: ${imagesError.message}` }
-    }
-    logger.info("admin/actions", `Successfully deleted all ${imageIds.length} images for gallery`, galleryId)
-
-    revalidatePath(`/gallery/${galleryId}`)
-    revalidatePath("/admin")
-
-    return { success: true }
-  } catch (error: any) {
-    logger.error("admin/actions", "Unexpected error in deleteAllGalleryImagesAction", error)
-    return { error: error instanceof Error ? error.message : "Unknown error occurred" }
-  }
-}
-
-export async function updateGalleryImageOrderAction(galleryId: string, imageOrders: { id: string; order: number }[]) {
-  const supabase = await createClient()
-
-  for (const item of imageOrders) {
-    const { error } = await supabase.from("gallery_images").update({ display_order: item.order }).eq("id", item.id)
-
-    if (error) {
-      logger.error("admin/actions", "Error updating image order", error)
-      return { error: error.message }
-    }
-  }
-
-  revalidatePath(`/gallery/${galleryId}`)
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Gallery image order updated successfully", { galleryId, count: imageOrders.length })
-  return { success: true }
-}
-
-export async function updateGallerySortOrderAction(galleryId: string, sortOrder: string) {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from("galleries").update({ sort_order: sortOrder }).eq("id", galleryId)
-
-  if (error) {
-    logger.error("admin/actions", "Error updating gallery sort order", error)
-    return { error: error.message }
-  }
-
-  revalidatePath(`/gallery/${galleryId}`)
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Gallery sort order updated successfully", { galleryId, sortOrder })
-  return { success: true }
-}
-
-export async function addPersonAction(formData: FormData) {
-  const supabase = await createClient()
-
-  const realName = formData.get("real_name") as string
-  const telegramName = (formData.get("telegram_name") as string) || null
-  const telegramNickname = (formData.get("telegram_nickname") as string) || null
-  const telegramProfileUrl = (formData.get("telegram_profile_url") as string) || null
-  const facebookProfileUrl = (formData.get("facebook_profile_url") as string) || null
-  const instagramProfileUrl = (formData.get("instagram_profile_url") as string) || null
-  const paddleRanking = formData.get("paddle_ranking")
-    ? Number.parseInt(formData.get("paddle_ranking") as string)
-    : null
-  const avatarUrl = (formData.get("avatar_url") as string) || null
-
-  const { data: person, error } = await supabase
-    .from("people")
-    .insert({
-      real_name: realName,
-      telegram_name: telegramName,
-      telegram_nickname: telegramNickname,
-      telegram_profile_url: telegramProfileUrl,
-      facebook_profile_url: facebookProfileUrl,
-      instagram_profile_url: instagramProfileUrl,
-      paddle_ranking: paddleRanking,
-      avatar_url: avatarUrl,
-    })
-    .select()
-    .single()
-
-  if (error) {
-    logger.error("admin/actions", "Error adding person", error)
-    return { success: false, error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Person added successfully", { id: person.id, name: person.real_name })
-  return { success: true, data: person }
-}
-
-export async function updatePersonAction(id: string, formData: FormData) {
-  const supabase = await createClient()
-
-  const realName = formData.get("real_name") as string
-  const telegramName = (formData.get("telegram_name") as string) || null
-  const telegramNickname = (formData.get("telegram_nickname") as string) || null
-  const telegramProfileUrl = (formData.get("telegram_profile_url") as string) || null
-  const facebookProfileUrl = (formData.get("facebook_profile_url") as string) || null
-  const instagramProfileUrl = (formData.get("instagram_profile_url") as string) || null
-  const paddleRanking = formData.get("paddle_ranking")
-    ? Number.parseInt(formData.get("paddle_ranking") as string)
-    : null
-  const tournamentResultsStr = (formData.get("tournament_results") as string) || "[]"
-
-  let tournamentResults = []
-  try {
-    tournamentResults = JSON.parse(tournamentResultsStr)
-  } catch (e) {
-    logger.error("admin/actions", "Error parsing tournament results", e)
-    return { error: "Invalid JSON format for tournament results" }
-  }
-
-  const { error } = await supabase
-    .from("people")
-    .update({
-      real_name: realName,
-      telegram_name: telegramName,
-      telegram_nickname: telegramNickname,
-      telegram_profile_url: telegramProfileUrl,
-      facebook_profile_url: facebookProfileUrl,
-      instagram_profile_url: instagramProfileUrl,
-      paddle_ranking: paddleRanking,
-      tournament_results: tournamentResults,
-      // avatar_url removed - it will be preserved
-    })
-    .eq("id", id)
-
-  if (error) {
-    logger.error("admin/actions", "Error updating person", error)
-    return { error: error.message }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Person updated successfully", { id, realName })
-  return { success: true }
-}
-
-export async function deletePersonAction(id: string) {
-  const supabase = await createClient()
-
-  if (!supabase) {
-    logger.error("admin/actions", "Supabase client is null")
-    return { error: "Database connection failed" }
-  }
-
-  const { error: descriptorError } = await supabase.from("face_descriptors").delete().eq("person_id", id)
-
-  if (descriptorError) {
-    logger.error("admin/actions", "Error deleting face descriptors", descriptorError)
-    return { error: descriptorError.message }
-  }
-
-  logger.debug("admin/actions", `Deleted face_descriptors for person ${id}`)
-
-  // Reset photo_faces references
-  const { error: updateError } = await supabase
-    .from("photo_faces")
-    .update({
-      person_id: null,
-      verified: false,
-      recognition_confidence: null,
-    })
-    .eq("person_id", id)
-
-  if (updateError) {
-    logger.error("admin/actions", "Error resetting photo_faces for deleted person", updateError)
-    return { error: updateError.message }
-  }
-
-  logger.debug("admin/actions", `Reset person_id, verified, and recognition_confidence for all faces of person ${id}`)
-
-  // Delete the person record
-  const { error } = await supabase.from("people").delete().eq("id", id)
-
-  if (error) {
-    logger.error("admin/actions", "Error deleting person", error)
-    return { error: error.message }
-  }
-
-  logger.info("admin/actions", `Triggering recognition index rebuild after person deletion for ID: ${id}`)
-  const rebuildResult = await rebuildRecognitionIndexAction()
-
-  if (rebuildResult.error) {
-    logger.warn("admin/actions", `Failed to rebuild index after person deletion for ID: ${id}`, rebuildResult.error)
-  } else {
-    logger.info(
-      "admin/actions",
-      `Index rebuilt successfully after person deletion for ID: ${id}`,
-      rebuildResult.message,
-    )
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Person deleted successfully", { id })
-  return { success: true }
-}
-
-export async function saveFaceTagsAction(
+export async function savePhotoFaceTagsAction(
   photoId: string,
   tags: {
     personId: string | null
@@ -848,7 +136,8 @@ export async function deletePhotoFaceAction(faceId: string) {
 
     const response = await apiFetch("/api/faces/delete", {
       method: "POST",
-      body: JSON.JSON.stringify({ face_id: faceId }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ face_id: faceId }),
     })
 
     if (!response.success) {
@@ -1284,47 +573,26 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
   }
 }
 
-export async function deleteFaceDescriptorsForPhotoAction(photoId: string, personId: string) {
+export async function deleteFaceDescriptorsForPhotoAction(faces: { id: string; photo_id: string }[]) {
   try {
-    logger.info("admin/actions", "Deleting face descriptors for photo via API", { photoId, personId })
+    logger.info("admin/actions", "Deleting face descriptors for photo via API", {
+      count: faces.length,
+      photoIds: faces.map((f) => f.photo_id),
+    })
 
-    const supabase = await createClient()
-    const { data: faces, error: fetchError } = await supabase
-      .from("photo_faces")
-      .select("id")
-      .eq("photo_id", photoId)
-      .eq("person_id", personId)
+    const response = await apiFetch("/api/faces/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.JSON.stringify({ faces: faces }),
+    })
 
-    if (fetchError) throw fetchError
-
-    if (!faces || faces.length === 0) {
-      logger.info("admin/actions", "No faces found to delete", { photoId, personId })
-      return { success: true }
+    if (!response.success) {
+      throw new Error(response.error || "Failed to delete face")
     }
 
-    for (const face of faces) {
-      const response = await apiFetch("/api/faces/delete", {
-        method: "POST",
-        body: JSON.JSON.stringify({ face_id: face.id }),
-      })
-
-      if (!response.success) {
-        throw new Error(response.error || `Failed to delete face ${face.id}`)
-      }
-    }
-
-    const { error: descError } = await supabase
-      .from("face_descriptors")
-      .delete()
-      .eq("source_image_id", photoId)
-      .eq("person_id", personId)
-
-    if (descError) throw descError
-
-    logger.info("admin/actions", "Face descriptors and faces deleted successfully via API", {
-      photoId,
-      personId,
+    logger.info("admin/actions", "Face descriptors deleted successfully via API", {
       facesDeleted: faces.length,
+      indexUpdated: response.index_updated,
     })
 
     revalidatePath("/admin")
@@ -1930,7 +1198,7 @@ export async function cleanupDuplicateFacesAction() {
       .from("face_descriptors")
       .select("*", { count: "exact", head: true })
 
-    logger.info(
+    logger.debug(
       "admin/actions",
       `After cleanup: ${totalAfter} photo_faces records, ${verifiedAfter} verified, ${descriptorsAfter} face_descriptors`,
     )
@@ -2644,7 +1912,7 @@ export async function prepareTrainingDatasetAction() {
 
     // Optional: Save training data to a file or return it
     // For now, just log and return success. In a real app, you might want to save this.
-    // Example: await supabase.storage.from('datasets').upload(`training_data_${Date.now()}.json`, JSON.stringify(trainingData));
+    // Example: await supabase.storage.from('datasets').upload(`training_data_${Date.now()}.json`, JSON.JSON.stringify(trainingData));
 
     return {
       success: true,
@@ -2656,89 +1924,6 @@ export async function prepareTrainingDatasetAction() {
   } catch (error: any) {
     logger.error("admin/actions", "Error preparing training dataset", error)
     return { error: error.message || "Failed to prepare training dataset" }
-  }
-}
-
-export async function savePhotoFaceTagsAction(
-  photoId: string,
-  tags: {
-    personId: string
-    boundingBox: { x: number; y: number; width: number; height: number }
-    embedding?: number[]
-    confidence: number | null
-    verified: boolean
-  }[],
-) {
-  const supabase = await createClient()
-
-  logger.debug("admin/actions", `savePhotoFaceTagsAction called for photo: ${photoId} with ${tags.length} tags`)
-
-  try {
-    const { data: photo, error: photoError } = await supabase
-      .from("gallery_images")
-      .select("image_url")
-      .eq("id", photoId)
-      .single()
-
-    if (photoError || !photo) {
-      logger.error("admin/actions", "Error fetching photo", photoError)
-      return { error: "Photo not found" }
-    }
-
-    logger.debug("admin/actions", "Photo found:", photo.image_url)
-
-    // Delete existing tags and descriptors for this photo
-    await supabase.from("photo_faces").delete().eq("photo_id", photoId)
-    await supabase.from("face_descriptors").delete().eq("source_image_id", photoId)
-
-    if (tags.length > 0) {
-      logger.debug("admin/actions", "Calling backend to generate descriptors")
-
-      try {
-        const result = await apiFetch("/api/recognition/generate-descriptors", {
-          method: "POST",
-          body: JSON.JSON.stringify({
-            image_url: photo.image_url,
-            faces: tags.map((tag) => ({
-              person_id: tag.personId,
-              bbox: tag.boundingBox,
-              verified: tag.verified,
-              photo_id: photoId,
-            })),
-          }),
-        })
-
-        logger.debug("admin/actions", "Descriptors generated:", result)
-      } catch (fetchError) {
-        logger.error("admin/actions", "Error calling backend for descriptors", fetchError)
-        // Continue anyway - save the tags even if descriptor generation fails
-      }
-    }
-
-    const tagsToInsert = tags.map((tag) => ({
-      photo_id: photoId,
-      person_id: tag.personId,
-      insightface_bbox: tag.boundingBox, // Use insightface_bbox
-      confidence: tag.confidence,
-      verified: tag.verified,
-    }))
-
-    logger.debug("admin/actions", "Inserting tags:", tagsToInsert)
-
-    const { error } = await supabase.from("photo_faces").insert(tagsToInsert)
-
-    if (error) {
-      logger.error("admin/actions", "Error saving photo face tags", error)
-      return { error: error.message }
-    }
-
-    logger.info("admin/actions", "Tags saved successfully")
-
-    revalidatePath("/admin")
-    return { success: true }
-  } catch (error: any) {
-    logger.error("admin/actions", "Error in savePhotoFaceTagsAction", error)
-    return { error: error.message || "Failed to save tags" }
   }
 }
 
@@ -2763,10 +1948,19 @@ export async function regenerateUnknownDescriptorsAction(galleryId: string) {
   try {
     logger.debug("admin/actions", `Calling regenerate-unknown-descriptors for gallery ${galleryId}`)
 
-    const data = await apiFetch(`/api/recognition/regenerate-unknown-descriptors?gallery_id=${galleryId}`, {
+    const response = await fetch(`${env.FASTAPI_URL}/api/recognition/regenerate-unknown-descriptors`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.JSON.stringify({ gallery_id: galleryId }),
     })
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Failed to parse error" }))
+      logger.error("admin/actions", "FastAPI error:", errorData)
+      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const data = await response.json()
     logger.info("admin/actions", `Regenerated descriptors for gallery ${galleryId}`, data)
     return {
       success: true,
@@ -2783,13 +1977,20 @@ export async function regenerateUnknownDescriptorsAction(galleryId: string) {
   }
 }
 
-export async function rejectFaceClusterAction(clusterFaces: { photo_id: string; descriptor: number[] }[]) {
+export async function rejectFaceClusterAction(clusterFaces: ClusterFace[]) {
   try {
     logger.debug("admin/actions", `Rejecting ${clusterFaces.length} faces from a cluster`)
-    await apiFetch("/api/recognition/reject-face-cluster", {
+    const response = await fetch(`${env.FASTAPI_URL}/api/recognition/reject-face-cluster`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.JSON.stringify({ faces: clusterFaces }),
     })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Failed to parse error" }))
+      logger.error("admin/actions", "FastAPI error:", errorData)
+      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
+    }
 
     logger.info("admin/actions", `Successfully rejected ${clusterFaces.length} faces`)
     return { success: true }
@@ -2852,6 +2053,29 @@ export async function createPersonFromClusterAction(
   } catch (error: any) {
     logger.error("admin/actions", "Error creating person from cluster", error)
     return { error: error.message || "Failed to create person from cluster" }
+  }
+}
+
+export async function generateDescriptorsAction(imageId: string, imageUrl: string) {
+  try {
+    logger.debug("admin/actions", `Generating descriptors for image ${imageId} at ${imageUrl}`)
+    const response = await apiFetch("/api/recognition/generate-descriptors", {
+      method: "POST",
+      body: JSON.JSON.stringify({
+        image_id: imageId,
+        image_url: imageUrl,
+      }),
+    })
+
+    if (!response.success) {
+      throw new Error(response.error || "Failed to generate descriptors")
+    }
+
+    logger.info("admin/actions", "Descriptors generated successfully", { imageId, count: response.generated })
+    return { success: true, data: response.data }
+  } catch (error: any) {
+    logger.error("admin/actions", "Error generating descriptors", error)
+    return { error: error.message || "Failed to generate descriptors" }
   }
 }
 
@@ -2976,10 +2200,7 @@ export async function rebuildRecognitionIndexAction() {
   }
 }
 
-export async function assignClusterToPersonAction(
-  personId: string,
-  clusterFaces: { photo_id: string; descriptor: number[] }[],
-) {
+export async function assignClusterToPersonAction(personId: string, clusterFaces: ClusterFace[]) {
   logger.debug("admin/actions", "assignClusterToPersonAction started")
   logger.debug("admin/actions", "personId:", personId)
   logger.debug("admin/actions", "clusterFaces count:", clusterFaces.length)
