@@ -124,12 +124,12 @@ export async function deleteAllGalleryImagesAction(galleryId: string) {
 export async function addGalleryImagesAction(
   galleryId: string,
   uploadedImages: Array<{
-    url: string
+    imageUrl: string
     originalUrl: string
-    filename: string
+    originalFilename: string
     width: number
     height: number
-    size: number
+    fileSize: number
   }>,
 ) {
   try {
@@ -146,12 +146,12 @@ export async function addGalleryImagesAction(
 
     const imagesToInsert = uploadedImages.map((img, idx) => ({
       gallery_id: galleryId,
-      image_url: img.url,
+      image_url: img.imageUrl,
       original_url: img.originalUrl,
-      original_filename: img.filename,
+      original_filename: img.originalFilename,
       width: img.width,
       height: img.height,
-      file_size: img.size,
+      file_size: img.fileSize,
       display_order: startOrder + idx,
     }))
 
