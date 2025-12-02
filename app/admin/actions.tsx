@@ -53,9 +53,10 @@ export async function savePhotoFaceAction(
       return { success: false, error: result.error || "Failed to save face", errorDetail: result.detail }
     }
 
-    logger.info("admin/actions", `✓ Face saved with ID: ${result.face_id}`)
+    const faceId = result.data?.id
+    logger.info("admin/actions", `✓ Face saved with ID: ${faceId}`)
 
-    return { success: true, face_id: result.face_id }
+    return { success: true, face_id: faceId }
   } catch (error) {
     logger.error("admin/actions", "Error in savePhotoFaceAction", error)
     return { success: false, error: "Ошибка при сохранении лица" }
@@ -3022,12 +3023,11 @@ export async function deleteGalleryImageAction(photoId: string, galleryId: strin
       method: "DELETE",
     })
 
-    if (!response.ok) {
-      const error = await response.json()
-      return { error: error.detail || "Не удалось удалить изображение" }
-    }
-
     const result = await response.json()
+
+    if (!result.success) {
+      return { error: result.message || "Не удалось удалить изображение" }
+    }
 
     console.log(`[deleteGalleryImage] Image deleted:`, {
       had_descriptors: result.had_descriptors,
