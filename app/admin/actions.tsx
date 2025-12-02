@@ -3044,40 +3044,21 @@ export async function deleteGalleryImageAction(photoId: string, galleryId: strin
 // </CHANGE> Добавлена недостающая функция для массового удаления фото
 export async function deleteAllGalleryImagesAction(galleryId: string) {
   try {
-    const supabase = createClient()
+    const response = await apiFetch(`/api/images/gallery/${galleryId}/all`, {
+      method: "DELETE",
+    })
 
-    // Получаем все фото из галереи
-    const { data: images, error: fetchError } = await supabase
-      .from("gallery_images")
-      .select("id")
-      .eq("gallery_id", galleryId)
-
-    if (fetchError) {
-      return { error: fetchError.message }
+    if (!response.ok) {
+      const error = await response.json()
+      return { error: error.detail || "Не удалось удалить фото" }
     }
 
-    if (!images || images.length === 0) {
-      return { success: true, deletedCount: 0 }
-    }
-
-    // Удаляем каждое фото через API
-    let deletedCount = 0
-    let hasErrors = false
-
-    for (const image of images) {
-      const result = await deleteGalleryImageAction(image.id, galleryId)
-      if (result.success) {
-        deletedCount++
-      } else {
-        hasErrors = true
-        console.error(`Failed to delete image ${image.id}:`, result.error)
-      }
-    }
+    const result = await response.json()
 
     return {
-      success: !hasErrors,
-      deletedCount,
-      message: hasErrors ? "Некоторые фото не удалось удалить" : "Все фото удалены",
+      success: result.success,
+      deletedCount: result.deleted_count,
+      message: result.message,
     }
   } catch (error: any) {
     console.error("[deleteAllGalleryImages] Error:", error)

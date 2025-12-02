@@ -461,7 +461,6 @@ export function GalleryImagesManager({
 
         if (result.success) {
           await loadImages()
-          await loadRecognitionStats()
           await loadPhotoFaces()
           setUploadProgress("")
         } else {
@@ -595,6 +594,8 @@ export function GalleryImagesManager({
     if (result.success) {
       await loadImages()
       await loadPhotoFaces()
+    } else if (result.error) {
+      console.error("Failed to delete photo:", result.error)
     }
 
     setSingleDeleteDialog({ open: false, imageId: null, filename: null })

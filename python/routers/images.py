@@ -24,6 +24,14 @@ class DeleteImageResponse(BaseModel):
     had_descriptors: bool
     index_rebuilt: bool
 
+class BatchDeleteResponse(BaseModel):
+    success: bool
+    deleted_count: int
+    failed_count: int
+    had_descriptors: bool
+    index_rebuilt: bool
+    message: str
+
 @router.delete("/{image_id}", response_model=DeleteImageResponse)
 async def delete_image(image_id: str):
     """
@@ -108,4 +116,104 @@ async def delete_image(image_id: str):
         raise
     except Exception as e:
         print(f"[Images API] Error deleting image: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/gallery/{gallery_id}/all", response_model=BatchDeleteResponse)
+async def delete_all_gallery_images(gallery_id: str):
+    """
+    Удаляет все фото из галереи и автоматически перестраивает индекс.
+    """
+    try:
+        print(f"[Images API] Deleting all images from gallery: {gallery_id}")
+        
+        # 1. Получаем все фото из галереи
+        result = supabase_db.client.table("gallery_images")\
+            .select("id, image_url")\
+            .eq("gallery_id", gallery_id)\
+            .execute()
+        
+        if not result.data:
+            return BatchDeleteResponse(
+                success=True,
+                deleted_count=0,
+                failed_count=0,
+                had_descriptors=False,
+                index_rebuilt=False,
+                message="No images to delete"
+            )
+        
+        images = result.data
+        print(f"[Images API] Found {len(images)} images to delete")
+        
+        # 2. Проверяем есть ли дескрипторы у любого фото
+        image_ids = [img["id"] for img in images]
+        descriptors_result = supabase_db.client.table("photo_faces")\
+            .select("id, insightface_descriptor")\
+            .in_("photo_id", image_ids)\
+            .execute()
+        
+        has_descriptors = any(
+            face.get("insightface_descriptor") 
+            for face in (descriptors_result.data or [])
+        )
+        
+        print(f"[Images API] Gallery has descriptors: {has_descriptors}")
+        
+        # 3. Удаляем все фото из БД (CASCADE удалит связанные данные)
+        deleted_count = 0
+        failed_count = 0
+        
+        for image in images:
+            try:
+                supabase_db.client.table("gallery_images")\
+                    .delete()\
+                    .eq("id", image["id"])\
+                    .execute()
+                deleted_count += 1
+                
+                # Удаляем blob файл
+                image_url = image.get("image_url")
+                if image_url:
+                    try:
+                        blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
+                        if blob_token and image_url.startswith("https://"):
+                            async with httpx.AsyncClient() as client:
+                                await client.post(
+                                    image_url,
+                                    params={"_method": "DELETE"},
+                                    headers={"Authorization": f"Bearer {blob_token}"}
+                                )
+                    except Exception as e:
+                        print(f"[Images API] Warning: Failed to delete blob {image_url}: {e}")
+                        
+            except Exception as e:
+                print(f"[Images API] Failed to delete image {image['id']}: {e}")
+                failed_count += 1
+        
+        print(f"[Images API] Deleted {deleted_count} images, {failed_count} failed")
+        
+        # 4. Перестраиваем индекс если были дескрипторы
+        index_rebuilt = False
+        if has_descriptors and deleted_count > 0:
+            try:
+                pre_count = len(face_service.players_embeddings) if face_service.players_embeddings else 0
+                face_service.rebuild_index()
+                post_count = len(face_service.players_embeddings) if face_service.players_embeddings else 0
+                
+                print(f"[Images API] ✓ Index rebuilt: {pre_count} -> {post_count} descriptors")
+                index_rebuilt = True
+            except Exception as e:
+                print(f"[Images API] Warning: Failed to rebuild index: {e}")
+        
+        return BatchDeleteResponse(
+            success=failed_count == 0,
+            deleted_count=deleted_count,
+            failed_count=failed_count,
+            had_descriptors=has_descriptors,
+            index_rebuilt=index_rebuilt,
+            message=f"Deleted {deleted_count} images" + (f", {failed_count} failed" if failed_count > 0 else "")
+        )
+        
+    except Exception as e:
+        print(f"[Images API] Error in batch delete: {e}")
         raise HTTPException(status_code=500, detail=str(e))
