@@ -40,7 +40,7 @@ export async function savePhotoFaceAction(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
+      body: JSON.JSON.stringify({
         photo_id: photoId,
         person_id: personId,
         bounding_box: boundingBox,
@@ -750,7 +750,7 @@ export async function saveFaceTagsAction(
     const insertData: any = {
       photo_id: photoId,
       person_id: tag.personId,
-      insightface_bbox: tag.boundingBox,
+      insightface_bbox: tag.boundingBox, // Use insightface_bbox
       confidence: tag.confidence,
       verified: tag.verified,
     }
@@ -848,7 +848,7 @@ export async function deletePhotoFaceAction(faceId: string) {
 
     const response = await apiFetch("/api/faces/delete", {
       method: "POST",
-      body: JSON.stringify({ face_id: faceId }),
+      body: JSON.JSON.stringify({ face_id: faceId }),
     })
 
     if (!response.success) {
@@ -2054,7 +2054,7 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
 
     logger.debug(
       "admin/actions",
-      `Verified groups: ${verifiedGroupsCount}, Unverified groups: ${unverifiedGroupsCount}`,
+      "Verified groups: ${verifiedGroupsCount}, Unverified groups: ${unverifiedGroupsCount}",
     )
 
     if (idsToDelete.length > 0) {
@@ -2746,7 +2746,7 @@ export async function savePhotoFaceTagsAction(
 export async function getUnknownFaceClustersAction(galleryId: string) {
   try {
     logger.debug("admin/actions", `Clustering unknown faces for gallery ${galleryId}`)
-    const data = await apiFetch(`/api/cluster-unknown-faces?gallery_id=${galleryId}`, {
+    const data = await apiFetch(`/api/recognition/cluster-unknown-faces?gallery_id=${galleryId}`, {
       method: "POST",
     })
 
@@ -2786,7 +2786,7 @@ export async function regenerateUnknownDescriptorsAction(galleryId: string) {
 export async function rejectFaceClusterAction(clusterFaces: { photo_id: string; descriptor: number[] }[]) {
   try {
     logger.debug("admin/actions", `Rejecting ${clusterFaces.length} faces from a cluster`)
-    await apiFetch("/api/recognition/reject-faces", {
+    await apiFetch("/api/recognition/reject-face-cluster", {
       method: "POST",
       body: JSON.JSON.stringify({ faces: clusterFaces }),
     })
@@ -2909,7 +2909,7 @@ export async function generateMissingDescriptorsAction() {
       try {
         const result = await apiFetch("/api/recognition/generate-descriptors", {
           method: "POST",
-          body: JSON.stringify({
+          body: JSON.JSON.stringify({
             image_url: imageUrl,
             faces: faces,
           }),
@@ -3330,7 +3330,7 @@ export async function checkDatabaseIntegrityAction() {
       .select("id, source_image_id, person_id")
 
     if (allDescriptorsWithFaces && allDescriptorsWithFaces.length > 0) {
-      const descriptorsWithSourceId = allDescriptorsWithFaces.filter((d) => d.source_image_id != null)
+      const descriptorsWithSourceId = allDescriptorsWithFaces.filter((d) => d.source_image_id)
       const faceIds = [...new Set(descriptorsWithSourceId.map((d) => d.source_image_id))]
       const { data: facesData } = await supabase.from("photo_faces").select("id, person_id").in("id", faceIds)
 

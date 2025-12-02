@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const data = await apiFetch("/recognize-face", {
+    const data = await apiFetch("/api/recognition/recognize-face", {
       method: "POST",
       body: JSON.stringify(body),
     })
