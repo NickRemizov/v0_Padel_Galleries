@@ -53,6 +53,11 @@ class DeleteFaceRequest(BaseModel):
     face_id: str
 
 
+class BatchSaveFaceRequest(BaseModel):
+    photo_id: str
+    faces: List[SaveFaceRequest]
+
+
 @router.post("/save", response_model=SaveFaceResponse)
 async def save_face(
     request: SaveFaceRequest,
@@ -317,3 +322,108 @@ async def delete_face(
         logger.error("=" * 80)
         
         return {"success": False, "error": str(e)}
+
+
+@router.post("/batch-save")
+async def batch_save_faces(
+    request: BatchSaveFaceRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Save multiple faces with descriptors to database and rebuild index once.
+    This is more efficient than calling /save multiple times.
+    """
+    try:
+        logger.info("=" * 80)
+        logger.info("[Faces API] ===== BATCH SAVE FACES REQUEST START =====")
+        logger.info(f"[Faces API] Photo ID: {request.photo_id}")
+        logger.info(f"[Faces API] Number of faces: {len(request.faces)}")
+        
+        # First delete all existing tags for this photo
+        logger.info(f"[Faces API] Deleting existing tags for photo {request.photo_id}")
+        supabase_db.client.table("photo_faces").delete().eq("photo_id", request.photo_id).execute()
+        
+        saved_faces = []
+        has_verified_faces = False
+        
+        # Insert all faces
+        for idx, face in enumerate(request.faces):
+            insert_data = {
+                "photo_id": request.photo_id,
+                "person_id": face.person_id,
+                "verified": face.verified,
+            }
+            
+            if face.bounding_box:
+                insert_data["insightface_bbox"] = face.bounding_box
+            
+            if face.confidence is not None:
+                insert_data["confidence"] = face.confidence
+            
+            if face.verified and face.person_id:
+                insert_data["recognition_confidence"] = 1.0
+                has_verified_faces = True
+            elif face.recognition_confidence is not None:
+                insert_data["recognition_confidence"] = face.recognition_confidence
+            
+            if face.embedding and len(face.embedding) > 0:
+                vector_string = f"[{','.join(map(str, face.embedding))}]"
+                insert_data["insightface_descriptor"] = vector_string
+                logger.info(f"[Faces API] Face {idx+1}: Adding descriptor (dimension: {len(face.embedding)})")
+            
+            response = supabase_db.client.table("photo_faces").insert(insert_data).execute()
+            
+            if response.data:
+                saved_faces.append(response.data[0])
+                logger.info(f"[Faces API] ✓ Face {idx+1} saved with ID: {response.data[0].get('id')}")
+            else:
+                logger.error(f"[Faces API] Failed to save face {idx+1}")
+        
+        logger.info(f"[Faces API] ✓ Saved {len(saved_faces)} faces")
+        
+        # Rebuild index once if any verified faces
+        index_updated = False
+        if has_verified_faces:
+            logger.info("[Faces API] Verified faces detected - rebuilding recognition index...")
+            
+            try:
+                old_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
+                logger.info(f"[Faces API] Current index size before rebuild: {old_count}")
+                
+                rebuild_result = await face_service.rebuild_players_index()
+                
+                if rebuild_result.get("success"):
+                    index_updated = True
+                    new_count = rebuild_result.get('new_descriptor_count', 0)
+                    people_count = rebuild_result.get('unique_people_count', 0)
+                    
+                    logger.info(f"[Faces API] ✓ Index rebuilt: {old_count} -> {new_count} descriptors for {people_count} people")
+                else:
+                    logger.error(f"[Faces API] Index rebuild failed: {rebuild_result.get('error')}")
+            except Exception as index_error:
+                logger.error(f"[Faces API] Error rebuilding index: {str(index_error)}", exc_info=True)
+        
+        logger.info("[Faces API] ===== BATCH SAVE FACES REQUEST END =====")
+        logger.info("=" * 80)
+        
+        return {
+            "success": True,
+            "data": saved_faces,
+            "index_updated": index_updated,
+            "saved_count": len(saved_faces)
+        }
+        
+    except Exception as e:
+        logger.error("=" * 80)
+        logger.error(f"[Faces API] ❌ ERROR in batch_save_faces")
+        logger.error(f"[Faces API] Error message: {str(e)}")
+        logger.error(f"[Faces API] Traceback:", exc_info=True)
+        logger.error("=" * 80)
+        
+        return {
+            "success": False,
+            "error": str(e),
+            "index_updated": False,
+            "saved_count": 0
+        }

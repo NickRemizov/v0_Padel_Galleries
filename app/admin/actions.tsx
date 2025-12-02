@@ -29,49 +29,45 @@ export async function savePhotoFaceTagsAction(
     verified: boolean
   }[],
 ) {
-  const supabase = await createClient()
+  try {
+    logger.info("admin/actions", `Saving ${tags.length} face tags for photo ${photoId}`)
 
-  // Delete existing tags
-  await supabase.from("photo_faces").delete().eq("photo_id", photoId)
+    const response = await apiFetch("/api/faces/batch-save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        photo_id: photoId,
+        faces: tags.map((tag) => ({
+          photo_id: photoId,
+          person_id: tag.personId,
+          bounding_box: tag.boundingBox,
+          embedding: tag.embedding || [],
+          confidence: tag.confidence,
+          verified: tag.verified,
+        })),
+      }),
+    })
 
-  const tagsToInsert = tags.map((tag) => {
-    const insertData: any = {
-      photo_id: photoId,
-      person_id: tag.personId,
-      insightface_bbox: tag.boundingBox, // Use insightface_bbox
-      confidence: tag.confidence,
-      verified: tag.verified,
+    // Note: apiFetch might already parse JSON. If response is already parsed, use it directly.
+    // If response is a Response object, use response.json()
+    const result =
+      typeof response === "object" && response !== null && "json" in response ? await response.json() : response
+
+    if (!result.success) {
+      logger.error("admin/actions", "Error saving face tags via API", result.error)
+      return { error: result.error || "Failed to save face tags" }
     }
 
-    if (tag.embedding && tag.embedding.length > 0) {
-      const vectorString = `[${tag.embedding.join(",")}]`
-      insertData.insightface_descriptor = vectorString
-    }
+    logger.info("admin/actions", `✓ Saved ${result.saved_count} faces, index_updated=${result.index_updated}`)
 
-    return insertData
-  })
+    // Removed the old Supabase insert logic and revalidatePath
+    // The API endpoint should handle revalidation if needed
 
-  const { error } = await supabase.from("photo_faces").insert(tagsToInsert)
-
-  if (error) {
-    logger.error("admin/actions", "Error saving face tags", error)
-    return { error: error.message }
+    return { error: null } // Changed from { success: true } to align with API response structure
+  } catch (error) {
+    logger.error("admin/actions", "Error in savePhotoFaceTagsAction", error)
+    return { error: "Ошибка при сохранении тегов" }
   }
-
-  const hasVerifiedFaces = tags.some((tag) => tag.verified && tag.personId && tag.embedding && tag.embedding.length > 0)
-  if (hasVerifiedFaces) {
-    logger.info("admin/actions", "Verified faces saved, rebuilding recognition index...")
-    try {
-      await rebuildRecognitionIndexAction()
-      logger.info("admin/actions", "Index rebuilt successfully")
-    } catch (indexError) {
-      logger.error("admin/actions", "Error rebuilding index", indexError)
-    }
-  }
-
-  revalidatePath("/admin")
-  logger.info("admin/actions", "Face tags saved successfully", { photoId, tagCount: tags.length })
-  return { success: true }
 }
 
 export async function getAllFaceDescriptorsAction() {
