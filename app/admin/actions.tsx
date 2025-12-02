@@ -19,6 +19,49 @@ interface ClusterFace {
   descriptor?: number[] | null
 }
 
+export async function savePhotoFaceAction(
+  photoId: string,
+  personId: string | null,
+  boundingBox: { x: number; y: number; width: number; height: number } | null,
+  embedding: number[],
+  confidence: number | null,
+  recognitionConfidence: number | null,
+  verified: boolean,
+) {
+  try {
+    logger.info("admin/actions", `Saving face for photo ${photoId}, person ${personId}, verified=${verified}`)
+
+    const response = await apiFetch("/api/faces/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        photo_id: photoId,
+        person_id: personId,
+        bounding_box: boundingBox,
+        embedding: embedding,
+        confidence: confidence,
+        recognition_confidence: recognitionConfidence,
+        verified: verified,
+      }),
+    })
+
+    const result =
+      typeof response === "object" && response !== null && "json" in response ? await response.json() : response
+
+    if (!result.success) {
+      logger.error("admin/actions", "Error saving face via API", result.error)
+      return { success: false, error: result.error || "Failed to save face", errorDetail: result.detail }
+    }
+
+    logger.info("admin/actions", `✓ Face saved with ID: ${result.face_id}`)
+
+    return { success: true, face_id: result.face_id }
+  } catch (error) {
+    logger.error("admin/actions", "Error in savePhotoFaceAction", error)
+    return { success: false, error: "Ошибка при сохранении лица" }
+  }
+}
+
 export async function savePhotoFaceTagsAction(
   photoId: string,
   tags: {
