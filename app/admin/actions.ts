@@ -25,8 +25,14 @@ export async function savePhotoFaceAction(
   recognitionConfidence: number | null,
   verified: boolean,
 ) {
-  console.log("[v0] ===== SAVE PHOTO FACE ACTION STARTED =====")
-  console.log("[v0] savePhotoFaceAction called:", { photoId, personId, verified, hasEmbedding: embedding.length > 0 })
+  logger.debug("admin/actions", "SAVE PHOTO FACE ACTION STARTED")
+  logger.debug("admin/actions", "savePhotoFaceAction called:", {
+    photoId,
+    personId,
+    verified,
+    hasEmbedding: embedding.length > 0,
+  })
+
   const supabase = await createClient()
 
   const insertData: any = {
@@ -44,19 +50,18 @@ export async function savePhotoFaceAction(
 
   if (verified && personId) {
     insertData.recognition_confidence = 1.0
-    console.log("[v0] Verified face detected, setting recognition_confidence to 1.0")
+    logger.info("admin/actions", "Verified face detected, setting recognition_confidence to 1.0")
   } else if (recognitionConfidence !== null) {
     insertData.recognition_confidence = recognitionConfidence
   }
 
   if (embedding && embedding.length > 0) {
-    // Convert embedding array to PostgreSQL vector format string
     const vectorString = `[${embedding.join(",")}]`
     insertData.insightface_descriptor = vectorString
-    console.log("[v0] Adding insightface_descriptor to insert (length:", embedding.length, ")")
+    logger.debug("admin/actions", "Adding insightface_descriptor to insert (length:", embedding.length, ")")
   }
 
-  console.log("[v0] Inserting photo_face with data:", {
+  logger.debug("admin/actions", "Inserting photo_face with data:", {
     ...insertData,
     insightface_descriptor: insertData.insightface_descriptor ? `[vector of ${embedding.length} dims]` : undefined,
   })
@@ -64,7 +69,7 @@ export async function savePhotoFaceAction(
   const { data, error } = await supabase.from("photo_faces").insert(insertData).select().single()
 
   if (error) {
-    console.error("[v0] Error saving photo face:", error)
+    logger.error("admin/actions", "Error saving photo face:", error)
     return {
       success: false,
       error: error.message,
@@ -72,19 +77,19 @@ export async function savePhotoFaceAction(
     }
   }
 
-  console.log("[v0] Photo face saved successfully with descriptor:", data)
+  logger.info("admin/actions", "Photo face saved successfully with descriptor:", data)
 
   if (data && personId && verified && embedding && embedding.length > 0) {
-    console.log("[v0] Verified face saved, rebuilding recognition index...")
+    logger.info("admin/actions", "Verified face saved, rebuilding recognition index...")
     try {
       const rebuildResult = await rebuildRecognitionIndexAction()
       if (rebuildResult.error) {
-        console.error("[v0] Failed to rebuild index:", rebuildResult.error)
+        logger.error("admin/actions", "Failed to rebuild index:", rebuildResult.error)
       } else {
-        console.log("[v0] Index rebuilt successfully:", rebuildResult.message)
+        logger.info("admin/actions", "Index rebuilt successfully:", rebuildResult.message)
       }
     } catch (indexError) {
-      console.error("[v0] Error rebuilding index:", indexError)
+      logger.error("admin/actions", "Error rebuilding index:", indexError)
     }
   }
 
@@ -100,7 +105,7 @@ export async function signInAction(formData: FormData) {
   const email = formData.get("email") as string
   const password = formData.get("password") as string
 
-  console.log("[v0] Sign in attempt for:", email)
+  logger.debug("admin/actions", `Sign in attempt for: ${email}`)
 
   const supabase = await createClient()
 
@@ -110,11 +115,11 @@ export async function signInAction(formData: FormData) {
   })
 
   if (error) {
-    console.log("[v0] Sign in error:", error.message)
+    logger.warn("admin/actions", `Sign in error for ${email}:`, error.message)
     return { error: error.message }
   }
 
-  console.log("[v0] Sign in successful")
+  logger.info("admin/actions", `Sign in successful for ${email}`)
   revalidatePath("/admin", "layout")
   redirect("/admin")
 }
@@ -123,7 +128,7 @@ export async function signUpAction(formData: FormData) {
   const email = formData.get("email") as string
   const password = formData.get("password") as string
 
-  console.log("[v0] Sign up attempt for:", email)
+  logger.debug("admin/actions", `Sign up attempt for: ${email}`)
 
   const supabase = await createClient()
 
@@ -140,11 +145,11 @@ export async function signUpAction(formData: FormData) {
   })
 
   if (error) {
-    console.log("[v0] Sign up error:", error.message)
+    logger.warn("admin/actions", `Sign up error for ${email}:`, error.message)
     return { error: error.message }
   }
 
-  console.log("[v0] Sign up successful")
+  logger.info("admin/actions", `Sign up successful for ${email}`)
   return { success: true }
 }
 
@@ -166,7 +171,7 @@ export async function addGalleryAction(formData: FormData): Promise<Result<void>
     const locationId = formData.get("location_id") as string
     const organizerId = formData.get("organizer_id") as string
 
-    logger.debug("addGalleryAction", "Adding new gallery", { title, shootDate })
+    logger.debug("admin/actions", "Adding new gallery", { title, shootDate })
 
     const { error } = await supabase.from("galleries").insert({
       title,
@@ -181,13 +186,13 @@ export async function addGalleryAction(formData: FormData): Promise<Result<void>
     })
 
     if (error) {
-      logger.error("addGalleryAction", "Error adding gallery", error)
+      logger.error("admin/actions", "Error adding gallery", error)
       return failure(error.message)
     }
 
     revalidatePath("/")
     revalidatePath("/admin")
-    logger.info("addGalleryAction", "Gallery added successfully", { title })
+    logger.info("admin/actions", "Gallery added successfully", { title })
     return success(undefined)
   })
 }
@@ -204,7 +209,7 @@ export async function updateGalleryAction(id: string, formData: FormData): Promi
     const locationId = formData.get("location_id") as string
     const organizerId = formData.get("organizer_id") as string
 
-    logger.debug("updateGalleryAction", "Updating gallery", { id, title })
+    logger.debug("admin/actions", "Updating gallery", { id, title })
 
     const { error } = await supabase
       .from("galleries")
@@ -222,31 +227,31 @@ export async function updateGalleryAction(id: string, formData: FormData): Promi
       .eq("id", id)
 
     if (error) {
-      logger.error("updateGalleryAction", "Error updating gallery", error)
+      logger.error("admin/actions", "Error updating gallery", error)
       return failure(error.message)
     }
 
     revalidatePath("/")
     revalidatePath("/admin")
-    logger.info("updateGalleryAction", "Gallery updated successfully", { id, title })
+    logger.info("admin/actions", "Gallery updated successfully", { id, title })
     return success(undefined)
   })
 }
 
 export async function deleteGalleryAction(id: string): Promise<Result<void>> {
   return withSupabase(async (supabase) => {
-    logger.debug("deleteGalleryAction", "Deleting gallery", { id })
+    logger.debug("admin/actions", "Deleting gallery", { id })
 
     const { error } = await supabase.from("galleries").delete().eq("id", id)
 
     if (error) {
-      logger.error("deleteGalleryAction", "Error deleting gallery", error)
+      logger.error("admin/actions", "Error deleting gallery", error)
       return failure(error.message)
     }
 
     revalidatePath("/")
     revalidatePath("/admin")
-    logger.info("deleteGalleryAction", "Gallery deleted successfully", { id })
+    logger.info("admin/actions", "Gallery deleted successfully", { id })
     return success(undefined)
   })
 }
@@ -259,11 +264,12 @@ export async function addPhotographerAction(formData: FormData) {
   const { error } = await supabase.from("photographers").insert({ name })
 
   if (error) {
-    console.error("[v0] Error adding photographer:", error)
+    logger.error("admin/actions", "Error adding photographer", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Photographer added successfully", { name })
   return { success: true }
 }
 
@@ -275,11 +281,12 @@ export async function updatePhotographerAction(id: string, formData: FormData) {
   const { error } = await supabase.from("photographers").update({ name }).eq("id", id)
 
   if (error) {
-    console.error("[v0] Error updating photographer:", error)
+    logger.error("admin/actions", "Error updating photographer", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Photographer updated successfully", { id, name })
   return { success: true }
 }
 
@@ -289,11 +296,12 @@ export async function deletePhotographerAction(id: string) {
   const { error } = await supabase.from("photographers").delete().eq("id", id)
 
   if (error) {
-    console.error("[v0] Error deleting photographer:", error)
+    logger.error("admin/actions", "Error deleting photographer", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Photographer deleted successfully", { id })
   return { success: true }
 }
 
@@ -305,11 +313,12 @@ export async function addLocationAction(formData: FormData) {
   const { error } = await supabase.from("locations").insert({ name })
 
   if (error) {
-    console.error("[v0] Error adding location:", error)
+    logger.error("admin/actions", "Error adding location", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Location added successfully", { name })
   return { success: true }
 }
 
@@ -321,11 +330,12 @@ export async function updateLocationAction(id: string, formData: FormData) {
   const { error } = await supabase.from("locations").update({ name }).eq("id", id)
 
   if (error) {
-    console.error("[v0] Error updating location:", error)
+    logger.error("admin/actions", "Error updating location", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Location updated successfully", { id, name })
   return { success: true }
 }
 
@@ -335,11 +345,12 @@ export async function deleteLocationAction(id: string) {
   const { error } = await supabase.from("locations").delete().eq("id", id)
 
   if (error) {
-    console.error("[v0] Error deleting location:", error)
+    logger.error("admin/actions", "Error deleting location", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Location deleted successfully", { id })
   return { success: true }
 }
 
@@ -351,11 +362,12 @@ export async function addOrganizerAction(formData: FormData) {
   const { error } = await supabase.from("organizers").insert({ name })
 
   if (error) {
-    console.error("[v0] Error adding organizer:", error)
+    logger.error("admin/actions", "Error adding organizer", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Organizer added successfully", { name })
   return { success: true }
 }
 
@@ -367,11 +379,12 @@ export async function updateOrganizerAction(id: string, formData: FormData) {
   const { error } = await supabase.from("organizers").update({ name }).eq("id", id)
 
   if (error) {
-    console.error("[v0] Error updating organizer:", error)
+    logger.error("admin/actions", "Error updating organizer", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Organizer updated successfully", { id, name })
   return { success: true }
 }
 
@@ -381,11 +394,12 @@ export async function deleteOrganizerAction(id: string) {
   const { error } = await supabase.from("organizers").delete().eq("id", id)
 
   if (error) {
-    console.error("[v0] Error deleting organizer:", error)
+    logger.error("admin/actions", "Error deleting organizer", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Organizer deleted successfully", { id })
   return { success: true }
 }
 
@@ -416,12 +430,13 @@ export async function addGalleryImagesAction(
   const { error } = await supabase.from("gallery_images").insert(imagesToInsert)
 
   if (error) {
-    console.error("[v0] Error adding gallery images:", error)
+    logger.error("admin/actions", "Error adding gallery images", error)
     return { error: error.message }
   }
 
   revalidatePath(`/gallery/${galleryId}`)
   revalidatePath("/admin")
+  logger.info("admin/actions", "Gallery images added successfully", { galleryId, count: imageUrls.length })
   return { success: true }
 }
 
@@ -440,35 +455,36 @@ export async function deleteGalleryImageAction(imageId: string, galleryId: strin
   const { error: descriptorError } = await supabase.from("face_descriptors").delete().eq("source_image_id", imageId)
 
   if (descriptorError) {
-    console.error("[v0] Error deleting face descriptors:", descriptorError)
+    logger.error("admin/actions", "Error deleting face descriptors", descriptorError)
   } else {
-    console.log("[v0] Deleted face descriptors for image:", imageId)
+    logger.debug("admin/actions", "Deleted face descriptors for image", imageId)
   }
 
   // Delete photo_faces records (should cascade, but being explicit)
   const { error: facesError } = await supabase.from("photo_faces").delete().eq("photo_id", imageId)
 
   if (facesError) {
-    console.error("[v0] Error deleting photo faces:", facesError)
+    logger.error("admin/actions", "Error deleting photo faces", facesError)
   } else {
-    console.log("[v0] Deleted photo_faces for image:", imageId)
+    logger.debug("admin/actions", "Deleted photo_faces for image", imageId)
   }
 
   // Finally delete the image itself
   const { error } = await supabase.from("gallery_images").delete().eq("id", imageId)
 
   if (error) {
-    console.error("[v0] Error deleting gallery image:", error)
+    logger.error("admin/actions", "Error deleting gallery image", error)
     return { error: error.message }
   }
 
   if (hasVerifiedFaces) {
-    console.log("[v0] Rebuilding recognition index after deleting verified faces")
+    logger.info("admin/actions", "Rebuilding recognition index after deleting verified faces")
     await rebuildRecognitionIndexAction()
   }
 
   revalidatePath(`/gallery/${galleryId}`)
   revalidatePath("/admin")
+  logger.info("admin/actions", "Gallery image deleted successfully", { imageId, galleryId })
   return { success: true }
 }
 
@@ -476,6 +492,7 @@ export async function deleteAllGalleryImagesAction(galleryId: string) {
   const supabase = await createClient()
 
   if (!supabase) {
+    logger.error("admin/actions", "Supabase client is null")
     return { error: "Database connection failed" }
   }
 
@@ -487,52 +504,56 @@ export async function deleteAllGalleryImagesAction(galleryId: string) {
       .eq("gallery_id", galleryId)
 
     if (fetchError) {
-      console.error("[v5.0] Error fetching gallery images:", fetchError)
+      logger.error("admin/actions", "Error fetching gallery images", fetchError)
       return { error: fetchError.message }
     }
 
     if (!images || images.length === 0) {
-      console.log("[v5.0] No images to delete")
+      logger.info("admin/actions", "No images to delete for gallery", galleryId)
       return { success: true }
     }
 
     const imageIds = images.map((img) => img.id)
-    console.log(`[v5.0] Starting deletion of ${imageIds.length} images and related data`)
+    logger.debug(
+      "admin/actions",
+      `Starting deletion of ${imageIds.length} images and related data for gallery`,
+      galleryId,
+    )
 
     // Delete in correct order to avoid FK violations
     // 1. Delete face_descriptors (references gallery_images)
     const { error: descriptorError } = await supabase.from("face_descriptors").delete().in("source_image_id", imageIds)
 
     if (descriptorError) {
-      console.error("[v5.0] Error deleting face descriptors:", descriptorError)
+      logger.error("admin/actions", "Error deleting face descriptors", descriptorError)
       return { error: `Failed to delete face descriptors: ${descriptorError.message}` }
     }
-    console.log(`[v5.0] Deleted face descriptors for ${imageIds.length} images`)
+    logger.debug("admin/actions", `Deleted face descriptors for ${imageIds.length} images`)
 
     // 2. Delete photo_faces (references gallery_images)
     const { error: facesError } = await supabase.from("photo_faces").delete().in("photo_id", imageIds)
 
     if (facesError) {
-      console.error("[v5.0] Error deleting photo faces:", facesError)
+      logger.error("admin/actions", "Error deleting photo faces", facesError)
       return { error: `Failed to delete photo faces: ${facesError.message}` }
     }
-    console.log(`[v5.0] Deleted photo_faces for ${imageIds.length} images`)
+    logger.debug("admin/actions", `Deleted photo_faces for ${imageIds.length} images`)
 
     // 3. Finally delete gallery_images
     const { error: imagesError } = await supabase.from("gallery_images").delete().eq("gallery_id", galleryId)
 
     if (imagesError) {
-      console.error("[v5.0] Error deleting gallery images:", imagesError)
+      logger.error("admin/actions", "Error deleting gallery images", imagesError)
       return { error: `Failed to delete images: ${imagesError.message}` }
     }
-    console.log(`[v5.0] Successfully deleted all ${imageIds.length} images`)
+    logger.info("admin/actions", `Successfully deleted all ${imageIds.length} images for gallery`, galleryId)
 
     revalidatePath(`/gallery/${galleryId}`)
     revalidatePath("/admin")
 
     return { success: true }
-  } catch (error) {
-    console.error("[v5.0] Unexpected error in deleteAllGalleryImagesAction:", error)
+  } catch (error: any) {
+    logger.error("admin/actions", "Unexpected error in deleteAllGalleryImagesAction", error)
     return { error: error instanceof Error ? error.message : "Unknown error occurred" }
   }
 }
@@ -544,13 +565,14 @@ export async function updateGalleryImageOrderAction(galleryId: string, imageOrde
     const { error } = await supabase.from("gallery_images").update({ display_order: item.order }).eq("id", item.id)
 
     if (error) {
-      console.error("[v0] Error updating image order:", error)
+      logger.error("admin/actions", "Error updating image order", error)
       return { error: error.message }
     }
   }
 
   revalidatePath(`/gallery/${galleryId}`)
   revalidatePath("/admin")
+  logger.info("admin/actions", "Gallery image order updated successfully", { galleryId, count: imageOrders.length })
   return { success: true }
 }
 
@@ -560,12 +582,13 @@ export async function updateGallerySortOrderAction(galleryId: string, sortOrder:
   const { error } = await supabase.from("galleries").update({ sort_order: sortOrder }).eq("id", galleryId)
 
   if (error) {
-    console.error("[v0] Error updating gallery sort order:", error)
+    logger.error("admin/actions", "Error updating gallery sort order", error)
     return { error: error.message }
   }
 
   revalidatePath(`/gallery/${galleryId}`)
   revalidatePath("/admin")
+  logger.info("admin/actions", "Gallery sort order updated successfully", { galleryId, sortOrder })
   return { success: true }
 }
 
@@ -599,11 +622,12 @@ export async function addPersonAction(formData: FormData) {
     .single()
 
   if (error) {
-    console.error("[v0] Error adding person:", error)
+    logger.error("admin/actions", "Error adding person", error)
     return { success: false, error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Person added successfully", { id: person.id, name: person.real_name })
   return { success: true, data: person }
 }
 
@@ -625,8 +649,8 @@ export async function updatePersonAction(id: string, formData: FormData) {
   try {
     tournamentResults = JSON.parse(tournamentResultsStr)
   } catch (e) {
-    console.error("[v0] Error parsing tournament results:", e)
-    return { error: "Неверный формат JSON для результатов турниров" }
+    logger.error("admin/actions", "Error parsing tournament results", e)
+    return { error: "Invalid JSON format for tournament results" }
   }
 
   const { error } = await supabase
@@ -645,11 +669,12 @@ export async function updatePersonAction(id: string, formData: FormData) {
     .eq("id", id)
 
   if (error) {
-    console.error("[v0] Error updating person:", error)
+    logger.error("admin/actions", "Error updating person", error)
     return { error: error.message }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Person updated successfully", { id, realName })
   return { success: true }
 }
 
@@ -657,18 +682,18 @@ export async function deletePersonAction(id: string) {
   const supabase = await createClient()
 
   if (!supabase) {
-    console.error("[v4.2] Supabase client is null")
+    logger.error("admin/actions", "Supabase client is null")
     return { error: "Database connection failed" }
   }
 
   const { error: descriptorError } = await supabase.from("face_descriptors").delete().eq("person_id", id)
 
   if (descriptorError) {
-    console.error("[v4.2] Error deleting face descriptors:", descriptorError)
+    logger.error("admin/actions", "Error deleting face descriptors", descriptorError)
     return { error: descriptorError.message }
   }
 
-  console.log(`[v4.2] Deleted face_descriptors for person ${id}`)
+  logger.debug("admin/actions", `Deleted face_descriptors for person ${id}`)
 
   // Reset photo_faces references
   const { error: updateError } = await supabase
@@ -681,30 +706,35 @@ export async function deletePersonAction(id: string) {
     .eq("person_id", id)
 
   if (updateError) {
-    console.error("[v4.2] Error resetting photo_faces for deleted person:", updateError)
+    logger.error("admin/actions", "Error resetting photo_faces for deleted person", updateError)
     return { error: updateError.message }
   }
 
-  console.log(`[v4.2] Reset person_id, verified, and recognition_confidence for all faces of person ${id}`)
+  logger.debug("admin/actions", `Reset person_id, verified, and recognition_confidence for all faces of person ${id}`)
 
   // Delete the person record
   const { error } = await supabase.from("people").delete().eq("id", id)
 
   if (error) {
-    console.error("[v4.2] Error deleting person:", error)
+    logger.error("admin/actions", "Error deleting person", error)
     return { error: error.message }
   }
 
-  console.log(`[v4.2] Triggering recognition index rebuild after person deletion`)
+  logger.info("admin/actions", `Triggering recognition index rebuild after person deletion for ID: ${id}`)
   const rebuildResult = await rebuildRecognitionIndexAction()
 
   if (rebuildResult.error) {
-    console.warn(`[v4.2] Failed to rebuild index after person deletion:`, rebuildResult.error)
+    logger.warn("admin/actions", `Failed to rebuild index after person deletion for ID: ${id}`, rebuildResult.error)
   } else {
-    console.log(`[v4.2] Index rebuilt successfully:`, rebuildResult.message)
+    logger.info(
+      "admin/actions",
+      `Index rebuilt successfully after person deletion for ID: ${id}`,
+      rebuildResult.message,
+    )
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Person deleted successfully", { id })
   return { success: true }
 }
 
@@ -743,22 +773,23 @@ export async function saveFaceTagsAction(
   const { error } = await supabase.from("photo_faces").insert(tagsToInsert)
 
   if (error) {
-    console.error("[v0] Error saving face tags:", error)
+    logger.error("admin/actions", "Error saving face tags", error)
     return { error: error.message }
   }
 
   const hasVerifiedFaces = tags.some((tag) => tag.verified && tag.personId && tag.embedding && tag.embedding.length > 0)
   if (hasVerifiedFaces) {
-    console.log("[v0] Verified faces saved, rebuilding recognition index...")
+    logger.info("admin/actions", "Verified faces saved, rebuilding recognition index...")
     try {
       await rebuildRecognitionIndexAction()
-      console.log("[v0] Index rebuilt successfully")
+      logger.info("admin/actions", "Index rebuilt successfully")
     } catch (indexError) {
-      console.error("[v0] Error rebuilding index:", indexError)
+      logger.error("admin/actions", "Error rebuilding index", indexError)
     }
   }
 
   revalidatePath("/admin")
+  logger.info("admin/actions", "Face tags saved successfully", { photoId, tagCount: tags.length })
   return { success: true }
 }
 
@@ -769,7 +800,7 @@ export async function getAllFaceDescriptorsAction() {
     const descriptors = await getAllFaceDescriptors(supabase)
     return { success: true, data: descriptors }
   } catch (error: any) {
-    console.error("[v0] Error getting face descriptors:", error)
+    logger.error("admin/actions", "Error getting face descriptors", error)
     return { error: error.message || "Failed to get face descriptors" }
   }
 }
@@ -779,9 +810,10 @@ export async function saveFaceDescriptorAction(personId: string, descriptor: num
 
   try {
     await saveFaceDescriptor(supabase, personId, new Float32Array(descriptor), sourceImageId)
+    logger.info("admin/actions", "Face descriptor saved successfully", { personId, sourceImageId })
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error saving face descriptor:", error)
+    logger.error("admin/actions", "Error saving face descriptor", error)
     return { error: error.message || "Failed to save face descriptor" }
   }
 }
@@ -793,7 +825,7 @@ export async function getPhotoFacesAction(photoId: string) {
     const faces = await getPhotoFaces(supabase, photoId)
     return { success: true, data: faces }
   } catch (error: any) {
-    console.error("[v0] Error getting photo faces:", error)
+    logger.error("admin/actions", "Error getting photo faces", error)
     return { error: error.message || "Failed to get photo faces" }
   }
 }
@@ -809,9 +841,10 @@ export async function getBatchPhotoFacesAction(photoIds: string[]) {
 
     if (error) throw error
 
+    logger.debug("admin/actions", `Fetched ${faces?.length || 0} photo faces for batch request`)
     return { success: true, data: faces }
   } catch (error: any) {
-    console.error("[v0] Error getting batch photo faces:", error)
+    logger.error("admin/actions", "Error getting batch photo faces", error)
     return { success: false, error: error.message || "Failed to get batch photo faces" }
   }
 }
@@ -822,9 +855,10 @@ export async function deletePhotoFaceAction(faceId: string) {
   try {
     await deletePhotoFace(supabase, faceId)
     revalidatePath("/admin")
+    logger.info("admin/actions", "Photo face deleted successfully", { faceId })
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error deleting photo face:", error)
+    logger.error("admin/actions", "Error deleting photo face", error)
     return { error: error.message || "Failed to delete photo face" }
   }
 }
@@ -842,9 +876,10 @@ export async function updatePhotoFaceAction(
   try {
     await updatePhotoFace(supabase, faceId, updates)
     revalidatePath("/admin")
+    logger.info("admin/actions", "Photo face updated successfully", { faceId, updates })
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error updating photo face:", error)
+    logger.error("admin/actions", "Error updating photo face", error)
     return { error: error.message || "Failed to update photo face" }
   }
 }
@@ -853,7 +888,7 @@ export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Getting face recognition stats for gallery:", galleryId)
+    logger.debug("admin/actions", "Getting face recognition stats for gallery", galleryId)
 
     // Get all images for the gallery
     const imagesResult = await safeSupabaseCall(() =>
@@ -864,7 +899,7 @@ export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
     if (!imagesResult.data) return { success: true, data: {} }
 
     const images = imagesResult.data
-    console.log("[v0] Found images:", images.length)
+    logger.debug("admin/actions", "Found images", images.length)
 
     // Get all photo faces for these images
     const imageIds = images.map((img) => img.id)
@@ -880,7 +915,7 @@ export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
     const facesError = facesResult.error // Declare facesError here
     if (facesError) throw facesError
     const faces = facesResult.data || []
-    console.log("[v0] Found photo faces:", faces.length)
+    logger.debug("admin/actions", "Found photo faces", faces.length)
 
     // Calculate stats for each image
     const stats: Record<string, { total: number; recognized: number; fullyRecognized: boolean }> = {}
@@ -896,16 +931,17 @@ export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
       }
 
       if (imageFaces.length > 0) {
-        console.log(
-          `[v0] Image ${image.id}: ${recognizedFaces.length}/${imageFaces.length} faces verified, fully: ${stats[image.id].fullyRecognized}`,
+        logger.debug(
+          "admin/actions",
+          `Image ${image.id}: ${recognizedFaces.length}/${imageFaces.length} faces verified, fully: ${stats[image.id].fullyRecognized}`,
         )
       }
     }
 
-    console.log("[v0] Stats calculated for", Object.keys(stats).length, "images")
+    logger.debug("admin/actions", "Stats calculated for", Object.keys(stats).length, "images")
     return { success: true, data: stats }
   } catch (error: any) {
-    console.error("[v0] Error getting face recognition stats:", error)
+    logger.error("admin/actions", "Error getting face recognition stats", error)
     return { error: error.message || "Failed to get face recognition stats" }
   }
 }
@@ -927,9 +963,10 @@ export async function getPersonPhotosAction(personId: string) {
       .filter((img: any) => img !== null)
       .filter((img: any, index: number, self: any[]) => self.findIndex((i: any) => i.id === img.id) === index)
 
+    logger.debug("admin/actions", `Found ${photos?.length || 0} photos for person ${personId}`)
     return { success: true, data: photos || [] }
   } catch (error: any) {
-    console.error("[v0] Error getting person photos:", error)
+    logger.error("admin/actions", "Error getting person photos", error)
     return { error: error.message || "Failed to get person photos" }
   }
 }
@@ -943,9 +980,10 @@ export async function updatePersonAvatarAction(personId: string, avatarUrl: stri
     if (error) throw error
 
     revalidatePath("/admin")
+    logger.info("admin/actions", "Person avatar updated successfully", { personId, avatarUrl })
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error updating person avatar:", error)
+    logger.error("admin/actions", "Error updating person avatar", error)
     return { error: error.message || "Failed to update person avatar" }
   }
 }
@@ -954,19 +992,19 @@ export async function getRecognitionStatsAction() {
   const supabase = await createClient()
 
   if (!supabase) {
-    console.error("[v1.0] Supabase client is null")
+    logger.error("admin/actions", "Supabase client is null")
     return { error: "Database connection failed" }
   }
 
-  try {
-    console.log("[v1.0] [getRecognitionStatsAction] Starting...")
+  logger.debug("admin/actions", "[getRecognitionStatsAction] Starting...")
 
+  try {
     const { count: peopleCount, error: peopleError } = await supabase
       .from("people")
       .select("*", { count: "exact", head: true })
 
     if (peopleError) throw peopleError
-    console.log("[v1.0] [getRecognitionStatsAction] Total people:", peopleCount)
+    logger.debug("admin/actions", `Total people: ${peopleCount}`)
 
     let allPhotoFaces: any[] = []
     let hasMore = true
@@ -990,22 +1028,22 @@ export async function getRecognitionStatsAction() {
       }
     }
 
-    console.log("[v1.0] [getRecognitionStatsAction] Loaded", allPhotoFaces.length, "photo_faces records total")
+    logger.debug("admin/actions", `Loaded ${allPhotoFaces.length} photo_faces records total`)
 
     const verifiedCount = allPhotoFaces.filter((pf) => pf.verified).length
     const highConfidenceCount = allPhotoFaces.filter(
       (pf) => pf.confidence && pf.confidence >= 0.6 && !pf.verified,
     ).length
 
-    console.log("[v1.0] [getRecognitionStatsAction] Total verified faces:", verifiedCount)
-    console.log("[v1.0] [getRecognitionStatsAction] Total high confidence (not verified) faces:", highConfidenceCount)
+    logger.debug("admin/actions", `Total verified faces: ${verifiedCount}`)
+    logger.debug("admin/actions", `Total high confidence (not verified) faces: ${highConfidenceCount}`)
 
     const { count: descriptorsCount, error: descriptorsError } = await supabase
       .from("face_descriptors")
       .select("*", { count: "exact", head: true })
 
     if (descriptorsError) throw descriptorsError
-    console.log("[v1.0] [getRecognitionStatsAction] Total descriptors:", descriptorsCount)
+    logger.debug("admin/actions", `Total descriptors: ${descriptorsCount}`)
 
     const { data: peopleData, error: peopleDataError } = await supabase
       .from("people")
@@ -1013,7 +1051,7 @@ export async function getRecognitionStatsAction() {
       .order("real_name")
 
     if (peopleDataError) throw peopleDataError
-    console.log("[v1.0] [getRecognitionStatsAction] Processing", peopleData?.length, "people")
+    logger.debug("admin/actions", `Processing ${peopleData?.length || 0} people`)
 
     const facesByPerson = new Map<string, any[]>()
     for (const face of allPhotoFaces) {
@@ -1031,7 +1069,7 @@ export async function getRecognitionStatsAction() {
       .in("person_id", peopleIds)
 
     if (allDescError) {
-      console.warn("[v1.0] Error fetching descriptors:", allDescError)
+      logger.warn("admin/actions", "Error fetching descriptors", allDescError)
     }
 
     const descriptorCountsMap = new Map<string, number>()
@@ -1041,11 +1079,7 @@ export async function getRecognitionStatsAction() {
       }
     }
 
-    console.log(
-      "[v1.0] [getRecognitionStatsAction] Built descriptor counts map for",
-      descriptorCountsMap.size,
-      "people",
-    )
+    logger.debug("admin/actions", `Built descriptor counts map for ${descriptorCountsMap.size} people`)
 
     const peopleStats = []
     for (const person of peopleData || []) {
@@ -1074,7 +1108,7 @@ export async function getRecognitionStatsAction() {
 
     peopleStats.sort((a, b) => b.totalConfirmed - a.totalConfirmed)
 
-    console.log("[v1.0] [getRecognitionStatsAction] Completed successfully")
+    logger.debug("admin/actions", "Completed getRecognitionStatsAction successfully")
 
     return {
       success: true,
@@ -1089,7 +1123,7 @@ export async function getRecognitionStatsAction() {
       },
     }
   } catch (error: any) {
-    console.error("[v1.0] Error getting recognition stats:", error)
+    logger.error("admin/actions", "Error getting recognition stats", error)
     return { error: error.message || "Failed to get recognition stats" }
   }
 }
@@ -1098,8 +1132,8 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] ===== getPersonPhotosWithDetailsAction START =====")
-    console.log("[v0] Querying photos for person_id:", personId)
+    logger.debug("admin/actions", " ===== getPersonPhotosWithDetailsAction START =====")
+    logger.debug("admin/actions", "Querying photos for person_id:", personId)
 
     const photoFacesResult = await safeSupabaseCall(() =>
       supabase
@@ -1119,9 +1153,12 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
       return pf.confidence && pf.confidence >= 0.6 // Only show unverified if confidence is high
     })
 
-    console.log("[v0] Found", allPhotoFaces_.length, "total photo_faces,", photoFaces.length, "after filtering")
+    logger.debug(
+      "admin/actions",
+      `Found ${allPhotoFaces_.length} total photo_faces, ${photoFaces.length} after filtering`,
+    )
     photoFaces.forEach((pf, index) => {
-      console.log(`[v0] PhotoFace ${index + 1}:`, {
+      logger.debug("admin/actions", `PhotoFace ${index + 1}:`, {
         id: pf.id,
         photo_id: pf.photo_id,
         person_id: pf.person_id,
@@ -1153,13 +1190,13 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
         const facesForPerson = facesByPhotoForPerson.get(photoId) || []
         const isVerified = facesForPerson.some((face) => face.verified === true)
 
-        console.log(`[v0] Photo ${pf.gallery_images.original_filename}:`)
-        console.log(`[v0]   - Photo ID: ${photoId}`)
-        console.log(`[v0]   - Faces for this person: ${facesForPerson.length}`)
+        logger.debug("admin/actions", `Photo ${pf.gallery_images.original_filename}:`)
+        logger.debug("admin/actions", `  - Photo ID: ${photoId}`)
+        logger.debug("admin/actions", `  - Faces for this person: ${facesForPerson.length}`)
         facesForPerson.forEach((face, idx) => {
-          console.log(`[v0]   - Face ${idx + 1}: verified=${face.verified}, confidence=${face.confidence}`)
+          logger.debug("admin/actions", `  - Face ${idx + 1}: verified=${face.verified}, confidence=${face.confidence}`)
         })
-        console.log(`[v0]   - Final isVerified: ${isVerified}`)
+        logger.debug("admin/actions", `  - Final isVerified: ${isVerified}`)
 
         photosMap.set(photoId, {
           ...pf.gallery_images,
@@ -1175,8 +1212,8 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
     }
 
     const photos = Array.from(photosMap.values())
-    console.log("[v0] Returning", photos.length, "unique photos")
-    console.log("[v0] ===== getPersonPhotosWithDetailsAction END =====")
+    logger.debug("admin/actions", "Returning", photos.length, "unique photos")
+    logger.debug("admin/actions", " ===== getPersonPhotosWithDetailsAction END =====")
 
     const photoIds = photos.map((p) => p.id)
 
@@ -1187,7 +1224,7 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
       .or(`verified.eq.true,confidence.gte.0.6`)
 
     if (facesError) {
-      console.error("[v0] Error getting all faces:", facesError)
+      logger.error("admin/actions", "Error getting all faces", facesError)
       throw facesError
     }
 
@@ -1205,13 +1242,14 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
       const uniquePersonIds = new Set(faces.map((face) => face.person_id).filter(Boolean))
       const faceCount = uniquePersonIds.size
 
-      console.log(`[v0] Photo ${photo.id} (${photo.filename}): ${faceCount} unique person(s) found`)
+      logger.debug("admin/actions", `Photo ${photo.id} (${photo.filename}): ${faceCount} unique person(s) found`)
       if (faces.length > 0) {
-        console.log(`[v0] Detailed face info for ${photo.filename}:`)
+        logger.debug("admin/actions", `Detailed face info for ${photo.filename}:`)
         faces.forEach((face, index) => {
           const personName = face.people?.real_name || face.people?.telegram_name || "Unknown"
-          console.log(
-            `[v0]   Face ${index + 1}: Person="${personName}" (ID: ${face.person_id}), verified=${face.verified}, confidence=${face.confidence}`,
+          logger.debug(
+            "admin/actions",
+            `  Face ${index + 1}: Person="${personName}" (ID: ${face.person_id}), verified=${face.verified}, confidence=${face.confidence}`,
           )
         })
       }
@@ -1233,10 +1271,10 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
       return b.filename.localeCompare(a.filename)
     })
 
-    console.log("[v0] Photos with face count and sorted:", photosWithFaceCount.length)
+    logger.debug("admin/actions", "Photos with face count and sorted:", photosWithFaceCount.length)
     return { success: true, data: photosWithFaceCount }
   } catch (error: any) {
-    console.error("[v0] Error getting person photos with details:", error)
+    logger.error("admin/actions", "Error getting person photos with details", error)
     return { error: error.message || "Failed to get person photos" }
   }
 }
@@ -1262,9 +1300,10 @@ export async function deleteFaceDescriptorsForPhotoAction(photoId: string, perso
     if (faceError) throw faceError
 
     revalidatePath("/admin")
+    logger.info("admin/actions", "Face descriptors and faces deleted successfully", { photoId, personId })
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error deleting face descriptors:", error)
+    logger.error("admin/actions", "Error deleting face descriptors for photo", error)
     return { error: error.message || "Failed to delete face descriptors" }
   }
 }
@@ -1285,9 +1324,10 @@ export async function verifyPersonOnPhotoAction(photoId: string, personId: strin
     if (error) throw error
 
     revalidatePath("/admin")
+    logger.info("admin/actions", "Person verified on photo successfully", { photoId, personId })
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error verifying person on photo:", error)
+    logger.error("admin/actions", "Error verifying person on photo", error)
     return { error: error.message || "Failed to verify person" }
   }
 }
@@ -1308,9 +1348,10 @@ export async function updatePersonVisibilityAction(
     if (error) throw error
 
     revalidatePath("/admin")
+    logger.info("admin/actions", "Person visibility updated successfully", { personId, field, value })
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error updating person visibility:", error)
+    logger.error("admin/actions", "Error updating person visibility", error)
     return { error: error.message || "Failed to update person visibility" }
   }
 }
@@ -1329,7 +1370,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
       return { error: `Person "${personRealName}" not found` }
     }
 
-    console.log(`[v0] Debug: Found person ${person.real_name} (${person.id})`)
+    logger.debug("admin/actions", `Debug: Found person ${person.real_name} (${person.id})`)
 
     const { data: faceDescriptors, error: descriptorsError } = await supabase
       .from("face_descriptors")
@@ -1339,7 +1380,10 @@ export async function debugPersonPhotosAction(personRealName: string) {
 
     if (descriptorsError) throw descriptorsError
 
-    console.log(`[v0] Debug: Found ${faceDescriptors?.length || 0} face_descriptors for ${person.real_name}`)
+    logger.debug(
+      "admin/actions",
+      `Debug: Found ${faceDescriptors?.length || 0} face_descriptors for ${person.real_name}`,
+    )
 
     const { data: photoFaces, error: facesError } = await supabase
       .from("photo_faces")
@@ -1348,10 +1392,10 @@ export async function debugPersonPhotosAction(personRealName: string) {
 
     if (facesError) throw facesError
 
-    console.log(`[v0] Debug: Found ${photoFaces?.length || 0} photo_faces records for ${person.real_name}`)
+    logger.debug("admin/actions", `Debug: Found ${photoFaces?.length || 0} photo_faces records for ${person.real_name}`)
 
     const photoIds = [...new Set(photoFaces?.map((pf) => pf.photo_id) || [])]
-    console.log(`[v0] Debug: Unique photos: ${photoIds.length}`)
+    logger.debug("admin/actions", `Debug: Unique photos: ${photoIds.length}`)
 
     const descriptorsByPhoto = new Map<string, any[]>()
     for (const desc of faceDescriptors || []) {
@@ -1370,7 +1414,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
         .eq("photo_id", photoId)
 
       if (allFacesError) {
-        console.error(`[v0] Error getting faces for photo ${photoId}:`, allFacesError)
+        logger.error("admin/actions", `Error getting faces for photo ${photoId}`, allFacesError)
         continue
       }
 
@@ -1397,45 +1441,45 @@ export async function debugPersonPhotosAction(personRealName: string) {
 
     photoDetails.sort((a, b) => a.filename.localeCompare(b.filename))
 
-    console.log(`\n[v0] ========== DEBUG: All photos and descriptors for ${person.real_name} ==========`)
-    console.log(`[v0] Total face_descriptors: ${faceDescriptors?.length || 0}`)
-    console.log(`[v0] Total photo_faces: ${photoFaces?.length || 0}`)
-    console.log(`[v0] Unique photos: ${photoIds.length}`)
+    logger.debug(`\n[v0] ========== DEBUG: All photos and descriptors for ${person.real_name} ==========`)
+    logger.debug(`[v0] Total face_descriptors: ${faceDescriptors?.length || 0}`)
+    logger.debug(`[v0] Total photo_faces: ${photoFaces?.length || 0}`)
+    logger.debug(`[v0] Unique photos: ${photoIds.length}`)
 
     photoDetails.forEach((photo, index) => {
-      console.log(`\n[v0] Photo ${index + 1}: ${photo.filename}`)
-      console.log(`[v0]   Photo ID: ${photo.photoId}`)
-      console.log(`[v0]   Total faces on photo: ${photo.faces.length}`)
-      console.log(`[v0]   Descriptors for this photo: ${photo.descriptors.length}`)
+      logger.debug(`\n[v0] Photo ${index + 1}: ${photo.filename}`)
+      logger.debug(`[v0]   Photo ID: ${photo.photoId}`)
+      logger.debug(`[v0]   Total faces on photo: ${photo.faces.length}`)
+      logger.debug(`[v0]   Descriptors for this photo: ${photo.descriptors.length}`)
 
       if (photo.descriptors.length > 0) {
-        console.log(`[v0]   Descriptor IDs:`)
+        logger.debug(`[v0]   Descriptor IDs:`)
         photo.descriptors.forEach((desc, descIndex) => {
-          console.log(`[v0]     ${descIndex + 1}. ID: ${desc.id}, Created: ${desc.created_at}`)
+          logger.debug(`[v0]     ${descIndex + 1}. ID: ${desc.id}, Created: ${desc.created_at}`)
         })
       }
 
       photo.faces.forEach((face, faceIndex) => {
-        console.log(`[v0]   Face ${faceIndex + 1}:`)
-        console.log(`[v0]     Person: ${face.personName} (ID: ${face.personId})`)
-        console.log(`[v0]     Verified: ${face.verified}`)
-        console.log(`[v0]     Confidence: ${face.confidence}`)
+        logger.debug(`[v0]   Face ${faceIndex + 1}:`)
+        logger.debug(`[v0]     Person: ${face.personName} (ID: ${face.personId})`)
+        logger.debug(`[v0]     Verified: ${face.verified}`)
+        logger.debug(`[v0]     Confidence: ${face.confidence}`)
       })
     })
 
     const orphanedDescriptors = (faceDescriptors || []).filter((desc) => !photoIds.includes(desc.source_image_id || ""))
 
     if (orphanedDescriptors.length > 0) {
-      console.log(`\n[v0] WARNING: Found ${orphanedDescriptors.length} orphaned descriptors (no matching photo_faces):`)
+      logger.warn(`\n[v0] WARNING: Found ${orphanedDescriptors.length} orphaned descriptors (no matching photo_faces):`)
       orphanedDescriptors.forEach((desc, index) => {
-        console.log(`[v0]   Orphaned descriptor ${index + 1}:`)
-        console.log(`[v0]     ID: ${desc.id}`)
-        console.log(`[v0]     Source Image ID: ${desc.source_image_id || "NULL"}`)
-        console.log(`[v0]     Created: ${desc.created_at}`)
+        logger.warn(`[v0]   Orphaned descriptor ${index + 1}:`)
+        logger.warn(`[v0]     ID: ${desc.id}`)
+        logger.warn(`[v0]     Source Image ID: ${desc.source_image_id || "NULL"}`)
+        logger.warn(`[v0]     Created: ${desc.created_at}`)
       })
     }
 
-    console.log(`[v0] ========== END DEBUG ==========\n`)
+    logger.debug(`[v0] ========== END DEBUG ==========\n`)
 
     return {
       success: true,
@@ -1449,7 +1493,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error in debug action:", error)
+    logger.error("admin/actions", "Error in debug action", error)
     return { error: error.message || "Failed to debug person photos" }
   }
 }
@@ -1458,7 +1502,7 @@ export async function syncVerifiedAndConfidenceAction() {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Starting sync of verified and confidence fields...")
+    logger.debug("admin/actions", "Starting sync of verified and confidence fields...")
 
     const { data: verifiedRecords, error: verifiedError } = await supabase
       .from("photo_faces")
@@ -1469,7 +1513,7 @@ export async function syncVerifiedAndConfidenceAction() {
     if (verifiedError) throw verifiedError
 
     const verifiedCount = verifiedRecords?.length || 0
-    console.log(`[v0] Updated ${verifiedCount} records: set confidence=1 where verified=true`)
+    logger.debug("admin/actions", `Updated ${verifiedCount} records: set confidence=1 where verified=true`)
 
     const { data: confidenceRecords, error: confidenceError } = await supabase
       .from("photo_faces")
@@ -1480,7 +1524,7 @@ export async function syncVerifiedAndConfidenceAction() {
     if (confidenceError) throw confidenceError
 
     const confidenceCount = confidenceRecords?.length || 0
-    console.log(`[v0] Updated ${confidenceCount} records: set verified=true where confidence=1`)
+    logger.debug("admin/actions", `Updated ${confidenceCount} records: set verified=true where confidence=1`)
 
     const { count: totalVerified } = await supabase
       .from("photo_faces")
@@ -1492,9 +1536,18 @@ export async function syncVerifiedAndConfidenceAction() {
       .select("*", { count: "exact", head: true })
       .eq("confidence", 1.0)
 
-    console.log(`[v0] Final stats: ${totalVerified} verified records, ${totalConfidence1} confidence=1 records`)
+    logger.debug(
+      "admin/actions",
+      `Final stats: ${totalVerified} verified records, ${totalConfidence1} confidence=1 records`,
+    )
 
     revalidatePath("/admin")
+    logger.info("admin/actions", "Sync verified and confidence completed", {
+      verifiedCount,
+      confidenceCount,
+      totalVerified,
+      totalConfidence1,
+    })
     return {
       success: true,
       data: {
@@ -1505,7 +1558,7 @@ export async function syncVerifiedAndConfidenceAction() {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error syncing verified and confidence:", error)
+    logger.error("admin/actions", "Error syncing verified and confidence", error)
     return { error: error.message || "Failed to sync verified and confidence" }
   }
 }
@@ -1524,7 +1577,7 @@ export async function debugPhotoFacesAction(filename: string) {
       return { error: `Photo "${filename}" not found` }
     }
 
-    console.log(`[v0] Debug: Found photo ${photo.original_filename} (${photo.id})`)
+    logger.debug("admin/actions", `Debug: Found photo ${photo.original_filename} (${photo.id})`)
 
     const { data: photoFaces, error: facesError } = await supabase
       .from("photo_faces")
@@ -1533,23 +1586,23 @@ export async function debugPhotoFacesAction(filename: string) {
 
     if (facesError) throw facesError
 
-    console.log(`[v0] Debug: Found ${photoFaces?.length || 0} faces on photo ${photo.original_filename}`)
+    logger.debug("admin/actions", `Debug: Found ${photoFaces?.length || 0} faces on photo ${photo.original_filename}`)
 
-    console.log(`\n[v0] ========== DEBUG: Faces on photo "${photo.original_filename}" ==========`)
-    console.log(`[v0] Photo ID: ${photo.id}`)
-    console.log(`[v0] Gallery ID: ${photo.gallery_id}`)
-    console.log(`[v0] Total faces detected: ${photoFaces?.length || 0}`)
+    logger.debug(`\n[v0] ========== DEBUG: Faces on photo "${photo.original_filename}" ==========`)
+    logger.debug(`[v0] Photo ID: ${photo.id}`)
+    logger.debug(`[v0] Gallery ID: ${photo.gallery_id}`)
+    logger.debug(`[v0] Total faces detected: ${photoFaces?.length || 0}`)
 
     photoFaces?.forEach((face, index) => {
       const personName = face.people?.real_name || face.people?.telegram_name || "Unknown"
-      console.log(`\n[v0] Face ${index + 1}:`)
-      console.log(`[v0]   Person: ${personName}`)
-      console.log(`[v0]   Person ID: ${face.person_id}`)
-      console.log(`[v0]   Verified: ${face.verified}`)
-      console.log(`[v0]   Confidence: ${face.confidence}`)
-      console.log(`[v0]   Bounding Box:`, face.insightface_bbox) // Use insightface_bbox
+      logger.debug(`\n[v0] Face ${index + 1}:`)
+      logger.debug(`[v0]   Person: ${personName}`)
+      logger.debug(`[v0]   Person ID: ${face.person_id}`)
+      logger.debug(`[v0]   Verified: ${face.verified}`)
+      logger.debug(`[v0]   Confidence: ${face.confidence}`)
+      logger.debug(`[v0]   Bounding Box:`, face.insightface_bbox) // Use insightface_bbox
     })
-    console.log(`[v0] ========== END DEBUG ==========\n`)
+    logger.debug(`[v0] ========== END DEBUG ==========\n`)
 
     return {
       success: true,
@@ -1569,7 +1622,7 @@ export async function debugPhotoFacesAction(filename: string) {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error in debug photo action:", error)
+    logger.error("admin/actions", "Error in debug photo action", error)
     return { error: error.message || "Failed to debug photo faces" }
   }
 }
@@ -1578,7 +1631,7 @@ export async function cleanupUnverifiedFacesAction() {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Starting cleanup of unverified face descriptors...")
+    logger.debug("admin/actions", "Starting cleanup of unverified face descriptors...")
 
     const { count: totalBefore } = await supabase.from("photo_faces").select("*", { count: "exact", head: true })
 
@@ -1587,7 +1640,7 @@ export async function cleanupUnverifiedFacesAction() {
       .select("*", { count: "exact", head: true })
       .eq("verified", true)
 
-    console.log(`[v0] Before cleanup: ${totalBefore} total records, ${verifiedBefore} verified`)
+    logger.debug("admin/actions", `Before cleanup: ${totalBefore} total records, ${verifiedBefore} verified`)
 
     const { data: inconsistentRecords, error: inconsistentError } = await supabase
       .from("photo_faces")
@@ -1600,11 +1653,14 @@ export async function cleanupUnverifiedFacesAction() {
     if (inconsistentError) throw inconsistentError
 
     if (inconsistentRecords && inconsistentRecords.length > 0) {
-      console.log(`[v0] WARNING: Found ${inconsistentRecords.length} records with verified=true but confidence != 1:`)
+      logger.warn(
+        "admin/actions",
+        `Found ${inconsistentRecords.length} records with verified=true but confidence != 1:`,
+      )
       inconsistentRecords.forEach((record) => {
         const personName = record.people?.real_name || record.people?.telegram_name || "Unknown"
         const filename = record.gallery_images?.original_filename || "Unknown"
-        console.log(`[v0]   - Photo: ${filename}, Person: ${personName}, Confidence: ${record.confidence}`)
+        logger.warn("admin/actions", `  - Photo: ${filename}, Person: ${personName}, Confidence: ${record.confidence}`)
       })
     }
 
@@ -1615,7 +1671,7 @@ export async function cleanupUnverifiedFacesAction() {
 
     if (fetchError) throw fetchError
 
-    console.log(`[v0] Found ${unverifiedFaces?.length || 0} unverified photo_faces to delete`)
+    logger.debug("admin/actions", `Found ${unverifiedFaces?.length || 0} unverified photo_faces to delete`)
 
     if (unverifiedFaces && unverifiedFaces.length > 0) {
       // Group by photo_id and person_id to delete matching descriptors
@@ -1637,13 +1693,13 @@ export async function cleanupUnverifiedFacesAction() {
           .select("id")
 
         if (descError) {
-          console.error(`[v0] Error deleting descriptors for image ${source_image_id}:`, descError)
+          logger.error("admin/actions", `Error deleting descriptors for image ${source_image_id}`, descError)
         } else {
           deletedDescriptorsCount += deletedDescs?.length || 0
         }
       }
 
-      console.log(`[v0] Deleted ${deletedDescriptorsCount} corresponding face_descriptors`)
+      logger.debug("admin/actions", `Deleted ${deletedDescriptorsCount} corresponding face_descriptors`)
     }
 
     const { data: deletedRecords, error: deleteError } = await supabase
@@ -1655,7 +1711,7 @@ export async function cleanupUnverifiedFacesAction() {
     if (deleteError) throw deleteError
 
     const deletedCount = deletedRecords?.length || 0
-    console.log(`[v0] Deleted ${deletedCount} unverified photo_faces records`)
+    logger.debug("admin/actions", `Deleted ${deletedCount} unverified photo_faces records`)
 
     const { count: totalAfter } = await supabase.from("photo_faces").select("*", { count: "exact", head: true })
 
@@ -1664,8 +1720,8 @@ export async function cleanupUnverifiedFacesAction() {
       .select("*", { count: "exact", head: true })
       .eq("verified", true)
 
-    console.log(`[v0] After cleanup: ${totalAfter} total records, ${verifiedAfter} verified`)
-    console.log(`[v0] Cleanup complete!`)
+    logger.debug("admin/actions", `After cleanup: ${totalAfter} total records, ${verifiedAfter} verified`)
+    logger.info("admin/actions", `Cleanup complete! Deleted ${deletedCount} unverified records.`)
 
     revalidatePath("/admin")
     return {
@@ -1689,7 +1745,7 @@ export async function cleanupUnverifiedFacesAction() {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error cleaning up unverified faces:", error)
+    logger.error("admin/actions", "Error cleaning up unverified faces", error)
     return { error: error.message || "Failed to cleanup unverified faces" }
   }
 }
@@ -1698,11 +1754,11 @@ export async function cleanupDuplicateFacesAction() {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Starting cleanup of duplicate face descriptors...")
+    logger.debug("admin/actions", "Starting cleanup of duplicate face descriptors...")
 
     const { count: totalBefore } = await supabase.from("photo_faces").select("*", { count: "exact", head: true })
 
-    console.log(`[v0] Before cleanup: ${totalBefore} total photo_faces records`)
+    logger.debug("admin/actions", `Before cleanup: ${totalBefore} total photo_faces records`)
 
     let allRecords: any[] = []
     let hasMore = true
@@ -1727,7 +1783,7 @@ export async function cleanupDuplicateFacesAction() {
       }
     }
 
-    console.log(`[v0] Loaded ${allRecords.length} records for analysis`)
+    logger.debug("admin/actions", `Loaded ${allRecords.length} records for analysis`)
 
     const groupedRecords = new Map<string, any[]>()
     for (const record of allRecords) {
@@ -1740,7 +1796,7 @@ export async function cleanupDuplicateFacesAction() {
 
     const duplicateGroups = Array.from(groupedRecords.entries()).filter(([_, records]) => records.length > 1)
 
-    console.log(`[v0] Found ${duplicateGroups.length} groups with duplicates`)
+    logger.debug("admin/actions", `Found ${duplicateGroups.length} groups with duplicates`)
 
     let totalDeleted = 0
     const idsToDelete: string[] = []
@@ -1755,8 +1811,9 @@ export async function cleanupDuplicateFacesAction() {
       const toKeep = records[0]
       const toDelete = records.slice(1)
 
-      console.log(
-        `[v0] Group ${key}: keeping record ${toKeep.id} (verified=${toKeep.verified}, confidence=${toKeep.confidence}, created_at=${toKeep.created_at}), deleting ${toDelete.length} duplicates`,
+      logger.debug(
+        "admin/actions",
+        `Group ${key}: keeping record ${toKeep.id} (verified=${toKeep.verified}, confidence=${toKeep.confidence}, created_at=${toKeep.created_at}), deleting ${toDelete.length} duplicates`,
       )
 
       idsToDelete.push(...toDelete.map((r) => r.id))
@@ -1771,15 +1828,15 @@ export async function cleanupDuplicateFacesAction() {
         const { error: deleteError } = await supabase.from("photo_faces").delete().in("id", batch)
 
         if (deleteError) {
-          console.error(`[v0] Error deleting descriptor batch ${i / batchSize + 1}:`, deleteError)
+          logger.error("admin/actions", `Error deleting descriptor batch ${i / batchSize + 1}`, deleteError)
           throw deleteError
         }
       }
     }
 
-    console.log(`[v0] Deleted ${totalDeleted} duplicate photo_faces records`)
+    logger.debug("admin/actions", `Deleted ${totalDeleted} duplicate photo_faces records`)
 
-    console.log("[v0] Cleaning up orphaned face_descriptors...")
+    logger.debug("admin/actions", "Cleaning up orphaned face_descriptors...")
 
     const validCombinations = new Set(
       allRecords.filter((r) => !idsToDelete.includes(r.id)).map((r) => `${r.person_id}_${r.photo_id}`),
@@ -1807,7 +1864,7 @@ export async function cleanupDuplicateFacesAction() {
       }
     }
 
-    console.log(`[v0] Loaded ${allDescriptors.length} face_descriptors for analysis`)
+    logger.debug("admin/actions", `Loaded ${allDescriptors.length} face_descriptors for analysis`)
 
     const orphanedDescriptorIds = allDescriptors
       .filter((desc) => {
@@ -1816,7 +1873,7 @@ export async function cleanupDuplicateFacesAction() {
       })
       .map((desc) => desc.id)
 
-    console.log(`[v0] Found ${orphanedDescriptorIds.length} orphaned face_descriptors`)
+    logger.debug("admin/actions", `Found ${orphanedDescriptorIds.length} orphaned face_descriptors`)
 
     let deletedDescriptors = 0
     if (orphanedDescriptorIds.length > 0) {
@@ -1826,14 +1883,14 @@ export async function cleanupDuplicateFacesAction() {
         const { error: deleteDescError } = await supabase.from("face_descriptors").delete().in("id", batch)
 
         if (deleteDescError) {
-          console.error(`[v0] Error deleting descriptor batch ${i / batchSize + 1}:`, deleteDescError)
+          logger.error("admin/actions", `Error deleting descriptor batch ${i / batchSize + 1}`, deleteDescError)
           throw deleteDescError
         }
         deletedDescriptors += batch.length
       }
     }
 
-    console.log(`[v0] Deleted ${deletedDescriptors} orphaned face_descriptors`)
+    logger.debug("admin/actions", `Deleted ${deletedDescriptors} orphaned face_descriptors`)
 
     const { count: totalAfter } = await supabase.from("photo_faces").select("*", { count: "exact", head: true })
 
@@ -1846,10 +1903,14 @@ export async function cleanupDuplicateFacesAction() {
       .from("face_descriptors")
       .select("*", { count: "exact", head: true })
 
-    console.log(
-      `[v0] After cleanup: ${totalAfter} photo_faces records, ${verifiedAfter} verified, ${descriptorsAfter} face_descriptors`,
+    logger.info(
+      "admin/actions",
+      `After cleanup: ${totalAfter} photo_faces records, ${verifiedAfter} verified, ${descriptorsAfter} face_descriptors`,
     )
-    console.log(`[v0] Cleanup complete!`)
+    logger.info(
+      "admin/actions",
+      `Cleanup complete! Deleted ${totalDeleted} duplicates and ${deletedDescriptors} orphaned descriptors.`,
+    )
 
     revalidatePath("/admin")
     return {
@@ -1869,7 +1930,7 @@ export async function cleanupDuplicateFacesAction() {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error cleaning up duplicate faces:", error)
+    logger.error("admin/actions", "Error cleaning up duplicate faces", error)
     return { error: error.message || "Failed to cleanup duplicate faces" }
   }
 }
@@ -1878,7 +1939,7 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Starting cleanup for person:", personRealName)
+    logger.debug("admin/actions", `Starting cleanup for person: ${personRealName}`)
 
     const { data: person, error: personError } = await supabase
       .from("people")
@@ -1887,17 +1948,18 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
       .single()
 
     if (personError || !person) {
+      logger.error("admin/actions", `Person not found: ${personRealName}`)
       return { error: `Person not found: ${personRealName}` }
     }
 
-    console.log("[v0] Found person:", person.real_name, person.id)
+    logger.debug("admin/actions", "Found person:", person.real_name, person.id)
 
     const { count: descriptorsBefore } = await supabase
       .from("face_descriptors")
       .select("id", { count: "exact", head: true })
       .eq("person_id", person.id)
 
-    console.log("[v0] Before cleanup:", descriptorsBefore, "descriptors")
+    logger.debug("admin/actions", `Before cleanup: ${descriptorsBefore} descriptors`)
 
     const { data: photoFaces, error: pfError } = await supabase
       .from("photo_faces")
@@ -1906,7 +1968,7 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
 
     if (pfError) throw pfError
 
-    console.log("[v0] Loaded", photoFaces?.length || 0, "photo_faces records")
+    logger.debug("admin/actions", `Loaded ${photoFaces?.length || 0} photo_faces records`)
 
     const verifiedMap = new Map<string, boolean>()
     for (const pf of photoFaces || []) {
@@ -1922,7 +1984,7 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
 
     if (descError) throw descError
 
-    console.log("[v0] Loaded", descriptors?.length || 0, "descriptors")
+    logger.debug("admin/actions", `Loaded ${descriptors?.length || 0} descriptors`)
 
     const groupedDescriptors = new Map<string, any[]>()
     for (const descriptor of descriptors || []) {
@@ -1937,7 +1999,7 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
 
     const duplicateGroups = Array.from(groupedDescriptors.entries()).filter(([_, descs]) => descs.length > 1)
 
-    console.log("[v0] Found", duplicateGroups.length, "photos with duplicates")
+    logger.debug("admin/actions", `Found ${duplicateGroups.length} photos with duplicates`)
 
     let totalDeleted = 0
     let verifiedGroupsCount = 0
@@ -1963,7 +2025,10 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
       totalDeleted += toDelete.length
     }
 
-    console.log("[v0] Verified groups:", verifiedGroupsCount, "Unverified groups:", unverifiedGroupsCount)
+    logger.debug(
+      "admin/actions",
+      `Verified groups: ${verifiedGroupsCount}, Unverified groups: ${unverifiedGroupsCount}`,
+    )
 
     if (idsToDelete.length > 0) {
       const { error: deleteError } = await supabase.from("face_descriptors").delete().in("id", idsToDelete)
@@ -1971,7 +2036,7 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
       if (deleteError) throw deleteError
     }
 
-    console.log("[v0] Deleted", totalDeleted, "duplicates")
+    logger.debug("admin/actions", `Deleted ${totalDeleted} duplicates`)
 
     const { count: descriptorsAfter } = await supabase
       .from("face_descriptors")
@@ -1983,7 +2048,11 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
       .select("id", { count: "exact", head: true })
       .eq("person_id", person.id)
 
-    console.log("[v0] After cleanup:", descriptorsAfter, "descriptors,", photoFacesCount, "photo_faces")
+    logger.debug("admin/actions", `After cleanup: ${descriptorsAfter} descriptors, ${photoFacesCount} photo_faces`)
+    logger.info(
+      "admin/actions",
+      `Cleanup for person ${person.real_name} completed. Deleted ${totalDeleted} descriptors.`,
+    )
 
     revalidatePath("/admin")
     return {
@@ -2004,7 +2073,7 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error cleaning up person descriptors:", error)
+    logger.error("admin/actions", "Error cleaning up person descriptors", error)
     return { error: error.message || "Failed to cleanup person descriptors" }
   }
 }
@@ -2013,7 +2082,7 @@ export async function regeneratePersonDescriptorsAction(personId: string) {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Starting descriptor regeneration for person ID:", personId)
+    logger.debug("admin/actions", `Starting descriptor regeneration for person ID: ${personId}`)
 
     const { data: person, error: personError } = await supabase
       .from("people")
@@ -2022,16 +2091,17 @@ export async function regeneratePersonDescriptorsAction(personId: string) {
       .single()
 
     if (personError || !person) {
+      logger.error("admin/actions", `Person not found with ID: ${personId}`)
       return { error: `Person not found with ID: ${personId}` }
     }
 
-    console.log("[v0] Found person:", person.real_name, person.id)
+    logger.debug("admin/actions", "Found person:", person.real_name, person.id)
 
     const { error: deleteDescError } = await supabase.from("face_descriptors").delete().eq("person_id", person.id)
 
     if (deleteDescError) throw deleteDescError
 
-    console.log("[v0] Deleted all existing descriptors for", person.real_name)
+    logger.debug("admin/actions", `Deleted all existing descriptors for ${person.real_name}`)
 
     const { data: verifiedFaces, error: facesError } = await supabase
       .from("photo_faces")
@@ -2041,7 +2111,7 @@ export async function regeneratePersonDescriptorsAction(personId: string) {
 
     if (facesError) throw facesError
 
-    console.log("[v0] Found", verifiedFaces?.length || 0, "verified faces for regeneration")
+    logger.debug("admin/actions", `Found ${verifiedFaces?.length || 0} verified faces for regeneration`)
 
     // The client will need to:
     // 1. Load each image
@@ -2065,7 +2135,7 @@ export async function regeneratePersonDescriptorsAction(personId: string) {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error regenerating person descriptors:", error)
+    logger.error("admin/actions", "Error regenerating person descriptors", error)
     return { error: error.message || "Failed to regenerate person descriptors" }
   }
 }
@@ -2074,13 +2144,13 @@ export async function cleanupDuplicateDescriptorsAction() {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Starting cleanup of duplicate face descriptors...")
+    logger.debug("admin/actions", "Starting cleanup of duplicate face descriptors...")
 
     const { count: descriptorsBefore } = await supabase
       .from("face_descriptors")
       .select("*", { count: "exact", head: true })
 
-    console.log(`[v0] Before cleanup: ${descriptorsBefore} total face_descriptors`)
+    logger.debug("admin/actions", `Before cleanup: ${descriptorsBefore} total face_descriptors`)
 
     let allPhotoFaces: any[] = []
     let pfHasMore = true
@@ -2110,7 +2180,7 @@ export async function cleanupDuplicateDescriptorsAction() {
       }
     }
 
-    console.log(`[v0] Loaded ${allPhotoFaces.length} photo_faces records`)
+    logger.debug("admin/actions", `Loaded ${allPhotoFaces.length} photo_faces records`)
 
     const verifiedMap = new Map<string, boolean>()
     for (const pf of allPhotoFaces) {
@@ -2141,7 +2211,7 @@ export async function cleanupDuplicateDescriptorsAction() {
       }
     }
 
-    console.log(`[v0] Loaded ${allDescriptors.length} face_descriptors for analysis`)
+    logger.debug("admin/actions", `Loaded ${allDescriptors.length} face_descriptors for analysis`)
 
     const groupedDescriptors = new Map<string, any[]>()
     for (const descriptor of allDescriptors) {
@@ -2158,7 +2228,7 @@ export async function cleanupDuplicateDescriptorsAction() {
       ([_, descriptors]) => descriptors.length > 1,
     )
 
-    console.log(`[v0] Found ${duplicateGroups.length} groups with duplicate descriptors`)
+    logger.debug("admin/actions", `Found ${duplicateGroups.length} groups with duplicate descriptors`)
 
     let totalDeleted = 0
     let verifiedGroupsCount = 0
@@ -2172,15 +2242,17 @@ export async function cleanupDuplicateDescriptorsAction() {
         // Keep OLDEST for verified
         descriptors.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
         verifiedGroupsCount++
-        console.log(
-          `[v0] Group ${key} (VERIFIED): keeping OLDEST descriptor ${descriptors[0].id} (created ${descriptors[0].created_at})`,
+        logger.debug(
+          "admin/actions",
+          `Group ${key} (VERIFIED): keeping OLDEST descriptor ${descriptors[0].id} (created ${descriptors[0].created_at})`,
         )
       } else {
         // Keep NEWEST for unverified
         descriptors.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         unverifiedGroupsCount++
-        console.log(
-          `[v0] Group ${key} (unverified): keeping NEWEST descriptor ${descriptors[0].id} (created ${descriptors[0].created_at})`,
+        logger.debug(
+          "admin/actions",
+          `Group ${key} (unverified): keeping NEWEST descriptor ${descriptors[0].id} (created ${descriptors[0].created_at})`,
         )
       }
 
@@ -2189,7 +2261,10 @@ export async function cleanupDuplicateDescriptorsAction() {
       totalDeleted += toDelete.length
     }
 
-    console.log(`[v0] Processed ${verifiedGroupsCount} verified groups and ${unverifiedGroupsCount} unverified groups`)
+    logger.debug(
+      "admin/actions",
+      `Processed ${verifiedGroupsCount} verified groups and ${unverifiedGroupsCount} unverified groups`,
+    )
 
     if (idsToDelete.length > 0) {
       const batchSize = 100
@@ -2198,13 +2273,13 @@ export async function cleanupDuplicateDescriptorsAction() {
         const { error: deleteError } = await supabase.from("face_descriptors").delete().in("id", batch)
 
         if (deleteError) {
-          console.error(`[v0] Error deleting batch ${i / batchSize + 1}:`, deleteError)
+          logger.error("admin/actions", `Error deleting batch ${i / batchSize + 1}`, deleteError)
           throw deleteError
         }
       }
     }
 
-    console.log(`[v0] Deleted ${totalDeleted} duplicate face_descriptors`)
+    logger.debug("admin/actions", `Deleted ${totalDeleted} duplicate face_descriptors`)
 
     const { count: descriptorsAfter } = await supabase
       .from("face_descriptors")
@@ -2212,8 +2287,11 @@ export async function cleanupDuplicateDescriptorsAction() {
 
     const { count: photoFacesCount } = await supabase.from("photo_faces").select("*", { count: "exact", head: true })
 
-    console.log(`[v0] After cleanup: ${descriptorsAfter} face_descriptors, ${photoFacesCount} photo_faces records`)
-    console.log(`[v0] Cleanup complete!`)
+    logger.debug(
+      "admin/actions",
+      `After cleanup: ${descriptorsAfter} face_descriptors, ${photoFacesCount} photo_faces records`,
+    )
+    logger.info("admin/actions", `Cleanup complete! Deleted ${totalDeleted} duplicate descriptors.`)
 
     revalidatePath("/admin")
     return {
@@ -2233,7 +2311,7 @@ export async function cleanupDuplicateDescriptorsAction() {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error cleaning up duplicate descriptors:", error)
+    logger.error("admin/actions", "Error cleaning up duplicate descriptors", error)
     return { error: error.message || "Failed to cleanup duplicate descriptors" }
   }
 }
@@ -2242,7 +2320,7 @@ export async function getPhotosWithExcessDescriptorsAction() {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Finding photos with excess descriptors...")
+    logger.debug("admin/actions", "Finding photos with excess descriptors...")
 
     // Get all photo_faces with person info
     let allPhotoFaces: any[] = []
@@ -2276,7 +2354,7 @@ export async function getPhotosWithExcessDescriptorsAction() {
       }
     }
 
-    console.log(`[v0] Loaded ${allPhotoFaces.length} verified photo_faces`)
+    logger.debug("admin/actions", `Loaded ${allPhotoFaces.length} verified photo_faces`)
 
     // Group by photo_id to count faces per photo
     const facesByPhoto = new Map<string, any[]>()
@@ -2309,7 +2387,7 @@ export async function getPhotosWithExcessDescriptorsAction() {
       }
     }
 
-    console.log(`[v0] Loaded ${allDescriptors.length} descriptors`)
+    logger.debug("admin/actions", `Loaded ${allDescriptors.length} descriptors`)
 
     // Group descriptors by photo_id and person_id
     const descriptorsByPhotoAndPerson = new Map<string, number>()
@@ -2335,7 +2413,7 @@ export async function getPhotosWithExcessDescriptorsAction() {
       }
 
       if (descriptorCount > faceCount) {
-        console.log(`[v0] Photo ${photoId}: ${descriptorCount} descriptors > ${faceCount} faces`)
+        logger.debug("admin/actions", `Photo ${photoId}: ${descriptorCount} descriptors > ${faceCount} faces`)
 
         // Add to processing list
         for (const face of faces) {
@@ -2374,7 +2452,7 @@ export async function getPhotosWithExcessDescriptorsAction() {
       photoCount: stat.photoCount,
     }))
 
-    console.log(`[v0] Found ${photosToProcess.length} faces to process across ${statsArray.length} people`)
+    logger.info("admin/actions", `Found ${photosToProcess.length} faces to process across ${statsArray.length} people`)
 
     return {
       success: true,
@@ -2385,7 +2463,7 @@ export async function getPhotosWithExcessDescriptorsAction() {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error getting photos with excess descriptors:", error)
+    logger.error("admin/actions", "Error getting photos with excess descriptors", error)
     return { error: error.message || "Failed to get photos with excess descriptors" }
   }
 }
@@ -2401,7 +2479,7 @@ export async function getVerifiedPeopleForPhotoAction(photoId: string) {
       .eq("verified", true)
 
     if (error) {
-      console.error("[v0] Error fetching verified people for photo:", error)
+      logger.error("admin/actions", "Error fetching verified people for photo", error)
       return { success: false, error: error.message }
     }
 
@@ -2412,9 +2490,10 @@ export async function getVerifiedPeopleForPhotoAction(photoId: string) {
         name: face.people!.real_name || face.people!.telegram_name || "Неизвестный",
       }))
 
+    logger.debug("admin/actions", `Found ${people.length} verified people for photo ${photoId}`)
     return { success: true, data: people }
   } catch (error: any) {
-    console.error("[v0] Error getting verified people for photo:", error)
+    logger.error("admin/actions", "Error getting verified people for photo", error)
     return { success: false, error: error.message || "Failed to get verified people" }
   }
 }
@@ -2423,7 +2502,7 @@ export async function prepareTrainingDatasetAction() {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Starting dataset preparation...")
+    logger.debug("admin/actions", "Starting dataset preparation...")
 
     // Get all photo_faces with person info
     let allPhotoFaces: any[] = []
@@ -2457,7 +2536,7 @@ export async function prepareTrainingDatasetAction() {
       }
     }
 
-    console.log(`[v0] Loaded ${allPhotoFaces.length} verified photo_faces`)
+    logger.debug("admin/actions", `Loaded ${allPhotoFaces.length} verified photo_faces`)
 
     // Group by photo_id to count faces per photo
     const facesByPhoto = new Map<string, any[]>()
@@ -2490,7 +2569,7 @@ export async function prepareTrainingDatasetAction() {
       }
     }
 
-    console.log(`[v0] Loaded ${allDescriptors.length} descriptors`)
+    logger.debug("admin/actions", `Loaded ${allDescriptors.length} descriptors`)
 
     // Group descriptors by photo_id and person_id
     const descriptorsByPhotoAndPerson = new Map<string, number>()
@@ -2527,13 +2606,14 @@ export async function prepareTrainingDatasetAction() {
 
         personImageCount.set(personId, currentCount + 1)
 
-        console.log(
-          `[v0] Added to training data: PhotoID=${photoId}, PersonID=${personId}, Filename=${filename}, ImageURL=${imageUrl}`,
+        logger.debug(
+          "admin/actions",
+          `Added to training data: PhotoID=${photoId}, PersonID=${personId}, Filename=${filename}, ImageURL=${imageUrl}`,
         )
       }
     }
 
-    console.log(`[v0] Prepared ${trainingData.length} entries for training dataset.`)
+    logger.info("admin/actions", `Prepared ${trainingData.length} entries for training dataset.`)
 
     // Optional: Save training data to a file or return it
     // For now, just log and return success. In a real app, you might want to save this.
@@ -2547,7 +2627,7 @@ export async function prepareTrainingDatasetAction() {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error preparing training dataset:", error)
+    logger.error("admin/actions", "Error preparing training dataset", error)
     return { error: error.message || "Failed to prepare training dataset" }
   }
 }
@@ -2564,7 +2644,7 @@ export async function savePhotoFaceTagsAction(
 ) {
   const supabase = await createClient()
 
-  console.log("[v0] savePhotoFaceTagsAction called for photo:", photoId, "with", tags.length, "tags")
+  logger.debug("admin/actions", `savePhotoFaceTagsAction called for photo: ${photoId} with ${tags.length} tags`)
 
   try {
     const { data: photo, error: photoError } = await supabase
@@ -2574,18 +2654,18 @@ export async function savePhotoFaceTagsAction(
       .single()
 
     if (photoError || !photo) {
-      console.error("[v0] Error fetching photo:", photoError)
+      logger.error("admin/actions", "Error fetching photo", photoError)
       return { error: "Photo not found" }
     }
 
-    console.log("[v0] Photo found:", photo.image_url)
+    logger.debug("admin/actions", "Photo found:", photo.image_url)
 
     // Delete existing tags and descriptors for this photo
     await supabase.from("photo_faces").delete().eq("photo_id", photoId)
     await supabase.from("face_descriptors").delete().eq("source_image_id", photoId)
 
     if (tags.length > 0) {
-      console.log("[v0] Calling backend to generate descriptors")
+      logger.debug("admin/actions", "Calling backend to generate descriptors")
 
       try {
         const result = await apiFetch("/api/recognition/generate-descriptors", {
@@ -2601,9 +2681,9 @@ export async function savePhotoFaceTagsAction(
           }),
         })
 
-        console.log("[v0] Descriptors generated:", result)
+        logger.debug("admin/actions", "Descriptors generated:", result)
       } catch (fetchError) {
-        console.error("[v0] Error calling backend for descriptors:", fetchError)
+        logger.error("admin/actions", "Error calling backend for descriptors", fetchError)
         // Continue anyway - save the tags even if descriptor generation fails
       }
     }
@@ -2616,21 +2696,21 @@ export async function savePhotoFaceTagsAction(
       verified: tag.verified,
     }))
 
-    console.log("[v0] Inserting tags:", tagsToInsert)
+    logger.debug("admin/actions", "Inserting tags:", tagsToInsert)
 
     const { error } = await supabase.from("photo_faces").insert(tagsToInsert)
 
     if (error) {
-      console.error("[v0] Error saving photo face tags:", error)
+      logger.error("admin/actions", "Error saving photo face tags", error)
       return { error: error.message }
     }
 
-    console.log("[v0] Tags saved successfully")
+    logger.info("admin/actions", "Tags saved successfully")
 
     revalidatePath("/admin")
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error in savePhotoFaceTagsAction:", error)
+    logger.error("admin/actions", "Error in savePhotoFaceTagsAction", error)
     return { error: error.message || "Failed to save tags" }
   }
 }
@@ -2638,13 +2718,15 @@ export async function savePhotoFaceTagsAction(
 // NEW FUNCTION: getUnknownFaceClustersAction
 export async function getUnknownFaceClustersAction(galleryId: string) {
   try {
-    const data = await apiFetch(`/cluster-unknown-faces?gallery_id=${galleryId}`, {
+    logger.debug("admin/actions", `Clustering unknown faces for gallery ${galleryId}`)
+    const data = await apiFetch(`/api/cluster-unknown-faces?gallery_id=${galleryId}`, {
       method: "POST",
     })
 
+    logger.debug("admin/actions", `Found ${data.clusters?.length || 0} unknown face clusters`)
     return { success: true, data: data.clusters }
   } catch (error: any) {
-    console.error("[v0] Error clustering unknown faces:", error)
+    logger.error("admin/actions", "Error clustering unknown faces", error)
     return { error: error.message || "Failed to cluster unknown faces" }
   }
 }
@@ -2652,12 +2734,13 @@ export async function getUnknownFaceClustersAction(galleryId: string) {
 // NEW FUNCTION: regenerateUnknownDescriptorsAction
 export async function regenerateUnknownDescriptorsAction(galleryId: string) {
   try {
-    console.log(`[v0] Calling regenerate-unknown-descriptors for gallery ${galleryId}`)
+    logger.debug("admin/actions", `Calling regenerate-unknown-descriptors for gallery ${galleryId}`)
 
-    const data = await apiFetch(`/regenerate-unknown-descriptors?gallery_id=${galleryId}`, {
+    const data = await apiFetch(`/api/recognition/regenerate-unknown-descriptors?gallery_id=${galleryId}`, {
       method: "POST",
     })
 
+    logger.info("admin/actions", `Regenerated descriptors for gallery ${galleryId}`, data)
     return {
       success: true,
       data: {
@@ -2668,21 +2751,23 @@ export async function regenerateUnknownDescriptorsAction(galleryId: string) {
       },
     }
   } catch (error: any) {
-    console.error("[v0] Error regenerating descriptors:", error)
+    logger.error("admin/actions", "Error regenerating descriptors", error)
     return { error: error.message || "Failed to regenerate descriptors" }
   }
 }
 
 export async function rejectFaceClusterAction(clusterFaces: { photo_id: string; descriptor: number[] }[]) {
   try {
+    logger.debug("admin/actions", `Rejecting ${clusterFaces.length} faces from a cluster`)
     await apiFetch("/api/recognition/reject-faces", {
       method: "POST",
       body: JSON.stringify({ faces: clusterFaces }),
     })
 
+    logger.info("admin/actions", `Successfully rejected ${clusterFaces.length} faces`)
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error rejecting faces:", error)
+    logger.error("admin/actions", "Error rejecting faces", error)
     return { error: error.message || "Failed to reject faces" }
   }
 }
@@ -2694,6 +2779,7 @@ export async function createPersonFromClusterAction(
   const supabase = await createClient()
 
   try {
+    logger.debug("admin/actions", `Creating person from cluster: ${personName}`)
     const { data: person, error: personError } = await supabase
       .from("people")
       .insert({
@@ -2727,13 +2813,17 @@ export async function createPersonFromClusterAction(
         .is("person_id", null)
 
       if (updateError) {
-        console.error("[v0] Error updating photo_face:", updateError)
+        logger.error("admin/actions", "Error updating photo_face", updateError)
       }
     }
 
+    logger.info("admin/actions", `Person created from cluster: ${personName}`, {
+      personId: person.id,
+      clusterSize: clusterFaces.length,
+    })
     return { success: true, data: person }
   } catch (error: any) {
-    console.error("[v0] Error creating person from cluster:", error)
+    logger.error("admin/actions", "Error creating person from cluster", error)
     return { error: error.message || "Failed to create person from cluster" }
   }
 }
@@ -2742,16 +2832,18 @@ export async function generateMissingDescriptorsAction() {
   const supabase = await createClient()
 
   try {
+    logger.debug("admin/actions", "Generating missing descriptors...")
     const { data: facesWithoutDescriptors, error: queryError } = await supabase.rpc(
       "get_verified_faces_without_descriptors",
     )
 
     if (queryError) {
-      console.error("[v0] Error fetching faces without descriptors:", queryError)
+      logger.error("admin/actions", "Error fetching faces without descriptors", queryError)
       return { error: queryError.message }
     }
 
     if (!facesWithoutDescriptors || facesWithoutDescriptors.length === 0) {
+      logger.info("admin/actions", "No faces without descriptors found")
       return { success: true, processed: 0, message: "No faces without descriptors found" }
     }
 
@@ -2796,30 +2888,31 @@ export async function generateMissingDescriptorsAction() {
           }),
         })
 
-        console.log(`[v0] Generated ${result.generated} descriptors for photo ${photoId}`)
+        logger.debug("admin/actions", `Generated ${result.generated} descriptors for photo ${photoId}`)
         successCount += result.generated || 0
       } catch (fetchError: any) {
-        console.error(`[v0] Error processing photo ${photoId}:`, fetchError)
+        logger.error("admin/actions", `Error processing photo ${photoId}`, fetchError)
         errors.push(`Photo ${photoId}: ${fetchError.message}`)
         errorCount++
       }
     }
 
     if (successCount > 0) {
-      console.log("[v3.31] Rebuilding HNSWLIB index after generating descriptors...")
+      logger.debug("admin/actions", "Rebuilding HNSWLIB index after generating descriptors...")
       try {
         const rebuildResult = await apiFetch("/api/recognition/rebuild-index", {
           method: "POST",
         })
 
-        console.log("[v3.31] ✓ Index rebuilt successfully:", rebuildResult)
+        logger.info("admin/actions", "✓ Index rebuilt successfully:", rebuildResult)
       } catch (rebuildError: any) {
-        console.error("[v3.31] ✗ Error rebuilding index:", rebuildError)
+        logger.error("admin/actions", "✗ Error rebuilding index:", rebuildError)
       }
     }
 
     revalidatePath("/admin")
 
+    logger.info("admin/actions", `Generated missing descriptors. Processed: ${successCount}, Errors: ${errorCount}`)
     return {
       success: true,
       processed: successCount,
@@ -2828,20 +2921,20 @@ export async function generateMissingDescriptorsAction() {
       message: `Generated ${successCount} descriptors. ${errorCount > 0 ? `${errorCount} errors occurred.` : ""}`,
     }
   } catch (error: any) {
-    console.error("[v0] Error in generateMissingDescriptorsAction:", error)
+    logger.error("admin/actions", "Error in generateMissingDescriptorsAction", error)
     return { error: error.message || "Failed to generate descriptors" }
   }
 }
 
 export async function rebuildRecognitionIndexAction() {
   try {
-    console.log("[v3.31] Calling rebuild-index endpoint...")
+    logger.debug("admin/actions", "Calling rebuild-index endpoint...")
 
     const result = await apiFetch("/api/recognition/rebuild-index", {
       method: "POST",
     })
 
-    console.log("[v3.31] ✓ Index rebuilt:", result)
+    logger.info("admin/actions", "Index rebuilt successfully:", result)
 
     return {
       success: result.success,
@@ -2851,7 +2944,7 @@ export async function rebuildRecognitionIndexAction() {
       message: `Index rebuilt: ${result.new_descriptor_count} descriptors for ${result.unique_people_count} people`,
     }
   } catch (error: any) {
-    console.error("[v3.31] Error rebuilding index:", error)
+    logger.error("admin/actions", "Error rebuilding index", error)
     return { error: error.message || "Failed to rebuild index" }
   }
 }
@@ -2860,11 +2953,12 @@ export async function assignClusterToPersonAction(
   personId: string,
   clusterFaces: { photo_id: string; descriptor: number[] }[],
 ) {
-  console.log("[v0] assignClusterToPersonAction started")
-  console.log("[v0] personId:", personId)
-  console.log("[v0] clusterFaces count:", clusterFaces.length)
-  console.log(
-    "[v0] clusterFaces details:",
+  logger.debug("admin/actions", "assignClusterToPersonAction started")
+  logger.debug("admin/actions", "personId:", personId)
+  logger.debug("admin/actions", "clusterFaces count:", clusterFaces.length)
+  logger.debug(
+    "admin/actions",
+    "clusterFaces details:",
     clusterFaces.map((f) => ({
       photo_id: f.photo_id,
       has_descriptor: !!f.descriptor,
@@ -2883,24 +2977,27 @@ export async function assignClusterToPersonAction(
         source_image_id: face.photo_id,
       }))
 
-    console.log("[v0] Valid descriptors to insert:", validDescriptors.length, "out of", clusterFaces.length)
+    logger.debug(
+      "admin/actions",
+      `Valid descriptors to insert: ${validDescriptors.length} out of ${clusterFaces.length}`,
+    )
 
     if (validDescriptors.length > 0) {
       const { error: descriptorsError } = await supabase.from("face_descriptors").insert(validDescriptors)
 
       if (descriptorsError) {
-        console.error("[v0] Error inserting descriptors:", descriptorsError)
+        logger.error("admin/actions", "Error inserting descriptors", descriptorsError)
         throw descriptorsError
       }
 
-      console.log("[v0] Descriptors inserted successfully")
+      logger.debug("admin/actions", "Descriptors inserted successfully")
     } else {
-      console.warn("[v0] No valid descriptors to insert")
+      logger.warn("admin/actions", "No valid descriptors to insert")
     }
 
     for (const face of clusterFaces) {
-      console.log("[v0] Processing face for photo_id:", face.photo_id)
-      console.log("[v0] Has descriptor:", !!face.descriptor, "length:", face.descriptor?.length || 0)
+      logger.debug("admin/actions", "Processing face for photo_id:", face.photo_id)
+      logger.debug("admin/actions", "Has descriptor:", !!face.descriptor, "length:", face.descriptor?.length || 0)
 
       // Get all unassigned faces on this photo
       const { data: photoFaces, error: fetchError } = await supabase
@@ -2910,18 +3007,19 @@ export async function assignClusterToPersonAction(
         .is("person_id", null)
 
       if (fetchError) {
-        console.error("[v0] Error fetching photo_faces:", fetchError)
+        logger.error("admin/actions", "Error fetching photo_faces", fetchError)
         continue
       }
 
       if (!photoFaces || photoFaces.length === 0) {
-        console.warn("[v0] No unassigned photo_faces found for photo_id:", face.photo_id)
+        logger.warn("admin/actions", "No unassigned photo_faces found for photo_id:", face.photo_id)
         continue
       }
 
-      console.log("[v0] Found photo_faces:", photoFaces.length)
-      console.log(
-        "[v0] photo_faces details:",
+      logger.debug("admin/actions", `Found photo_faces: ${photoFaces.length}`)
+      logger.debug(
+        "admin/actions",
+        `photo_faces details:`,
         photoFaces.map((pf) => ({
           id: pf.id,
           has_descriptor: !!pf.insightface_descriptor,
@@ -2934,7 +3032,7 @@ export async function assignClusterToPersonAction(
       if (face.descriptor && Array.isArray(face.descriptor) && face.descriptor.length > 0) {
         for (const pf of photoFaces) {
           if (!pf.insightface_descriptor) {
-            console.log("[v0] photo_face", pf.id, "has no descriptor, skipping")
+            logger.debug("admin/actions", "photo_face", pf.id, "has no descriptor, skipping")
             continue
           }
 
@@ -2943,42 +3041,48 @@ export async function assignClusterToPersonAction(
             try {
               pfDescriptor = JSON.parse(pf.insightface_descriptor)
             } catch (e) {
-              console.error("[v0] Failed to parse descriptor for photo_face", pf.id)
+              logger.error("admin/actions", "Failed to parse descriptor for photo_face", pf.id)
               continue
             }
           } else if (Array.isArray(pf.insightface_descriptor)) {
             pfDescriptor = pf.insightface_descriptor
           } else {
-            console.error("[v0] Unknown descriptor type for photo_face", pf.id, ":", typeof pf.insightface_descriptor)
+            logger.error(
+              "admin/actions",
+              "Unknown descriptor type for photo_face",
+              pf.id,
+              ":",
+              typeof pf.insightface_descriptor,
+            )
             continue
           }
 
           const similarity = cosineSimilarity(pfDescriptor, face.descriptor)
-          console.log("[v0] Similarity between photo_face", pf.id, "and cluster face:", similarity)
+          logger.debug("admin/actions", "Similarity between photo_face", pf.id, "and cluster face:", similarity)
 
           if (similarity > 0.99) {
             matchingFace = pf
-            console.log("[v0] Found matching face with similarity:", similarity)
+            logger.debug("admin/actions", "Found matching face with similarity:", similarity)
             break
           }
         }
       }
 
       if (!matchingFace && photoFaces.length === 1) {
-        console.log("[v0] Only one face on photo, using it as match")
+        logger.debug("admin/actions", "Only one face on photo, using it as match")
         matchingFace = photoFaces[0]
       }
 
       if (!matchingFace) {
-        console.error("[v0] No matching face found for photo_id:", face.photo_id)
+        logger.error("admin/actions", "No matching face found for photo_id:", face.photo_id)
         continue
       }
 
-      console.log("[v0] Matched photo_face:", matchingFace.id)
+      logger.debug("admin/actions", "Matched photo_face:", matchingFace.id)
 
       const shouldBeVerified = true
 
-      console.log("[v0] shouldBeVerified:", shouldBeVerified)
+      logger.debug("admin/actions", "shouldBeVerified:", shouldBeVerified)
 
       const { error: updateError } = await supabase
         .from("photo_faces")
@@ -2990,23 +3094,23 @@ export async function assignClusterToPersonAction(
         .eq("id", matchingFace.id)
 
       if (updateError) {
-        console.error("[v0] Error updating photo_face:", updateError)
+        logger.error("admin/actions", "Error updating photo_face", updateError)
       } else {
-        console.log("[v0] Successfully updated photo_face:", matchingFace.id)
+        logger.debug("admin/actions", "Successfully updated photo_face:", matchingFace.id)
       }
     }
 
-    console.log("[v0] assignClusterToPersonAction completed successfully")
+    logger.info("admin/actions", "assignClusterToPersonAction completed successfully")
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error assigning cluster to person:", error)
+    logger.error("admin/actions", "Error assigning cluster to person", error)
     return { success: false, error: error.message || "Failed to assign cluster to person" }
   }
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) {
-    console.warn("[v0] Cosine similarity called with arrays of different lengths:", a.length, b.length)
+    logger.warn("admin/actions", "Cosine similarity called with arrays of different lengths:", a.length, b.length)
     return 0
   }
   if (a.length === 0) return 1 // Empty arrays are considered identical
@@ -3032,10 +3136,11 @@ export async function markPhotoAsProcessedAction(photoId: string) {
   const { error } = await supabase.from("gallery_images").update({ has_been_processed: true }).eq("id", photoId)
 
   if (error) {
-    console.error("[v0] Error marking photo as processed:", error)
+    logger.error("admin/actions", "Error marking photo as processed", error)
     return { success: false, error: error.message }
   }
 
+  logger.info("admin/actions", "Photo marked as processed successfully", { photoId })
   return { success: true }
 }
 
@@ -3043,7 +3148,7 @@ export async function checkDatabaseIntegrityAction() {
   const supabase = await createClient()
 
   try {
-    console.log("[v0] Starting database integrity check...")
+    logger.debug("admin/actions", "Starting database integrity check...")
 
     const report = {
       photoFaces: {
@@ -3073,7 +3178,7 @@ export async function checkDatabaseIntegrityAction() {
       details: {} as Record<string, any[]>,
     }
 
-    console.log("[v0] Step 1: Checking verified faces without person...")
+    logger.debug("admin/actions", "Step 1: Checking verified faces without person...")
 
     // 1. Photo Faces: verified=true но person_id=null
     const { data: verifiedWithoutPerson } = await supabase
@@ -3086,9 +3191,9 @@ export async function checkDatabaseIntegrityAction() {
     if (verifiedWithoutPerson && verifiedWithoutPerson.length > 0) {
       report.details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 10)
     }
-    console.log("[v0] Found", report.photoFaces.verifiedWithoutPerson, "verified faces without person")
+    logger.debug("admin/actions", `Found ${report.photoFaces.verifiedWithoutPerson} verified faces without person`)
 
-    console.log("[v0] Step 2: Checking verified faces with wrong confidence...")
+    logger.debug("admin/actions", "Step 2: Checking verified faces with wrong confidence...")
 
     // 2. Photo Faces: verified=true но recognition_confidence != 1.0
     const { data: verifiedWithWrongConfidence } = await supabase
@@ -3101,9 +3206,12 @@ export async function checkDatabaseIntegrityAction() {
     if (verifiedWithWrongConfidence && verifiedWithWrongConfidence.length > 0) {
       report.details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 10)
     }
-    console.log("[v0] Found", report.photoFaces.verifiedWithWrongConfidence, "verified faces with wrong confidence")
+    logger.debug(
+      "admin/actions",
+      `Found ${report.photoFaces.verifiedWithWrongConfidence} verified faces with wrong confidence`,
+    )
 
-    console.log("[v0] Step 3: Checking faces with person but without confidence...")
+    logger.debug("admin/actions", "Step 3: Checking faces with person but without confidence...")
 
     // 3. Photo Faces: person_id NOT NULL но recognition_confidence IS NULL или = 0
     const { data: personWithoutConfidence } = await supabase
@@ -3116,9 +3224,12 @@ export async function checkDatabaseIntegrityAction() {
     if (personWithoutConfidence && personWithoutConfidence.length > 0) {
       report.details.personWithoutConfidence = personWithoutConfidence.slice(0, 10)
     }
-    console.log("[v0] Found", report.photoFaces.personWithoutConfidence, "faces with person but without confidence")
+    logger.debug(
+      "admin/actions",
+      `Found ${report.photoFaces.personWithoutConfidence} faces with person but without confidence`,
+    )
 
-    console.log("[v0] Step 4: Checking faces with non-existent person...")
+    logger.debug("admin/actions", "Step 4: Checking faces with non-existent person...")
 
     // 4. Photo Faces: person_id ссылается на несуществующего игрока
     const { data: facesWithPerson } = await supabase
@@ -3138,9 +3249,9 @@ export async function checkDatabaseIntegrityAction() {
         report.details.nonExistentPersonFaces = nonExistentPersonFaces.slice(0, 10)
       }
     }
-    console.log("[v0] Found", report.photoFaces.nonExistentPerson, "faces with non-existent person")
+    logger.debug("admin/actions", `Found ${report.photoFaces.nonExistentPerson} faces with non-existent person`)
 
-    console.log("[v0] Step 5: Checking faces with non-existent photos...")
+    logger.debug("admin/actions", "Step 5: Checking faces with non-existent photos...")
 
     // 5. Photo Faces: photo_id ссылается на несуществующее фото
     const { data: allFaces } = await supabase.from("photo_faces").select("id, photo_id")
@@ -3148,7 +3259,7 @@ export async function checkDatabaseIntegrityAction() {
     if (allFaces && allFaces.length > 0) {
       const facesWithPhotoId = allFaces.filter((f) => f.photo_id != null)
       const photoIds = [...new Set(facesWithPhotoId.map((f) => f.photo_id))]
-      console.log("[v0] Checking", photoIds.length, "unique photo IDs...")
+      logger.debug("admin/actions", `Checking ${photoIds.length} unique photo IDs...`)
 
       const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", photoIds)
 
@@ -3159,10 +3270,10 @@ export async function checkDatabaseIntegrityAction() {
       if (nonExistentPhotoFaces.length > 0) {
         report.details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 10)
       }
-      console.log("[v0] Found", report.photoFaces.nonExistentPhoto, "faces with non-existent photo")
+      logger.debug("admin/actions", `Found ${report.photoFaces.nonExistentPhoto} faces with non-existent photo`)
     }
 
-    console.log("[v0] Step 6: Checking faces without descriptors...")
+    logger.debug("admin/actions", "Step 6: Checking faces without descriptors...")
 
     // 6. Photo Faces: лица без дескрипторов
     const { data: allPhotoFaces_ } = await supabase.from("photo_faces").select("id")
@@ -3182,9 +3293,9 @@ export async function checkDatabaseIntegrityAction() {
         report.details.facesWithoutDescriptors = facesWithoutDescriptors.slice(0, 10)
       }
     }
-    console.log("[v0] Found", report.photoFaces.withoutDescriptors, "faces without descriptors")
+    logger.debug("admin/actions", `Found ${report.photoFaces.withoutDescriptors} faces without descriptors`)
 
-    console.log("[v0] Step 7: Checking inconsistent person IDs...")
+    logger.debug("admin/actions", "Step 7: Checking inconsistent person IDs...")
 
     // 7. Face Descriptors: несогласованность person_id между photo_faces и face_descriptors
     const { data: allDescriptorsWithFaces } = await supabase
@@ -3207,16 +3318,16 @@ export async function checkDatabaseIntegrityAction() {
         report.details.inconsistentPersonIds = inconsistentPersonIds.slice(0, 10)
       }
     }
-    console.log("[v0] Found", report.photoFaces.inconsistentPersonId, "inconsistent person IDs")
+    logger.debug("admin/actions", `Found ${report.photoFaces.inconsistentPersonId} inconsistent person IDs`)
 
-    console.log("[v0] Step 8: Checking orphaned descriptors...")
+    logger.debug("admin/actions", "Step 8: Checking orphaned descriptors...")
 
     // 8. Face Descriptors: orphaned (source_image_id не существует)
     const { data: allDescriptors } = await supabase.from("face_descriptors").select("id, source_image_id")
 
     if (allDescriptors && allDescriptors.length > 0) {
       const faceIds = [...new Set(allDescriptors.map((d) => d.source_image_id).filter(Boolean))]
-      console.log("[v0] Checking", faceIds.length, "unique face IDs...")
+      logger.debug("admin/actions", `Checking ${faceIds.length} unique face IDs...`)
 
       const { data: existingFaces } = await supabase.from("photo_faces").select("id").in("id", faceIds)
 
@@ -3229,10 +3340,10 @@ export async function checkDatabaseIntegrityAction() {
       if (orphanedDescriptors.length > 0) {
         report.details.orphanedDescriptors = orphanedDescriptors.slice(0, 10)
       }
-      console.log("[v0] Found", report.faceDescriptors.orphaned, "orphaned descriptors")
+      logger.debug("admin/actions", `Found ${report.faceDescriptors.orphaned} orphaned descriptors`)
     }
 
-    console.log("[v0] Step 9: Checking descriptors with non-existent person...")
+    logger.debug("admin/actions", "Step 9: Checking descriptors with non-existent person...")
 
     // 9. Face Descriptors: person_id ссылается на несуществующего игрока
     const { data: descriptorsWithPerson } = await supabase
@@ -3252,9 +3363,12 @@ export async function checkDatabaseIntegrityAction() {
         report.details.nonExistentPersonDescriptors = nonExistentPersonDescriptors.slice(0, 10)
       }
     }
-    console.log("[v0] Found", report.faceDescriptors.nonExistentPerson, "descriptors with non-existent person")
+    logger.debug(
+      "admin/actions",
+      `Found ${report.faceDescriptors.nonExistentPerson} descriptors with non-existent person`,
+    )
 
-    console.log("[v0] Step 10: Checking descriptors without person...")
+    logger.debug("admin/actions", "Step 10: Checking descriptors without person...")
 
     // 10. Face Descriptors: без person_id
     const { count: withoutPersonCount } = await supabase
@@ -3263,9 +3377,9 @@ export async function checkDatabaseIntegrityAction() {
       .is("person_id", null)
 
     report.faceDescriptors.withoutPerson = withoutPersonCount || 0
-    console.log("[v0] Found", report.faceDescriptors.withoutPerson, "descriptors without person")
+    logger.debug("admin/actions", `Found ${report.faceDescriptors.withoutPerson} descriptors without person`)
 
-    console.log("[v0] Step 11: Checking descriptors without embedding...")
+    logger.debug("admin/actions", "Step 11: Checking descriptors without embedding...")
 
     // 11. Face Descriptors: без descriptor
     const { count: withoutEmbeddingCount } = await supabase
@@ -3274,9 +3388,9 @@ export async function checkDatabaseIntegrityAction() {
       .is("descriptor", null)
 
     report.faceDescriptors.withoutEmbedding = withoutEmbeddingCount || 0
-    console.log("[v0] Found", report.faceDescriptors.withoutEmbedding, "descriptors without embedding")
+    logger.debug("admin/actions", `Found ${report.faceDescriptors.withoutEmbedding} descriptors without embedding`)
 
-    console.log("[v0] Step 12: Checking duplicate descriptors...")
+    logger.debug("admin/actions", "Step 12: Checking duplicate descriptors...")
 
     // 12. Face Descriptors: дубликаты
     const { data: allDescriptorsForDuplicates } = await supabase
@@ -3304,12 +3418,12 @@ export async function checkDatabaseIntegrityAction() {
         report.details.duplicateDescriptors = duplicateDescriptors.slice(0, 10)
       }
     }
-    console.log("[v0] Found", report.faceDescriptors.duplicates, "duplicate descriptors")
+    logger.debug("admin/actions", `Found ${report.faceDescriptors.duplicates} duplicate descriptors`)
 
     // 13. Photos: неправильный face_count - УДАЛЕНО
     // 14. Photos: face_count > 0 но нет лиц - УДАЛЕНО
 
-    console.log("[v0] Step 15: Checking people without descriptors...")
+    logger.debug("admin/actions", "Step 15: Checking people without descriptors...")
 
     // 15. People: без дескрипторов
     const { data: allPeople } = await supabase.from("people").select("id, real_name")
@@ -3330,9 +3444,9 @@ export async function checkDatabaseIntegrityAction() {
         report.details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 10)
       }
     }
-    console.log("[v0] Found", report.people.withoutDescriptors, "people without descriptors")
+    logger.debug("admin/actions", `Found ${report.people.withoutDescriptors} people without descriptors`)
 
-    console.log("[v0] Step 16: Checking people without faces...")
+    logger.debug("admin/actions", "Step 16: Checking people without faces...")
 
     // 16. People: без фото
     if (allPeople && allPeople.length > 0) {
@@ -3351,9 +3465,9 @@ export async function checkDatabaseIntegrityAction() {
         report.details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 10)
       }
     }
-    console.log("[v0] Found", report.people.withoutFaces, "people without faces")
+    logger.debug("admin/actions", `Found ${report.people.withoutFaces} people without faces`)
 
-    console.log("[v0] Step 17: Checking duplicate people names...")
+    logger.debug("admin/actions", "Step 17: Checking duplicate people names...")
 
     // 17. People: дубликаты имен
     if (allPeople && allPeople.length > 0) {
@@ -3376,7 +3490,7 @@ export async function checkDatabaseIntegrityAction() {
         report.details.duplicateNames = peopleWithDuplicateNames.slice(0, 10)
       }
     }
-    console.log("[v0] Found", report.people.duplicateNames, "people with duplicate names")
+    logger.debug("admin/actions", `Found ${report.people.duplicateNames} people with duplicate names`)
 
     // Подсчет общего количества проблем
     report.totalIssues =
@@ -3396,11 +3510,11 @@ export async function checkDatabaseIntegrityAction() {
       report.people.withoutFaces +
       report.people.duplicateNames
 
-    console.log("[v0] Integrity check complete. Total issues:", report.totalIssues)
+    logger.info("admin/actions", `Integrity check complete. Total issues: ${report.totalIssues}`)
 
     return { success: true, data: report }
   } catch (error: any) {
-    console.error("[v0] Error checking database integrity:", error)
+    logger.error("admin/actions", "Error checking database integrity", error)
     return { success: false, error: error.message || "Failed to check database integrity" }
   }
 }
@@ -3409,7 +3523,7 @@ export async function fixIntegrityIssueAction(issueType: string, options?: any) 
   const supabase = await createClient()
 
   try {
-    console.log("[v5.0] Fixing integrity issue:", issueType, options)
+    logger.debug("admin/actions", `Fixing integrity issue: ${issueType}`, options)
 
     let fixed = 0
 
@@ -3560,13 +3674,14 @@ export async function fixIntegrityIssueAction(issueType: string, options?: any) 
       }
 
       default:
+        logger.error("admin/actions", `Unknown issue type: ${issueType}`)
         return { success: false, error: `Unknown issue type: ${issueType}` }
     }
 
-    console.log("[v5.0] Fixed", fixed, "issues of type", issueType)
+    logger.info("admin/actions", `Fixed ${fixed} issues of type ${issueType}`)
     return { success: true, data: { fixed, issueType } }
   } catch (error: any) {
-    console.error("[v5.0] Error fixing integrity issue:", error)
+    logger.error("admin/actions", "Error fixing integrity issue", error)
     return { success: false, error: error.message || "Failed to fix integrity issue" }
   }
 }
@@ -3575,7 +3690,7 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
   const supabase = await createClient()
 
   try {
-    console.log("[v0] unlinkPersonFromPhotoAction: Starting", { photoId, personId })
+    logger.debug("admin/actions", "unlinkPersonFromPhotoAction: Starting", { photoId, personId })
 
     // Delete face descriptors as they are tied to specific person
     const { error: descError } = await supabase
@@ -3585,7 +3700,7 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
       .eq("person_id", personId)
 
     if (descError) throw descError
-    console.log("[v0] unlinkPersonFromPhotoAction: Deleted face descriptors")
+    logger.debug("admin/actions", "unlinkPersonFromPhotoAction: Deleted face descriptors")
 
     // Update photo_faces to unlink person and remove verification in ONE query
     const { data: updatedFaces, error: faceError } = await supabase
@@ -3602,12 +3717,13 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
       .select()
 
     if (faceError) throw faceError
-    console.log("[v0] unlinkPersonFromPhotoAction: Updated photo_faces", { updatedFaces })
+    logger.debug("admin/actions", "unlinkPersonFromPhotoAction: Updated photo_faces", { updatedFaces })
 
     revalidatePath("/admin")
+    logger.info("admin/actions", "Person unlinked from photo successfully", { photoId, personId })
     return { success: true }
   } catch (error: any) {
-    console.error("[v0] Error unlinking person from photo:", error)
+    logger.error("admin/actions", "Error unlinking person from photo", error)
     return { error: error.message || "Failed to unlink person from photo" }
   }
 }
