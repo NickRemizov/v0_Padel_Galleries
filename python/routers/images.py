@@ -79,10 +79,9 @@ async def delete_image(image_id: str):
                 blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
                 if blob_token and image_url.startswith("https://"):
                     async with httpx.AsyncClient() as client:
-                        # Vercel Blob API требует POST с параметром _method=DELETE
-                        delete_response = await client.post(
+                        # Vercel Blob API использует DELETE с токеном в заголовке
+                        delete_response = await client.delete(
                             image_url,
-                            params={"_method": "DELETE"},
                             headers={"Authorization": f"Bearer {blob_token}"}
                         )
                         if delete_response.status_code in [200, 204]:
@@ -178,9 +177,8 @@ async def delete_all_gallery_images(gallery_id: str):
                         blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
                         if blob_token and image_url.startswith("https://"):
                             async with httpx.AsyncClient() as client:
-                                await client.post(
+                                await client.delete(
                                     image_url,
-                                    params={"_method": "DELETE"},
                                     headers={"Authorization": f"Bearer {blob_token}"}
                                 )
                     except Exception as e:

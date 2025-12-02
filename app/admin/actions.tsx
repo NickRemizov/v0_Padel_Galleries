@@ -3015,6 +3015,7 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
   }
 }
 
+// </CHANGE> Закрываем функцию deleteGalleryImageAction правильно
 export async function deleteGalleryImageAction(photoId: string, galleryId: string) {
   try {
     const response = await apiFetch(`/api/images/${photoId}`, {
@@ -3039,7 +3040,7 @@ export async function deleteGalleryImageAction(photoId: string, galleryId: strin
     console.error("[deleteGalleryImage] Error:", error)
     return { error: error.message || "Не удалось удалить изображение" }
   }
-}
+} // Добавлена закрывающая скобка функции
 
 // </CHANGE> Добавлена недостающая функция для массового удаления фото
 export async function deleteAllGalleryImagesAction(galleryId: string) {
