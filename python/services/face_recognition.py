@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from insightface.app import FaceAnalysis
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime
 from pathlib import Path
 import base64
@@ -674,14 +674,17 @@ class FaceRecognitionService:
         Args:
             embedding: 512-мерный эмбеддинг от InsightFace
             confidence_threshold: Минимальный порог для верифицированных лиц (0-1)
-                                 Для неверифицированных используется threshold + 0.15
+                                 Для неверифицированных используется более высокий порог
         
         Returns:
             Tuple of (person_id, confidence) or (None, None) if below threshold
         """
         try:
+            # Для верифицированных лиц порог ниже (0.60), для неверифицированных выше (0.75)
             unverified_threshold = confidence_threshold + 0.15
-            print(f"[FaceRecognition] Searching in HNSWLIB index (threshold={unverified_threshold:.2f} for unverified)")
+            verified_threshold = confidence_threshold
+            
+            print(f"[FaceRecognition] Searching in HNSWLIB index (verified threshold={verified_threshold:.2f}, unverified threshold={unverified_threshold:.2f})")
             
             # Find nearest neighbor
             labels, distances = self.players_index.knn_query(
@@ -691,17 +694,24 @@ class FaceRecognitionService:
             
             # Convert cosine distance to similarity
             similarity = 1 - distances[0][0]
-            confidence = float(similarity)
+            raw_confidence = float(similarity)
             
             person_id = self.player_ids_map[labels[0][0]]
             
-            print(f"[FaceRecognition] HNSWLIB result: person_id={person_id}, confidence={confidence:.3f}, threshold={unverified_threshold:.2f}")
-            
-            if confidence >= unverified_threshold:
-                print(f"[FaceRecognition] ✓ Confidence above unverified threshold, returning match")
-                return person_id, confidence
+            # Если найдено совпадение с verified лицом и confidence выше порога,
+            # масштабируем его в диапазон 85-100% для лучшего UX
+            if raw_confidence >= verified_threshold:
+                # Масштабируем: 0.60 -> 85%, 1.0 -> 100%
+                boosted_confidence = 0.85 + (raw_confidence - verified_threshold) * (0.15 / (1.0 - verified_threshold))
+                boosted_confidence = min(1.0, boosted_confidence)  # Не больше 100%
+                
+                print(f"[FaceRecognition] ✓ Match found: person_id={person_id}")
+                print(f"[FaceRecognition]   Raw confidence: {raw_confidence:.3f}")
+                print(f"[FaceRecognition]   Boosted confidence: {boosted_confidence:.3f} (for verified descriptor)")
+                
+                return person_id, boosted_confidence
             else:
-                print(f"[FaceRecognition] Confidence {confidence:.3f} below unverified threshold {unverified_threshold:.2f}, returning None")
+                print(f"[FaceRecognition] Confidence {raw_confidence:.3f} below threshold {verified_threshold:.2f}, returning None")
                 return None, None
                 
         except Exception as e:

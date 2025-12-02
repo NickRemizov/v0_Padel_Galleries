@@ -84,6 +84,9 @@ async def save_face(request: SaveFaceRequest):
             insert_data["insightface_descriptor"] = vector_string
             logger.info(f"[Faces API] Adding descriptor (dimension: {len(request.embedding)})")
         
+        logger.info(f"[Faces API] Insert data keys: {list(insert_data.keys())}")
+        logger.info(f"[Faces API] Verified={insert_data.get('verified')}, Person ID={insert_data.get('person_id')}, Has descriptor={('insightface_descriptor' in insert_data)}")
+        
         logger.info("[Faces API] Saving to Supabase...")
         response = supabase_db.client.table("photo_faces").insert(insert_data).execute()
         
@@ -98,20 +101,37 @@ async def save_face(request: SaveFaceRequest):
         
         saved_face = response.data[0]
         logger.info(f"[Faces API] ✓ Face saved with ID: {saved_face.get('id')}")
+        logger.info(f"[Faces API] Saved face verification status: verified={saved_face.get('verified')}, person_id={saved_face.get('person_id')}")
         
         index_updated = False
         if request.verified and request.person_id and request.embedding and len(request.embedding) > 0:
             logger.info("[Faces API] Verified face detected - rebuilding recognition index...")
+            logger.info(f"[Faces API] About to rebuild index for person_id={request.person_id}")
+            
             try:
                 rebuild_result = await face_service.rebuild_players_index()
                 
                 if rebuild_result.get("success"):
                     index_updated = True
-                    logger.info(f"[Faces API] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                    old_count = rebuild_result.get('old_descriptor_count', 0)
+                    new_count = rebuild_result.get('new_descriptor_count', 0)
+                    people_count = rebuild_result.get('unique_people_count', 0)
+                    
+                    logger.info(f"[Faces API] ✓ Index rebuilt: {old_count} -> {new_count} descriptors for {people_count} people")
+                    
+                    if new_count == old_count:
+                        logger.warning(f"[Faces API] ⚠️ WARNING: Descriptor count unchanged! Expected increase from {old_count} to {old_count + 1}")
+                        logger.warning(f"[Faces API] This means the new descriptor was NOT added to the index")
+                    elif new_count == old_count + 1:
+                        logger.info(f"[Faces API] ✓ Descriptor count increased as expected")
+                    else:
+                        logger.warning(f"[Faces API] ⚠️ Unexpected descriptor count change: {old_count} -> {new_count}")
                 else:
                     logger.error(f"[Faces API] Index rebuild failed: {rebuild_result.get('error')}")
             except Exception as index_error:
                 logger.error(f"[Faces API] Error rebuilding index: {str(index_error)}", exc_info=True)
+        else:
+            logger.info(f"[Faces API] Not rebuilding index - verified={request.verified}, person_id={request.person_id}, has_embedding={len(request.embedding) > 0 if request.embedding else False}")
         
         logger.info("[Faces API] ===== SAVE FACE REQUEST END =====")
         logger.info("=" * 80)

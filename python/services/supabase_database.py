@@ -46,9 +46,11 @@ class SupabaseDatabase:
                 return [], []
             
             print(f"[v2.5] Found {len(response.data)} verified faces with embeddings")
+            print(f"[v2.5] First 3 person_ids from DB: {[row['person_id'] for row in response.data[:3]]}")
             
             person_ids = []
             embeddings = []
+            skipped_count = 0
             
             for row in response.data:
                 person_id = row["person_id"]
@@ -64,17 +66,23 @@ class SupabaseDatabase:
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
                 else:
                     print(f"[v2.5] WARNING: Unknown descriptor type: {type(descriptor)}")
+                    skipped_count += 1
                     continue
                 
                 # Validate embedding dimension
                 if len(embedding) != 512:
                     print(f"[v2.5] WARNING: Invalid embedding dimension {len(embedding)}, expected 512")
+                    skipped_count += 1
                     continue
                 
                 person_ids.append(str(person_id))
                 embeddings.append(embedding)
             
-            print(f"[v2.5] Loaded {len(embeddings)} valid embeddings for {len(set(person_ids))} unique people")
+            unique_people = len(set(person_ids))
+            print(f"[v2.5] Loaded {len(embeddings)} valid embeddings for {unique_people} unique people")
+            if skipped_count > 0:
+                print(f"[v2.5] Skipped {skipped_count} invalid embeddings")
+            print(f"[v2.5] Unique person IDs in index: {unique_people}")
             
             return person_ids, embeddings
             
