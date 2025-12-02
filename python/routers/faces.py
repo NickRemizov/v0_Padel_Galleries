@@ -137,17 +137,19 @@ async def save_face(request: SaveFaceRequest):
             logger.info(f"[Faces API] Newly saved face ID: {saved_id}")
             
             try:
+                old_count = len(face_service.players_embeddings) if hasattr(face_service, 'players_embeddings') else 0
+                logger.info(f"[Faces API] Current index size before rebuild: {old_count}")
+                
                 rebuild_result = await face_service.rebuild_players_index()
                 
                 if rebuild_result.get("success"):
                     index_updated = True
-                    old_count = rebuild_result.get('old_descriptor_count', 0)
                     new_count = rebuild_result.get('new_descriptor_count', 0)
                     people_count = rebuild_result.get('unique_people_count', 0)
                     
                     logger.info(f"[Faces API] ✓ Index rebuilt: {old_count} -> {new_count} descriptors for {people_count} people")
                     
-                    expected_count = pre_save_stats.get('new_descriptor_count', 0) + 1
+                    expected_count = old_count + 1
                     if new_count == old_count:
                         logger.error(f"[Faces API] ❌ CRITICAL: Descriptor count DID NOT INCREASE!")
                         logger.error(f"[Faces API] Expected: {expected_count}, Got: {new_count}")
@@ -157,7 +159,8 @@ async def save_face(request: SaveFaceRequest):
                     elif new_count == expected_count:
                         logger.info(f"[Faces API] ✓ Descriptor count increased correctly: {old_count} -> {new_count}")
                     else:
-                        logger.warning(f"[Faces API] ⚠️ Unexpected descriptor count: expected {expected_count}, got {new_count}")
+                        logger.warning(f"[Faces API] ⚠️ Unexpected descriptor count change: expected {expected_count}, got {new_count}")
+                        logger.warning(f"[Faces API] This may happen if other records were added/removed concurrently")
                 else:
                     logger.error(f"[Faces API] Index rebuild failed: {rebuild_result.get('error')}")
             except Exception as index_error:
