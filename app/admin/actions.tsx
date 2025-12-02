@@ -1,20 +1,173 @@
-// Declare variables before using them
-const v0 = "some value"
-const no = "some value"
-const op = "some value"
-const code = "some value"
-const block = "some value"
-const prefix = "some value"
+"use server"
 
-// Existing code block
-function adminActions() {
-  // Use declared variables here
-  console.log(v0)
-  console.log(no)
-  console.log(op)
-  console.log(code)
-  console.log(block)
-  console.log(prefix)
+import { revalidatePath } from "next/cache"
+import { createClient } from "@/lib/supabase/server"
+import { apiFetch } from "@/lib/apiClient"
 
-  /** rest of code here **/
+/**
+ * Сохраняет распознанное лицо через FastAPI endpoint.
+ * Автоматически перестраивает индекс для verified лиц.
+ */
+export async function savePhotoFaceAction(
+  photoId: string,
+  personId: string | null,
+  boundingBox: { x: number; y: number; width: number; height: number } | null,
+  embedding: number[],
+  detectionConfidence: number | null,
+  recognitionConfidence: number | null,
+  isVerified: boolean,
+) {
+  try {
+    const result = await apiFetch("/api/faces/save", {
+      method: "POST",
+      body: JSON.stringify({
+        photo_id: photoId,
+        person_id: personId,
+        bounding_box: boundingBox,
+        embedding: embedding,
+        confidence: detectionConfidence,
+        recognition_confidence: recognitionConfidence,
+        verified: isVerified,
+      }),
+    })
+
+    if (result.success) {
+      revalidatePath("/admin")
+      return {
+        success: true,
+        face_id: result.data?.id, // Backend возвращает data.id
+        index_updated: result.index_updated,
+      }
+    } else {
+      return {
+        success: false,
+        error: result.error || "Ошибка при сохранении лица",
+      }
+    }
+  } catch (error) {
+    console.error("[savePhotoFaceAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
+/**
+ * Удаляет одно фото через FastAPI endpoint.
+ * Автоматически удаляет связанные photo_faces через CASCADE и перестраивает индекс.
+ */
+export async function deleteGalleryImageAction(photoId: string) {
+  try {
+    const result = await apiFetch(`/api/images/${photoId}`, {
+      method: "DELETE",
+    })
+
+    if (result.success) {
+      revalidatePath("/admin")
+      return {
+        success: true,
+        had_descriptors: result.had_descriptors,
+        index_rebuilt: result.index_rebuilt,
+      }
+    } else {
+      return {
+        success: false,
+        error: result.message || "Failed to delete image",
+      }
+    }
+  } catch (error) {
+    console.error("[deleteGalleryImageAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
+/**
+ * Удаляет ВСЕ фото из галереи через FastAPI endpoint.
+ * Перестраивает индекс один раз после удаления всех фото.
+ */
+export async function deleteAllGalleryImagesAction(galleryId: string) {
+  try {
+    const result = await apiFetch(`/api/images/gallery/${galleryId}/all`, {
+      method: "DELETE",
+    })
+
+    if (result.success || result.deleted_count > 0) {
+      revalidatePath("/admin")
+      return {
+        success: true,
+        deleted_count: result.deleted_count,
+        had_descriptors: result.had_descriptors,
+        index_rebuilt: result.index_rebuilt,
+      }
+    } else {
+      return {
+        success: false,
+        error: result.message || "Failed to delete images",
+      }
+    }
+  } catch (error) {
+    console.error("[deleteAllGalleryImagesAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
+/**
+ * Добавляет фотографии в существующую галерею.
+ */
+export async function addGalleryImagesAction(
+  galleryId: string,
+  uploadedImages: Array<{
+    url: string
+    originalUrl: string
+    filename: string
+    width: number
+    height: number
+    size: number
+  }>,
+) {
+  try {
+    const supabase = await createClient()
+
+    const { data: maxOrderData } = await supabase
+      .from("gallery_images")
+      .select("display_order")
+      .eq("gallery_id", galleryId)
+      .order("display_order", { ascending: false })
+      .limit(1)
+
+    const startOrder = (maxOrderData?.[0]?.display_order || 0) + 1
+
+    const imagesToInsert = uploadedImages.map((img, idx) => ({
+      gallery_id: galleryId,
+      image_url: img.url,
+      original_url: img.originalUrl,
+      original_filename: img.filename,
+      width: img.width,
+      height: img.height,
+      file_size: img.size,
+      display_order: startOrder + idx,
+    }))
+
+    const { error } = await supabase.from("gallery_images").insert(imagesToInsert)
+
+    if (error) {
+      throw error
+    }
+
+    revalidatePath("/admin")
+    return { success: true }
+  } catch (error) {
+    console.error("[addGalleryImagesAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
 }
