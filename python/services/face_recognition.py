@@ -1,45 +1,37 @@
-import insightface
-from insightface.app import FaceAnalysis
-import numpy as np
-import cv2
-import hnswlib
-import hdbscan
-import json
-from typing import List, Dict, Optional, Tuple
-from fastapi import UploadFile
-import io
-from PIL import Image
-import uuid
-import pickle
 import os
-from concurrent.futures import ThreadPoolExecutor
-import asyncio
-import zipfile
+import numpy as np
+from insightface.app import FaceAnalysis
+from typing import List, Tuple, Optional, Dict
+from datetime import datetime
 from pathlib import Path
+import base64
+import tempfile
+import uuid
+import shutil
 
-import models.schemas
-from services.database import PlayerDatabase
+import sys
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# from services.database import PlayerDatabase
 from services.supabase_database import SupabaseDatabase
-from services.supabase_client import SupabaseClient  # Added import for SupabaseClient to access config methods
-
 
 class FaceRecognitionService:
+    """Сервис для детекции и распознавания лиц на фотографиях"""
+    
     def __init__(self):
-        """Инициализация сервиса распознавания лиц"""
-        print("[v0] Инициализация FaceRecognitionService...")
+        """Инициализация модели InsightFace"""
+        print("[FaceRecognition] Initializing FaceAnalysis model...")
         self.app = None
-        self.db = PlayerDatabase()
-        try:
-            self.supabase_db = SupabaseDatabase()
-            print("[v3.0] SupabaseDatabase connected successfully")
-        except Exception as e:
-            print(f"[v3.0] WARNING: Could not connect to Supabase: {e}")
-            self.supabase_db = None
+        self.supabase_db = SupabaseDatabase()
+        print("[v3.0] SupabaseDatabase connected successfully")
         
         # Хранилище эмбеддингов и данных (для временных операций)
         self.embeddings_store: Dict[str, List[np.ndarray]] = {}
-        self.faces_data_store: Dict[str, List[models.schemas.FaceData]] = {}
-        self.index_store: Dict[str, hnswlib.Index] = {}
+        self.faces_data_store: Dict[str, List[Dict]] = {}
+        self.index_store: Dict[str, Any] = {}
         
         self.players_index = None
         self.player_ids_map = []
@@ -50,14 +42,7 @@ class FaceRecognitionService:
             "min_blur_score": 80  # Updated default min_blur_score from 10 to 80
         }
         
-        try:
-            self.supabase_client = SupabaseClient()
-            print("[v3.2.7] SupabaseClient connected successfully")
-        except Exception as e:
-            print(f"[v3.2.7] WARNING: Could not connect to SupabaseClient: {e}")
-            self.supabase_client = None
-        
-        print("[v0] Сервис распознавания лиц создан (ожидает инициализации)")
+        print("[FaceRecognition] FaceRecognitionService created (awaiting initialization)")
     
     def _ensure_model_unpacked(self):
         """Проверка и распаковка модели antelopev2 если нужно"""
@@ -65,284 +50,234 @@ class FaceRecognitionService:
         model_dir = home_dir / ".insightface" / "models" / "antelopev2"
         model_zip = home_dir / ".insightface" / "models" / "antelopev2.zip"
         
-        print(f"[v0] Проверка модели antelopev2...")
-        print(f"[v0] Путь к модели: {model_dir}")
-        print(f"[v0] Путь к архиву: {model_zip}")
+        print(f"[FaceRecognition] Checking model antelopev2...")
+        print(f"[FaceRecognition] Model path: {model_dir}")
+        print(f"[FaceRecognition] Zip path: {model_zip}")
         
         # Проверяем существует ли распакованная модель
         if model_dir.exists():
             files = list(model_dir.glob("*.onnx"))
-            print(f"[v0] Папка модели существует, найдено .onnx файлов: {len(files)}")
+            print(f"[FaceRecognition] Model folder exists, found .onnx files: {len(files)}")
             if len(files) > 0:
-                print(f"[v0] Модель уже распакована: {[f.name for f in files]}")
+                print(f"[FaceRecognition] Model already unpacked: {[f.name for f in files]}")
                 return True
             else:
-                print(f"[v0] Папка модели пуста, нужна распаковка")
+                print(f"[FaceRecognition] Model folder is empty, need unpacking")
         else:
-            print(f"[v0] Папка модели не существует")
+            print(f"[FaceRecognition] Model folder does not exist")
         
         # Проверяем существует ли архив
         if not model_zip.exists():
-            print(f"[v0] ОШИБКА: Архив модели не найден: {model_zip}")
-            print(f"[v0] InsightFace должен был скачать его автоматически")
+            print(f"[FaceRecognition] ERROR: Model zip not found: {model_zip}")
+            print(f"[FaceRecognition] InsightFace should have downloaded it automatically")
             return False
         
-        print(f"[v0] Архив найден, размер: {model_zip.stat().st_size} байт")
-        print(f"[v0] Начинаем распаковку модели...")
+        print(f"[FaceRecognition] Zip found, size: {model_zip.stat().st_size} bytes")
+        print(f"[FaceRecognition] Starting model unpacking...")
         
         try:
             # Создаем директорию если не существует
             model_dir.mkdir(parents=True, exist_ok=True)
-            print(f"[v0] Директория создана: {model_dir}")
+            print(f"[FaceRecognition] Directory created: {model_dir}")
             
             # Распаковываем архив
             with zipfile.ZipFile(model_zip, 'r') as zip_ref:
                 file_list = zip_ref.namelist()
-                print(f"[v0] Файлов в архиве: {len(file_list)}")
-                print(f"[v0] Список файлов: {file_list[:10]}")  # Первые 10 файлов
+                print(f"[FaceRecognition] Files in zip: {len(file_list)}")
+                print(f"[FaceRecognition] File list: {file_list[:10]}")  # Первые 10 файлов
                 
                 zip_ref.extractall(model_dir)
-                print(f"[v0] Архив распакован в {model_dir}")
+                print(f"[FaceRecognition] Zip extracted to {model_dir}")
             
             subfolder = model_dir / "antelopev2"
             if subfolder.exists() and subfolder.is_dir():
-                print(f"[v0] Найдена подпапка antelopev2/, перемещаем файлы в корень...")
+                print(f"[FaceRecognition] Found antelopev2/ subfolder, moving files to root...")
                 import shutil
                 
                 # Перемещаем все файлы из подпапки в корень
                 for item in subfolder.iterdir():
                     if item.is_file():
                         dest = model_dir / item.name
-                        print(f"[v0] Перемещаем {item.name} -> {dest}")
+                        print(f"[FaceRecognition] Moving {item.name} -> {dest}")
                         shutil.move(str(item), str(dest))
                 
                 # Удаляем пустую подпапку
                 subfolder.rmdir()
-                print(f"[v0] Подпапка удалена, файлы перемещены в корень")
+                print(f"[FaceRecognition] Subfolder deleted, files moved to root")
             
             # Проверяем что файлы распаковались
             onnx_files = list(model_dir.glob("*.onnx"))
-            print(f"[v0] После распаковки найдено .onnx файлов: {len(onnx_files)}")
-            print(f"[v0] Файлы: {[f.name for f in onnx_files]}")
+            print(f"[FaceRecognition] Found .onnx files after unpacking: {len(onnx_files)}")
+            print(f"[FaceRecognition] Files: {[f.name for f in onnx_files]}")
             
             if len(onnx_files) == 0:
-                print(f"[v0] ОШИБКА: После распаковки не найдено .onnx файлов!")
+                print(f"[FaceRecognition] ERROR: No .onnx files found after unpacking!")
                 # Проверяем что вообще распаковалось
                 all_files = list(model_dir.rglob("*"))
-                print(f"[v0] Всего файлов в директории: {len(all_files)}")
+                print(f"[FaceRecognition] Total files in directory: {len(all_files)}")
                 for f in all_files[:20]:  # Первые 20 файлов
-                    print(f"[v0]   - {f.relative_to(model_dir)}")
+                    print(f"[FaceRecognition]   - {f.relative_to(model_dir)}")
                 return False
             
-            print(f"[v0] Модель успешно распакована!")
+            print(f"[FaceRecognition] Model successfully unpacked!")
             return True
             
         except Exception as e:
-            print(f"[v0] ОШИБКА при распаковке модели: {type(e).__name__}: {str(e)}")
+            print(f"[FaceRecognition] ERROR unpacking model: {type(e).__name__}: {str(e)}")
             import traceback
-            print(f"[v0] Traceback:\n{traceback.format_exc()}")
+            print(f"[FaceRecognition] Traceback:\n{traceback.format_exc()}")
             return False
     
     def _ensure_initialized(self):
         """Ленивая инициализация InsightFace при первом использовании"""
         if self.app is None:
-            print("[v0] ========== НАЧАЛО ИНИЦИАЛИЗАЦИИ INSIGHTFACE ==========")
+            print("[FaceRecognition] ========== STARTING INSIGHTFACE INITIALIZATION ==========")
             
             try:
                 home_dir = Path.home()
                 model_dir = home_dir / ".insightface" / "models" / "antelopev2"
                 model_zip = home_dir / ".insightface" / "models" / "antelopev2.zip"
                 
-                print(f"[v0] Шаг 1: Проверка существования модели...")
-                print(f"[v0] Путь к модели: {model_dir}")
-                print(f"[v0] Путь к архиву: {model_zip}")
+                print(f"[FaceRecognition] Step 1: Checking model existence...")
+                print(f"[FaceRecognition] Model path: {model_dir}")
+                print(f"[FaceRecognition] Zip path: {model_zip}")
                 
                 model_ready = False
                 if model_dir.exists():
                     onnx_files = list(model_dir.glob("*.onnx"))
                     if len(onnx_files) > 0:
-                        print(f"[v0] ✓ Модель уже распакована: {len(onnx_files)} .onnx файлов")
+                        print(f"[FaceRecognition] ✓ Model already unpacked: {len(onnx_files)} .onnx files")
                         model_ready = True
                     else:
-                        print(f"[v0] Папка модели существует, но .onnx файлов нет")
+                        print(f"[FaceRecognition] Model folder exists, but no .onnx files")
                 else:
-                    print(f"[v0] Папка модели не существует")
+                    print(f"[FaceRecognition] Model folder does not exist")
                 
                 if not model_ready:
-                    print(f"[v0] Шаг 2: Проверка архива модели...")
+                    print(f"[FaceRecognition] Step 2: Checking model zip...")
                     
                     # Если архив уже есть - распаковываем
                     if model_zip.exists():
-                        print(f"[v0] Архив найден, распаковываем...")
+                        print(f"[FaceRecognition] Zip found, unpacking...")
                         if not self._ensure_model_unpacked():
-                            raise RuntimeError("Не удалось распаковать существующий архив модели")
+                            raise RuntimeError("Failed to unpack existing model zip")
                         model_ready = True
                     else:
-                        print(f"[v0] Архив не найден, InsightFace должен скачать его")
+                        print(f"[FaceRecognition] Zip not found, InsightFace should download it")
                         
-                        print(f"[v0] Создание временного FaceAnalysis для скачивания модели...")
+                        print(f"[FaceRecognition] Creating temporary FaceAnalysis for downloading...")
                         try:
                             temp_app = FaceAnalysis(
                                 name='antelopev2',
                                 providers=['CPUExecutionProvider']
                             )
-                            print(f"[v0] Временный FaceAnalysis создан")
+                            print(f"[FaceRecognition] Temporary FaceAnalysis created")
                             del temp_app  # Удаляем временный объект
                         except Exception as e:
-                            print(f"[v0] Ошибка при создании временного FaceAnalysis: {e}")
+                            print(f"[FaceRecognition] Error creating temporary FaceAnalysis: {e}")
                         
                         import time
                         max_wait = 30  # Максимум 30 секунд ожидания
                         waited = 0
                         while not model_zip.exists() and waited < max_wait:
-                            print(f"[v0] Ожидание скачивания архива... ({waited}s)")
+                            print(f"[FaceRecognition] Waiting for model zip download... ({waited}s)")
                             time.sleep(2)
                             waited += 2
                         
                         if not model_zip.exists():
-                            raise RuntimeError(f"InsightFace не скачал архив модели после {max_wait}s ожидания")
+                            raise RuntimeError(f"InsightFace did not download model zip after {max_wait}s")
                         
-                        print(f"[v0] ✓ Архив скачан InsightFace")
+                        print(f"[FaceRecognition] ✓ Model zip downloaded by InsightFace")
                         
-                        print(f"[v0] Распаковка скачанного архива...")
+                        print(f"[FaceRecognition] Unpacking downloaded zip...")
                         if not self._ensure_model_unpacked():
-                            raise RuntimeError("Не удалось распаковать скачанный архив")
+                            raise RuntimeError("Failed to unpack downloaded model zip")
                         model_ready = True
                 
                 if not model_ready:
-                    raise RuntimeError("Модель не готова после всех попыток инициализации")
+                    raise RuntimeError("Model not ready after all initialization attempts")
                 
-                print(f"[v0] Шаг 3: Модель готова, создание FaceAnalysis...")
+                print(f"[FaceRecognition] Step 3: Model ready, creating FaceAnalysis...")
                 
                 self.app = FaceAnalysis(
                     name='antelopev2',
                     providers=['CPUExecutionProvider']
                 )
-                print(f"[v0] ✓ FaceAnalysis создан успешно")
+                print(f"[FaceRecognition] ✓ FaceAnalysis created successfully")
                 
                 # Шаг 4: Загружаем модели в память
-                print("[v0] Шаг 4: Загрузка моделей в память (prepare)...")
+                print("[FaceRecognition] Step 4: Loading models into memory (prepare)...")
                 self.app.prepare(ctx_id=-1, det_size=(640, 640))
-                print("[v0] ✓ prepare() завершен успешно")
+                print("[FaceRecognition] ✓ prepare() completed successfully")
                 
                 # Шаг 5: Проверяем что модели загружены
-                print("[v0] Шаг 5: Проверка загруженных моделей...")
+                print("[FaceRecognition] Step 5: Checking loaded models...")
                 if hasattr(self.app, 'models'):
                     models_list = list(self.app.models.keys())
-                    print(f"[v0] ✓ Загружены модели: {models_list}")
+                    print(f"[FaceRecognition] ✓ Models loaded: {models_list}")
                     
                     if 'detection' not in models_list:
-                        print(f"[v0] ✗ ОШИБКА: модель 'detection' не найдена!")
-                        print(f"[v0] Проверяем содержимое директории модели...")
+                        print(f"[FaceRecognition] ✗ ERROR: 'detection' model not found!")
+                        print(f"[FaceRecognition] Checking model directory contents...")
                         if model_dir.exists():
                             all_files = list(model_dir.glob("*"))
-                            print(f"[v0] Файлы в {model_dir}:")
+                            print(f"[FaceRecognition] Files in {model_dir}:")
                             for f in all_files:
-                                print(f"[v0]   - {f.name} ({f.stat().st_size} байт)")
-                        raise RuntimeError("Модель 'detection' не загружена")
+                                print(f"[FaceRecognition]   - {f.name} ({f.stat().st_size} bytes)")
+                        raise RuntimeError("'detection' model not loaded")
                 else:
-                    print(f"[v0] Предупреждение: app.models недоступен")
+                    print(f"[FaceRecognition] WARNING: app.models is not accessible")
                 
                 # Шаг 6: Загружаем индекс игроков
-                print("[v0] Шаг 6: Загрузка индекса игроков...")
+                print("[FaceRecognition] Step 6: Loading players index...")
                 self._load_players_index()
                 
-                print("[v0] ========== INSIGHTFACE ГОТОВ К РАБОТЕ ==========")
+                print("[FaceRecognition] ========== INSIGHTFACE READY FOR USE ==========")
                 
             except Exception as e:
-                print(f"[v0] ========== КРИТИЧЕСКАЯ ОШИБКА ИНИЦИАЛИЗАЦИИ ==========")
-                print(f"[v0] Тип ошибки: {type(e).__name__}")
-                print(f"[v0] Сообщение: {str(e)}")
+                print(f"[FaceRecognition] ========== CRITICAL INITIALIZATION ERROR ==========")
+                print(f"[FaceRecognition] Error type: {type(e).__name__}")
+                print(f"[FaceRecognition] Error message: {str(e)}")
                 import traceback
-                print(f"[v0] Полный traceback:\n{traceback.format_exc()}")
-                print(f"[v0] =========================================================")
+                print(f"[FaceRecognition] Full traceback:\n{traceback.format_exc()}")
+                print(f"[FaceRecognition] =========================================================")
                 raise
     
     def _load_players_index(self):
         """
         Загрузка индекса известных игроков из Supabase PostgreSQL.
-        Приоритет: Supabase PostgreSQL, затем файлы на диске, затем локальная SQLite БД.
         """
-        print("[v3.0] Загрузка индекса игроков...")
+        print("[FaceRecognition] Loading players index...")
         
-        if self.supabase_db:
-            try:
-                print("[v3.0] Loading embeddings from Supabase PostgreSQL...")
-                player_ids, embeddings = self.supabase_db.get_all_player_embeddings()
+        try:
+            print("[FaceRecognition] Loading embeddings from Supabase PostgreSQL...")
+            player_ids, embeddings = self.supabase_db.get_all_player_embeddings()
+            
+            if len(embeddings) > 0:
+                print(f"[FaceRecognition] ✓ Loaded {len(embeddings)} embeddings from Supabase")
                 
-                if len(embeddings) > 0:
-                    print(f"[v3.0] ✓ Loaded {len(embeddings)} embeddings from Supabase")
-                    
-                    # Create HNSW index
-                    dim = len(embeddings[0])
-                    self.players_index = hnswlib.Index(space='cosine', dim=dim)
-                    self.players_index.init_index(
-                        max_elements=len(embeddings) * 2,
-                        ef_construction=200,
-                        M=16
-                    )
-                    
-                    embeddings_array = np.array(embeddings)
-                    self.players_index.add_items(embeddings_array, np.arange(len(embeddings)))
-                    self.players_index.set_ef(50)
-                    
-                    self.player_ids_map = player_ids
-                    print(f"[v3.0] ✓ HNSW index created: {len(embeddings)} embeddings for {len(set(player_ids))} unique people")
-                    return
-                else:
-                    print("[v3.0] No embeddings found in Supabase, trying fallback methods...")
-            except Exception as e:
-                print(f"[v3.0] ERROR loading from Supabase: {e}")
-                print("[v3.0] Falling back to disk/SQLite...")
-        
-        models_dir = '/home/nickr/python/models'
-        index_path = os.path.join(models_dir, 'players_index.bin')
-        map_path = os.path.join(models_dir, 'player_ids_map.json')
-        
-        if os.path.exists(index_path) and os.path.exists(map_path):
-            try:
-                print(f"[v0] Loading index from disk: {index_path}")
+                # Create HNSW index
+                dim = len(embeddings[0])
+                self.players_index = hnswlib.Index(space='cosine', dim=dim)
+                self.players_index.init_index(
+                    max_elements=len(embeddings) * 2,
+                    ef_construction=200,
+                    M=16
+                )
                 
-                # Load player IDs map
-                with open(map_path, 'r') as f:
-                    self.player_ids_map = json.load(f)
-                
-                # Load HNSWLIB index
-                self.players_index = hnswlib.Index(space='cosine', dim=512)
-                self.players_index.load_index(index_path)
+                embeddings_array = np.array(embeddings)
+                self.players_index.add_items(embeddings_array, np.arange(len(embeddings)))
                 self.players_index.set_ef(50)
                 
-                print(f"[v0] Loaded index from disk: {len(self.player_ids_map)} embeddings for {len(set(self.player_ids_map))} players")
+                self.player_ids_map = player_ids
+                print(f"[FaceRecognition] ✓ HNSW index created: {len(embeddings)} embeddings for {len(set(player_ids))} unique people")
                 return
-                
-            except Exception as e:
-                print(f"[v0] Failed to load index from disk: {e}")
-                print(f"[v0] Falling back to database...")
-        
-        print("[v0] Loading index from database...")
-        player_ids, embeddings = self.db.get_all_player_embeddings()
-        
-        if len(embeddings) == 0:
-            print("[v0] База игроков пуста")
-            self.players_index = None
-            self.player_ids_map = []
-            return
-        
-        # Создаем HNSW индекс для быстрого поиска
-        dim = len(embeddings[0])
-        self.players_index = hnswlib.Index(space='cosine', dim=dim)
-        self.players_index.init_index(
-            max_elements=len(embeddings) * 2,
-            ef_construction=200,
-            M=16
-        )
-        
-        embeddings_array = np.array(embeddings)
-        self.players_index.add_items(embeddings_array, np.arange(len(embeddings)))
-        self.players_index.set_ef(50)
-        
-        self.player_ids_map = player_ids
-        print(f"[v0] Загружено {len(embeddings)} эмбеддингов для {len(set(player_ids))} игроков из БД")
+            else:
+                print("[FaceRecognition] No embeddings found in Supabase, initialization failed.")
+                raise ValueError("No embeddings found in Supabase")
+        except Exception as e:
+            print(f"[FaceRecognition] ERROR loading from Supabase: {e}")
+            raise
     
     def is_ready(self) -> bool:
         """Проверка готовности сервиса"""
@@ -362,7 +297,7 @@ class FaceRecognitionService:
         self._ensure_initialized()
         
         # Добавляем игрока в базу
-        self.db.add_player(player_id, name, email, phone, notes)
+        self.supabase_db.add_player(player_id, name, email, phone, notes)
         
         # Обрабатываем фотографии игрока
         embeddings_added = 0
@@ -382,7 +317,7 @@ class FaceRecognitionService:
                 embedding = face.embedding
                 
                 embedding_id = str(uuid.uuid4())
-                self.db.add_player_embedding(
+                self.supabase_db.add_player_embedding(
                     embedding_id,
                     player_id,
                     embedding,
@@ -448,7 +383,7 @@ class FaceRecognitionService:
                             recognized_faces += 1
                     
                     # Сохраняем лицо в базу
-                    self.db.add_gallery_face(
+                    self.supabase_db.add_gallery_face(
                         face_id,
                         gallery_id,
                         file.filename,
@@ -458,7 +393,7 @@ class FaceRecognitionService:
                         confidence
                     )
             
-            print(f"[v0] Обработано {min(i + batch_size, len(files))}/{len(files)} фото")
+            print(f"[FaceRecognition] Processed {min(i + batch_size, len(files))}/{len(files)} photos")
         
         return {
             "total_photos": len(files),
@@ -471,93 +406,93 @@ class FaceRecognitionService:
         self, 
         files: List[UploadFile], 
         tournament_id: Optional[str]
-    ) -> List[models.schemas.FaceData]:
+    ) -> List[Dict]:
         """Обработка загруженных фотографий и извлечение лиц"""
-        print(f"[v0] process_uploaded_photos вызван с {len(files)} файлами")
+        print(f"[FaceRecognition] process_uploaded_photos called with {len(files)} files")
         
         try:
             self._ensure_initialized()
-            print("[v0] InsightFace инициализирован успешно")
+            print("[FaceRecognition] InsightFace initialized successfully")
         except Exception as e:
-            print(f"[v0] ОШИБКА инициализации InsightFace: {str(e)}")
+            print(f"[FaceRecognition] ERROR initializing InsightFace: {str(e)}")
             raise
         
         if not tournament_id:
             tournament_id = str(uuid.uuid4())
-            print(f"[v0] Создан новый tournament_id: {tournament_id}")
+            print(f"[FaceRecognition] Created new tournament_id: {tournament_id}")
         
         all_faces = []
         embeddings = []
         
         for idx, file in enumerate(files):
-            print(f"[v0] Обработка файла {idx+1}/{len(files)}: {file.filename}")
+            print(f"[FaceRecognition] Processing file {idx+1}/{len(files)}: {file.filename}")
             
             try:
                 # Читаем изображение
-                print(f"[v0] Чтение содержимого файла {file.filename}...")
+                print(f"[FaceRecognition] Reading file content {file.filename}...")
                 contents = await file.read()
-                print(f"[v0] Прочитано {len(contents)} байт")
+                print(f"[FaceRecognition] Read {len(contents)} bytes")
                 
-                print(f"[v0] Открытие изображения через PIL...")
+                print(f"[FaceRecognition] Opening image via PIL...")
                 image = Image.open(io.BytesIO(contents))
-                print(f"[v0] Изображение открыто: размер {image.size}, режим {image.mode}")
+                print(f"[FaceRecognition] Image opened: size {image.size}, mode {image.mode}")
                 
-                print(f"[v0] Конвертация в numpy array...")
+                print(f"[FaceRecognition] Converting to numpy array...")
                 img_array = np.array(image.convert('RGB'))
-                print(f"[v0] Numpy array создан: shape {img_array.shape}")
+                print(f"[FaceRecognition] Numpy array created: shape {img_array.shape}")
                 
-                print(f"[v0] Конвертация RGB -> BGR для OpenCV...")
+                print(f"[FaceRecognition] Converting RGB -> BGR for OpenCV...")
                 img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
                 
                 # Детектируем лица
-                print(f"[v0] Запуск детекции лиц для {file.filename}...")
+                print(f"[FaceRecognition] Starting face detection for {file.filename}...")
                 faces = self.app.get(img_array)
-                print(f"[v0] Найдено {len(faces)} лиц в {file.filename}")
+                print(f"[FaceRecognition] Detected {len(faces)} faces in {file.filename}")
                 
                 for face_idx, face in enumerate(faces):
-                    print(f"[v0] Обработка лица {face_idx+1}/{len(faces)} из {file.filename}")
+                    print(f"[FaceRecognition] Processing face {face_idx+1}/{len(faces)} from {file.filename}")
                     face_id = str(uuid.uuid4())
                     embedding = face.embedding
-                    print(f"[v0] Эмбеддинг извлечен: размерность {len(embedding)}, det_score={face.det_score}")
+                    print(f"[FaceRecognition] Embedding extracted: dimension {len(embedding)}, det_score={face.det_score}")
                     
                     # Сохраняем данные лица
-                    face_data = models.schemas.FaceData(
-                        face_id=face_id,
-                        image_name=file.filename,
-                        bbox=[float(x) for x in face.bbox],
-                        confidence=float(face.det_score),
-                        embedding=embedding.tolist()
-                    )
+                    face_data = {
+                        "face_id": face_id,
+                        "image_name": file.filename,
+                        "bbox": [float(x) for x in face.bbox],
+                        "confidence": float(face.det_score),
+                        "embedding": embedding.tolist()
+                    }
                     
                     all_faces.append(face_data)
                     embeddings.append(embedding)
-                    print(f"[v0] Лицо {face_id} добавлено в результаты")
+                    print(f"[FaceRecognition] Face {face_id} added to results")
                 
             except Exception as e:
-                print(f"[v0] ОШИБКА при обработке файла {file.filename}: {type(e).__name__}: {str(e)}")
+                print(f"[FaceRecognition] ERROR processing file {file.filename}: {type(e).__name__}: {str(e)}")
                 import traceback
-                print(f"[v0] Traceback:\n{traceback.format_exc()}")
+                print(f"[FaceRecognition] Traceback:\n{traceback.format_exc()}")
                 # Продолжаем обработку остальных файлов
                 continue
         
-        print(f"[v0] Всего обработано лиц: {len(all_faces)}")
+        print(f"[FaceRecognition] Total faces processed: {len(all_faces)}")
         
         # Сохраняем в хранилище
         if tournament_id not in self.embeddings_store:
             self.embeddings_store[tournament_id] = []
             self.faces_data_store[tournament_id] = []
-            print(f"[v0] Создано новое хранилище для tournament_id: {tournament_id}")
+            print(f"[FaceRecognition] Created new storage for tournament_id: {tournament_id}")
         
         self.embeddings_store[tournament_id].extend(embeddings)
         self.faces_data_store[tournament_id].extend(all_faces)
-        print(f"[v0] Данные сохранены в хранилище: {len(embeddings)} эмбеддингов")
+        print(f"[FaceRecognition] Data saved to storage: {len(embeddings)} embeddings")
         
         # Создаем/обновляем HNSW индекс для быстрого поиска
-        print(f"[v0] Построение HNSW индекса...")
+        print(f"[FaceRecognition] Building HNSW index...")
         await self._build_hnsw_index(tournament_id)
-        print(f"[v0] HNSW индекс построен")
+        print(f"[FaceRecognition] HNSW index built")
         
-        print(f"[v0] process_uploaded_photos завершен: возвращаем {len(all_faces)} лиц")
+        print(f"[FaceRecognition] process_uploaded_photos completed: returning {len(all_faces)} faces")
         return all_faces
     
     async def _build_hnsw_index(self, tournament_id: str):
@@ -582,30 +517,30 @@ class FaceRecognitionService:
         index.set_ef(50)
         
         self.index_store[tournament_id] = index
-        print(f"[v0] HNSW индекс построен для {num_elements} лиц")
+        print(f"[FaceRecognition] HNSW index built for {num_elements} faces")
     
     async def group_faces(
         self, 
         tournament_id: Optional[str],
         min_cluster_size: int = 3
-    ) -> Tuple[List[models.schemas.PlayerGroup], List[models.schemas.FaceData]]:
+    ) -> Tuple[List[Dict], List[Dict]]:
         """Группировка лиц с помощью HDBSCAN"""
-        print(f"[v0] group_faces вызван: tournament_id={tournament_id}, min_cluster_size={min_cluster_size}")
+        print(f"[FaceRecognition] group_faces called: tournament_id={tournament_id}, min_cluster_size={min_cluster_size}")
         
         if not tournament_id or tournament_id not in self.embeddings_store:
-            print(f"[v0] ОШИБКА: Турнир не найден или нет данных")
-            print(f"[v0] Доступные tournament_id: {list(self.embeddings_store.keys())}")
-            raise ValueError("Турнир не найден или нет данных для группировки")
+            print(f"[FaceRecognition] ERROR: Tournament not found or no data")
+            print(f"[FaceRecognition] Available tournament_ids: {list(self.embeddings_store.keys())}")
+            raise ValueError("Tournament not found or no data for clustering")
         
         embeddings = np.array(self.embeddings_store[tournament_id])
         faces_data = self.faces_data_store[tournament_id]
-        print(f"[v0] Загружено {len(embeddings)} эмбеддингов для группировки")
+        print(f"[FaceRecognition] Loaded {len(embeddings)} embeddings for clustering")
         
         if len(embeddings) < min_cluster_size:
-            print(f"[v0] ОШИБКА: Недостаточно лиц ({len(embeddings)} < {min_cluster_size})")
-            raise ValueError(f"Недостаточно лиц для группировки (минимум {min_cluster_size})")
+            print(f"[FaceRecognition] ERROR: Not enough faces ({len(embeddings)} < {min_cluster_size})")
+            raise ValueError(f"Not enough faces for clustering (minimum {min_cluster_size})")
         
-        print(f"[v0] Запуск HDBSCAN кластеризации...")
+        print(f"[FaceRecognition] Starting HDBSCAN clustering...")
         
         # Применяем HDBSCAN для автоматической кластеризации
         clusterer = hdbscan.HDBSCAN(
@@ -616,11 +551,11 @@ class FaceRecognitionService:
         )
         
         cluster_labels = clusterer.fit_predict(embeddings)
-        print(f"[v0] HDBSCAN завершен: найдено {len(set(cluster_labels))} уникальных меток")
+        print(f"[FaceRecognition] HDBSCAN completed: found {len(set(cluster_labels))} unique labels")
         
         # Группируем лица по кластерам
-        groups_dict: Dict[int, List[models.schemas.FaceData]] = {}
-        ungrouped_faces: List[models.schemas.FaceData] = []
+        groups_dict: Dict[int, List[Dict]] = {}
+        ungrouped_faces: List[Dict] = []
         noise_count = 0
         
         for face_data, label in zip(faces_data, cluster_labels):
@@ -634,31 +569,31 @@ class FaceRecognitionService:
             
             groups_dict[label].append(face_data)
         
-        print(f"[v0] Шум (не сгруппировано): {noise_count} лиц")
-        print(f"[v0] Найдено групп: {len(groups_dict)}")
+        print(f"[FaceRecognition] Noise (ungrouped): {noise_count} faces")
+        print(f"[FaceRecognition] Found groups: {len(groups_dict)}")
         
         # Формируем результат
         groups = []
         for cluster_id, faces in groups_dict.items():
-            print(f"[v0] Группа {cluster_id}: {len(faces)} лиц")
+            print(f"[FaceRecognition] Group {cluster_id}: {len(faces)} faces")
             
             # Получаем уникальные имена изображений для превью (максимум 5)
-            unique_images = list(set([f.image_name for f in faces]))[:5]
+            unique_images = list(set([f["image_name"] for f in faces]))[:5]
             
-            group = models.schemas.PlayerGroup(
-                group_id=f"player_{cluster_id}",
-                player_name=f"Игрок {cluster_id + 1}",
-                faces_count=len(faces),
-                faces=faces,
-                confidence=float(np.mean([f.confidence for f in faces])),
-                sample_images=unique_images
-            )
+            group = {
+                "group_id": f"player_{cluster_id}",
+                "player_name": f"Player {cluster_id + 1}",
+                "faces_count": len(faces),
+                "faces": faces,
+                "confidence": float(np.mean([f["confidence"] for f in faces])),
+                "sample_images": unique_images
+            }
             groups.append(group)
         
         # Сохраняем несгруппированные лица для последующего извлечения
         self.faces_data_store[f"{tournament_id}_ungrouped"] = ungrouped_faces
         
-        print(f"[v0] group_faces завершен: возвращаем {len(groups)} групп и {len(ungrouped_faces)} одиночных лиц")
+        print(f"[FaceRecognition] group_faces completed: returning {len(groups)} groups and {len(ungrouped_faces)} ungrouped faces")
         return groups, ungrouped_faces
     
     async def apply_feedback(
@@ -670,10 +605,10 @@ class FaceRecognitionService:
     ):
         """Применение фидбека пользователя для улучшения распознавания"""
         
-        success = self.db.update_face_player(face_id, new_player_id, confidence, user_email)
+        success = self.supabase_db.update_face_player(face_id, new_player_id, confidence, user_email)
         
         if success:
-            print(f"[v0] Фидбек применен: {face_id} -> {new_player_id}")
+            print(f"[FaceRecognition] Feedback applied: {face_id} -> {new_player_id}")
             
             # Например, добавить эмбеддинг в архив игрока для улучшения будущих распознаваний
         
@@ -681,25 +616,25 @@ class FaceRecognitionService:
     
     async def clear_tournament_data(self, tournament_id: Optional[str] = None):
         """Очистка данных турнира"""
-        print(f"[v0] clear_tournament_data вызван: tournament_id={tournament_id}")
+        print(f"[FaceRecognition] clear_tournament_data called: tournament_id={tournament_id}")
         
         if tournament_id:
             removed_embeddings = len(self.embeddings_store.get(tournament_id, []))
             self.embeddings_store.pop(tournament_id, None)
             self.faces_data_store.pop(tournament_id, None)
             self.index_store.pop(tournament_id, None)
-            print(f"[v0] Данные турнира {tournament_id} очищены ({removed_embeddings} эмбеддингов удалено)")
+            print(f"[FaceRecognition] Tournament data {tournament_id} cleared ({removed_embeddings} embeddings removed)")
         else:
             total_embeddings = sum(len(v) for v in self.embeddings_store.values())
             self.embeddings_store.clear()
             self.faces_data_store.clear()
             self.index_store.clear()
-            print(f"[v0] Все данные очищены ({total_embeddings} эмбеддингов удалено)")
+            print(f"[FaceRecognition] All data cleared ({total_embeddings} embeddings removed)")
     
     async def get_gallery_results(self, gallery_id: str) -> Dict:
         """Получение результатов распознавания для галереи"""
-        stats = self.db.get_gallery_stats(gallery_id)
-        faces = self.db.get_gallery_faces(gallery_id)
+        stats = self.supabase_db.get_gallery_stats(gallery_id)
+        faces = self.supabase_db.get_gallery_faces(gallery_id)
         
         # Группируем по игрокам
         players_dict = {}
@@ -707,7 +642,7 @@ class FaceRecognitionService:
             player_id = face.get("player_id")
             if player_id:
                 if player_id not in players_dict:
-                    player_info = self.db.get_player_info(player_id)
+                    player_info = self.supabase_db.get_player_info(player_id)
                     players_dict[player_id] = {
                         "player_id": player_id,
                         "name": player_info.get("name") if player_info else "Unknown",
@@ -737,31 +672,9 @@ class FaceRecognitionService:
         Returns:
             Tuple of (person_id, confidence) or (None, None) if below threshold
         """
-        if self.supabase_db:
-            try:
-                print(f"[v3.22] Checking Supabase for verified faces (threshold={confidence_threshold:.2f})...")
-                verified_match = await self.supabase_db.find_verified_face_by_embedding(
-                    embedding, 
-                    similarity_threshold=confidence_threshold  # Use slider value for verified
-                )
-                
-                if verified_match:
-                    person_id, confidence = verified_match
-                    print(f"[v3.22] ✓ Found verified face: person_id={person_id}, confidence={confidence:.3f}")
-                    return person_id, confidence
-                else:
-                    print("[v3.22] No verified face match found, checking unverified...")
-            except Exception as e:
-                print(f"[v3.22] Error checking Supabase for verified faces: {e}")
-                print("[v3.22] Falling back to HNSWLIB index...")
-        
-        if self.players_index is None or len(self.player_ids_map) == 0:
-            print("[v3.22] Players index not loaded or empty - no trained faces available")
-            return None, None
-        
         try:
             unverified_threshold = confidence_threshold + 0.15
-            print(f"[v3.22] Searching in HNSWLIB index (threshold={unverified_threshold:.2f} for unverified)")
+            print(f"[FaceRecognition] Searching in HNSWLIB index (threshold={unverified_threshold:.2f} for unverified)")
             
             # Find nearest neighbor
             labels, distances = self.players_index.knn_query(
@@ -775,19 +688,19 @@ class FaceRecognitionService:
             
             person_id = self.player_ids_map[labels[0][0]]
             
-            print(f"[v3.22] HNSWLIB result: person_id={person_id}, confidence={confidence:.3f}, threshold={unverified_threshold:.2f}")
+            print(f"[FaceRecognition] HNSWLIB result: person_id={person_id}, confidence={confidence:.3f}, threshold={unverified_threshold:.2f}")
             
             if confidence >= unverified_threshold:
-                print(f"[v3.22] ✓ Confidence above unverified threshold, returning match")
+                print(f"[FaceRecognition] ✓ Confidence above unverified threshold, returning match")
                 return person_id, confidence
             else:
-                print(f"[v3.22] Confidence {confidence:.3f} below unverified threshold {unverified_threshold:.2f}, returning None")
+                print(f"[FaceRecognition] Confidence {confidence:.3f} below unverified threshold {unverified_threshold:.2f}, returning None")
                 return None, None
                 
         except Exception as e:
-            print(f"[v3.22] Error during recognition: {type(e).__name__}: {str(e)}")
+            print(f"[FaceRecognition] ERROR during recognition: {type(e).__name__}: {str(e)}")
             import traceback
-            print(f"[v3.22] Traceback:\n{traceback.format_exc()}")
+            print(f"[FaceRecognition] Traceback:\n{traceback.format_exc()}")
             return None, None
 
     async def rebuild_players_index(self) -> Dict:
@@ -798,7 +711,7 @@ class FaceRecognitionService:
         Returns:
             Dict with rebuild statistics
         """
-        print("[v3.31] Rebuilding players index...")
+        print("[FaceRecognition] Rebuilding players index...")
         
         try:
             old_count = len(self.player_ids_map) if self.player_ids_map else 0
@@ -809,7 +722,7 @@ class FaceRecognitionService:
             new_count = len(self.player_ids_map) if self.player_ids_map else 0
             unique_people = len(set(self.player_ids_map)) if self.player_ids_map else 0
             
-            print(f"[v3.31] ✓ Index rebuilt: {old_count} -> {new_count} descriptors for {unique_people} people")
+            print(f"[FaceRecognition] ✓ Index rebuilt: {old_count} -> {new_count} descriptors for {unique_people} people")
             
             return {
                 "success": True,
@@ -819,9 +732,9 @@ class FaceRecognitionService:
             }
             
         except Exception as e:
-            print(f"[v3.31] ERROR rebuilding index: {type(e).__name__}: {str(e)}")
+            print(f"[FaceRecognition] ERROR rebuilding index: {type(e).__name__}: {str(e)}")
             import traceback
-            print(f"[v3.31] Traceback:\n{traceback.format_exc()}")
+            print(f"[FaceRecognition] Traceback:\n{traceback.format_exc()}")
             return {
                 "success": False,
                 "error": str(e)
@@ -842,10 +755,10 @@ class FaceRecognitionService:
         
         if apply_quality_filters:
             await self.load_quality_filters()
-            print(f"[v3.2.2] detect_faces called with URL: {image_url}, apply_quality_filters=True")
-            print(f"[v3.2.2] Quality filters: {self.quality_filters}")
+            print(f"[FaceRecognition] detect_faces called with URL: {image_url}, apply_quality_filters=True")
+            print(f"[FaceRecognition] Quality filters: {self.quality_filters}")
         else:
-            print(f"[v3.2.2] detect_faces called with URL: {image_url}, apply_quality_filters=False (skipping filters)")
+            print(f"[FaceRecognition] detect_faces called with URL: {image_url}, apply_quality_filters=False (skipping filters)")
         
         try:
             # Download image from URL
@@ -855,18 +768,18 @@ class FaceRecognitionService:
                 response.raise_for_status()
                 image_bytes = response.content
             
-            print(f"[v3.2.2] Downloaded {len(image_bytes)} bytes from URL")
+            print(f"[FaceRecognition] Downloaded {len(image_bytes)} bytes from URL")
             
             # Open image
             image = Image.open(io.BytesIO(image_bytes))
             img_array = np.array(image.convert('RGB'))
             img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
             
-            print(f"[v3.2.2] Image converted to array: shape {img_array.shape}")
+            print(f"[FaceRecognition] Image converted to array: shape {img_array.shape}")
             
             # Detect faces
             faces = self.app.get(img_array)
-            print(f"[v3.2.2] Detected {len(faces)} faces before filtering")
+            print(f"[FaceRecognition] Detected {len(faces)} faces before filtering")
             
             filtered_results = []
             filtered_count = 0
@@ -887,13 +800,13 @@ class FaceRecognitionService:
                         blur_score
                     )
                     
-                    print(f"[v3.2.2] Face {idx+1}: det_score={face.det_score:.3f}, size={face_size:.0f}px, blur={blur_score:.1f} - {reason}")
+                    print(f"[FaceRecognition] Face {idx+1}: det_score={face.det_score:.3f}, size={face_size:.0f}px, blur={blur_score:.1f} - {reason}")
                     
                     if not passes:
                         filtered_count += 1
                         continue
                 else:
-                    print(f"[v3.2.2] Face {idx+1}: det_score={face.det_score:.3f}, size={face_size:.0f}px, blur={blur_score:.1f} - KEPT (no filtering)")
+                    print(f"[FaceRecognition] Face {idx+1}: det_score={face.det_score:.3f}, size={face_size:.0f}px, blur={blur_score:.1f} - KEPT (no filtering)")
                 
                 filtered_results.append({
                     "bbox": face.bbox,
@@ -903,16 +816,16 @@ class FaceRecognitionService:
                 })
             
             if apply_quality_filters:
-                print(f"[v3.2.2] After filtering: {len(filtered_results)} faces kept, {filtered_count} filtered out")
+                print(f"[FaceRecognition] After filtering: {len(filtered_results)} faces kept, {filtered_count} filtered out")
             else:
-                print(f"[v3.2.2] No filtering applied: {len(filtered_results)} faces kept")
+                print(f"[FaceRecognition] No filtering applied: {len(filtered_results)} faces kept")
             
             return filtered_results
             
         except Exception as e:
-            print(f"[v3.2.2] ERROR in detect_faces: {type(e).__name__}: {str(e)}")
+            print(f"[FaceRecognition] ERROR in detect_faces: {type(e).__name__}: {str(e)}")
             import traceback
-            print(f"[v3.2.2] Traceback:\n{traceback.format_exc()}")
+            print(f"[FaceRecognition] Traceback:\n{traceback.format_exc()}")
             raise
 
     def calculate_blur_score(self, image: np.ndarray, bbox: List[float]) -> float:
@@ -957,7 +870,7 @@ class FaceRecognitionService:
             return float(variance)
             
         except Exception as e:
-            print(f"[v0] Error calculating blur score: {e}")
+            print(f"[FaceRecognition] Error calculating blur score: {e}")
             return 0.0
     
     def passes_quality_filters(
@@ -997,34 +910,27 @@ class FaceRecognitionService:
     
     async def load_quality_filters(self):
         """Load quality filters from database config"""
-        if self.supabase_client:
-            try:
-                print(f"[v3.2.7] Loading quality filters from SupabaseClient...")
-                config = await self.supabase_client.get_recognition_config()
-                if "quality_filters" in config:
-                    self.quality_filters = config["quality_filters"]
-                    print(f"[v3.2.7] Quality filters loaded from DB: {self.quality_filters}")
-                else:
-                    print(f"[v3.2.7] No quality_filters in config, using defaults: {self.quality_filters}")
-            except Exception as e:
-                print(f"[v3.2.7] Error loading quality filters: {e}, using defaults: {self.quality_filters}")
-                import traceback
-                print(f"[v3.2.7] Traceback:\n{traceback.format_exc()}")
-        else:
-            print(f"[v3.2.7] No supabase_client connection, using default filters: {self.quality_filters}")
+        try:
+            print(f"[FaceRecognition] Loading quality filters from Supabase...")
+            config = await self.supabase_db.get_recognition_config()
+            if "quality_filters" in config:
+                self.quality_filters = config["quality_filters"]
+                print(f"[FaceRecognition] Quality filters loaded from DB: {self.quality_filters}")
+            else:
+                print(f"[FaceRecognition] No quality_filters in config, using defaults: {self.quality_filters}")
+        except Exception as e:
+            print(f"[FaceRecognition] Error loading quality filters: {e}, using defaults: {self.quality_filters}")
+            import traceback
+            print(f"[FaceRecognition] Traceback:\n{traceback.format_exc()}")
     
     async def update_quality_filters(self, filters: Dict):
         """Update quality filters in database and cache"""
-        if self.supabase_client:
-            try:
-                await self.supabase_client.update_recognition_config({
-                    "quality_filters": filters
-                })
-                self.quality_filters = filters
-                print(f"[v3.2.7] Quality filters updated in DB: {filters}")
-            except Exception as e:
-                print(f"[v3.2.7] Error updating quality filters: {e}")
-                raise
-        else:
-            print(f"[v3.2.7] No supabase_client connection, cannot update filters")
-            raise RuntimeError("Database connection not available")
+        try:
+            await self.supabase_db.update_recognition_config({
+                "quality_filters": filters
+            })
+            self.quality_filters = filters
+            print(f"[FaceRecognition] Quality filters updated in DB: {filters}")
+        except Exception as e:
+            print(f"[FaceRecognition] Error updating quality filters: {e}")
+            raise

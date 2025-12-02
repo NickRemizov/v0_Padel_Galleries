@@ -11,7 +11,6 @@ import httpx
 from sklearn.model_selection import train_test_split
 
 from services.supabase_client import SupabaseClient
-from services.database import PlayerDatabase
 from services.face_recognition import FaceRecognitionService
 
 
@@ -20,7 +19,6 @@ class TrainingService:
         """Инициализация сервиса обучения"""
         self.face_service = FaceRecognitionService()
         self.supabase = SupabaseClient()
-        self.db = PlayerDatabase()
         self.current_session_id = None
         self.current_progress = {'current': 0, 'total': 0, 'step': ''}
         print("[TrainingService] Initialized")
@@ -129,10 +127,6 @@ class TrainingService:
         
         # Save to Supabase
         await self.supabase.create_training_session(session_data)
-        
-        # Save to local DB
-        self.db.save_training_session(session_id, session_data)
-        self.current_session_id = session_id
         
         print(f"[TrainingService] Training session created: {session_id}")
         
@@ -347,7 +341,6 @@ class TrainingService:
             }
             
             await self.supabase.update_training_session(session_id, updates)
-            self.db.update_training_session(session_id, updates)
             
             self.current_progress['step'] = 'Completed'
             print(f"[TrainingService] Training completed successfully")
@@ -362,13 +355,12 @@ class TrainingService:
                 'metrics': {'error': str(e)}
             }
             await self.supabase.update_training_session(session_id, updates)
-            self.db.update_training_session(session_id, updates)
     
     async def _download_photo(self, photo_url: str) -> np.ndarray:
         """
         Скачать фото с кэшированием.
         """
-        cached_path = self.db.get_cached_photo(photo_url)
+        cached_path = self.supabase.get_cached_photo(photo_url)
         if cached_path and os.path.exists(cached_path):
             return cv2.imread(cached_path)
         
@@ -385,7 +377,7 @@ class TrainingService:
             with open(local_path, 'wb') as f:
                 f.write(response.content)
             
-            self.db.save_photo_cache(photo_url, local_path)
+            self.supabase.save_photo_cache(photo_url, local_path)
             
             return cv2.imread(local_path)
     
@@ -466,7 +458,7 @@ class TrainingService:
         """
         Получить статус обучения.
         """
-        session = self.db.get_training_session(session_id)
+        session = self.supabase.get_training_session(session_id)
         if not session:
             return {'error': 'Session not found'}
         
@@ -504,10 +496,10 @@ class TrainingService:
         """
         Получить историю обучений.
         """
-        sessions = self.db.get_training_history(limit, offset)
+        sessions = self.supabase.get_training_history(limit, offset)
         
         import sqlite3
-        conn = sqlite3.connect(self.db.db_path)
+        conn = sqlite3.connect(self.supabase.db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM training_sessions")
         total = cursor.fetchone()[0]
