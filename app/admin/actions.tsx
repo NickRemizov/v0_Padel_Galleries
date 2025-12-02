@@ -3019,7 +3019,6 @@ export async function deleteGalleryImageAction(photoId: string, galleryId: strin
   try {
     const supabase = await createClient()
 
-    // 1. Get image details before deletion
     const { data: image, error: imageError } = await supabase
       .from("gallery_images")
       .select("image_url, blob_url")
@@ -3030,47 +3029,49 @@ export async function deleteGalleryImageAction(photoId: string, galleryId: strin
       return { error: `Не удалось найти изображение: ${imageError.message}` }
     }
 
-    // 2. Check if there are any face descriptors to delete (to know if we need to rebuild index)
     const { data: photoFaces, error: facesError } = await supabase
       .from("photo_faces")
-      .select("id")
+      .select("id, insightface_descriptor")
       .eq("photo_id", photoId)
 
-    const hasFaces = photoFaces && photoFaces.length > 0
+    const facesWithDescriptors = photoFaces?.filter((f) => f.insightface_descriptor != null) || []
+    const hasDescriptorsToDelete = facesWithDescriptors.length > 0
 
-    // 3. Delete all face descriptors and photo_faces through FastAPI
-    if (hasFaces) {
-      for (const face of photoFaces) {
-        await apiFetch(`/api/faces/delete`, {
-          method: "POST",
-          body: JSON.stringify({ face_id: face.id }),
-        })
-      }
-    }
+    console.log(`[v0] Deleting photo ${photoId}: ${facesWithDescriptors.length} faces with descriptors`)
 
-    // 4. Delete the image record from gallery_images
     const { error: deleteError } = await supabase.from("gallery_images").delete().eq("id", photoId)
 
     if (deleteError) {
       return { error: `Ошибка при удалении изображения: ${deleteError.message}` }
     }
 
-    // 5. Delete blob file if exists
+    if (hasDescriptorsToDelete) {
+      console.log(`[v0] Rebuilding index after deleting ${facesWithDescriptors.length} descriptors`)
+      try {
+        await apiFetch(`/api/recognition/rebuild-index`, {
+          method: "POST",
+        })
+      } catch (error) {
+        console.error("[v0] Failed to rebuild index:", error)
+        // Continue anyway - index will rebuild on next recognition
+      }
+    }
+
     if (image.blob_url) {
       try {
         await fetch(`/api/blob/delete`, {
           method: "POST",
-          body: JSON.stringify({ url: image.blob_url }),
+          body: JSON.JSON.stringify({ url: image.blob_url }),
         })
       } catch (error) {
-        console.error("Failed to delete blob:", error)
-        // Continue anyway, blob cleanup can fail
+        console.error("[v0] Failed to delete blob:", error)
+        // Continue anyway
       }
     }
 
     return { success: true }
   } catch (error: any) {
-    console.error("Error in deleteGalleryImageAction:", error)
+    console.error("[v0] Error in deleteGalleryImageAction:", error)
     return { error: error.message || "Не удалось удалить изображение" }
   }
 }
