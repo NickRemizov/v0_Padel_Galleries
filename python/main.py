@@ -58,6 +58,10 @@ os.makedirs("static", exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+def get_face_service() -> FaceRecognitionService:
+    """Dependency injection для FaceRecognitionService"""
+    return face_service
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     with open("static/index.html", "r", encoding="utf-8") as f:

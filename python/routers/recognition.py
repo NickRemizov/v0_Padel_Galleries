@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 from services.face_recognition import FaceRecognitionService
@@ -15,9 +15,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-face_service = FaceRecognitionService()
 supabase_client = SupabaseClient()
 
+# Dependency injection for FaceRecognitionService
+async def get_face_service():
+    return FaceRecognitionService()
+
+# ... existing code ...
 
 class DetectFacesRequest(BaseModel):
     image_url: str
@@ -50,7 +54,7 @@ class FaceRecognitionResponse(BaseModel):
 
 
 @router.post("/detect-faces", response_model=FaceDetectionResponse)
-async def detect_faces(request: DetectFacesRequest):
+async def detect_faces(request: DetectFacesRequest, face_service: FaceRecognitionService = Depends(get_face_service)):
     """Detect faces on an image using InsightFace"""
     try:
         logger.info("=" * 80)
@@ -153,7 +157,7 @@ async def detect_faces(request: DetectFacesRequest):
 
 
 @router.post("/recognize-face", response_model=FaceRecognitionResponse)
-async def recognize_face(request: RecognizeFaceRequest):
+async def recognize_face(request: RecognizeFaceRequest, face_service: FaceRecognitionService = Depends(get_face_service)):
     """Recognize a single face using the trained model"""
     try:
         logger.info("=" * 80)
@@ -197,7 +201,7 @@ async def recognize_face(request: RecognizeFaceRequest):
 
 
 @router.post("/batch-recognize")
-async def batch_recognize(request: BatchRecognizeRequest):
+async def batch_recognize(request: BatchRecognizeRequest, face_service: FaceRecognitionService = Depends(get_face_service)):
     """Batch recognize faces in galleries"""
     try:
         logger.info(f"[v3.22] ===== BATCH RECOGNIZE REQUEST =====")
@@ -325,7 +329,7 @@ async def batch_recognize(request: BatchRecognizeRequest):
 
 
 @router.post("/cluster-unknown-faces")
-async def cluster_unknown_faces(gallery_id: str = Query(...), min_cluster_size: int = Query(2)):
+async def cluster_unknown_faces(gallery_id: str = Query(...), min_cluster_size: int = Query(2), face_service: FaceRecognitionService = Depends(get_face_service)):
     """
     Cluster unknown faces in a gallery by similarity
     Returns clusters sorted by size (largest first)
@@ -441,7 +445,8 @@ async def reject_face_cluster(
     gallery_id: str,
     face_ids: List[str],
     rejected_by: str,
-    reason: Optional[str] = None
+    reason: Optional[str] = None,
+    face_service: FaceRecognitionService = Depends(get_face_service)
 ):
     """
     Reject a cluster of faces as not interesting
@@ -497,7 +502,7 @@ async def reject_face_cluster(
 
 
 @router.post("/generate-descriptors")
-async def generate_descriptors(request: GenerateDescriptorsRequest):
+async def generate_descriptors(request: GenerateDescriptorsRequest, face_service: FaceRecognitionService = Depends(get_face_service)):
     """
     Generate descriptors for manually tagged faces
     Called when admin manually assigns people to faces
@@ -576,7 +581,7 @@ async def generate_descriptors(request: GenerateDescriptorsRequest):
 
 
 @router.post("/rebuild-index")
-async def rebuild_index():
+async def rebuild_index(face_service: FaceRecognitionService = Depends(get_face_service)):
     """
     Rebuild the HNSWLIB index from database.
     Call this after adding new face descriptors to make them available for recognition.
@@ -604,7 +609,7 @@ async def rebuild_index():
 
 
 @router.post("/regenerate-unknown-descriptors")
-async def regenerate_unknown_descriptors(gallery_id: str = Query(...)):
+async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_service: FaceRecognitionService = Depends(get_face_service)):
     """
     Regenerate insightface_descriptor for unknown faces that don't have one.
     This fixes faces that were saved without descriptors during batch recognition.

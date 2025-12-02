@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 from services.face_recognition import FaceRecognitionService
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-face_service = FaceRecognitionService()
+# face_service = FaceRecognitionService()  # УДАЛЕНО
 supabase_db = SupabaseDatabase()
 
 
@@ -47,7 +47,7 @@ class DeleteFaceRequest(BaseModel):
 
 
 @router.post("/save", response_model=SaveFaceResponse)
-async def save_face(request: SaveFaceRequest):
+async def save_face(request: SaveFaceRequest, face_service: FaceRecognitionService = Depends()):
     """
     Save a face with descriptor to database and automatically update recognition index.
     This is the single source of truth for face data - all face saves must go through here.
@@ -195,7 +195,7 @@ async def save_face(request: SaveFaceRequest):
 
 
 @router.post("/update")
-async def update_face(request: UpdateFaceRequest):
+async def update_face(request: UpdateFaceRequest, face_service: FaceRecognitionService = Depends()):
     """Update an existing face record"""
     try:
         logger.info(f"[Faces API] Updating face {request.face_id}")
@@ -225,7 +225,7 @@ async def update_face(request: UpdateFaceRequest):
 
 
 @router.post("/delete")
-async def delete_face(request: DeleteFaceRequest):
+async def delete_face(request: DeleteFaceRequest, face_service: FaceRecognitionService = Depends()):
     """Delete a face record"""
     try:
         logger.info(f"[Faces API] Deleting face {request.face_id}")
