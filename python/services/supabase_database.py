@@ -32,20 +32,24 @@ class SupabaseDatabase:
         try:
             # Query photo_faces table for verified faces with InsightFace descriptors
             response = self.client.table("photo_faces").select(
-                "person_id, insightface_descriptor"
+                "id, person_id, insightface_descriptor, created_at"  # Added id and created_at
             ).eq(
                 "verified", True
             ).not_.is_(
                 "insightface_descriptor", "null"
             ).not_.is_(
                 "person_id", "null"
-            ).execute()
+            ).order("created_at", desc=False).limit(100000).execute()  # Added sorting
             
             if not response.data:
                 print("[v2.5] No verified embeddings found in database")
                 return [], []
             
-            print(f"[v2.5] Found {len(response.data)} verified faces with embeddings")
+            # Added detailed logging for debugging
+            total_rows = len(response.data)
+            print(f"[v2.5] Found {total_rows} verified faces with embeddings from database")
+            print(f"[v2.5] First 3 IDs from DB: {[row['id'] for row in response.data[:3]]}")
+            print(f"[v2.5] Last 3 IDs from DB: {[row['id'] for row in response.data[-3:]]}")
             print(f"[v2.5] First 3 person_ids from DB: {[row['person_id'] for row in response.data[:3]]}")
             print(f"[v2.5] Last 3 person_ids from DB: {[row['person_id'] for row in response.data[-3:]]}")
             
@@ -54,11 +58,14 @@ class SupabaseDatabase:
             skipped_count = 0
             
             person_id_counts = {}
+            face_id_list = []  # Tracking record IDs
             
             for row in response.data:
+                face_id = row["id"]  # Getting record ID
                 person_id = row["person_id"]
                 descriptor = row["insightface_descriptor"]
                 
+                face_id_list.append(face_id)
                 person_id_counts[person_id] = person_id_counts.get(person_id, 0) + 1
                 
                 # Convert descriptor to numpy array
@@ -70,13 +77,13 @@ class SupabaseDatabase:
                     import json
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
                 else:
-                    print(f"[v2.5] WARNING: Unknown descriptor type: {type(descriptor)}")
+                    print(f"[v2.5] WARNING: Unknown descriptor type for face_id={face_id}: {type(descriptor)}")
                     skipped_count += 1
                     continue
                 
                 # Validate embedding dimension
                 if len(embedding) != 512:
-                    print(f"[v2.5] WARNING: Invalid embedding dimension {len(embedding)}, expected 512")
+                    print(f"[v2.5] WARNING: Invalid embedding dimension {len(embedding)} for face_id={face_id}, expected 512")
                     skipped_count += 1
                     continue
                 
@@ -91,6 +98,11 @@ class SupabaseDatabase:
             
             top_people = sorted(person_id_counts.items(), key=lambda x: x[1], reverse=True)[:5]
             print(f"[v2.5] Top 5 people by descriptor count: {top_people}")
+            
+            # Additional detailed information
+            print(f"[v2.5] Total rows from DB: {total_rows}, Valid embeddings: {len(embeddings)}, Skipped: {skipped_count}")
+            print(f"[v2.5] First 3 loaded face IDs: {face_id_list[:3]}")
+            print(f"[v2.5] Last 3 loaded face IDs: {face_id_list[-3:]}")
             
             return person_ids, embeddings
             

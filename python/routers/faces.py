@@ -107,8 +107,8 @@ async def save_face(request: SaveFaceRequest):
         logger.info(f"[Faces API] Saved face verification status: verified={saved_face.get('verified')}, person_id={saved_face.get('person_id')}")
         
         import asyncio
-        logger.info("[Faces API] Waiting 1 second for database to commit...")
-        await asyncio.sleep(1)
+        logger.info("[Faces API] Waiting 2 seconds for database to commit...")
+        await asyncio.sleep(2)  # Увеличена задержка с 1 до 2 секунд
         
         verify_response = supabase_db.client.table("photo_faces").select(
             "id, person_id, verified, insightface_descriptor"
@@ -118,6 +118,15 @@ async def save_face(request: SaveFaceRequest):
             verified_record = verify_response.data[0]
             has_descriptor = verified_record.get('insightface_descriptor') is not None
             logger.info(f"[Faces API] ✓ Verified record exists: id={saved_id}, person_id={verified_record.get('person_id')}, verified={verified_record.get('verified')}, has_descriptor={has_descriptor}")
+            
+            if has_descriptor:
+                descriptor = verified_record.get('insightface_descriptor')
+                if isinstance(descriptor, str):
+                    import json
+                    descriptor_array = json.loads(descriptor)
+                    logger.info(f"[Faces API] Descriptor from DB length: {len(descriptor_array)}")
+                elif isinstance(descriptor, list):
+                    logger.info(f"[Faces API] Descriptor from DB length: {len(descriptor)}")
         else:
             logger.error(f"[Faces API] ⚠️ Could not verify record {saved_id} was saved!")
         
@@ -125,6 +134,7 @@ async def save_face(request: SaveFaceRequest):
         if request.verified and request.person_id and request.embedding and len(request.embedding) > 0:
             logger.info("[Faces API] Verified face detected - rebuilding recognition index...")
             logger.info(f"[Faces API] About to rebuild index for person_id={request.person_id}")
+            logger.info(f"[Faces API] Newly saved face ID: {saved_id}")
             
             try:
                 rebuild_result = await face_service.rebuild_players_index()
@@ -137,14 +147,17 @@ async def save_face(request: SaveFaceRequest):
                     
                     logger.info(f"[Faces API] ✓ Index rebuilt: {old_count} -> {new_count} descriptors for {people_count} people")
                     
+                    expected_count = pre_save_stats.get('new_descriptor_count', 0) + 1
                     if new_count == old_count:
-                        logger.warning(f"[Faces API] ⚠️ WARNING: Descriptor count unchanged! Expected increase from {old_count} to {old_count + 1}")
-                        logger.warning(f"[Faces API] This means the new descriptor was NOT added to the index")
-                        logger.warning(f"[Faces API] Saved record ID: {saved_id}, person_id: {request.person_id}")
-                    elif new_count == old_count + 1:
-                        logger.info(f"[Faces API] ✓ Descriptor count increased as expected")
+                        logger.error(f"[Faces API] ❌ CRITICAL: Descriptor count DID NOT INCREASE!")
+                        logger.error(f"[Faces API] Expected: {expected_count}, Got: {new_count}")
+                        logger.error(f"[Faces API] Saved face ID: {saved_id}")
+                        logger.error(f"[Faces API] Person ID: {request.person_id}")
+                        logger.error(f"[Faces API] This indicates the record was NOT loaded by get_all_player_embeddings()")
+                    elif new_count == expected_count:
+                        logger.info(f"[Faces API] ✓ Descriptor count increased correctly: {old_count} -> {new_count}")
                     else:
-                        logger.warning(f"[Faces API] ⚠️ Unexpected descriptor count change: {old_count} -> {new_count}")
+                        logger.warning(f"[Faces API] ⚠️ Unexpected descriptor count: expected {expected_count}, got {new_count}")
                 else:
                     logger.error(f"[Faces API] Index rebuild failed: {rebuild_result.get('error')}")
             except Exception as index_error:
