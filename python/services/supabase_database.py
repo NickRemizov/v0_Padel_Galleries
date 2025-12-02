@@ -30,38 +30,54 @@ class SupabaseDatabase:
         print("[v2.5] Loading embeddings from Supabase photo_faces table...")
         
         try:
-            # Query photo_faces table for verified faces with InsightFace descriptors
-            response = self.client.table("photo_faces").select(
-                "id, person_id, insightface_descriptor, created_at"  # Added id and created_at
-            ).eq(
-                "verified", True
-            ).not_.is_(
-                "insightface_descriptor", "null"
-            ).not_.is_(
-                "person_id", "null"
-            ).order("created_at", desc=False).limit(100000).execute()  # Added sorting
+            all_data = []
+            page_size = 1000  # Supabase default limit
+            offset = 0
             
-            if not response.data:
+            while True:
+                # Query photo_faces table with pagination
+                response = self.client.table("photo_faces").select(
+                    "id, person_id, insightface_descriptor, created_at"
+                ).eq(
+                    "verified", True
+                ).not_.is_(
+                    "insightface_descriptor", "null"
+                ).not_.is_(
+                    "person_id", "null"
+                ).order("created_at", desc=False).range(offset, offset + page_size - 1).execute()
+                
+                if not response.data or len(response.data) == 0:
+                    break  # No more data
+                
+                all_data.extend(response.data)
+                print(f"[v2.5] Loaded page: offset={offset}, count={len(response.data)}, total so far={len(all_data)}")
+                
+                # If we got less than page_size, we've reached the end
+                if len(response.data) < page_size:
+                    break
+                
+                offset += page_size
+            
+            if not all_data:
                 print("[v2.5] No verified embeddings found in database")
                 return [], []
             
-            # Added detailed logging for debugging
-            total_rows = len(response.data)
-            print(f"[v2.5] Found {total_rows} verified faces with embeddings from database")
-            print(f"[v2.5] First 3 IDs from DB: {[row['id'] for row in response.data[:3]]}")
-            print(f"[v2.5] Last 3 IDs from DB: {[row['id'] for row in response.data[-3:]]}")
-            print(f"[v2.5] First 3 person_ids from DB: {[row['person_id'] for row in response.data[:3]]}")
-            print(f"[v2.5] Last 3 person_ids from DB: {[row['person_id'] for row in response.data[-3:]]}")
+            total_rows = len(all_data)
+            print(f"[v2.5] ✓ Loaded ALL {total_rows} verified faces with embeddings from database (paginated)")
+            print(f"[v2.5] First 3 IDs from DB: {[row['id'] for row in all_data[:3]]}")
+            print(f"[v2.5] Last 3 IDs from DB: {[row['id'] for row in all_data[-3:]]}")
+            print(f"[v2.5] First 3 person_ids from DB: {[row['person_id'] for row in all_data[:3]]}")
+            print(f"[v2.5] Last 3 person_ids from DB: {[row['person_id'] for row in all_data[-3:]]}")
             
             person_ids = []
             embeddings = []
             skipped_count = 0
             
             person_id_counts = {}
-            face_id_list = []  # Tracking record IDs
+            face_id_list = []
             
-            for row in response.data:
-                face_id = row["id"]  # Getting record ID
+            for row in all_data:
+                face_id = row["id"]
                 person_id = row["person_id"]
                 descriptor = row["insightface_descriptor"]
                 
@@ -69,11 +85,9 @@ class SupabaseDatabase:
                 person_id_counts[person_id] = person_id_counts.get(person_id, 0) + 1
                 
                 # Convert descriptor to numpy array
-                # InsightFace descriptors are stored as arrays in PostgreSQL
                 if isinstance(descriptor, list):
                     embedding = np.array(descriptor, dtype=np.float32)
                 elif isinstance(descriptor, str):
-                    # If stored as string, parse it
                     import json
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
                 else:
@@ -91,16 +105,12 @@ class SupabaseDatabase:
                 embeddings.append(embedding)
             
             unique_people = len(set(person_ids))
-            print(f"[v2.5] Loaded {len(embeddings)} valid embeddings for {unique_people} unique people")
+            print(f"[v2.5] ✓ Loaded {len(embeddings)} valid embeddings for {unique_people} unique people")
             if skipped_count > 0:
                 print(f"[v2.5] Skipped {skipped_count} invalid embeddings")
-            print(f"[v2.5] Unique person IDs in index: {unique_people}")
             
             top_people = sorted(person_id_counts.items(), key=lambda x: x[1], reverse=True)[:5]
             print(f"[v2.5] Top 5 people by descriptor count: {top_people}")
-            
-            # Additional detailed information
-            print(f"[v2.5] Total rows from DB: {total_rows}, Valid embeddings: {len(embeddings)}, Skipped: {skipped_count}")
             print(f"[v2.5] First 3 loaded face IDs: {face_id_list[:3]}")
             print(f"[v2.5] Last 3 loaded face IDs: {face_id_list[-3:]}")
             
