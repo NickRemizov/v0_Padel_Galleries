@@ -920,8 +920,17 @@ class FaceRecognitionService:
     
     async def load_quality_filters(self):
         """Load quality filters from database config"""
-        # Используем только дефолтные значения
-        print(f"[FaceRecognition] Using default quality filters: {self.quality_filters}")
+        try:
+            config = self.supabase_db.get_recognition_config()
+            
+            if 'quality_filters' in config:
+                self.quality_filters = config['quality_filters']
+                print(f"[FaceRecognition] Quality filters loaded from DB: {self.quality_filters}")
+            else:
+                print(f"[FaceRecognition] No quality filters in config, using defaults: {self.quality_filters}")
+        except Exception as e:
+            print(f"[FaceRecognition] Error loading quality filters: {e}, using defaults")
+            print(f"[FaceRecognition] Default quality filters: {self.quality_filters}")
 
     async def update_quality_filters(self, filters: Dict):
         """Update quality filters in database and cache"""

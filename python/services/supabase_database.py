@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from supabase import create_client, Client
 
 
@@ -352,3 +352,94 @@ class SupabaseDatabase:
         except Exception as e:
             print(f"[v2.5] ERROR getting person info: {str(e)}")
             return None
+    
+    def get_config(self) -> Dict:
+        """
+        Get configuration from face_recognition_config table.
+        
+        Returns:
+            Dict with config key-value pairs
+        """
+        try:
+            response = self.client.table("face_recognition_config").select("key, value").execute()
+            
+            config = {}
+            for row in response.data:
+                config[row["key"]] = row["value"]
+            
+            print(f"[SupabaseDatabase] Loaded {len(config)} config entries from DB")
+            return config
+            
+        except Exception as e:
+            print(f"[SupabaseDatabase] Error getting config: {e}")
+            return {}
+    
+    def get_recognition_config(self) -> Dict:
+        """
+        Get recognition settings from face_recognition_config.
+        Loads confidence_threshold and other settings from the database.
+        
+        Returns:
+            Dict with config including confidence_thresholds, quality_filters, etc.
+        """
+        try:
+            config = self.get_config()
+            
+            print(f"[SupabaseDatabase] Raw config from DB: {config}")
+            
+            defaults = {
+                'confidence_thresholds': {
+                    'low_data': 0.75,
+                    'medium_data': 0.65,
+                    'high_data': 0.55
+                },
+                'context_weight': 0.10,
+                'min_faces_per_person': 3,
+                'auto_retrain_threshold': 25,
+                'auto_retrain_percentage': 0.10,
+                'quality_filters': {
+                    'min_detection_score': 0.70,
+                    'min_face_size': 80,
+                    'min_blur_score': 80
+                }
+            }
+            
+            # Merge with stored config
+            result = defaults.copy()
+            if 'recognition_settings' in config:
+                stored_settings = config['recognition_settings']
+                print(f"[SupabaseDatabase] Stored settings from DB: {stored_settings}")
+                # Deep merge for nested objects
+                if 'confidence_thresholds' in stored_settings:
+                    result['confidence_thresholds'].update(stored_settings['confidence_thresholds'])
+                if 'quality_filters' in stored_settings:
+                    result['quality_filters'].update(stored_settings['quality_filters'])
+                # Update top-level fields
+                for key in ['context_weight', 'min_faces_per_person', 'auto_retrain_threshold', 'auto_retrain_percentage']:
+                    if key in stored_settings:
+                        result[key] = stored_settings[key]
+            else:
+                print(f"[SupabaseDatabase] No 'recognition_settings' key found in config, using defaults")
+            
+            print(f"[SupabaseDatabase] Final merged config: {result}")
+            return result
+            
+        except Exception as e:
+            print(f"[SupabaseDatabase] Error getting recognition config: {e}")
+            # Return defaults on error
+            return {
+                'confidence_thresholds': {
+                    'low_data': 0.75,
+                    'medium_data': 0.65,
+                    'high_data': 0.55
+                },
+                'context_weight': 0.10,
+                'min_faces_per_person': 3,
+                'auto_retrain_threshold': 25,
+                'auto_retrain_percentage': 0.10,
+                'quality_filters': {
+                    'min_detection_score': 0.70,
+                    'min_face_size': 80,
+                    'min_blur_score': 80
+                }
+            }
