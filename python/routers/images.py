@@ -60,7 +60,7 @@ async def delete_image(image_id: str):
             .execute()
         
         has_descriptors = any(
-            face.get("insightface_descriptor") 
+            face.get("insightface_descriptor") is not None and face.get("insightface_descriptor") != ""
             for face in (descriptors_result.data or [])
         )
         
@@ -154,7 +154,7 @@ async def delete_all_gallery_images(gallery_id: str):
             .execute()
         
         has_descriptors = any(
-            face.get("insightface_descriptor") 
+            face.get("insightface_descriptor") is not None and face.get("insightface_descriptor") != ""
             for face in (descriptors_result.data or [])
         )
         
