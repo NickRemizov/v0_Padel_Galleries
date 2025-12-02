@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/apiClient"
 import { withSupabase } from "@/lib/supabase/with-supabase"
 import { success, failure, type Result } from "@/lib/types"
 import { logger } from "@/lib/logger"
+import { env } from "@/lib/env"
 
 export async function savePhotoFaceAction(
   photoId: string,
@@ -33,71 +34,64 @@ export async function savePhotoFaceAction(
     hasEmbedding: embedding.length > 0,
   })
 
-  const supabase = await createClient()
+  // This ensures index is automatically updated when verified faces are saved
+  try {
+    const response = await fetch(`${env.FASTAPI_URL}/api/faces/save`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        photo_id: photoId,
+        person_id: personId,
+        bounding_box: boundingBox,
+        embedding: embedding,
+        confidence: confidence,
+        recognition_confidence: recognitionConfidence,
+        verified: verified,
+      }),
+    })
 
-  const insertData: any = {
-    photo_id: photoId,
-    person_id: personId,
-    verified: verified,
-  }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Failed to parse error" }))
+      logger.error("admin/actions", "FastAPI error:", errorData)
+      return {
+        success: false,
+        error: errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+      }
+    }
 
-  if (boundingBox) {
-    insertData.insightface_bbox = boundingBox
-  }
-  if (confidence !== null) {
-    insertData.confidence = confidence
-  }
+    const result = await response.json()
 
-  if (verified && personId) {
-    insertData.recognition_confidence = 1.0
-    logger.info("admin/actions", "Verified face detected, setting recognition_confidence to 1.0")
-  } else if (recognitionConfidence !== null) {
-    insertData.recognition_confidence = recognitionConfidence
-  }
+    if (!result.success) {
+      logger.error("admin/actions", "Failed to save face:", result.error)
+      return {
+        success: false,
+        error: result.error,
+      }
+    }
 
-  if (embedding && embedding.length > 0) {
-    const vectorString = `[${embedding.join(",")}]`
-    insertData.insightface_descriptor = vectorString
-    logger.debug("admin/actions", "Adding insightface_descriptor to insert (length:", embedding.length, ")")
-  }
+    logger.info("admin/actions", "Face saved successfully:", {
+      faceId: result.data?.id,
+      indexUpdated: result.index_updated,
+    })
 
-  logger.debug("admin/actions", "Inserting photo_face with data:", {
-    ...insertData,
-    insightface_descriptor: insertData.insightface_descriptor ? `[vector of ${embedding.length} dims]` : undefined,
-  })
+    if (result.index_updated) {
+      logger.info("admin/actions", "Recognition index automatically updated")
+    }
 
-  const { data, error } = await supabase.from("photo_faces").insert(insertData).select().single()
+    revalidatePath("/admin")
 
-  if (error) {
-    logger.error("admin/actions", "Error saving photo face:", error)
+    return {
+      success: true,
+      data: result.data,
+    }
+  } catch (error) {
+    logger.error("admin/actions", "Error calling FastAPI:", error)
     return {
       success: false,
-      error: error.message,
-      errorDetail: error,
+      error: error instanceof Error ? error.message : String(error),
     }
-  }
-
-  logger.info("admin/actions", "Photo face saved successfully with descriptor:", data)
-
-  if (data && personId && verified && embedding && embedding.length > 0) {
-    logger.info("admin/actions", "Verified face saved, rebuilding recognition index...")
-    try {
-      const rebuildResult = await rebuildRecognitionIndexAction()
-      if (rebuildResult.error) {
-        logger.error("admin/actions", "Failed to rebuild index:", rebuildResult.error)
-      } else {
-        logger.info("admin/actions", "Index rebuilt successfully:", rebuildResult.message)
-      }
-    } catch (indexError) {
-      logger.error("admin/actions", "Error rebuilding index:", indexError)
-    }
-  }
-
-  revalidatePath("/admin")
-
-  return {
-    success: true,
-    data,
   }
 }
 
@@ -2670,7 +2664,7 @@ export async function savePhotoFaceTagsAction(
       try {
         const result = await apiFetch("/api/recognition/generate-descriptors", {
           method: "POST",
-          body: JSON.stringify({
+          body: JSON.JSON.stringify({
             image_url: photo.image_url,
             faces: tags.map((tag) => ({
               person_id: tag.personId,
@@ -2761,7 +2755,7 @@ export async function rejectFaceClusterAction(clusterFaces: { photo_id: string; 
     logger.debug("admin/actions", `Rejecting ${clusterFaces.length} faces from a cluster`)
     await apiFetch("/api/recognition/reject-faces", {
       method: "POST",
-      body: JSON.stringify({ faces: clusterFaces }),
+      body: JSON.JSON.stringify({ faces: clusterFaces }),
     })
 
     logger.info("admin/actions", `Successfully rejected ${clusterFaces.length} faces`)

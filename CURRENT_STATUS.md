@@ -7,6 +7,36 @@
 
 ---
 
+## Последние изменения (v1.1.0) - КРИТИЧЕСКИЙ РЕФАКТОРИНГ
+
+### 🔄 Фаза 1: Гибридная архитектура
+
+Начата миграция к архитектуре где FastAPI является единым источником правды для критических данных:
+
+**Что изменилось:**
+- ✅ Работа с лицами (`photo_faces`) теперь идет через FastAPI `/api/faces/save`
+- ✅ Индекс распознавания автоматически обновляется при сохранении верифицированных лиц
+- ✅ **РЕШЕНА ПРОБЛЕМА:** Идентичные фотографии теперь распознаются с 100% вместо 81%
+- ✅ Улучшены паттерны работы с Supabase (withSupabase декоратор, Result<T> тип)
+- ✅ Стандартизировано логирование через logger вместо console.log
+
+**Архитектура (гибридная):**
+- 🔄 **Через FastAPI:** photo_faces, face_descriptors, распознавание, обучение
+- 📊 **Напрямую Supabase:** galleries, people, metadata, публичные запросы
+
+**Технические улучшения:**
+- Создан роутер `python/routers/faces.py` с endpoints `/api/faces/save`, `/update`, `/delete`
+- Декоратор `withSupabase` для упрощения server actions
+- Тип `Result<T>` для единообразной обработки успехов/ошибок
+- Logger с проверкой NODE_ENV (debug только в development)
+
+### Следующие шаги
+- Фаза 2: Добавить endpoints для galleries, people, metadata на FastAPI
+- Фаза 3: Полная миграция всех операций через FastAPI
+- Фаза 4: Удалить прямые вызовы Supabase с фронтенда
+
+---
+
 ## Что работает
 
 
@@ -69,6 +99,12 @@
 - `lib/supabase/client.ts` - v2.0 (UPDATED - убраны non-null assertions)
 - `lib/types/result.ts` - v1.0 (NEW - стандартный тип Result<T>)
 
+
+**Backend (Python/FastAPI):**
+- `python/routers/faces.py` - v1.0 (**NEW** - CRUD для лиц через FastAPI)
+- `python/main.py` - v3.2.9 (**UPDATED** - добавлен роутер faces)
+- `python/services/face_recognition.py` - v3.2.8
+- `python/services/supabase_database.py` - v3.2.6
 
 ---
 

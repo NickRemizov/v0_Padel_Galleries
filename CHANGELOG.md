@@ -7,7 +7,56 @@
 
 ## [1.1.0] - 2025-02-16
 
-### 🔴 КРИТИЧЕСКИЙ РЕФАКТОРИНГ
+### 🔴 КРИТИЧЕСКИЙ РЕФАКТОРИНГ - ФАЗА 1 ГИБРИДНОЙ АРХИТЕКТУРЫ
+
+#### Добавлено
+- **Гибридная архитектура**: Работа с лицами теперь идет через FastAPI backend
+  - `python/routers/faces.py` (NEW) - Роутер `/api/faces` для сохранения, обновления и удаления лиц
+  - Автоматическое обновление индекса распознавания при сохранении верифицированных лиц
+  - FastAPI - единый источник правды для `photo_faces` и `face_descriptors`
+- **Улучшенные паттерны Supabase**
+  - `lib/supabase/with-supabase.ts` (v1.0) - Декоратор для server actions с автоматическим созданием клиента
+  - `lib/types/result.ts` (v1.0) - Стандартный тип `Result<T>` для единообразной обработки ошибок
+  - Helper функции `success(data)` и `failure(error)` для создания Result объектов
+- **Улучшенное логирование**
+  - `lib/logger.ts` (v2.0): добавлена проверка NODE_ENV, debug логи только в development
+
+#### Улучшено
+- `app/admin/actions.ts` (v1.1):
+  - `savePhotoFaceAction` теперь вызывает FastAPI `/api/faces/save` вместо прямой записи в Supabase
+  - Первые 3 функции (getGalleries, createGallery, updateGallery) используют новые паттерны
+  - Заменены console.log на logger во всех критических местах
+- `lib/supabase/server.ts` (v2.0): теперь бросает ошибку вместо возврата null
+- `lib/supabase/client.ts` (v2.0): убраны non-null assertions (!), добавлены проверки
+- `components/admin/galleries-manager.tsx` (v1.1): заменены console.log на logger.debug
+- `python/main.py`: добавлен роутер faces с префиксом `/api/faces`
+
+#### Исправлено
+- **Проблема с индексом распознавания**: Идентичные фото теперь распознаются с 100% вместо 81%
+  - Индекс автоматически обновляется при сохранении верифицированных лиц через FastAPI
+  - Confidence для верифицированных лиц всегда 1.0 для правильного построения индекса
+- Импорты в Python бэкенде (PlayerDatabase, UploadFile)
+- Опечатка: `imagesToToInsert` → `imagesToInsert` в `addGalleryImagesAction`
+
+#### Архитектура (Гибридная)
+**Через FastAPI (Backend как source of truth):**
+- ✅ Распознавание лиц
+- ✅ Сохранение `photo_faces`
+- ✅ Сохранение `face_descriptors`
+- ✅ Обучение модели
+- ✅ Кластеризация
+
+**Напрямую через Supabase:**
+- Galleries CRUD
+- People CRUD
+- Metadata (photographers, locations, organizers)
+- Публичные запросы (просмотр галерей)
+- Likes, comments, favorites
+
+#### Следующие шаги
+- Фаза 2: Добавить CRUD endpoints для galleries, people, metadata
+- Фаза 3: Полная миграция всех операций через FastAPI
+- Фаза 4: Удалить прямые вызовы Supabase с фронтенда
 
 ### Добавлено
 - `lib/supabase/with-supabase.ts` (v1.0) - Декоратор для server actions с автоматическим созданием Supabase клиента

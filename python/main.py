@@ -15,7 +15,7 @@ import shutil
 import re
 
 from services.face_recognition import FaceRecognitionService
-from routers import training, recognition
+from routers import training, recognition, faces
 
 from models.schemas import (
     RecognitionResponse,
@@ -73,6 +73,7 @@ async def health_check():
 
 app.include_router(training.router, prefix="/api/v2", tags=["training"])
 app.include_router(recognition.router, prefix="", tags=["recognition"])
+app.include_router(faces.router, prefix="/api/faces", tags=["faces"])
 
 if __name__ == "__main__":
     host = os.getenv("SERVER_HOST", "0.0.0.0")
