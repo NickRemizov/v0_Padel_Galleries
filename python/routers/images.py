@@ -33,14 +33,19 @@ class BatchDeleteResponse(BaseModel):
     message: str
 
 @router.delete("/{image_id}", response_model=DeleteImageResponse)
-async def delete_image(image_id: str):
+async def delete_image(
+    image_id: str,
+    supabase_db: SupabaseDatabase = Depends(get_supabase_db),
+    face_service: FaceRecognitionService = Depends(get_face_service)
+):
     """
     Удаляет фото и все связанные данные (photo_faces, face_descriptors через CASCADE).
     Автоматически перестраивает индекс если были дескрипторы.
     """
+    print(f"[Images API] ===== DELETE REQUEST RECEIVED =====")
+    print(f"[Images API] Deleting image: {image_id}")
+    
     try:
-        print(f"[Images API] Deleting image: {image_id}")
-        
         # 1. Получаем URL фото для удаления из blob
         result = supabase_db.client.table("gallery_images")\
             .select("image_url")\
@@ -123,6 +128,7 @@ async def delete_all_gallery_images(gallery_id: str):
     Удаляет все фото из галереи и автоматически перестраивает индекс.
     """
     try:
+        print(f"[Images API] ===== DELETE ALL REQUEST RECEIVED =====")
         print(f"[Images API] Deleting all images from gallery: {gallery_id}")
         
         # 1. Получаем все фото из галереи
