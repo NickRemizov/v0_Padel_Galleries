@@ -8,6 +8,14 @@ import base64
 import tempfile
 import uuid
 import shutil
+import zipfile
+import io
+from PIL import Image
+import cv2
+import hnswlib
+import hdbscan
+
+from fastapi import UploadFile
 
 import sys
 import logging
@@ -15,7 +23,6 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# from services.database import PlayerDatabase
 from services.supabase_database import SupabaseDatabase
 
 class FaceRecognitionService:
