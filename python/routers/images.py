@@ -96,9 +96,9 @@ async def delete_image(image_id: str):
         index_rebuilt = False
         if has_descriptors:
             try:
-                pre_count = len(face_service.players_embeddings) if face_service.players_embeddings else 0
-                face_service.rebuild_index()
-                post_count = len(face_service.players_embeddings) if face_service.players_embeddings else 0
+                pre_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
+                await face_service.rebuild_players_index()
+                post_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
                 
                 print(f"[Images API] ✓ Index rebuilt: {pre_count} -> {post_count} descriptors")
                 index_rebuilt = True
@@ -196,9 +196,9 @@ async def delete_all_gallery_images(gallery_id: str):
         index_rebuilt = False
         if has_descriptors and deleted_count > 0:
             try:
-                pre_count = len(face_service.players_embeddings) if face_service.players_embeddings else 0
-                face_service.rebuild_index()
-                post_count = len(face_service.players_embeddings) if face_service.players_embeddings else 0
+                pre_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
+                await face_service.rebuild_players_index()
+                post_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
                 
                 print(f"[Images API] ✓ Index rebuilt: {pre_count} -> {post_count} descriptors")
                 index_rebuilt = True
