@@ -231,3 +231,33 @@ export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
     }
   }
 }
+
+/**
+ * Получает все photo_faces для массива фотографий.
+ * Используется для отображения информации о распознанных лицах в галерее.
+ */
+export async function getBatchPhotoFacesAction(photoIds: string[]) {
+  try {
+    if (photoIds.length === 0) {
+      return { success: true, data: [] }
+    }
+
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+      .from("photo_faces")
+      .select("*, people(id, first_name, last_name, nickname)")
+      .in("photo_id", photoIds)
+
+    if (error) throw error
+
+    return { success: true, data: data || [] }
+  } catch (error) {
+    console.error("[getBatchPhotoFacesAction] Error:", error)
+    return {
+      success: false,
+      data: [],
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
