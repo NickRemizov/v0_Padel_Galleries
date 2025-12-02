@@ -171,3 +171,63 @@ export async function addGalleryImagesAction(
     }
   }
 }
+
+/**
+ * Получает статистику распознавания лиц для галереи.
+ * Возвращает количество фото и информацию о распознанных/неизвестных лицах.
+ */
+export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
+  try {
+    const supabase = await createClient()
+
+    // Получаем все фото в галерее
+    const { data: images, error: imagesError } = await supabase
+      .from("gallery_images")
+      .select("id")
+      .eq("gallery_id", galleryId)
+
+    if (imagesError) throw imagesError
+
+    const imageIds = images?.map((img) => img.id) || []
+
+    if (imageIds.length === 0) {
+      return {
+        success: true,
+        totalImages: 0,
+        totalFaces: 0,
+        recognizedFaces: 0,
+        unknownFaces: 0,
+      }
+    }
+
+    // Получаем статистику лиц
+    const { data: faces, error: facesError } = await supabase
+      .from("photo_faces")
+      .select("id, person_id")
+      .in("photo_id", imageIds)
+
+    if (facesError) throw facesError
+
+    const totalFaces = faces?.length || 0
+    const recognizedFaces = faces?.filter((f) => f.person_id !== null).length || 0
+    const unknownFaces = totalFaces - recognizedFaces
+
+    return {
+      success: true,
+      totalImages: imageIds.length,
+      totalFaces,
+      recognizedFaces,
+      unknownFaces,
+    }
+  } catch (error) {
+    console.error("[getGalleryFaceRecognitionStatsAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      totalImages: 0,
+      totalFaces: 0,
+      recognizedFaces: 0,
+      unknownFaces: 0,
+    }
+  }
+}
