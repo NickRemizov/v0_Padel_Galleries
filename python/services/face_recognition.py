@@ -698,18 +698,11 @@ class FaceRecognitionService:
             
             person_id = self.player_ids_map[labels[0][0]]
             
-            # Если найдено совпадение с verified лицом и confidence выше порога,
-            # масштабируем его в диапазон 85-100% для лучшего UX
             if raw_confidence >= verified_threshold:
-                # Масштабируем: 0.60 -> 85%, 1.0 -> 100%
-                boosted_confidence = 0.85 + (raw_confidence - verified_threshold) * (0.15 / (1.0 - verified_threshold))
-                boosted_confidence = min(1.0, boosted_confidence)  # Не больше 100%
-                
                 print(f"[FaceRecognition] ✓ Match found: person_id={person_id}")
-                print(f"[FaceRecognition]   Raw confidence: {raw_confidence:.3f}")
-                print(f"[FaceRecognition]   Boosted confidence: {boosted_confidence:.3f} (for verified descriptor)")
+                print(f"[FaceRecognition]   Confidence: {raw_confidence:.3f}")
                 
-                return person_id, boosted_confidence
+                return person_id, raw_confidence
             else:
                 print(f"[FaceRecognition] Confidence {raw_confidence:.3f} below threshold {verified_threshold:.2f}, returning None")
                 return None, None
