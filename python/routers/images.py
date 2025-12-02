@@ -34,7 +34,7 @@ async def delete_image(image_id: str):
         print(f"[Images API] Deleting image: {image_id}")
         
         # 1. Получаем URL фото для удаления из blob
-        result = supabase_db.supabase.table("gallery_images")\
+        result = supabase_db.client.table("gallery_images")\
             .select("image_url")\
             .eq("id", image_id)\
             .execute()
@@ -45,7 +45,7 @@ async def delete_image(image_id: str):
         image_url = result.data[0].get("image_url")
         
         # 2. Проверяем есть ли дескрипторы у этого фото
-        descriptors_result = supabase_db.supabase.table("photo_faces")\
+        descriptors_result = supabase_db.client.table("photo_faces")\
             .select("id, insightface_descriptor")\
             .eq("photo_id", image_id)\
             .execute()
@@ -59,7 +59,7 @@ async def delete_image(image_id: str):
         
         # 3. Удаляем запись из gallery_images
         # CASCADE автоматически удалит photo_faces и face_descriptors
-        delete_result = supabase_db.supabase.table("gallery_images")\
+        delete_result = supabase_db.client.table("gallery_images")\
             .delete()\
             .eq("id", image_id)\
             .execute()
