@@ -41,7 +41,11 @@ export async function savePhotoFaceAction(
   if (confidence !== null) {
     insertData.confidence = confidence
   }
-  if (recognitionConfidence !== null) {
+
+  if (verified && personId) {
+    insertData.recognition_confidence = 1.0
+    console.log("[v0] Verified face detected, setting recognition_confidence to 1.0")
+  } else if (recognitionConfidence !== null) {
     insertData.recognition_confidence = recognitionConfidence
   }
 
