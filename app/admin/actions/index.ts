@@ -1,15 +1,13 @@
 "use server"
 
 // Re-export all server actions from modules
-console.log("[v0] actions/index.ts loaded v1.1.2") // версия обновлена
+console.log("[v0] actions/index.ts loaded v1.1.2")
 
 // People
 export * from "./people"
 
 // Galleries
 export * from "./galleries"
-
-export * from "./test-exports"
 
 // Entities (photographers, locations, organizers)
 export * from "./entities"
