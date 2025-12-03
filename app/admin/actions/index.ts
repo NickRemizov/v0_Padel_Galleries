@@ -1,5 +1,7 @@
+"use server"
+
 // Re-export all server actions from modules
-console.log("[v0] actions/index.ts loaded v0.3.2") // версия обновлена для отслеживания деплоя
+console.log("[v0] actions/index.ts loaded v1.1.2") // версия обновлена
 
 // People
 export * from "./people"

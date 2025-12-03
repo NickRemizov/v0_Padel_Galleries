@@ -29,9 +29,6 @@ export async function syncVerifiedAndConfidenceAction() {
 
     if (confidenceError) throw confidenceError
 
-    const confidenceCount = confidenceRecords?.length || 0
-    logger.debug("actions/cleanup", `Updated ${confidenceCount} records: set verified=true where confidence=1`)
-
     const { count: totalVerified } = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
@@ -47,7 +44,7 @@ export async function syncVerifiedAndConfidenceAction() {
     revalidatePath("/admin")
     logger.info("actions/cleanup", "Sync verified and confidence completed", {
       verifiedCount,
-      confidenceCount,
+      confidenceCount: totalConfidence1 || 0,
       totalVerified,
       totalConfidence1,
     })
@@ -56,7 +53,7 @@ export async function syncVerifiedAndConfidenceAction() {
       success: true,
       data: {
         updatedVerified: verifiedCount,
-        updatedConfidence: confidenceCount,
+        updatedConfidence: totalConfidence1 || 0,
         totalVerified: totalVerified || 0,
         totalConfidence1: totalConfidence1 || 0,
       },
