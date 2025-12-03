@@ -1,86 +1,8 @@
 "use server"
 
+import { apiFetch, revalidatePath, createClient } from "./utils" // Assuming these functions are declared in a utils file
+
 // Faces и Images - существующие функции остаются в этом файле
-export {
-  savePhotoFaceAction,
-  deleteGalleryImageAction,
-  deleteAllGalleryImagesAction,
-  addGalleryImagesAction,
-  getBatchPhotoFacesAction,
-  getPhotoFacesAction,
-  deletePhotoFaceAction,
-  updatePhotoFaceAction,
-  saveFaceDescriptorAction,
-  markPhotoAsProcessedAction,
-} from "./actions.tsx"
-
-// People
-export {
-  getPersonPhotosAction,
-  getPersonPhotosWithDetailsAction,
-  updatePersonAvatarAction,
-  verifyPersonOnPhotoAction,
-  updatePersonVisibilityAction,
-  unlinkPersonFromPhotoAction,
-  addPersonAction,
-  updatePersonAction,
-  deletePersonAction,
-} from "./actions/people"
-
-// Galleries
-export {
-  getGalleryFaceRecognitionStatsAction,
-  addGalleryAction,
-  updateGalleryAction,
-  deleteGalleryAction,
-} from "./actions/galleries"
-
-// Entities (photographers, locations, organizers)
-export {
-  addPhotographerAction,
-  updatePhotographerAction,
-  deletePhotographerAction,
-  addLocationAction,
-  updateLocationAction,
-  deleteLocationAction,
-  addOrganizerAction,
-  updateOrganizerAction,
-  deleteOrganizerAction,
-} from "./actions/entities"
-
-// Cleanup
-export {
-  syncVerifiedAndConfidenceAction,
-  cleanupUnverifiedFacesAction,
-  cleanupDuplicateFacesAction,
-  cleanupPersonDescriptorsAction,
-} from "./actions/cleanup"
-
-// Debug
-export {
-  debugPersonPhotosAction,
-  debugPhotoFacesAction,
-  checkDatabaseIntegrityAction,
-  fixIntegrityIssueAction,
-} from "./actions/debug"
-
-// Recognition
-export {
-  getRecognitionStatsAction,
-  getUnknownFaceClustersAction,
-  assignClusterToPersonAction,
-  rejectFaceClusterAction,
-  regenerateUnknownDescriptorsAction,
-} from "./actions/recognition"
-
-import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
-import { apiFetch } from "@/lib/apiClient"
-
-/**
- * Сохраняет распознанное лицо через FastAPI endpoint.
- * Автоматически перестраивает индекс для verified лиц.
- */
 export async function savePhotoFaceAction(
   photoId: string,
   personId: string | null,
@@ -402,3 +324,62 @@ export async function markPhotoAsProcessedAction(photoId: string) {
     }
   }
 }
+
+// People
+export {
+  getPersonPhotosAction,
+  getPersonPhotosWithDetailsAction,
+  updatePersonAvatarAction,
+  verifyPersonOnPhotoAction,
+  updatePersonVisibilityAction,
+  unlinkPersonFromPhotoAction,
+  addPersonAction,
+  updatePersonAction,
+  deletePersonAction,
+} from "./actions/people"
+
+// Galleries
+export {
+  getGalleryFaceRecognitionStatsAction,
+  addGalleryAction,
+  updateGalleryAction,
+  deleteGalleryAction,
+} from "./actions/galleries"
+
+// Entities (photographers, locations, organizers)
+export {
+  addPhotographerAction,
+  updatePhotographerAction,
+  deletePhotographerAction,
+  addLocationAction,
+  updateLocationAction,
+  deleteLocationAction,
+  addOrganizerAction,
+  updateOrganizerAction,
+  deleteOrganizerAction,
+} from "./actions/entities"
+
+// Cleanup
+export {
+  syncVerifiedAndConfidenceAction,
+  cleanupUnverifiedFacesAction,
+  cleanupDuplicateFacesAction,
+  cleanupPersonDescriptorsAction,
+} from "./actions/cleanup"
+
+// Debug
+export {
+  debugPersonPhotosAction,
+  debugPhotoFacesAction,
+  checkDatabaseIntegrityAction,
+  fixIntegrityIssueAction,
+} from "./actions/debug"
+
+// Recognition
+export {
+  getRecognitionStatsAction,
+  getUnknownFaceClustersAction,
+  assignClusterToPersonAction,
+  rejectFaceClusterAction,
+  regenerateUnknownDescriptorsAction,
+} from "./actions/recognition"
