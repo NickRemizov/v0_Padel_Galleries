@@ -277,3 +277,18 @@ export async function fixIntegrityIssueAction(issueType: string, options?: any) 
     return { success: false, error: error.message || "Failed to fix integrity issue" }
   }
 }
+
+export async function getPhotosWithExcessDescriptorsAction() {
+  logger.warn(
+    "actions/debug",
+    "getPhotosWithExcessDescriptorsAction is deprecated - descriptors are managed automatically",
+  )
+  return {
+    success: true,
+    data: {
+      photos: [],
+      message:
+        "This function is deprecated. Descriptors are now managed automatically by the backend recognition system.",
+    },
+  }
+}

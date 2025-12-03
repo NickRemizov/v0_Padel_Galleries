@@ -130,3 +130,35 @@ export async function regenerateUnknownDescriptorsAction() {
   logger.warn("actions/recognition", "regenerateUnknownDescriptorsAction not implemented yet")
   return { success: true }
 }
+
+export async function generateMissingDescriptorsAction() {
+  logger.warn(
+    "actions/recognition",
+    "generateMissingDescriptorsAction is deprecated - descriptors are generated automatically by backend",
+  )
+  return {
+    success: true,
+    message:
+      "This function is deprecated. Descriptors are now generated automatically by the backend recognition system.",
+  }
+}
+
+export async function getAllFaceDescriptorsAction() {
+  logger.warn("actions/recognition", "getAllFaceDescriptorsAction is deprecated - use backend API instead")
+  return {
+    success: true,
+    descriptors: [],
+    message: "This function is deprecated. Face descriptors are now managed automatically by the backend.",
+  }
+}
+
+export async function regeneratePersonDescriptorsAction(personId: string) {
+  logger.warn(
+    "actions/recognition",
+    "regeneratePersonDescriptorsAction is deprecated - descriptors regenerate automatically",
+  )
+  return {
+    success: true,
+    message: "This function is deprecated. Person descriptors are regenerated automatically when faces are verified.",
+  }
+}

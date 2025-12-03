@@ -11,11 +11,11 @@ import { PeopleManager } from "@/components/admin/people-manager"
 import { RecognitionStatsDialog } from "@/components/admin/recognition-stats-dialog"
 import { LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { signOutAction } from "@/app/admin/actions/faces-images"
+import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.1.5" // Исправлена архитектура: @/app/admin/actions теперь резолвится в папку actions/
+const APP_VERSION = "1.1.6" // Добавлены stub функции для устаревших legacy функций
 
 export const dynamic = "force-dynamic"
 

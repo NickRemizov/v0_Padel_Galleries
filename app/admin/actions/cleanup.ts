@@ -263,3 +263,14 @@ export async function cleanupPersonDescriptorsAction(personRealName: string) {
     return { error: error.message || "Failed to cleanup person descriptors" }
   }
 }
+
+export async function cleanupDuplicateDescriptorsAction() {
+  logger.warn(
+    "actions/cleanup",
+    "cleanupDuplicateDescriptorsAction is deprecated - use cleanupDuplicateFacesAction instead",
+  )
+  return {
+    success: true,
+    message: "This function is deprecated. Use cleanupDuplicateFacesAction instead.",
+  }
+}

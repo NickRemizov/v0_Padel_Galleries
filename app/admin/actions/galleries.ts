@@ -4,10 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
-console.log("[v0] galleries.ts loaded v1.1.4")
-
 export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
-  console.log("[v0] getGalleryFaceRecognitionStatsAction called v1.1.4 with galleryId:", galleryId)
   try {
     const supabase = await createClient()
 
