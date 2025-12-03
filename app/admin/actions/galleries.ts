@@ -8,6 +8,7 @@ export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
   try {
     const supabase = await createClient()
 
+    // Получаем все изображения галереи
     const { data: images, error: imagesError } = await supabase
       .from("gallery_images")
       .select("id")
@@ -20,40 +21,57 @@ export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
     if (imageIds.length === 0) {
       return {
         success: true,
-        totalImages: 0,
-        totalFaces: 0,
-        recognizedFaces: 0,
-        unknownFaces: 0,
+        data: {},
       }
     }
 
+    // Получаем все лица для этих изображений
     const { data: faces, error: facesError } = await supabase
       .from("photo_faces")
-      .select("id, person_id")
+      .select("photo_id, person_id, verified")
       .in("photo_id", imageIds)
 
     if (facesError) throw facesError
 
-    const totalFaces = faces?.length || 0
-    const recognizedFaces = faces?.filter((f) => f.person_id !== null).length || 0
-    const unknownFaces = totalFaces - recognizedFaces
+    // Группируем лица по photo_id
+    const facesByPhoto: Record<string, { person_id: string | null; verified: boolean }[]> = {}
+
+    for (const face of faces || []) {
+      if (!facesByPhoto[face.photo_id]) {
+        facesByPhoto[face.photo_id] = []
+      }
+      facesByPhoto[face.photo_id].push({
+        person_id: face.person_id,
+        verified: face.verified || false,
+      })
+    }
+
+    // Вычисляем статистику для каждого изображения
+    const stats: Record<string, { total: number; recognized: number; fullyRecognized: boolean }> = {}
+
+    for (const imageId of imageIds) {
+      const imageFaces = facesByPhoto[imageId] || []
+      const total = imageFaces.length
+      const recognized = imageFaces.filter((f) => f.person_id !== null).length
+      const fullyRecognized = total > 0 && recognized === total
+
+      stats[imageId] = {
+        total,
+        recognized,
+        fullyRecognized,
+      }
+    }
 
     return {
       success: true,
-      totalImages: imageIds.length,
-      totalFaces,
-      recognizedFaces,
-      unknownFaces,
+      data: stats,
     }
   } catch (error) {
     console.error("[getGalleryFaceRecognitionStatsAction] Error:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
-      totalImages: 0,
-      totalFaces: 0,
-      recognizedFaces: 0,
-      unknownFaces: 0,
+      data: {},
     }
   }
 }
