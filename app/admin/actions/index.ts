@@ -1,11 +1,5 @@
 // Re-export all server actions from modules
 
-// Faces and images from main actions.tsx
-export * from "../actions"
-
-// Images (additional functions)
-export * from "./images"
-
 // People
 export * from "./people"
 
@@ -26,3 +20,9 @@ export * from "./recognition"
 
 // Auth
 export * from "./auth"
+
+// Images (additional functions like updateGallerySortOrderAction)
+export * from "./images"
+
+// Faces and images from main actions.tsx (last to avoid overriding module exports)
+export * from "../actions"
