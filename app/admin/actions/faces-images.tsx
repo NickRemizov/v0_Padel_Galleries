@@ -1,6 +1,6 @@
 "use server"
 
-import { apiFetch, revalidatePath, createClient } from "../utils"
+import { apiFetch, revalidatePath } from "../utils"
 
 export async function savePhotoFaceAction(
   photoId: string,
@@ -145,16 +145,17 @@ export async function getBatchPhotoFacesAction(photoIds: string[]) {
       return { success: true, data: [] }
     }
 
-    const supabase = await createClient()
+    // Используем FastAPI endpoint вместо прямого запроса к Supabase
+    const result = await apiFetch("/api/faces/batch", {
+      method: "POST",
+      body: JSON.stringify({ photo_ids: photoIds }),
+    })
 
-    const { data, error } = await supabase
-      .from("photo_faces")
-      .select("*, people(id, first_name, last_name, nickname)")
-      .in("photo_id", photoIds)
+    if (!result.success) {
+      throw new Error(result.error || "Failed to load faces")
+    }
 
-    if (error) throw error
-
-    return { success: true, data: data || [] }
+    return { success: true, data: result.data || [] }
   } catch (error) {
     console.error("[getBatchPhotoFacesAction] Error:", error)
     return {
@@ -167,16 +168,16 @@ export async function getBatchPhotoFacesAction(photoIds: string[]) {
 
 export async function getPhotoFacesAction(photoId: string) {
   try {
-    const supabase = await createClient()
+    // Используем FastAPI endpoint вместо прямого запроса к Supabase
+    const result = await apiFetch(`/api/faces/photo/${photoId}`, {
+      method: "GET",
+    })
 
-    const { data, error } = await supabase
-      .from("photo_faces")
-      .select("*, people(id, first_name, last_name, nickname)")
-      .eq("photo_id", photoId)
+    if (!result.success) {
+      throw new Error(result.error || "Failed to load faces")
+    }
 
-    if (error) throw error
-
-    return { success: true, data: data || [] }
+    return { success: true, data: result.data || [] }
   } catch (error) {
     console.error("[getPhotoFacesAction] Error:", error)
     return {

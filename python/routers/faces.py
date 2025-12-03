@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# supabase_db = SupabaseDatabase()
-
 face_service_instance = None
 supabase_db_instance = None
 
@@ -28,7 +26,7 @@ def set_services(face_service: FaceRecognitionService, supabase_db: SupabaseData
 class SaveFaceRequest(BaseModel):
     photo_id: str
     person_id: Optional[str]
-    bounding_box: Optional[dict]  # {x, y, width, height}
+    bounding_box: Optional[dict]
     embedding: List[float]
     confidence: Optional[float]
     recognition_confidence: Optional[float]
@@ -56,6 +54,72 @@ class DeleteFaceRequest(BaseModel):
 class BatchSaveFaceRequest(BaseModel):
     photo_id: str
     faces: List[SaveFaceRequest]
+
+
+class BatchPhotoIdsRequest(BaseModel):
+    photo_ids: List[str]
+
+
+@router.post("/batch")
+async def get_batch_photo_faces(
+    request: BatchPhotoIdsRequest,
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Get all faces for multiple photos in a single request.
+    Used by GalleryImagesManager to display face statistics.
+    """
+    try:
+        logger.info(f"[Faces API] Getting faces for {len(request.photo_ids)} photos")
+        
+        if not request.photo_ids:
+            return {"success": True, "data": []}
+        
+        # Query all faces for these photos
+        result = supabase_db.supabase.table("photo_faces") \
+            .select("*, people(id, first_name, last_name, nickname, real_name)") \
+            .in_("photo_id", request.photo_ids) \
+            .execute()
+        
+        if not result.data:
+            return {"success": True, "data": []}
+        
+        logger.info(f"[Faces API] Found {len(result.data)} faces")
+        return {"success": True, "data": result.data}
+        
+    except Exception as e:
+        logger.error(f"[Faces API] Error getting batch faces: {str(e)}")
+        return {"success": False, "error": str(e), "data": []}
+
+
+@router.get("/photo/{photo_id}")
+async def get_photo_faces(
+    photo_id: str,
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Get all faces for a single photo.
+    Used by FaceTaggingDialog to check if faces already exist before auto-detection.
+    """
+    try:
+        logger.info(f"[Faces API] Getting faces for photo: {photo_id}")
+        
+        # Query all faces for this photo
+        result = supabase_db.supabase.table("photo_faces") \
+            .select("*, people(id, first_name, last_name, nickname, real_name)") \
+            .eq("photo_id", photo_id) \
+            .execute()
+        
+        if not result.data:
+            logger.info(f"[Faces API] No faces found for photo {photo_id}")
+            return {"success": True, "data": []}
+        
+        logger.info(f"[Faces API] Found {len(result.data)} faces for photo {photo_id}")
+        return {"success": True, "data": result.data}
+        
+    except Exception as e:
+        logger.error(f"[Faces API] Error getting photo faces: {str(e)}")
+        return {"success": False, "error": str(e), "data": []}
 
 
 @router.post("/save", response_model=SaveFaceResponse)

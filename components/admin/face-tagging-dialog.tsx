@@ -3,13 +3,13 @@
 import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { FaceRecognitionDetailsDialog, type DetailedFace } from "./face-recognition-details-dialog"
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from 'lucide-react'
+import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from "lucide-react"
 import { savePhotoFaceAction, getPhotoFacesAction, deletePhotoFaceAction } from "@/app/admin/actions"
 import { createClient } from "@/lib/supabase/client"
 import type { Person, DetectedFace } from "@/lib/types"
@@ -50,12 +50,13 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  
+
   const debouncedSave = useMemo(
-    () => debounce((faces: TaggedFace[]) => {
-      console.log("[v3.11] Debounced save triggered for", faces.length, "faces")
-    }, 500),
-    []
+    () =>
+      debounce((faces: TaggedFace[]) => {
+        console.log("[v3.11] Debounced save triggered for", faces.length, "faces")
+      }, 500),
+    [],
   )
 
   const getDisplayFileName = () => {
@@ -115,6 +116,7 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
     const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
 
     if (existingFaces.length > 0) {
+      console.log("[v3.22] Found existing faces, skipping automatic detection:", existingFaces.length)
       const tagged: TaggedFace[] = existingFaces.map((existing) => ({
         id: existing.id,
         face: {
@@ -132,6 +134,7 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
       setTaggedFaces(tagged)
       drawFaces(tagged)
     } else {
+      console.log("[v3.22] No existing faces, starting automatic detection")
       await detectAndRecognizeFaces()
     }
   }
@@ -173,6 +176,7 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
       setTaggedFaces(tagged)
       drawFaces(tagged)
     } else {
+      console.log("[v3.22] No existing faces, starting automatic detection")
       await detectAndRecognizeFaces()
     }
   }
@@ -376,7 +380,7 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
     }
     setTaggedFaces(updated)
     drawFaces(updated)
-    
+
     debouncedSave(updated)
   }
 
@@ -385,7 +389,7 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
     setTaggedFaces(updated)
     setSelectedFaceIndex(null)
     drawFaces(updated)
-    
+
     debouncedSave(updated)
   }
 
@@ -394,7 +398,7 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
       console.log("[v3.11] Save already in progress, ignoring")
       return
     }
-    
+
     setSaving(true)
     try {
       const existingResult = await getPhotoFacesAction(imageId)
@@ -459,7 +463,7 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
       console.log("[v3.11] Save already in progress, ignoring")
       return
     }
-    
+
     setSaving(true)
     try {
       const existingResult = await getPhotoFacesAction(imageId)
