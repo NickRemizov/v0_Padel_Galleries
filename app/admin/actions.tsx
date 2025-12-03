@@ -1,8 +1,7 @@
 "use server"
 
-import { apiFetch, revalidatePath, createClient } from "./utils" // Assuming these functions are declared in a utils file
+import { apiFetch, revalidatePath, createClient } from "./utils"
 
-// Faces и Images - существующие функции остаются в этом файле
 export async function savePhotoFaceAction(
   photoId: string,
   personId: string | null,
@@ -30,7 +29,7 @@ export async function savePhotoFaceAction(
       revalidatePath("/admin")
       return {
         success: true,
-        face_id: result.data?.id, // Backend возвращает data.id
+        face_id: result.data?.id,
         index_updated: result.index_updated,
       }
     } else {
@@ -48,10 +47,6 @@ export async function savePhotoFaceAction(
   }
 }
 
-/**
- * Удаляет одно фото через FastAPI endpoint.
- * Автоматически удаляет связанные photo_faces через CASCADE и перестраивает индекс.
- */
 export async function deleteGalleryImageAction(photoId: string) {
   try {
     const result = await apiFetch(`/api/images/${photoId}`, {
@@ -80,10 +75,6 @@ export async function deleteGalleryImageAction(photoId: string) {
   }
 }
 
-/**
- * Удаляет ВСЕ фото из галереи через FastAPI endpoint.
- * Перестраивает индекс один раз после удаления всех фото.
- */
 export async function deleteAllGalleryImagesAction(galleryId: string) {
   try {
     const result = await apiFetch(`/api/images/gallery/${galleryId}/all`, {
@@ -113,9 +104,6 @@ export async function deleteAllGalleryImagesAction(galleryId: string) {
   }
 }
 
-/**
- * Добавляет фотографии в существующую галерею.
- */
 export async function addGalleryImagesAction(
   galleryId: string,
   uploadedImages: Array<{
@@ -151,10 +139,6 @@ export async function addGalleryImagesAction(
   }
 }
 
-/**
- * Получает все photo_faces для массива фотографий.
- * Используется для отображения информации о распознанных лицах в галерее.
- */
 export async function getBatchPhotoFacesAction(photoIds: string[]) {
   try {
     if (photoIds.length === 0) {
@@ -181,10 +165,6 @@ export async function getBatchPhotoFacesAction(photoIds: string[]) {
   }
 }
 
-/**
- * Получает все photo_faces для одного фото.
- * Используется для проверки существующих тегов перед сохранением.
- */
 export async function getPhotoFacesAction(photoId: string) {
   try {
     const supabase = await createClient()
@@ -207,10 +187,6 @@ export async function getPhotoFacesAction(photoId: string) {
   }
 }
 
-/**
- * Удаляет одно лицо через FastAPI endpoint.
- * Автоматически перестраивает индекс если у лица были дескрипторы.
- */
 export async function deletePhotoFaceAction(faceId: string) {
   try {
     const result = await apiFetch("/api/faces/delete", {
@@ -241,9 +217,6 @@ export async function deletePhotoFaceAction(faceId: string) {
   }
 }
 
-/**
- * Обновляет существующее лицо через FastAPI endpoint.
- */
 export async function updatePhotoFaceAction(
   faceId: string,
   updates: {
@@ -282,28 +255,11 @@ export async function updatePhotoFaceAction(
   }
 }
 
-/**
- * Сохраняет face descriptor (старая функция для совместимости).
- * DEPRECATED: используйте savePhotoFaceAction вместо этого.
- */
 export async function saveFaceDescriptorAction(personId: string, embedding: number[], photoId: string) {
   console.warn("[saveFaceDescriptorAction] DEPRECATED: Use savePhotoFaceAction instead")
-
-  // Перенаправляем на новую функцию
-  return await savePhotoFaceAction(
-    photoId,
-    personId,
-    null, // bounding_box
-    embedding,
-    null, // detectionConfidence
-    null, // recognitionConfidence
-    true, // isVerified
-  )
+  return await savePhotoFaceAction(photoId, personId, null, embedding, null, null, true)
 }
 
-/**
- * Помечает фото как обработанное (has_been_processed=true).
- */
 export async function markPhotoAsProcessedAction(photoId: string) {
   try {
     const result = await apiFetch(`/api/images/${photoId}/mark-processed`, {
@@ -318,93 +274,6 @@ export async function markPhotoAsProcessedAction(photoId: string) {
     return { success: true }
   } catch (error) {
     console.error("[markPhotoAsProcessedAction] Error:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
-  }
-}
-
-// People
-export {
-  getPersonPhotosAction,
-  getPersonPhotosWithDetailsAction,
-  updatePersonAvatarAction,
-  verifyPersonOnPhotoAction,
-  updatePersonVisibilityAction,
-  unlinkPersonFromPhotoAction,
-  addPersonAction,
-  updatePersonAction,
-  deletePersonAction,
-} from "./actions/people"
-
-// Galleries
-export {
-  getGalleryFaceRecognitionStatsAction,
-  addGalleryAction,
-  updateGalleryAction,
-  deleteGalleryAction,
-} from "./actions/galleries"
-
-// Entities (photographers, locations, organizers)
-export {
-  addPhotographerAction,
-  updatePhotographerAction,
-  deletePhotographerAction,
-  addLocationAction,
-  updateLocationAction,
-  deleteLocationAction,
-  addOrganizerAction,
-  updateOrganizerAction,
-  deleteOrganizerAction,
-} from "./actions/entities"
-
-// Cleanup
-export {
-  syncVerifiedAndConfidenceAction,
-  cleanupUnverifiedFacesAction,
-  cleanupDuplicateFacesAction,
-  cleanupPersonDescriptorsAction,
-} from "./actions/cleanup"
-
-// Debug
-export {
-  debugPersonPhotosAction,
-  debugPhotoFacesAction,
-  checkDatabaseIntegrityAction,
-  fixIntegrityIssueAction,
-} from "./actions/debug"
-
-// Recognition
-export {
-  getRecognitionStatsAction,
-  getUnknownFaceClustersAction,
-  assignClusterToPersonAction,
-  rejectFaceClusterAction,
-  regenerateUnknownDescriptorsAction,
-} from "./actions/recognition"
-
-// Additional Actions
-export async function newActionFunction(param: string) {
-  try {
-    // New action logic here
-    const result = await apiFetch(`/api/new-action/${param}`, {
-      method: "GET",
-    })
-
-    if (result.success) {
-      return {
-        success: true,
-        data: result.data,
-      }
-    } else {
-      return {
-        success: false,
-        error: result.error || "Failed to perform new action",
-      }
-    }
-  } catch (error) {
-    console.error("[newActionFunction] Error:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
