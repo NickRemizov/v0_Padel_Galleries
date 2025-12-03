@@ -383,3 +383,31 @@ export {
   rejectFaceClusterAction,
   regenerateUnknownDescriptorsAction,
 } from "./actions/recognition"
+
+// Additional Actions
+export async function newActionFunction(param: string) {
+  try {
+    // New action logic here
+    const result = await apiFetch(`/api/new-action/${param}`, {
+      method: "GET",
+    })
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data,
+      }
+    } else {
+      return {
+        success: false,
+        error: result.error || "Failed to perform new action",
+      }
+    }
+  } catch (error) {
+    console.error("[newActionFunction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
