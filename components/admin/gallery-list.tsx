@@ -10,6 +10,7 @@ import { EditGalleryDialog } from "./edit-gallery-dialog"
 import { GalleryImagesManager } from "./gallery-images-manager"
 import type { Gallery, Photographer, Location, Organizer } from "@/lib/types"
 import { getGalleryFaceRecognitionStatsAction } from "@/app/admin/actions"
+import { testExportsAction } from "@/app/admin/actions"
 
 interface GalleryListProps {
   galleries: Gallery[]
@@ -36,7 +37,15 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
   >(new Map())
 
   useEffect(() => {
-    async function loadVerificationStatus() {
+    async function loadStats() {
+      console.log("[v0] Testing exports...")
+      const testResult = await testExportsAction()
+      console.log("[v0] Test result:", testResult)
+      console.log(
+        "[v0] getGalleryFaceRecognitionStatsAction type in component:",
+        typeof getGalleryFaceRecognitionStatsAction,
+      )
+
       const statsMap = new Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>()
 
       for (const gallery of galleries) {
@@ -61,7 +70,7 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
       setGalleryStats(statsMap)
     }
 
-    loadVerificationStatus()
+    loadStats()
   }, [galleries])
 
   async function handleDelete(id: string) {

@@ -7,6 +7,8 @@ export * from "./people"
 // Galleries
 export * from "./galleries"
 
+export * from "./test-exports"
+
 // Entities (photographers, locations, organizers)
 export * from "./entities"
 
