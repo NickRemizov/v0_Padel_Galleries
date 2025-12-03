@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
-console.log("[v0] galleries.ts loaded - getGalleryFaceRecognitionStatsAction defined")
+console.log("[v0] galleries.ts loaded v0.3.2 - getGalleryFaceRecognitionStatsAction defined")
 
 export async function getGalleryFaceRecognitionStatsAction(galleryId: string) {
-  console.log("[v0] getGalleryFaceRecognitionStatsAction called with galleryId:", galleryId)
+  console.log("[v0] getGalleryFaceRecognitionStatsAction called v0.3.2 with galleryId:", galleryId)
   try {
     const supabase = await createClient()
 
