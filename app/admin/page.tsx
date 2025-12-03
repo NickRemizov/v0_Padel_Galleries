@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.1.3" // Обновлена версия после апгрейда Next.js до 16.0.7
+const APP_VERSION = "1.1.4" // Обновлена версия после восстановления архитектуры Server Actions
 
 export const dynamic = "force-dynamic"
 

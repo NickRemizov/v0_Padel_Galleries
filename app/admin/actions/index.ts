@@ -1,96 +1,31 @@
-"use server"
-
-// Re-export all server actions from modules with explicit named exports
-console.log("[v0] actions/index.ts loaded v1.1.4 with ALL explicit exports")
+console.log("[v0] actions/index.ts loaded v1.1.4 - simple re-exports")
 
 // Galleries module
-export {
-  getGalleryFaceRecognitionStatsAction,
-  addGalleryAction,
-  updateGalleryAction,
-  deleteGalleryAction,
-} from "./galleries"
+export * from "./galleries"
 
 // People module
-export {
-  getPersonPhotosAction,
-  getPersonPhotosWithDetailsAction,
-  updatePersonAvatarAction,
-  verifyPersonOnPhotoAction,
-  updatePersonVisibilityAction,
-  unlinkPersonFromPhotoAction,
-} from "./people"
+export * from "./people"
 
 // Entities module (photographers, locations, organizers, persons)
-export {
-  addPersonAction,
-  updatePersonAction,
-  deletePersonAction,
-  addPhotographerAction,
-  updatePhotographerAction,
-  deletePhotographerAction,
-  addLocationAction,
-  updateLocationAction,
-  deleteLocationAction,
-  addOrganizerAction,
-  updateOrganizerAction,
-  deleteOrganizerAction,
-} from "./entities"
+export * from "./entities"
 
 // Cleanup module
-export {
-  cleanupDuplicateFacesAction,
-  cleanupUnusedFacesAction,
-  cleanupDuplicateDescriptorsAction,
-  cleanupAllAction,
-} from "./cleanup"
+export * from "./cleanup"
 
 // Debug module
-export {
-  debugPersonPhotosAction,
-  runIntegrityCheckAction,
-  debugFacesAction,
-  debugDescriptorsAction,
-} from "./debug"
+export * from "./debug"
 
 // Recognition module
-export {
-  generateMissingDescriptorsAction,
-  startAutoRecognitionAction,
-  stopAutoRecognitionAction,
-  getAutoRecognitionStatusAction,
-  recognizeAllAction,
-} from "./recognition"
+export * from "./recognition"
 
 // Auth module
-export {
-  loginAction,
-  logoutAction,
-} from "./auth"
+export * from "./auth"
 
 // Images module
-export {
-  deleteGalleryImageAction,
-  deleteAllGalleryImagesAction,
-  addGalleryImagesAction,
-  updateGallerySortOrderAction,
-} from "./images"
+export * from "./images"
 
 // Faces module
-export {
-  savePhotoFaceAction,
-  saveFaceDescriptorAction,
-} from "./faces"
+export * from "./faces"
 
-// Main actions.tsx (faces and images operations - keep last to avoid conflicts)
-export {
-  savePhotoFaceAction as savePhotoFaceActionMain,
-  deletePhotoFaceAction,
-  updatePhotoFaceAction,
-  saveFaceDescriptorAction as saveFaceDescriptorActionMain,
-  getBatchPhotoFacesAction,
-  getPhotoFacesAction,
-  deleteGalleryImageAction as deleteGalleryImageActionMain,
-  addGalleryImagesAction as addGalleryImagesActionMain,
-  markPhotoAsProcessedAction,
-} from "../actions"
+// Main actions.tsx exported last to avoid conflicts
+export * from "../actions"
