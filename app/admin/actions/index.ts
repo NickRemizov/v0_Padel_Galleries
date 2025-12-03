@@ -1,13 +1,18 @@
 "use server"
 
 // Re-export all server actions from modules
-console.log("[v0] actions/index.ts loaded v1.1.2")
+console.log("[v0] actions/index.ts loaded v1.1.3 with explicit exports")
+
+// Galleries
+export {
+  getGalleryFaceRecognitionStatsAction,
+  addGalleryAction,
+  updateGalleryAction,
+  deleteGalleryAction,
+} from "./galleries"
 
 // People
 export * from "./people"
-
-// Galleries
-export * from "./galleries"
 
 // Entities (photographers, locations, organizers)
 export * from "./entities"
