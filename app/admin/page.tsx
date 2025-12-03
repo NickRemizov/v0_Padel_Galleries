@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.1.6" // Добавлены stub функции для устаревших legacy функций
+const APP_VERSION = "1.1.7"
 
 export const dynamic = "force-dynamic"
 
