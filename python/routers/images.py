@@ -35,6 +35,27 @@ class BatchDeleteResponse(BaseModel):
     index_rebuilt: bool
     message: str
 
+class GalleryImageInput(BaseModel):
+    imageUrl: str
+    originalUrl: str
+    originalFilename: str
+    fileSize: int
+    width: int
+    height: int
+
+class BatchAddImagesRequest(BaseModel):
+    galleryId: str
+    images: list[GalleryImageInput]
+
+class BatchAddImagesResponse(BaseModel):
+    success: bool
+    inserted_count: int
+    message: str
+
+class MarkProcessedResponse(BaseModel):
+    success: bool
+    message: str
+
 @router.delete("/{image_id}", response_model=DeleteImageResponse)
 async def delete_image(image_id: str):
     """
@@ -237,4 +258,82 @@ async def delete_all_gallery_images(gallery_id: str):
         
     except Exception as e:
         logger.error(f"[Images API] Error in batch delete: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/batch-add", response_model=BatchAddImagesResponse)
+async def batch_add_images(request: BatchAddImagesRequest):
+    """
+    Добавляет несколько фото в галерею одновременно.
+    """
+    try:
+        logger.info(f"[Images API] Adding {len(request.images)} images to gallery {request.galleryId}")
+        
+        # Получаем максимальный display_order для галереи
+        max_order_result = supabase_db.client.table("gallery_images")\
+            .select("display_order")\
+            .eq("gallery_id", request.galleryId)\
+            .order("display_order", desc=True)\
+            .limit(1)\
+            .execute()
+        
+        start_order = max_order_result.data[0]["display_order"] + 1 if max_order_result.data else 0
+        
+        # Формируем данные для вставки
+        images_to_insert = [
+            {
+                "gallery_id": request.galleryId,
+                "image_url": img.imageUrl,
+                "original_url": img.originalUrl,
+                "original_filename": img.originalFilename,
+                "width": img.width,
+                "height": img.height,
+                "file_size": img.fileSize,
+                "display_order": start_order + idx
+            }
+            for idx, img in enumerate(request.images)
+        ]
+        
+        # Вставляем в БД
+        result = supabase_db.client.table("gallery_images").insert(images_to_insert).execute()
+        
+        inserted_count = len(result.data) if result.data else 0
+        logger.info(f"[Images API] Successfully inserted {inserted_count} images")
+        
+        return BatchAddImagesResponse(
+            success=True,
+            inserted_count=inserted_count,
+            message=f"Successfully added {inserted_count} images"
+        )
+        
+    except Exception as e:
+        logger.error(f"[Images API] Error in batch add: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/{image_id}/mark-processed", response_model=MarkProcessedResponse)
+async def mark_image_as_processed(image_id: str):
+    """
+    Помечает фото как обработанное (has_been_processed = true).
+    """
+    try:
+        logger.info(f"[Images API] Marking image {image_id} as processed")
+        
+        result = supabase_db.client.table("gallery_images")\
+            .update({"has_been_processed": True})\
+            .eq("id", image_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        logger.info(f"[Images API] Image {image_id} marked as processed")
+        
+        return MarkProcessedResponse(
+            success=True,
+            message="Image marked as processed"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Images API] Error marking image as processed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

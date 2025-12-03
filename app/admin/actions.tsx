@@ -206,36 +206,20 @@ export async function addGalleryImagesAction(
   }>,
 ) {
   try {
-    const supabase = await createClient()
+    const result = await apiFetch("/api/images/batch-add", {
+      method: "POST",
+      body: JSON.stringify({
+        galleryId,
+        images: uploadedImages,
+      }),
+    })
 
-    const { data: maxOrderData } = await supabase
-      .from("gallery_images")
-      .select("display_order")
-      .eq("gallery_id", galleryId)
-      .order("display_order", { ascending: false })
-      .limit(1)
-
-    const startOrder = (maxOrderData?.[0]?.display_order || 0) + 1
-
-    const imagesToInsert = uploadedImages.map((img, idx) => ({
-      gallery_id: galleryId,
-      image_url: img.imageUrl,
-      original_url: img.originalUrl,
-      original_filename: img.originalFilename,
-      width: img.width,
-      height: img.height,
-      file_size: img.fileSize,
-      display_order: startOrder + idx,
-    }))
-
-    const { error } = await supabase.from("gallery_images").insert(imagesToInsert)
-
-    if (error) {
-      throw error
+    if (!result.success) {
+      throw new Error(result.message || "Failed to add images")
     }
 
     revalidatePath("/admin")
-    return { success: true }
+    return { success: true, inserted_count: result.inserted_count }
   } catch (error) {
     console.error("[addGalleryImagesAction] Error:", error)
     return {
@@ -400,11 +384,13 @@ export async function saveFaceDescriptorAction(personId: string, embedding: numb
  */
 export async function markPhotoAsProcessedAction(photoId: string) {
   try {
-    const supabase = await createClient()
+    const result = await apiFetch(`/api/images/${photoId}/mark-processed`, {
+      method: "PATCH",
+    })
 
-    const { error } = await supabase.from("gallery_images").update({ has_been_processed: true }).eq("id", photoId)
-
-    if (error) throw error
+    if (!result.success) {
+      throw new Error(result.message || "Failed to mark photo as processed")
+    }
 
     revalidatePath("/admin")
     return { success: true }
