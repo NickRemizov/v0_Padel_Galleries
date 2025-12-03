@@ -1,4 +1,5 @@
 // Re-export all server actions from modules
+console.log("[v0] actions/index.ts loaded") // Added timestamp to force rebuild: 2025-01-XX
 
 // People
 export * from "./people"
