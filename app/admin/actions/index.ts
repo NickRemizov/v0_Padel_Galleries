@@ -3,6 +3,9 @@
 // Faces and images from main actions.tsx
 export * from "../actions"
 
+// Images (additional functions)
+export * from "./images"
+
 // People
 export * from "./people"
 

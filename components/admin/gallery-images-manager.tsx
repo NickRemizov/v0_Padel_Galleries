@@ -32,7 +32,7 @@ import {
   addGalleryImagesAction,
   deleteGalleryImageAction,
   deleteAllGalleryImagesAction,
-  updateGallerySortOrderAction,
+  updateGallerySortOrderAction, // Added missing import
   getGalleryFaceRecognitionStatsAction,
   getBatchPhotoFacesAction,
 } from "@/app/admin/actions"
@@ -539,7 +539,10 @@ export function GalleryImagesManager({
 
   async function handleSortChange(value: string) {
     setSortBy(value as SortOption)
-    await updateGallerySortOrderAction(galleryId, value)
+    const result = await updateGallerySortOrderAction(galleryId, value as SortOption)
+    if (result.error) {
+      console.error("Failed to update gallery sort order:", result.error)
+    }
   }
 
   function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
