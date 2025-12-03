@@ -41,6 +41,8 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
 
       for (const gallery of galleries) {
         const result = await getGalleryFaceRecognitionStatsAction(gallery.id)
+        console.log("[v0] getGalleryFaceRecognitionStatsAction result:", result)
+
         if (result.success && result.data) {
           const stats = Object.values(result.data)
           const hasImages = stats.length > 0
