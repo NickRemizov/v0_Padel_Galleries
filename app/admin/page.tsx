@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.1.0" // Critical refactoring: Supabase patterns, logger, Result<T> type
+const APP_VERSION = "1.1.1" // Critical refactoring: Supabase patterns, logger, Result<T> type
 
 export const dynamic = "force-dynamic"
 
