@@ -212,6 +212,8 @@ export function GalleryImagesManager({
     imageId: string | null
     filename: string | null
   }>({ open: false, imageId: null, filename: null })
+  const [selectedImage, setSelectedImage] = useState<{ id: string; url: string } | null>(null)
+  const [selectedImageHasBeenProcessed, setSelectedImageHasBeenProcessed] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -604,6 +606,15 @@ export function GalleryImagesManager({
     setSingleDeleteDialog({ open: false, imageId: null, filename: null })
   }
 
+  const handleTagImage = (imageId: string, imageUrl: string) => {
+    const image = images.find((img) => img.id === imageId)
+    const hasBeenProcessed = image?.has_been_processed || false
+    console.log("[v4.6] Opening FaceTaggingDialog for image:", imageId, "hasBeenProcessed:", hasBeenProcessed)
+
+    setSelectedImage({ id: imageId, url: imageUrl })
+    setSelectedImageHasBeenProcessed(hasBeenProcessed)
+  }
+
   return (
     <>
       <Dialog
@@ -730,7 +741,7 @@ export function GalleryImagesManager({
                     image={image}
                     photoFacesMap={photoFacesMap}
                     recognitionStats={recognitionStats}
-                    onTag={(id, url) => setTaggingImage({ id, url })}
+                    onTag={handleTagImage}
                     onDelete={handleDelete}
                     isSelected={selectedPhotos.has(image.id)}
                     onToggleSelect={togglePhotoSelection}
@@ -854,6 +865,26 @@ export function GalleryImagesManager({
             loadRecognitionStats()
             loadPhotoFaces()
           }}
+        />
+      )}
+
+      {selectedImage && (
+        <FaceTaggingDialog
+          imageId={selectedImage.id}
+          imageUrl={selectedImage.url}
+          open={!!selectedImage}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedImage(null)
+              setSelectedImageHasBeenProcessed(false)
+            }
+          }}
+          onSave={async () => {
+            await loadRecognitionStats()
+            setSelectedImage(null)
+            setSelectedImageHasBeenProcessed(false)
+          }}
+          hasBeenProcessed={selectedImageHasBeenProcessed}
         />
       )}
     </>

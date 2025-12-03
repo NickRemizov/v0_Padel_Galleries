@@ -2,7 +2,7 @@
 
 import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { FaceRecognitionDetailsDialog, type DetailedFace } from "./face-recognition-details-dialog"
-
+import type { TaggedFace } from "@/lib/types" // Declare the TaggedFace variable here
 import { useState, useEffect, useRef, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -24,18 +24,17 @@ interface FaceTaggingDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave?: () => void
+  hasBeenProcessed?: boolean
 }
 
-interface TaggedFace {
-  id?: string
-  face: DetectedFace
-  personId: string | null
-  personName: string | null
-  recognitionConfidence: number | null
-  verified: boolean
-}
-
-export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSave }: FaceTaggingDialogProps) {
+export function FaceTaggingDialog({
+  imageId,
+  imageUrl,
+  open,
+  onOpenChange,
+  onSave,
+  hasBeenProcessed = false,
+}: FaceTaggingDialogProps) {
   const [people, setPeople] = useState<Person[]>([])
   const [taggedFaces, setTaggedFaces] = useState<TaggedFace[]>([])
   const [selectedFaceIndex, setSelectedFaceIndex] = useState<number | null>(null)
@@ -112,30 +111,81 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
   async function loadPeopleAndExistingFaces() {
     await loadPeople()
 
+    console.log("[v3.23] Loading faces for image:", imageId, "hasBeenProcessed:", hasBeenProcessed)
+
     const existingResult = await getPhotoFacesAction(imageId)
     const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
 
-    if (existingFaces.length > 0) {
-      console.log("[v3.22] Found existing faces, skipping automatic detection:", existingFaces.length)
-      const tagged: TaggedFace[] = existingFaces.map((existing) => ({
-        id: existing.id,
-        face: {
-          boundingBox: existing.insightface_bbox,
-          confidence: existing.recognition_confidence || 0,
-          blur_score: existing.blur_score,
-          embedding: [],
-        },
-        personId: existing.person_id,
-        personName: existing.people?.real_name || null,
-        recognitionConfidence: existing.recognition_confidence,
-        verified: existing.verified,
-      }))
+    console.log("[v3.23] Existing faces from DB:", existingFaces.length)
 
-      setTaggedFaces(tagged)
-      drawFaces(tagged)
-    } else {
-      console.log("[v3.22] No existing faces, starting automatic detection")
+    if (existingFaces.length > 0) {
+      const unrecognizedFaces = existingFaces.filter((f) => f.person_id === null)
+      const recognizedFaces = existingFaces.filter((f) => f.person_id !== null)
+
+      console.log("[v3.23] Recognized:", recognizedFaces.length, "Unrecognized:", unrecognizedFaces.length)
+
+      if (unrecognizedFaces.length > 0) {
+        console.log("[v3.23] Found unrecognized faces, attempting recognition only")
+        const tagged: TaggedFace[] = existingFaces.map((existing) => ({
+          id: existing.id,
+          face: {
+            boundingBox: existing.insightface_bbox,
+            confidence: existing.recognition_confidence || 0,
+            blur_score: existing.blur_score,
+            embedding: existing.insightface_descriptor || [],
+          },
+          personId: existing.person_id,
+          personName: existing.people?.real_name || null,
+          recognitionConfidence: existing.recognition_confidence,
+          verified: existing.verified,
+        }))
+
+        const updatedTagged = await Promise.all(
+          tagged.map(async (taggedFace) => {
+            if (taggedFace.personId === null && taggedFace.face.embedding.length > 0) {
+              console.log("[v3.23] Attempting recognition for unrecognized face")
+              const recognition = await recognizeFaceInsightFace(taggedFace.face.embedding)
+              if (recognition) {
+                console.log("[v3.23] Face recognized:", recognition.person_name, recognition.confidence)
+                return {
+                  ...taggedFace,
+                  personId: recognition.person_id,
+                  personName: recognition.person_name,
+                  recognitionConfidence: recognition.confidence,
+                }
+              }
+            }
+            return taggedFace
+          }),
+        )
+
+        setTaggedFaces(updatedTagged)
+        drawFaces(updatedTagged)
+      } else {
+        console.log("[v3.23] All faces recognized, displaying only")
+        const tagged: TaggedFace[] = existingFaces.map((existing) => ({
+          id: existing.id,
+          face: {
+            boundingBox: existing.insightface_bbox,
+            confidence: existing.recognition_confidence || 0,
+            blur_score: existing.blur_score,
+            embedding: [],
+          },
+          personId: existing.person_id,
+          personName: existing.people?.real_name || null,
+          recognitionConfidence: existing.recognition_confidence,
+          verified: existing.verified,
+        }))
+
+        setTaggedFaces(tagged)
+        drawFaces(tagged)
+      }
+    } else if (!hasBeenProcessed) {
+      console.log("[v3.23] New photo (not processed), running full detection + recognition")
       await detectAndRecognizeFaces()
+    } else {
+      console.log("[v3.23] Photo already processed but no faces found - manual recognition only")
+      setTaggedFaces([])
     }
   }
 
@@ -145,8 +195,8 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
     const existingResult = await getPhotoFacesAction(imageId)
     const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
 
-    console.log("[v3.22] Loading existing faces for image:", imageId)
-    console.log("[v3.22] Existing faces from DB:", existingFaces)
+    console.log("[v3.23] Loading existing faces for image:", imageId)
+    console.log("[v3.23] Existing faces from DB:", existingFaces)
 
     if (existingFaces.length > 0) {
       const tagged: TaggedFace[] = existingFaces.map((existing) => ({
@@ -164,7 +214,7 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
       }))
 
       console.log(
-        "[v3.22] Tagged faces after mapping:",
+        "[v3.23] Tagged faces after mapping:",
         tagged.map((f) => ({
           personId: f.personId,
           personName: f.personName,
@@ -175,9 +225,6 @@ export function FaceTaggingDialog({ imageId, imageUrl, open, onOpenChange, onSav
 
       setTaggedFaces(tagged)
       drawFaces(tagged)
-    } else {
-      console.log("[v3.22] No existing faces, starting automatic detection")
-      await detectAndRecognizeFaces()
     }
   }
 
