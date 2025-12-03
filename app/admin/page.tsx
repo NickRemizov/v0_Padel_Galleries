@@ -11,11 +11,11 @@ import { PeopleManager } from "@/components/admin/people-manager"
 import { RecognitionStatsDialog } from "@/components/admin/recognition-stats-dialog"
 import { LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { signOutAction } from "@/app/admin/actions"
+import { signOutAction } from "@/app/admin/actions/faces-images"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.1.4" // Обновлена версия после восстановления архитектуры Server Actions
+const APP_VERSION = "1.1.5" // Исправлена архитектура: @/app/admin/actions теперь резолвится в папку actions/
 
 export const dynamic = "force-dynamic"
 

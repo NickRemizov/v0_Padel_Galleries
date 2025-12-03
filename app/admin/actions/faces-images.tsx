@@ -1,6 +1,6 @@
 "use server"
 
-import { apiFetch, revalidatePath, createClient } from "./utils"
+import { apiFetch, revalidatePath, createClient } from "../utils"
 
 export async function savePhotoFaceAction(
   photoId: string,
