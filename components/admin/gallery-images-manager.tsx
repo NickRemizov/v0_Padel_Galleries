@@ -253,13 +253,16 @@ export function GalleryImagesManager({
   }
 
   async function loadPhotoFaces() {
+    console.log("[v0] [GalleryImagesManager] loadPhotoFaces START")
+    console.log("[v0] [GalleryImagesManager] images count:", images.length)
+
     const photoIds = images.map((img) => img.id)
 
-    console.log("[v4.6] GalleryImagesManager: Calling getBatchPhotoFacesAction with photoIds:", photoIds)
+    console.log("[v0] [GalleryImagesManager] Calling getBatchPhotoFacesAction with photoIds:", photoIds)
 
     const result = await getBatchPhotoFacesAction(photoIds)
 
-    console.log("[v4.6] GalleryImagesManager: getBatchPhotoFacesAction result:", {
+    console.log("[v0] [GalleryImagesManager] getBatchPhotoFacesAction result:", {
       success: result.success,
       successType: typeof result.success,
       dataLength: result.data?.length,
@@ -271,7 +274,7 @@ export function GalleryImagesManager({
       const facesMap: Record<string, { verified: boolean; confidence: number; person_id: string | null }[]> = {}
 
       for (const face of result.data) {
-        console.log("[v4.6] GalleryImagesManager: Face from DB:", {
+        console.log("[v0] [GalleryImagesManager] Face from DB:", {
           photo_id: face.photo_id,
           person_id: face.person_id,
           recognition_confidence: face.recognition_confidence,
@@ -288,14 +291,14 @@ export function GalleryImagesManager({
         })
       }
 
-      console.log("[v4.6] GalleryImagesManager: Loaded photo faces map:", {
+      console.log("[v0] [GalleryImagesManager] Loaded photo faces map:", {
         photosCount: Object.keys(facesMap).length,
         photoIds: Object.keys(facesMap),
       })
 
       setPhotoFacesMap(facesMap)
     } else {
-      console.log("[v4.6] GalleryImagesManager: No faces data or error:", {
+      console.log("[v0] [GalleryImagesManager] No faces data or error:", {
         success: result.success,
         error: result.error,
         hasData: !!result.data,

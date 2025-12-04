@@ -140,15 +140,26 @@ export async function addGalleryImagesAction(
 }
 
 export async function getBatchPhotoFacesAction(photoIds: string[]) {
+  console.log("[v0] [getBatchPhotoFacesAction] START - photoIds count:", photoIds.length)
+
   try {
     if (photoIds.length === 0) {
+      console.log("[v0] [getBatchPhotoFacesAction] Empty photoIds array, returning empty result")
       return { success: true, data: [] }
     }
+
+    console.log("[v0] [getBatchPhotoFacesAction] Calling FastAPI /api/faces/batch...")
 
     // Используем FastAPI endpoint вместо прямого запроса к Supabase
     const result = await apiFetch("/api/faces/batch", {
       method: "POST",
       body: JSON.stringify({ photo_ids: photoIds }),
+    })
+
+    console.log("[v0] [getBatchPhotoFacesAction] FastAPI response:", {
+      success: result.success,
+      dataLength: result.data?.length,
+      hasError: !!result.error,
     })
 
     if (!result.success) {
@@ -157,7 +168,7 @@ export async function getBatchPhotoFacesAction(photoIds: string[]) {
 
     return { success: true, data: result.data || [] }
   } catch (error) {
-    console.error("[getBatchPhotoFacesAction] Error:", error)
+    console.error("[v0] [getBatchPhotoFacesAction] Error:", error)
     return {
       success: false,
       data: [],
