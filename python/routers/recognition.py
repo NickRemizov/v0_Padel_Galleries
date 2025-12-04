@@ -785,7 +785,7 @@ async def process_photo(
         
         # Check if faces already exist in DB
         existing_result = supabase_client_instance.client.table("photo_faces") \
-            .select("id, person_id, verified, insightface_descriptor, insightface_bbox, insightface_confidence") \
+            .select("id, person_id, verified, insightface_bbox, insightface_confidence") \
             .eq("photo_id", request.photo_id) \
             .execute()
         

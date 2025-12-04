@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/client"
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { debounce } from "@/lib/debounce"
-import { processPhotoAction, verifyFaceAction, saveDetectedFaceAction } from "@/app/admin/actions/faces"
+import { processPhotoAction, verifyFaceAction } from "@/app/admin/actions/faces"
 
 const VERSION = "v5.2" // Увеличена версия для архитектуры v2.2.0
 
@@ -318,14 +318,11 @@ export function FaceTaggingDialog({
         if (!taggedFace.id) {
           console.log(`[${VERSION}] Saving NEW face with person ${taggedFace.personId}`)
 
-          const saveResult = await saveDetectedFaceAction(
-            imageId,
+          // Backend автоматически создаст запись и обновит индекс
+          const saveResult = await verifyFaceAction(
+            null, // no existing id for new face
             taggedFace.personId,
-            taggedFace.face.boundingBox,
-            taggedFace.face.confidence,
-            taggedFace.recognitionConfidence,
             true,
-            imageUrl,
           )
 
           if (!saveResult.success) {
