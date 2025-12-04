@@ -6,6 +6,7 @@ from services.supabase_client import SupabaseClient
 import logging
 import numpy as np
 import hdbscan
+import json
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# supabase_client = SupabaseClient()
+#supabase_client = SupabaseClient()
 # async def get_face_service():
 #     return FaceRecognitionService()
 
@@ -50,6 +51,8 @@ class GenerateDescriptorsRequest(BaseModel):
 
 class ProcessPhotoRequest(BaseModel):
     photo_id: str
+    force_redetect: bool = False  # Добавлен параметр для принудительной переdetекции
+    apply_quality_filters: bool = True  # Параметр применения фильтров качества
 
 
 class ProcessPhotoResponse(BaseModel):
@@ -770,134 +773,175 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
 @router.post("/process-photo", response_model=ProcessPhotoResponse)
 async def process_photo(
     request: ProcessPhotoRequest,
-    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_client: SupabaseClient = Depends(lambda: supabase_client_instance)
 ):
     """
-    Process a photo: detect OR recheck faces based on what exists in DB.
-    - If no faces in DB → detect + recognize (NO SAVE)
-    - If unverified faces exist → read embeddings from DB + recognize + update confidence
-    - Returns faces WITHOUT embeddings (only person_id, confidence, bbox, etc)
+    Process photo for face detection and recognition
+    
+    FLOW:
+    1. Check if faces exist in DB
+    2. If force_redetect=True → DELETE all + redetect
+    3. If no faces → detect + recognize + SAVE
+    4. If faces exist → recognize unassigned + UPDATE
+    5. Return all faces (WITHOUT embeddings)
     """
     try:
         logger.info("=" * 80)
-        logger.info("[Recognition] ===== PROCESS PHOTO REQUEST =====")
-        logger.info(f"[Recognition] Photo ID: {request.photo_id}")
+        logger.info("[v2.3] ===== PROCESS PHOTO REQUEST START =====")
+        logger.info(f"[v2.3] Photo ID: {request.photo_id}")
+        logger.info(f"[v2.3] Force redetect: {request.force_redetect}")
+        logger.info(f"[v2.3] Apply quality filters: {request.apply_quality_filters}")
         
-        # Check if faces already exist in DB
-        existing_result = supabase_client_instance.client.table("photo_faces") \
-            .select("id, person_id, verified, insightface_bbox, insightface_confidence") \
-            .eq("photo_id", request.photo_id) \
-            .execute()
+        if request.force_redetect:
+            logger.info("[v2.3] Force redetect requested - deleting existing faces")
+            supabase_client.client.table("photo_faces").delete().eq("photo_id", request.photo_id).execute()
+            logger.info("[v2.3] ✓ Existing faces deleted")
         
-        faces_in_db = existing_result.data if existing_result.data else []
-        logger.info(f"[Recognition] Found {len(faces_in_db)} faces in DB")
+        # Check existing faces in database
+        existing_result = supabase_client.client.table("photo_faces").select(
+            "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, insightface_descriptor"
+        ).eq("photo_id", request.photo_id).execute()
         
-        if not faces_in_db:
-            logger.info("[Recognition] No faces in DB, running detection WITHOUT saving")
+        existing_faces = existing_result.data or []
+        logger.info(f"[v2.3] Found {len(existing_faces)} existing faces in DB")
+        
+        if len(existing_faces) == 0:
+            logger.info("[v2.3] Case 1: New photo - detecting faces")
             
             # Get image URL
-            image_result = supabase_client_instance.client.table("gallery_images") \
-                .select("image_url") \
-                .eq("id", request.photo_id) \
-                .single() \
-                .execute()
+            photo_response = supabase_client.client.table("gallery_images").select("image_url").eq("id", request.photo_id).execute()
+            if not photo_response.data or len(photo_response.data) == 0:
+                raise HTTPException(status_code=404, detail="Photo not found")
             
-            if not image_result.data:
-                return {"success": False, "error": "Image not found", "data": None}
-            
-            image_url = image_result.data["image_url"]
+            image_url = photo_response.data[0]["image_url"]
+            logger.info(f"[v2.3] Image URL: {image_url}")
             
             # Detect faces
-            detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=True)
-            logger.info(f"[Recognition] Detected {len(detected_faces)} faces")
+            detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=request.apply_quality_filters)
+            logger.info(f"[v2.3] ✓ Detected {len(detected_faces)} faces")
             
-            preview_faces = []
-            for face in detected_faces:
+            saved_faces = []
+            
+            for idx, face in enumerate(detected_faces):
+                logger.info(f"[v2.3] Processing face {idx + 1}/{len(detected_faces)}")
+                
                 embedding = face["embedding"]
+                bbox = {
+                    "x": float(face["bbox"][0]),
+                    "y": float(face["bbox"][1]),
+                    "width": float(face["bbox"][2] - face["bbox"][0]),
+                    "height": float(face["bbox"][3] - face["bbox"][1]),
+                }
+                det_confidence = float(face["det_score"])
                 
                 # Recognize
-                person_id, confidence = await face_service.recognize_face(embedding, confidence_threshold=0.0)
+                person_id, rec_confidence = await face_service.recognize_face(embedding)
                 
-                # Build preview face object (NO DB insert)
-                preview_face = {
-                    "id": None,  # No id yet, not saved
+                logger.info(f"[v2.3]   Recognition: person_id={person_id}, confidence={rec_confidence}")
+                
+                insert_data = {
                     "photo_id": request.photo_id,
                     "person_id": person_id,
-                    "recognition_confidence": confidence,
+                    "insightface_bbox": bbox,
+                    "insightface_confidence": det_confidence,
+                    "recognition_confidence": rec_confidence,
                     "verified": False,
-                    "insightface_bbox": {
-                        "x": float(face["bbox"][0]),
-                        "y": float(face["bbox"][1]),
-                        "width": float(face["bbox"][2] - face["bbox"][0]),
-                        "height": float(face["bbox"][3] - face["bbox"][1]),
-                    },
-                    "insightface_confidence": float(face["det_score"]),
-                    "people": None if not person_id else {
-                        "id": person_id,
-                        "real_name": None,  # Will be fetched by frontend if needed
-                        "telegram_name": None
-                    }
+                    "insightface_descriptor": f"[{','.join(map(str, embedding.tolist()))}]",
                 }
-                preview_faces.append(preview_face)
+                
+                save_response = supabase_client.client.table("photo_faces").insert(insert_data).execute()
+                
+                if save_response.data:
+                    saved_face = save_response.data[0]
+                    logger.info(f"[v2.3]   ✓ Saved with ID: {saved_face['id']}")
+                    saved_faces.append(saved_face)
+                else:
+                    logger.error(f"[v2.3]   ❌ Failed to save face")
             
-            logger.info(f"[Recognition] Returning {len(preview_faces)} preview faces (NOT saved)")
-            logger.info("[Recognition] ===== PROCESS PHOTO COMPLETE =====")
+            logger.info(f"[v2.3] ✓ Saved {len(saved_faces)} faces to database")
+            
+            # Load people info
+            response_faces = []
+            for face in saved_faces:
+                if face["person_id"]:
+                    person_response = supabase_client.client.table("people").select("id, real_name, telegram_name").eq("id", face["person_id"]).execute()
+                    person_data = person_response.data[0] if person_response.data else None
+                else:
+                    person_data = None
+                
+                response_faces.append({
+                    "id": face["id"],
+                    "person_id": face["person_id"],
+                    "recognition_confidence": face["recognition_confidence"],
+                    "verified": face["verified"],
+                    "insightface_bbox": face["insightface_bbox"],
+                    "insightface_confidence": face["insightface_confidence"],
+                    "people": person_data,
+                })
+            
+            logger.info("[v2.3] ===== PROCESS PHOTO REQUEST END =====")
             logger.info("=" * 80)
             
-            return {"success": True, "data": preview_faces, "error": None}
+            return {"success": True, "data": response_faces, "error": None}
         
-        # Case 2: Faces exist, check if any are unverified
-        unverified_faces = [f for f in faces_in_db if not f.get("verified", False)]
+        logger.info(f"[v2.3] Case 2: Existing faces - checking for unassigned")
         
-        if not unverified_faces:
-            logger.info("[Recognition] All faces verified, nothing to process")
-            
-            # Return existing faces WITHOUT embeddings
-            final_result = supabase_client_instance.client.table("photo_faces") \
-                .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, people(id, real_name, telegram_name)") \
-                .eq("photo_id", request.photo_id) \
-                .execute()
-            
-            return {"success": True, "data": final_result.data, "error": None}
+        unassigned_faces = [f for f in existing_faces if not f["person_id"]]
+        logger.info(f"[v2.3] Found {len(unassigned_faces)} unassigned faces")
         
-        logger.info(f"[Recognition] Rechecking {len(unverified_faces)} unverified faces")
+        if len(unassigned_faces) > 0:
+            logger.info(f"[v2.3] Recognizing {len(unassigned_faces)} unassigned faces")
+            
+            for face in unassigned_faces:
+                # Read embedding from DB
+                descriptor = face["insightface_descriptor"]
+                if not descriptor:
+                    logger.warning(f"[v2.3] Face {face['id']} has no descriptor - skipping")
+                    continue
+                
+                if isinstance(descriptor, str):
+                    import json
+                    embedding = np.array(json.loads(descriptor), dtype=np.float32)
+                elif isinstance(descriptor, list):
+                    embedding = np.array(descriptor, dtype=np.float32)
+                else:
+                    logger.warning(f"[v2.3] Unknown descriptor type: {type(descriptor)}")
+                    continue
+                
+                # Recognize
+                person_id, rec_confidence = await face_service.recognize_face(embedding)
+                
+                if person_id and rec_confidence:
+                    logger.info(f"[v2.3]   Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")
+                    
+                    # UPDATE database
+                    supabase_client.client.table("photo_faces").update({
+                        "person_id": person_id,
+                        "recognition_confidence": rec_confidence,
+                    }).eq("id", face["id"]).execute()
+                    
+                    logger.info(f"[v2.3]   ✓ Updated face {face['id']}")
         
-        for face in unverified_faces:
-            embedding = face.get("insightface_descriptor")
-            if not embedding:
-                logger.warning(f"[Recognition] Face {face['id']} has no embedding, skipping")
-                continue
-            
-            embedding_np = np.array(embedding, dtype=np.float32)
-            
-            # Recognize with updated index
-            person_id, confidence = await face_service.recognize_face(embedding_np, confidence_threshold=0.0)
-            
-            # Update DB with new confidence
-            supabase_client_instance.client.table("photo_faces") \
-                .update({
-                    "person_id": person_id,
-                    "recognition_confidence": confidence
-                }) \
-                .eq("id", face["id"]) \
-                .execute()
-            
-            logger.info(f"[Recognition] Updated face {face['id']}: person_id={person_id}, confidence={confidence}")
+        # Load all faces (updated)
+        final_result = supabase_client.client.table("photo_faces").select(
+            "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, people(id, real_name, telegram_name)"
+        ).eq("photo_id", request.photo_id).execute()
         
-        # Return updated faces WITHOUT embeddings
-        final_result = supabase_client_instance.client.table("photo_faces") \
-            .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, people(id, real_name, telegram_name)") \
-            .eq("photo_id", request.photo_id) \
-            .execute()
+        response_faces = final_result.data or []
         
-        logger.info("[Recognition] ===== PROCESS PHOTO COMPLETE =====")
+        logger.info(f"[v2.3] ✓ Returning {len(response_faces)} faces")
+        logger.info("[v2.3] ===== PROCESS PHOTO REQUEST END =====")
         logger.info("=" * 80)
         
-        return {"success": True, "data": final_result.data, "error": None}
+        return {"success": True, "data": response_faces, "error": None}
         
     except Exception as e:
-        logger.error(f"[Recognition] Error: {str(e)}", exc_info=True)
-        return {"success": False, "error": str(e), "data": None}
+        logger.error("=" * 80)
+        logger.error(f"[v2.3] ❌ ERROR in process_photo")
+        logger.error(f"[v2.3] Error: {str(e)}", exc_info=True)
+        logger.error("=" * 80)
+        return {"success": False, "data": None, "error": str(e)}
 
 def calculate_iou(box1: dict, box2: dict) -> float:
     """Calculate Intersection over Union"""

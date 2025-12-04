@@ -14,9 +14,9 @@ import { createClient } from "@/lib/supabase/client"
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { debounce } from "@/lib/debounce"
-import { processPhotoAction, verifyFaceAction } from "@/app/admin/actions/faces"
+import { processPhotoAction, batchVerifyFacesAction } from "@/app/admin/actions/faces"
 
-const VERSION = "v5.2" // Увеличена версия для архитектуры v2.2.0
+const VERSION = "v6.0" // Увеличена версия для финальной архитектуры v2.3.0
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -148,11 +148,9 @@ export function FaceTaggingDialog({
 
     setRedetecting(true)
     try {
-      console.log(`[${VERSION}] Starting redetect for image ${imageId}`)
+      console.log(`[${VERSION}] Starting FORCE redetect for image ${imageId}`)
 
-      // Call backend to force re-detection
-      // Backend will detect faces, save them, and return results
-      const result = await processPhotoAction(imageId)
+      const result = await processPhotoAction(imageId, true, false)
 
       if (!result.success || !result.faces) {
         throw new Error(result.error || "Failed to redetect faces")
@@ -309,48 +307,23 @@ export function FaceTaggingDialog({
     setSaving(true)
 
     try {
-      for (const taggedFace of taggedFaces) {
-        if (!taggedFace.personId) {
-          console.log(`[${VERSION}] Skipping face without person_id`)
-          continue
-        }
+      const keptFaces = taggedFaces.map((face) => ({
+        id: face.id,
+        person_id: face.personId,
+      }))
 
-        if (!taggedFace.id) {
-          console.log(`[${VERSION}] Saving NEW face with person ${taggedFace.personId}`)
+      console.log(`[${VERSION}] Saving ${keptFaces.length} faces`)
 
-          // Backend автоматически создаст запись и обновит индекс
-          const saveResult = await verifyFaceAction(
-            null, // no existing id for new face
-            taggedFace.personId,
-            true,
-          )
+      const result = await batchVerifyFacesAction(imageId, keptFaces)
 
-          if (!saveResult.success) {
-            console.error(`[${VERSION}] Failed to save new face:`, saveResult.error)
-            alert(`Ошибка сохранения: ${saveResult.error}`)
-            setSaving(false)
-            return
-          }
-
-          console.log(`[${VERSION}] ✓ New face saved successfully`)
-          continue
-        }
-
-        console.log(`[${VERSION}] Verifying existing face ${taggedFace.id} with person ${taggedFace.personId}`)
-
-        const result = await verifyFaceAction(taggedFace.id, taggedFace.personId, true)
-
-        if (!result.success) {
-          console.error(`[${VERSION}] Failed to verify face:`, result.error)
-          alert(`Ошибка верификации: ${result.error}`)
-          setSaving(false)
-          return
-        }
-
-        console.log(`[${VERSION}] ✓ Face verified successfully`)
+      if (!result.success) {
+        console.error(`[${VERSION}] Failed to save faces:`, result.error)
+        alert(`Ошибка сохранения: ${result.error}`)
+        setSaving(false)
+        return
       }
 
-      console.log(`[${VERSION}] All faces saved and verified successfully!`)
+      console.log(`[${VERSION}] ✓ All faces saved successfully! Verified: ${result.verified}`)
       setSaving(false)
       onSave?.()
       onOpenChange(false)

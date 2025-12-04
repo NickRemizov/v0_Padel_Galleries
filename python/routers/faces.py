@@ -72,6 +72,11 @@ class VerifyFaceResponse(BaseModel):
     error: Optional[str]
 
 
+class BatchVerifyRequest(BaseModel):
+    photo_id: str
+    kept_faces: List[dict]  # [{id, person_id}]
+
+
 @router.post("/batch")
 async def get_batch_photo_faces(
     request: BatchPhotoIdsRequest,
@@ -569,3 +574,87 @@ async def verify_face(
     except Exception as e:
         logger.error(f"[Faces API] Error: {str(e)}", exc_info=True)
         return {"success": False, "error": str(e), "data": None}
+
+
+@router.post("/batch-verify")
+async def batch_verify_faces(
+    request: BatchVerifyRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Batch verify faces: update person_ids + delete removed faces
+    
+    FLOW:
+    1. Get kept_faces from frontend
+    2. Find all faces for photo_id
+    3. DELETE faces not in kept_faces
+    4. UPDATE kept_faces with person_id + confidence=1.0 + verified=true
+    5. Rebuild index once
+    6. Check if ALL faces have person_id → update gallery_images.verified
+    """
+    try:
+        logger.info("=" * 80)
+        logger.info("[Faces API] ===== BATCH VERIFY REQUEST START =====")
+        logger.info(f"[Faces API] Photo ID: {request.photo_id}")
+        logger.info(f"[Faces API] Kept faces: {len(request.kept_faces)}")
+        
+        # Get all existing faces
+        existing_result = supabase_db.client.table("photo_faces").select("id").eq("photo_id", request.photo_id).execute()
+        existing_ids = [f["id"] for f in (existing_result.data or [])]
+        
+        kept_ids = [f["id"] for f in request.kept_faces if f.get("id")]
+        
+        # DELETE removed faces
+        to_delete = [fid for fid in existing_ids if fid not in kept_ids]
+        if len(to_delete) > 0:
+            logger.info(f"[Faces API] Deleting {len(to_delete)} removed faces")
+            for face_id in to_delete:
+                supabase_db.client.table("photo_faces").delete().eq("id", face_id).execute()
+            logger.info(f"[Faces API] ✓ Deleted {len(to_delete)} faces")
+        
+        # UPDATE kept faces
+        all_have_person_id = True
+        for face in request.kept_faces:
+            face_id = face.get("id")
+            person_id = face.get("person_id")
+            
+            if not person_id:
+                all_have_person_id = False
+            
+            if face_id:
+                update_data = {
+                    "person_id": person_id,
+                    "recognition_confidence": 1.0,
+                    "verified": bool(person_id),
+                }
+                
+                supabase_db.client.table("photo_faces").update(update_data).eq("id", face_id).execute()
+                logger.info(f"[Faces API] ✓ Updated face {face_id}: person_id={person_id}, verified={bool(person_id)}")
+        
+        # Rebuild index
+        logger.info("[Faces API] Rebuilding recognition index...")
+        rebuild_result = await face_service.rebuild_players_index()
+        
+        if rebuild_result.get("success"):
+            logger.info(f"[Faces API] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count', 0)} descriptors")
+        else:
+            logger.error(f"[Faces API] Index rebuild failed: {rebuild_result.get('error')}")
+        
+        # Update gallery_images.verified
+        logger.info(f"[Faces API] All faces have person_id: {all_have_person_id}")
+        supabase_db.client.table("gallery_images").update({
+            "verified": all_have_person_id
+        }).eq("id", request.photo_id).execute()
+        
+        logger.info("[Faces API] ===== BATCH VERIFY REQUEST END =====")
+        logger.info("=" * 80)
+        
+        return {"success": True, "verified": all_have_person_id}
+        
+    except Exception as e:
+        logger.error("=" * 80)
+        logger.error(f"[Faces API] ❌ ERROR in batch_verify")
+        logger.error(f"[Faces API] Error: {str(e)}", exc_info=True)
+        logger.error("=" * 80)
+        return {"success": False, "error": str(e)}

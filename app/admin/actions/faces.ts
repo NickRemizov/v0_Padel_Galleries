@@ -6,13 +6,19 @@ import { apiFetch } from "@/lib/apiClient"
 /**
  * Process photo for face detection and recognition
  * Backend handles embeddings internally
+ *
+ * @param photoId - Photo ID
+ * @param forceRedetect - Force redetection (deletes existing faces)
+ * @param applyQualityFilters - Apply quality filters (blur, size, confidence)
  */
-export async function processPhotoAction(photoId: string) {
+export async function processPhotoAction(photoId: string, forceRedetect = false, applyQualityFilters = true) {
   try {
     const result = await apiFetch("/api/recognition/process-photo", {
       method: "POST",
       body: JSON.stringify({
         photo_id: photoId,
+        force_redetect: forceRedetect,
+        apply_quality_filters: applyQualityFilters,
       }),
     })
 
@@ -37,66 +43,21 @@ export async function processPhotoAction(photoId: string) {
 }
 
 /**
- * Verify face assignment (person_id + verified flag)
- * Backend reads embedding from database
+ * Batch verify faces: update person_ids + delete removed faces
+ *
+ * @param photoId - Photo ID
+ * @param keptFaces - Array of faces to keep [{id, person_id}]
  */
-export async function verifyFaceAction(photoFaceId: string, personId: string | null, verified: boolean) {
-  try {
-    const result = await apiFetch("/api/faces/verify", {
-      method: "POST",
-      body: JSON.stringify({
-        photo_face_id: photoFaceId,
-        person_id: personId,
-        verified: verified,
-      }),
-    })
-
-    if (result.success) {
-      revalidatePath("/admin")
-      return {
-        success: true,
-        face: result.face,
-        index_updated: result.index_updated,
-      }
-    } else {
-      return {
-        success: false,
-        error: result.error || "Failed to verify face",
-      }
-    }
-  } catch (error) {
-    console.error("[verifyFaceAction] Error:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
-  }
-}
-
-/**
- * Save new detected face with embedding
- * Backend generates and stores embedding
- */
-export async function saveDetectedFaceAction(
+export async function batchVerifyFacesAction(
   photoId: string,
-  personId: string | null,
-  boundingBox: { x: number; y: number; width: number; height: number },
-  detectionConfidence: number,
-  recognitionConfidence: number | null,
-  verified: boolean,
-  imageUrl: string,
+  keptFaces: Array<{ id: string | null; person_id: string | null }>,
 ) {
   try {
-    const result = await apiFetch("/api/faces/save", {
+    const result = await apiFetch("/api/faces/batch-verify", {
       method: "POST",
       body: JSON.stringify({
         photo_id: photoId,
-        person_id: personId,
-        bounding_box: boundingBox,
-        confidence: detectionConfidence,
-        recognition_confidence: recognitionConfidence,
-        verified: verified,
-        image_url: imageUrl,
+        kept_faces: keptFaces,
       }),
     })
 
@@ -104,17 +65,16 @@ export async function saveDetectedFaceAction(
       revalidatePath("/admin")
       return {
         success: true,
-        face_id: result.data?.id,
-        index_updated: result.index_updated,
+        verified: result.verified,
       }
     } else {
       return {
         success: false,
-        error: result.error || "Failed to save face",
+        error: result.error || "Failed to verify faces",
       }
     }
   } catch (error) {
-    console.error("[saveDetectedFaceAction] Error:", error)
+    console.error("[batchVerifyFacesAction] Error:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -123,45 +83,36 @@ export async function saveDetectedFaceAction(
 }
 
 /**
- * @deprecated Use saveDetectedFaceAction instead (v2.2.0+)
+ * @deprecated Use processPhotoAction with forceRedetect=true (v2.3.0+)
  */
-export async function savePhotoFaceAction(
-  photoId: string,
-  personId: string | null,
-  boundingBox: { x: number; y: number; width: number; height: number } | null,
-  embedding: number[],
-  detectionConfidence: number | null,
-  recognitionConfidence: number | null,
-  isVerified: boolean,
-) {
-  console.warn("[savePhotoFaceAction] DEPRECATED: Use saveDetectedFaceAction or verifyFaceAction instead (v2.2.0)")
-
-  // Fallback для старого кода - просто игнорируем embedding
-  if (!boundingBox) {
-    return {
-      success: false,
-      error: "Bounding box is required",
-    }
+export async function verifyFaceAction(photoFaceId: string, personId: string | null, verified: boolean) {
+  console.warn("[verifyFaceAction] DEPRECATED: Use batchVerifyFacesAction instead (v2.3.0)")
+  return {
+    success: false,
+    error: "This action is deprecated. Use batchVerifyFacesAction instead.",
   }
-
-  return await saveDetectedFaceAction(
-    photoId,
-    personId,
-    boundingBox,
-    detectionConfidence || 0,
-    recognitionConfidence,
-    isVerified,
-    "", // imageUrl будет получен на backend
-  )
 }
 
 /**
- * @deprecated Use verifyFaceAction instead (v2.2.0+)
+ * @deprecated Use processPhotoAction + batchVerifyFacesAction instead (v2.3.0+)
  */
-export async function saveFaceDescriptorAction(personId: string, embedding: number[], photoId: string) {
-  console.warn("[saveFaceDescriptorAction] DEPRECATED: Use verifyFaceAction instead (v2.2.0)")
-  return {
-    success: false,
-    error: "This action is deprecated. Use verifyFaceAction instead.",
-  }
+export async function saveDetectedFaceAction(...args: any[]) {
+  console.warn("[saveDetectedFaceAction] DEPRECATED (v2.3.0)")
+  return { success: false, error: "Deprecated" }
+}
+
+/**
+ * @deprecated Use batchVerifyFacesAction instead (v2.3.0+)
+ */
+export async function savePhotoFaceAction(...args: any[]) {
+  console.warn("[savePhotoFaceAction] DEPRECATED (v2.3.0)")
+  return { success: false, error: "Deprecated" }
+}
+
+/**
+ * @deprecated Not needed in v2.3.0+
+ */
+export async function saveFaceDescriptorAction(...args: any[]) {
+  console.warn("[saveFaceDescriptorAction] DEPRECATED (v2.3.0)")
+  return { success: false, error: "Deprecated" }
 }
