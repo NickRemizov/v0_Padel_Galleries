@@ -71,20 +71,28 @@ async def get_batch_photo_faces(
     """
     try:
         logger.info(f"[Faces API] Getting faces for {len(request.photo_ids)} photos")
+        logger.info(f"[Faces API] Photo IDs: {request.photo_ids}")
         
         if not request.photo_ids:
+            logger.info("[Faces API] Empty photo_ids, returning empty array")
             return {"success": True, "data": []}
         
         # Используются правильные поля из схемы: id, real_name, telegram_name
+        logger.info(f"[Faces API] Executing Supabase query...")
         result = supabase_db.client.table("photo_faces") \
             .select("*, people(id, real_name, telegram_name)") \
             .in_("photo_id", request.photo_ids) \
             .execute()
         
+        logger.info(f"[Faces API] Raw result.data type: {type(result.data)}")
+        logger.info(f"[Faces API] Raw result.data: {result.data}")
+        
         if not result.data:
+            logger.info("[Faces API] No faces found in result.data, returning empty array")
             return {"success": True, "data": []}
         
         logger.info(f"[Faces API] Found {len(result.data)} faces")
+        logger.info(f"[Faces API] First face sample: {result.data[0] if result.data else 'N/A'}")
         return {"success": True, "data": result.data}
         
     except Exception as e:
