@@ -115,12 +115,11 @@ export function FaceTaggingDialog({
     await loadPeople()
 
     try {
-      // Call backend endpoint that handles detect OR recheck automatically
-      const result = await apiFetch<{ success: boolean; data: any[] }>(`/api/recognition/process-photo`, {
+      const result = await fetch(`/api/recognition/process-photo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_id: imageId }),
-      })
+      }).then((r) => r.json())
 
       if (!result.success || !result.data) {
         console.log(`[${VERSION}] No faces returned from process-photo`)
