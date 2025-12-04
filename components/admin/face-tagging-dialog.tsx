@@ -120,6 +120,18 @@ export function FaceTaggingDialog({
 
     console.log(`[${VERSION}] Existing faces from DB:`, existingFaces.length)
 
+    if (existingFaces.length === 0 && !hasBeenProcessed) {
+      console.log(`[${VERSION}] New photo without faces, running full detect + recognize`)
+      await detectAndRecognizeFaces()
+      return
+    }
+
+    if (existingFaces.length === 0) {
+      console.log(`[${VERSION}] Processed photo without faces, displaying empty`)
+      setTaggedFaces([])
+      return
+    }
+
     const recognizedFaces = existingFaces.filter((face) => face.person_id !== null)
     const unrecognizedFaces = existingFaces.filter((face) => face.person_id === null)
     const unverifiedFaces = existingFaces.filter((face) => !face.verified)
@@ -166,43 +178,31 @@ export function FaceTaggingDialog({
             person_id: recognitionResult.person_id,
             people: { real_name: recognitionResult.person_name },
             recognition_confidence: recognitionResult.confidence,
-            verified: false, // Keep as false - only manual save should verify
+            verified: false,
           }
-          setTaggedFaces((prevFaces) => prevFaces.map((f) => (f.id === face.id ? updatedFace : f)))
+
+          setTaggedFaces((prevFaces) => {
+            const existingIndex = prevFaces.findIndex((f) => f.id === face.id)
+            if (existingIndex >= 0) {
+              const newFaces = [...prevFaces]
+              newFaces[existingIndex] = {
+                ...newFaces[existingIndex],
+                personId: recognitionResult.person_id,
+                personName: recognitionResult.person_name,
+                recognitionConfidence: recognitionResult.confidence,
+                verified: false,
+              }
+              return newFaces
+            }
+            return prevFaces
+          })
         }
       }
     } else {
       console.log(`[${VERSION}] All faces verified, displaying only`)
-
-      const tagged: TaggedFace[] = existingFaces.map((existing) => {
-        let embedding = existing.insightface_descriptor
-        if (typeof embedding === "string") {
-          try {
-            embedding = JSON.parse(embedding)
-          } catch (e) {
-            console.error(`[${VERSION}] Failed to parse embedding for face ${existing.id}:`, e)
-            embedding = []
-          }
-        }
-
-        return {
-          id: existing.id,
-          face: {
-            boundingBox: existing.insightface_bbox,
-            confidence: existing.recognition_confidence || 0,
-            blur_score: existing.blur_score,
-            embedding: embedding || [],
-          },
-          personId: existing.person_id,
-          personName: existing.people?.real_name || null,
-          recognitionConfidence: existing.recognition_confidence,
-          verified: existing.verified,
-        }
-      })
-
-      setTaggedFaces(tagged)
-      drawFaces(tagged)
     }
+
+    await loadFacesAndPeople()
   }
 
   async function loadFacesAndPeople() {
@@ -222,8 +222,12 @@ export function FaceTaggingDialog({
             embedding = JSON.parse(embedding)
           } catch (e) {
             console.error(`[${VERSION}] Failed to parse embedding for face ${existing.id}:`, e)
-            embedding = []
+            embedding = null // null вместо [] чтобы различать "нет эмбеддинга" от "пустой массив"
           }
+        }
+
+        if (!embedding || embedding.length === 0) {
+          console.warn(`[${VERSION}] Face ${existing.id} has NO embedding in DB!`)
         }
 
         return {
@@ -232,7 +236,7 @@ export function FaceTaggingDialog({
             boundingBox: existing.insightface_bbox,
             confidence: existing.recognition_confidence || 0,
             blur_score: existing.blur_score,
-            embedding: embedding || [],
+            embedding: embedding || null, // null вместо пустого массива
           },
           personId: existing.person_id,
           personName: existing.people?.real_name || null,
@@ -249,6 +253,7 @@ export function FaceTaggingDialog({
           recognitionConfidence: f.recognitionConfidence,
           verified: f.verified,
           hasEmbedding: f.face.embedding && f.face.embedding.length > 0,
+          embeddingLength: f.face.embedding?.length,
         })),
       )
 
@@ -515,6 +520,21 @@ export function FaceTaggingDialog({
           const isVerified = true
           const recognitionConfidenceToSave = taggedFace.recognitionConfidence ?? 1.0
           const confidenceToSave = taggedFace.face.confidence ?? 1.0
+
+          console.log(`[${VERSION}] Saving face:`, {
+            personId: taggedFace.personId,
+            verified: isVerified,
+            hasEmbedding: taggedFace.face.embedding && taggedFace.face.embedding.length > 0,
+            embeddingLength: taggedFace.face.embedding?.length,
+            recognitionConfidence: recognitionConfidenceToSave,
+          })
+
+          if (!taggedFace.face.embedding || taggedFace.face.embedding.length === 0) {
+            console.error(`[${VERSION}] Face has NO embedding, cannot save!`)
+            alert(`Ошибка: у лица нет эмбеддинга. Попробуйте переоткрыть фото.`)
+            setSaving(false)
+            return
+          }
 
           const result = await savePhotoFaceAction(
             imageId,

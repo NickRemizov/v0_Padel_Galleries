@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.3.4" // Увеличена версия до 1.3.4 - исправлен embedding mapping в FaceTaggingDialog для корректной загрузки insightface_descriptor из БД
+const APP_VERSION = "1.3.5" // Увеличена версия до 1.3.5 - исправлены критические ошибки в FaceTaggingDialog
 
 export const dynamic = "force-dynamic"
 
