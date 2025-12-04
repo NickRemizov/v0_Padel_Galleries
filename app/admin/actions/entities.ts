@@ -6,12 +6,15 @@ import { logger } from "@/lib/logger"
 
 // People
 export async function addPersonAction(data: {
-  first_name?: string
-  last_name?: string
-  nickname?: string
   real_name?: string
   telegram_name?: string
+  telegram_nickname?: string
+  telegram_profile_url?: string
+  facebook_profile_url?: string
+  instagram_profile_url?: string
   avatar_url?: string
+  paddle_ranking?: number
+  tournament_results?: any
 }) {
   try {
     const supabase = await createClient()
@@ -32,12 +35,15 @@ export async function addPersonAction(data: {
 export async function updatePersonAction(
   personId: string,
   data: {
-    first_name?: string
-    last_name?: string
-    nickname?: string
     real_name?: string
     telegram_name?: string
+    telegram_nickname?: string
+    telegram_profile_url?: string
+    facebook_profile_url?: string
+    instagram_profile_url?: string
     avatar_url?: string
+    paddle_ranking?: number
+    tournament_results?: any
   },
 ) {
   try {
