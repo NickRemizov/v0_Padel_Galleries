@@ -60,23 +60,35 @@ class BatchPhotoIdsRequest(BaseModel):
     photo_ids: List[str]
 
 
+class VerifyFaceRequest(BaseModel):
+    photo_face_id: str
+    person_id: str
+    verified: bool = True
+
+
+class VerifyFaceResponse(BaseModel):
+    success: bool
+    data: Optional[dict]
+    error: Optional[str]
+
+
 @router.post("/batch")
 async def get_batch_photo_faces(
     request: BatchPhotoIdsRequest,
     supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
 ):
     """
-    Get all faces for multiple photos in a single request.
-    Used by GalleryImagesManager to display face statistics.
+    Get all faces for multiple photos WITHOUT embeddings.
+    Returns only: person_id, confidence, verified, bbox, people info
     """
     try:
-        logger.info(f"[Faces API] Getting {len(request.photo_ids)} photos")
+        logger.info(f"[Faces API] Getting faces for {len(request.photo_ids)} photos")
         
         if not request.photo_ids:
             return {"success": True, "data": []}
         
         result = supabase_db.client.table("photo_faces") \
-            .select("*, people(id, real_name, telegram_name), insightface_descriptor") \
+            .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, people(id, real_name, telegram_name)") \
             .in_("photo_id", request.photo_ids) \
             .execute()
         
@@ -97,26 +109,26 @@ async def get_photo_faces(
     supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
 ):
     """
-    Get all faces for a single photo.
-    Used by FaceTaggingDialog to check if faces already exist before auto-detection.
+    Get all faces for a single photo WITHOUT embeddings.
+    Used by FaceTaggingDialog to check existing faces.
     """
     try:
         logger.info(f"[Faces API] Getting faces for photo: {photo_id}")
         
         result = supabase_db.client.table("photo_faces") \
-            .select("*, people(id, real_name, telegram_name), insightface_descriptor") \
+            .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, people(id, real_name, telegram_name)") \
             .eq("photo_id", photo_id) \
             .execute()
         
         if not result.data:
-            logger.info(f"[Faces API] No faces found for photo {photo_id}")
+            logger.info(f"[Faces API] No faces found")
             return {"success": True, "data": []}
         
-        logger.info(f"[Faces API] Found {len(result.data)} faces for photo {photo_id}")
+        logger.info(f"[Faces API] Found {len(result.data)} faces")
         return {"success": True, "data": result.data}
         
     except Exception as e:
-        logger.error(f"[Faces API] Error getting photo faces: {str(e)}")
+        logger.error(f"[Faces API] Error: {str(e)}")
         return {"success": False, "error": str(e), "data": []}
 
 
@@ -483,3 +495,87 @@ async def batch_save_faces(
             "index_updated": False,
             "saved_count": 0
         }
+
+
+@router.post("/verify", response_model=VerifyFaceResponse)
+async def verify_face(
+    request: VerifyFaceRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Verify a face by updating person_id and verified status.
+    Backend reads embedding from DB and updates recognition index.
+    Frontend sends ONLY: photo_face_id, person_id, verified
+    """
+    try:
+        logger.info("=" * 80)
+        logger.info("[Faces API] ===== VERIFY FACE REQUEST =====")
+        logger.info(f"[Faces API] Photo Face ID: {request.photo_face_id}")
+        logger.info(f"[Faces API] Person ID: {request.person_id}")
+        logger.info(f"[Faces API] Verified: {request.verified}")
+        
+        # Get existing face with embedding from DB
+        face_result = supabase_db.client.table("photo_faces") \
+            .select("*, people(id, real_name)") \
+            .eq("id", request.photo_face_id) \
+            .single() \
+            .execute()
+        
+        if not face_result.data:
+            logger.error(f"[Faces API] Face not found: {request.photo_face_id}")
+            return {"success": False, "error": "Face not found", "data": None}
+        
+        face_data = face_result.data
+        embedding = face_data.get("insightface_descriptor")
+        
+        if not embedding:
+            logger.error(f"[Faces API] Face has no embedding!")
+            return {"success": False, "error": "Face has no embedding", "data": None}
+        
+        logger.info(f"[Faces API] Retrieved embedding from DB, length: {len(embedding)}")
+        
+        # Update photo_faces record
+        update_data = {
+            "person_id": request.person_id,
+            "verified": request.verified,
+            "recognition_confidence": 1.0 if request.verified else face_data.get("recognition_confidence")
+        }
+        
+        update_result = supabase_db.client.table("photo_faces") \
+            .update(update_data) \
+            .eq("id", request.photo_face_id) \
+            .execute()
+        
+        logger.info(f"[Faces API] Updated photo_faces record")
+        
+        # If verified, add descriptor to recognition index
+        index_updated = False
+        if request.verified and request.person_id:
+            try:
+                embedding_np = np.array(embedding, dtype=np.float32)
+                await face_service.add_descriptor(request.person_id, embedding_np)
+                index_updated = True
+                logger.info(f"[Faces API] ✓ Added descriptor to recognition index")
+            except Exception as e:
+                logger.error(f"[Faces API] Failed to update index: {str(e)}")
+        
+        # Return updated face WITHOUT embedding
+        final_result = supabase_db.client.table("photo_faces") \
+            .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, people(id, real_name, telegram_name)") \
+            .eq("id", request.photo_face_id) \
+            .single() \
+            .execute()
+        
+        logger.info("[Faces API] ===== VERIFY FACE REQUEST COMPLETE =====")
+        logger.info("=" * 80)
+        
+        return {
+            "success": True,
+            "data": final_result.data,
+            "error": None
+        }
+        
+    except Exception as e:
+        logger.error(f"[Faces API] Error: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e), "data": None}

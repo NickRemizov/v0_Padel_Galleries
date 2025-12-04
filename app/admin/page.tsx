@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.3.5" // Увеличена версия до 1.3.5 - исправлены критические ошибки в FaceTaggingDialog
+const APP_VERSION = "2.0.0"
 
 export const dynamic = "force-dynamic"
 
