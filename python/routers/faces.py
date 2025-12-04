@@ -75,8 +75,9 @@ async def get_batch_photo_faces(
         if not request.photo_ids:
             return {"success": True, "data": []}
         
+        # Используются правильные поля из схемы: id, real_name, telegram_name
         result = supabase_db.client.table("photo_faces") \
-            .select("*, people(id, first_name, last_name, nickname, real_name)") \
+            .select("*, people(id, real_name, telegram_name)") \
             .in_("photo_id", request.photo_ids) \
             .execute()
         
@@ -103,8 +104,9 @@ async def get_photo_faces(
     try:
         logger.info(f"[Faces API] Getting faces for photo: {photo_id}")
         
+        # Используются правильные поля из схемы: id, real_name, telegram_name
         result = supabase_db.client.table("photo_faces") \
-            .select("*, people(id, first_name, last_name, nickname, real_name)") \
+            .select("*, people(id, real_name, telegram_name)") \
             .eq("photo_id", photo_id) \
             .execute()
         
