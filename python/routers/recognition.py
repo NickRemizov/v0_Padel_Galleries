@@ -34,7 +34,7 @@ class DetectFacesRequest(BaseModel):
 
 class RecognizeFaceRequest(BaseModel):
     embedding: List[float]
-    confidence_threshold: float = 0.60
+    confidence_threshold: Optional[float] = 0.60
 
 
 class BatchRecognizeRequest(BaseModel):
@@ -170,30 +170,16 @@ async def recognize_face(
 ):
     """Recognize a single face using the trained model"""
     try:
-        logger.info("=" * 80)
-        logger.info("[v3.0] ===== RECOGNIZE FACE REQUEST START =====")
-        logger.info(f"[v3.0] Embedding length: {len(request.embedding)}")
-        logger.info(f"[v3.0] Confidence threshold: {request.confidence_threshold}")
-        logger.info(f"[v3.0] Request timestamp: {__import__('datetime').datetime.now()}")
+        logger.info(f"[Recognition] Recognizing face, threshold: {request.confidence_threshold}")
         
-        logger.info(f"[v3.0] Converting embedding to numpy array...")
         embedding = np.array(request.embedding, dtype=np.float32)
-        logger.info(f"[v3.0] ✓ Embedding shape: {embedding.shape}")
         
-        logger.info(f"[v3.0] Calling face_service.recognize_face()...")
         person_id, confidence = await face_service.recognize_face(
             embedding, 
-            confidence_threshold=request.confidence_threshold
+            confidence_threshold=request.confidence_threshold or 0.60
         )
         
-        logger.info(f"[v3.0] ✓ Recognition result:")
-        logger.info(f"[v3.0]   - Person ID: {person_id}")
-        logger.info(f"[v3.0]   - Confidence: {confidence}")
-        logger.info(f"[v3.0]   - Threshold: {request.confidence_threshold}")
-        logger.info(f"[v3.0]   - Match: {'YES' if person_id else 'NO'}")
-        
-        logger.info("[v3.0] ===== RECOGNIZE FACE REQUEST END =====")
-        logger.info("=" * 80)
+        logger.info(f"[Recognition] Result: person_id={person_id}, confidence={confidence}")
         
         return {
             "person_id": person_id,
@@ -201,12 +187,7 @@ async def recognize_face(
         }
         
     except Exception as e:
-        logger.error("=" * 80)
-        logger.error(f"[v3.0] ❌ ERROR in recognize_face")
-        logger.error(f"[v3.0] Error type: {type(e).__name__}")
-        logger.error(f"[v3.0] Error message: {str(e)}")
-        logger.error(f"[v3.0] Traceback:", exc_info=True)
-        logger.error("=" * 80)
+        logger.error(f"[Recognition] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

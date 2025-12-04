@@ -70,33 +70,24 @@ async def get_batch_photo_faces(
     Used by GalleryImagesManager to display face statistics.
     """
     try:
-        logger.info(f"[Faces API] Getting faces for {len(request.photo_ids)} photos")
-        logger.info(f"[Faces API] Photo IDs: {request.photo_ids}")
+        logger.info(f"[Faces API] Getting {len(request.photo_ids)} photos")
         
         if not request.photo_ids:
-            logger.info("[Faces API] Empty photo_ids, returning empty array")
             return {"success": True, "data": []}
         
-        # Используются правильные поля из схемы: id, real_name, telegram_name
-        logger.info(f"[Faces API] Executing Supabase query...")
         result = supabase_db.client.table("photo_faces") \
             .select("*, people(id, real_name, telegram_name)") \
             .in_("photo_id", request.photo_ids) \
             .execute()
         
-        logger.info(f"[Faces API] Raw result.data type: {type(result.data)}")
-        logger.info(f"[Faces API] Raw result.data: {result.data}")
-        
         if not result.data:
-            logger.info("[Faces API] No faces found in result.data, returning empty array")
             return {"success": True, "data": []}
         
         logger.info(f"[Faces API] Found {len(result.data)} faces")
-        logger.info(f"[Faces API] First face sample: {result.data[0] if result.data else 'N/A'}")
         return {"success": True, "data": result.data}
         
     except Exception as e:
-        logger.error(f"[Faces API] Error getting batch faces: {str(e)}")
+        logger.error(f"[Faces API] Error: {str(e)}")
         return {"success": False, "error": str(e), "data": []}
 
 
@@ -112,7 +103,6 @@ async def get_photo_faces(
     try:
         logger.info(f"[Faces API] Getting faces for photo: {photo_id}")
         
-        # Используются правильные поля из схемы: id, real_name, telegram_name
         result = supabase_db.client.table("photo_faces") \
             .select("*, people(id, real_name, telegram_name)") \
             .eq("photo_id", photo_id) \
@@ -148,7 +138,6 @@ async def save_face(
         logger.info(f"[Faces API] Verified: {request.verified}")
         logger.info(f"[Faces API] Embedding length: {len(request.embedding)}")
         
-        # Build insert data
         insert_data = {
             "photo_id": request.photo_id,
             "person_id": request.person_id,
@@ -194,7 +183,6 @@ async def save_face(
         logger.info(f"[Faces API] ✓ Face saved with ID: {saved_id}")
         logger.info(f"[Faces API] Saved face verification status: verified={saved_face.get('verified')}, person_id={saved_face.get('person_id')}")
         
-        # Verify the record was saved
         verify_response = supabase_db.client.table("photo_faces").select(
             "id, person_id, verified, insightface_descriptor"
         ).eq("id", saved_id).execute()
@@ -344,7 +332,6 @@ async def delete_face(
         old_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
         logger.info(f"[Faces API] Current index size before deletion: {old_count}")
         
-        # Delete the face
         response = supabase_db.client.table("photo_faces").delete().eq(
             "id", request.face_id
         ).execute()
@@ -412,14 +399,12 @@ async def batch_save_faces(
         logger.info(f"[Faces API] Photo ID: {request.photo_id}")
         logger.info(f"[Faces API] Number of faces: {len(request.faces)}")
         
-        # First delete all existing tags for this photo
         logger.info(f"[Faces API] Deleting existing tags for photo {request.photo_id}")
         supabase_db.client.table("photo_faces").delete().eq("photo_id", request.photo_id).execute()
         
         saved_faces = []
         has_verified_faces = False
         
-        # Insert all faces
         for idx, face in enumerate(request.faces):
             insert_data = {
                 "photo_id": request.photo_id,
@@ -454,7 +439,6 @@ async def batch_save_faces(
         
         logger.info(f"[Faces API] ✓ Saved {len(saved_faces)} faces")
         
-        # Rebuild index once if any verified faces
         index_updated = False
         if has_verified_faces:
             logger.info("[Faces API] Verified faces detected - rebuilding recognition index...")
