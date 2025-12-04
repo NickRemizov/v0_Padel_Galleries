@@ -13,7 +13,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "2.2.1"
+const APP_VERSION = "2.2.2"
 
 export const dynamic = "force-dynamic"
 

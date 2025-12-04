@@ -19,7 +19,7 @@ export async function processPhotoAction(photoId: string) {
     if (result.success) {
       return {
         success: true,
-        faces: result.faces || [],
+        faces: result.data || [],
       }
     } else {
       return {

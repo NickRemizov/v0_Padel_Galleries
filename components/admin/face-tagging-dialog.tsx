@@ -150,17 +150,33 @@ export function FaceTaggingDialog({
     try {
       console.log(`[${VERSION}] Starting redetect for image ${imageId}`)
 
-      // Вызываем process-photo с force_redetect (backend сделает новую детекцию)
-      const result = await saveDetectedFaceAction(imageId, imageUrl, true)
+      // Call backend to force re-detection
+      // Backend will detect faces, save them, and return results
+      const result = await processPhotoAction(imageId)
 
-      if (!result.success) {
+      if (!result.success || !result.faces) {
         throw new Error(result.error || "Failed to redetect faces")
       }
 
-      console.log(`[${VERSION}] Redetect successful, reloading faces`)
+      console.log(`[${VERSION}] Redetect successful, found ${result.faces.length} faces`)
 
-      // Перезагружаем лица после redetect
-      await loadPeopleAndExistingFaces()
+      // Map to TaggedFace format
+      const tagged: TaggedFace[] = result.faces.map((f: any) => ({
+        id: f.id,
+        face: {
+          boundingBox: f.insightface_bbox,
+          confidence: f.insightface_confidence,
+          blur_score: 0,
+          embedding: null,
+        },
+        personId: f.person_id,
+        personName: f.people?.real_name || f.people?.telegram_name || null,
+        recognitionConfidence: f.recognition_confidence,
+        verified: f.verified,
+      }))
+
+      setTaggedFaces(tagged)
+      drawFaces(tagged)
     } catch (error) {
       console.error(`[${VERSION}] Error redetecting faces:`, error)
       alert(`Error redetecting faces: ${error}`)
@@ -345,70 +361,6 @@ export function FaceTaggingDialog({
       console.error(`[${VERSION}] Error saving faces:`, error)
       alert(`Ошибка: ${error instanceof Error ? error.message : String(error)}`)
       setSaving(false)
-    }
-  }
-
-  async function handleRedetectWithoutFilters() {
-    try {
-      setRedetecting(true)
-      console.log(`[${VERSION}] Redetecting faces WITHOUT quality filters - calling backend`)
-
-      const result = await saveDetectedFaceAction(
-        imageId,
-        imageUrl,
-        false,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        false,
-      )
-
-      if (!result.success || !result.data) {
-        throw new Error("Failed to redetect faces")
-      }
-
-      console.log(`[${VERSION}] Redetection result: ${result.data.length} faces found`)
-
-      const tagged: TaggedFace[] = result.data.map((f: any) => ({
-        id: f.id,
-        face: {
-          boundingBox: f.insightface_bbox,
-          confidence: f.insightface_confidence,
-          blur_score: f.blur_score || 0,
-          embedding: null,
-        },
-        personId: f.person_id,
-        personName: f.people?.real_name || f.people?.telegram_name || null,
-        recognitionConfidence: f.recognition_confidence,
-        verified: false,
-      }))
-
-      setTaggedFaces(tagged)
-      drawFaces(tagged)
-
-      const detailed: DetailedFace[] = result.data.map((f: any) => {
-        const bbox = f.insightface_bbox
-        const size = Math.min(bbox.width, bbox.height)
-
-        return {
-          boundingBox: bbox,
-          size: size,
-          blur_score: f.blur_score || 0,
-          detection_score: f.insightface_confidence,
-          recognition_confidence: f.recognition_confidence || undefined,
-          person_name: f.people?.real_name || f.people?.telegram_name || undefined,
-        }
-      })
-
-      console.log(`[${VERSION}] Detailed faces for metrics:`, detailed)
-      setDetailedFaces(detailed)
-      setHasRedetectedData(true)
-    } catch (error) {
-      console.error(`[${VERSION}] Error redetecting faces:`, error)
-      alert("Ошибка при повторном распознавании")
-    } finally {
-      setRedetecting(false)
     }
   }
 
@@ -610,12 +562,7 @@ export function FaceTaggingDialog({
                 <Plus className="mr-2 h-4 w-4" />
                 Добавить человека
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRedetectWithoutFilters}
-                disabled={redetecting || detecting}
-              >
+              <Button variant="outline" size="sm" onClick={handleRedetect} disabled={redetecting || detecting}>
                 {redetecting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
