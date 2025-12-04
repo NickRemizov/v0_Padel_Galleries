@@ -116,8 +116,14 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
       const batchResult = await getBatchPhotoFacesAction(images.map((img) => img.id))
       console.log(`[${VERSION}] AUTO-RECOGNITION: getBatchPhotoFacesAction result:`, batchResult)
 
+      console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.success =`, batchResult.success)
+      console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.data type =`, typeof batchResult.data)
+      console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.data Array.isArray =`, Array.isArray(batchResult.data))
+
       if (batchResult.success && batchResult.data) {
         console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.data.length =`, batchResult.data.length)
+        console.log(`[${VERSION}] AUTO-RECOGNITION: First 3 faces:`, batchResult.data.slice(0, 3))
+
         const facesMap = new Map<string, any[]>()
         for (const face of batchResult.data) {
           if (!facesMap.has(face.photo_id)) {
@@ -127,22 +133,32 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
         }
 
         console.log(`[${VERSION}] AUTO-RECOGNITION: facesMap size =`, facesMap.size)
+        console.log(`[${VERSION}] AUTO-RECOGNITION: facesMap keys:`, Array.from(facesMap.keys()))
 
         imagesToProcess = images.filter((image) => {
           const faces = facesMap.get(image.id) || []
 
+          console.log(`[${VERSION}] AUTO-RECOGNITION: Checking photo ${image.id} (${image.original_filename})`)
+          console.log(`[${VERSION}] AUTO-RECOGNITION:   - faces.length = ${faces.length}`)
+
           // Если нет лиц в БД - это новое фото, нужно обработать
           if (faces.length === 0) {
-            console.log(`[${VERSION}] AUTO-RECOGNITION: Photo ${image.id} has NO faces in DB, will process`)
+            console.log(`[${VERSION}] AUTO-RECOGNITION:   - Decision: PROCESS (no faces in DB)`)
             return true
           }
+
+          faces.forEach((face, idx) => {
+            console.log(
+              `[${VERSION}] AUTO-RECOGNITION:   - Face ${idx}: person_id=${face.person_id}, verified=${face.verified}`,
+            )
+          })
 
           // Если есть лица - обрабатываем только если есть неверифицированные
           const hasUnverifiedFaces = faces.some((face) => !face.verified)
           if (hasUnverifiedFaces) {
-            console.log(`[${VERSION}] AUTO-RECOGNITION: Photo ${image.id} has unverified faces, will process`)
+            console.log(`[${VERSION}] AUTO-RECOGNITION:   - Decision: PROCESS (has unverified faces)`)
           } else {
-            console.log(`[${VERSION}] AUTO-RECOGNITION: Photo ${image.id} has only verified faces, skipping`)
+            console.log(`[${VERSION}] AUTO-RECOGNITION:   - Decision: SKIP (all faces verified)`)
           }
           return hasUnverifiedFaces
         })
