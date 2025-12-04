@@ -119,13 +119,21 @@ export function FaceTaggingDialog({
     console.log("[v3.23] Existing faces from DB:", existingFaces.length)
 
     if (existingFaces.length > 0) {
+      const unverifiedFaces = existingFaces.filter((f) => !f.verified)
       const unrecognizedFaces = existingFaces.filter((f) => f.person_id === null)
       const recognizedFaces = existingFaces.filter((f) => f.person_id !== null)
 
-      console.log("[v3.23] Recognized:", recognizedFaces.length, "Unrecognized:", unrecognizedFaces.length)
+      console.log(
+        "[v3.23] Recognized:",
+        recognizedFaces.length,
+        "Unrecognized:",
+        unrecognizedFaces.length,
+        "Unverified:",
+        unverifiedFaces.length,
+      )
 
-      if (unrecognizedFaces.length > 0) {
-        console.log("[v3.23] Found unrecognized faces, attempting recognition only")
+      if (unverifiedFaces.length > 0) {
+        console.log("[v3.23] Found unverified faces, re-running recognition to update confidence")
         const tagged: TaggedFace[] = existingFaces.map((existing) => ({
           id: existing.id,
           face: {
@@ -142,11 +150,16 @@ export function FaceTaggingDialog({
 
         const updatedTagged = await Promise.all(
           tagged.map(async (taggedFace) => {
-            if (taggedFace.personId === null && taggedFace.face.embedding.length > 0) {
-              console.log("[v3.23] Attempting recognition for unrecognized face")
+            if (!taggedFace.verified && taggedFace.face.embedding.length > 0) {
+              console.log("[v3.23] Re-running recognition for unverified face (person_id:", taggedFace.personId, ")")
               const recognition = await recognizeFaceInsightFace(taggedFace.face.embedding)
               if (recognition) {
-                console.log("[v3.23] Face recognized:", recognition.person_name, recognition.confidence)
+                console.log(
+                  "[v3.23] Recognition result:",
+                  recognition.person_name,
+                  "confidence:",
+                  recognition.confidence,
+                )
                 return {
                   ...taggedFace,
                   personId: recognition.person_id,
@@ -162,7 +175,7 @@ export function FaceTaggingDialog({
         setTaggedFaces(updatedTagged)
         drawFaces(updatedTagged)
       } else {
-        console.log("[v3.23] All faces recognized, displaying only")
+        console.log("[v3.23] All faces verified, displaying only")
         const tagged: TaggedFace[] = existingFaces.map((existing) => ({
           id: existing.id,
           face: {
