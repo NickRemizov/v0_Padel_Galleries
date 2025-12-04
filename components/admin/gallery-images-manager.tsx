@@ -74,7 +74,7 @@ const GalleryImageCard = memo(function GalleryImageCard({
 }) {
   const faces = photoFacesMap[image.id]
   const hasDetected = faces && faces.length > 0
-  const hasVerified = faces && faces.length > 0 ? faces.every((face) => face.verified === true) : false
+  const hasVerified = faces && faces.length > 0 && faces.every((face) => face.verified === true)
   const hasUnknown = faces?.some((face) => face.person_id === null) || false
   const isFullyRecognized = recognitionStats[image.id]?.fullyRecognized || false
   const hasBeenProcessed = image.has_been_processed || false
@@ -156,12 +156,12 @@ const GalleryImageCard = memo(function GalleryImageCard({
             {unknownCount}/{recognizedCount}/{totalCount}
           </div>
         )}
-        {confidence !== null && !hasUnknown && !isFullyRecognized && !hasVerified && (
+        {confidence !== null && !hasUnknown && !hasVerified && (
           <div className="absolute left-2 bottom-2 bg-blue-500 text-white rounded px-2 py-1 text-xs font-semibold shadow-lg z-10">
             {confidence}%
           </div>
         )}
-        {(isFullyRecognized || hasVerified) && (
+        {hasVerified && (
           <div className="absolute left-2 bottom-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm shadow-lg z-10">
             ✓
           </div>
