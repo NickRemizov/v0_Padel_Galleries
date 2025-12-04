@@ -7,18 +7,10 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle2, XCircle } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  savePhotoFaceAction,
-  updatePhotoFaceAction,
-  getPhotoFacesAction,
-  getBatchPhotoFacesAction,
-  deletePhotoFaceAction,
-  markPhotoAsProcessedAction, // Added import for marking photo as processed
-} from "@/app/admin/actions"
-import { calculateIoU } from "@/lib/face-recognition/face-storage"
+import { getPhotoFacesAction, getBatchPhotoFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v3.15" // Updated version to track has_been_processed marking
+const VERSION = "v4.0" // Updated version for v2.0 architecture (no embeddings on frontend)
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -70,7 +62,6 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
       .map((face: any) => ({
         boundingBox: face.insightface_bbox, // Use insightface_bbox from backend
         confidence: face.confidence,
-        embedding: face.embedding,
       }))
   }
 
@@ -97,6 +88,37 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     return {
       personId: data.person_id,
       confidence: data.confidence,
+    }
+  }
+
+  async function detectAndSaveFaces(imageUrl: string, photoId: string) {
+    const apiUrl = `/api/face-detection/detect-and-save`
+    console.log(`[${VERSION}] Calling detect-and-save API:`, apiUrl)
+    console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_url: imageUrl,
+        photo_id: photoId,
+        apply_quality_filters: applyQualityFilters,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error(`[${VERSION}] Detect and save faces error:`, error)
+      throw new Error("Failed to detect and save faces")
+    }
+
+    const data = await response.json()
+    console.log(`[${VERSION}] Detected and saved`, data.faces_saved, "faces")
+    console.log(`[${VERSION}] Recognized`, data.faces_recognized, "faces")
+
+    return {
+      facesFound: data.faces_saved,
+      facesRecognized: data.faces_recognized,
     }
   }
 
@@ -200,136 +222,9 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
 
         console.log(`[${VERSION}] Image ${image.original_filename}: Found ${existingFaces.length} existing faces`)
 
-        const faces = await detectFacesInsightFace(image.image_url)
+        const result = await detectAndSaveFaces(image.image_url, image.id)
 
-        const matchedFaceIds = new Set<string>()
-
-        if (faces.length === 0) {
-          if (applyQualityFilters) {
-            console.log(`[${VERSION}] No faces detected with quality filters, deleting all unverified faces`)
-            for (const existingFace of existingFaces) {
-              if (!existingFace.verified) {
-                await deletePhotoFaceAction(existingFace.id)
-                console.log(`[${VERSION}] Deleted unverified face ${existingFace.id}`)
-              }
-            }
-          }
-
-          await markPhotoAsProcessedAction(image.id)
-          console.log(`[${VERSION}] Marked photo ${image.id} as processed (no faces detected)`)
-
-          setResults((prev) =>
-            prev.map((r, idx) =>
-              idx === i
-                ? {
-                    ...r,
-                    facesFound: 0,
-                    facesRecognized: 0,
-                    status: "success" as const,
-                  }
-                : r,
-            ),
-          )
-          continue
-        }
-
-        let recognizedCount = 0
-        let skippedCount = 0
-        let allFacesFullConfidence = true
-
-        for (let j = 0; j < faces.length; j++) {
-          const face = faces[j]
-
-          if (!face.boundingBox || face.boundingBox.x === undefined) {
-            console.warn(`[${VERSION}] Skipping face with invalid bounding box`)
-            continue
-          }
-
-          const match = await recognizeFaceInsightFace(face.embedding)
-
-          const overlappingFace = existingFaces.find((existing) => {
-            if (!existing.insightface_bbox) return false
-            const iou = calculateIoU(face.boundingBox, existing.insightface_bbox)
-            return iou > 0.5
-          })
-
-          if (overlappingFace) {
-            matchedFaceIds.add(overlappingFace.id)
-
-            if (overlappingFace.verified) {
-              console.log(
-                `[${VERSION}] Skipping face - already verified as ${overlappingFace.people?.real_name || "unknown"}`,
-              )
-              skippedCount++
-              continue
-            }
-
-            console.log(`[${VERSION}] Updating unverified face with new recognition results`)
-            if (match && match.personId) {
-              if (match.confidence < 1.0) {
-                allFacesFullConfidence = false
-              }
-              await updatePhotoFaceAction(overlappingFace.id, {
-                person_id: match.personId,
-                confidence: match.confidence,
-                verified: false,
-              })
-              recognizedCount++
-            } else {
-              allFacesFullConfidence = false
-              await updatePhotoFaceAction(overlappingFace.id, {
-                person_id: null,
-                confidence: null,
-                verified: false,
-              })
-            }
-            continue
-          }
-
-          if (match && match.personId) {
-            if (match.confidence < 1.0) {
-              allFacesFullConfidence = false
-            }
-            await savePhotoFaceAction(
-              image.id,
-              match.personId,
-              face.boundingBox,
-              face.embedding,
-              face.confidence,
-              match.confidence,
-              false,
-            )
-            recognizedCount++
-          } else {
-            allFacesFullConfidence = false
-            await savePhotoFaceAction(image.id, null, face.boundingBox, face.embedding, face.confidence, 0, false)
-          }
-        }
-
-        if (applyQualityFilters) {
-          for (const existingFace of existingFaces) {
-            if (!existingFace.verified && !matchedFaceIds.has(existingFace.id)) {
-              await deletePhotoFaceAction(existingFace.id)
-              console.log(
-                `[${VERSION}] Deleted unmatched unverified face ${existingFace.id} (filtered out by quality settings)`,
-              )
-            }
-          }
-        }
-
-        if (mode === "all" && !allFacesFullConfidence) {
-          for (const existingFace of existingFaces) {
-            if (existingFace.verified) {
-              await updatePhotoFaceAction(existingFace.id, {
-                verified: false,
-              })
-            }
-          }
-        }
-
-        console.log(
-          `[${VERSION}] Processed ${faces.length} faces, recognized ${recognizedCount}, skipped ${skippedCount} verified faces`,
-        )
+        console.log(`[${VERSION}] Processed ${result.facesFound} faces, recognized ${result.facesRecognized}`)
 
         await markPhotoAsProcessedAction(image.id)
         console.log(`[${VERSION}] Marked photo ${image.id} as processed`)
@@ -339,8 +234,8 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
             idx === i
               ? {
                   ...r,
-                  facesFound: faces.length,
-                  facesRecognized: recognizedCount,
+                  facesFound: result.facesFound,
+                  facesRecognized: result.facesRecognized,
                   status: "success" as const,
                 }
               : r,

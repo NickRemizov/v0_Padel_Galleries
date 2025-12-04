@@ -6,8 +6,6 @@ import { PhotographersManager } from "@/components/admin/photographers-manager"
 import { LocationsManager } from "@/components/admin/locations-manager"
 import { OrganizersManager } from "@/components/admin/organizers-manager"
 import { PeopleManager } from "@/components/admin/people-manager"
-// UNUSED: Batch recognition disabled - code kept for future reference
-// import { BatchRecognitionManager } from "@/components/admin/batch-recognition-manager"
 import { RecognitionStatsDialog } from "@/components/admin/recognition-stats-dialog"
 import { LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -15,7 +13,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "2.0.5" // Удалён legacy handleSaveWithoutClose из FaceTaggingDialog
+const APP_VERSION = "2.0.7"
 
 export const dynamic = "force-dynamic"
 
@@ -77,11 +75,6 @@ export default async function AdminPage() {
           <TabsContent value="locations" className="mt-6">
             <LocationsManager />
           </TabsContent>
-
-          {/* UNUSED: Batch recognition disabled - code kept for future reference */}
-          {/* <TabsContent value="batch" className="mt-6">
-            <BatchRecognitionManager />
-          </TabsContent> */}
 
           <TabsContent value="photographers" className="mt-6">
             <PhotographersManager />
