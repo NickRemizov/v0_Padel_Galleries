@@ -313,10 +313,12 @@ export function FaceTaggingDialog({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         embedding: embedding,
+        confidence_threshold: 0.0, // Get all matches, we'll filter on frontend
       }),
     })
 
     if (!response.ok) {
+      console.error("[v3.23] recognizeFaceInsightFace: API error", response.status, response.statusText)
       return null
     }
 

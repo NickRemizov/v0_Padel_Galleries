@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.3.0" // исправлено повторное распознавание для обновления confidence
+const APP_VERSION = "1.3.1" // исправлена 422 ошибка при recognize запросе
 
 export const dynamic = "force-dynamic"
 
