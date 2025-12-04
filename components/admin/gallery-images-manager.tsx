@@ -190,7 +190,7 @@ export function GalleryImagesManager({
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState("")
   const [sortBy, setSortBy] = useState<SortOption>((initialSortOrder as SortOption) || "filename")
-  const [taggingImage, setTaggingImage] = useState<{ id: string; url: string } | null>(null)
+  const [taggingImage, setTaggingImage] = useState<{ id: string; url: string; hasBeenProcessed: boolean } | null>(null)
   const [autoRecognitionMode, setAutoRecognitionMode] = useState<"all" | "remaining" | null>(null)
   const [showUnknownFaces, setShowUnknownFaces] = useState(false)
   const [recognitionStats, setRecognitionStats] = useState<
@@ -212,8 +212,6 @@ export function GalleryImagesManager({
     imageId: string | null
     filename: string | null
   }>({ open: false, imageId: null, filename: null })
-  const [selectedImage, setSelectedImage] = useState<{ id: string; url: string } | null>(null)
-  const [selectedImageHasBeenProcessed, setSelectedImageHasBeenProcessed] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -609,10 +607,9 @@ export function GalleryImagesManager({
   const handleTagImage = (imageId: string, imageUrl: string) => {
     const image = images.find((img) => img.id === imageId)
     const hasBeenProcessed = image?.has_been_processed || false
-    console.log("[v4.6] Opening FaceTaggingDialog for image:", imageId, "hasBeenProcessed:", hasBeenProcessed)
+    console.log("[v4.7] Opening FaceTaggingDialog for image:", imageId, "hasBeenProcessed:", hasBeenProcessed)
 
-    setSelectedImage({ id: imageId, url: imageUrl })
-    setSelectedImageHasBeenProcessed(hasBeenProcessed)
+    setTaggingImage({ id: imageId, url: imageUrl, hasBeenProcessed })
   }
 
   return (
@@ -825,15 +822,16 @@ export function GalleryImagesManager({
         <FaceTaggingDialog
           imageId={taggingImage.id}
           imageUrl={taggingImage.url}
+          hasBeenProcessed={taggingImage.hasBeenProcessed}
           open={!!taggingImage}
           onOpenChange={async (open) => {
             if (!open) {
-              console.log("[v0] GalleryImagesManager: FaceTaggingDialog closed, keeping gallery open without reload")
+              console.log("[v4.7] GalleryImagesManager: FaceTaggingDialog closed, keeping gallery open without reload")
               setTaggingImage(null)
             }
           }}
           onSave={async () => {
-            console.log("[v0] GalleryImagesManager: FaceTaggingDialog onSave called")
+            console.log("[v4.7] GalleryImagesManager: FaceTaggingDialog onSave called")
             await loadRecognitionStats()
             await loadPhotoFaces()
           }}
@@ -865,26 +863,6 @@ export function GalleryImagesManager({
             loadRecognitionStats()
             loadPhotoFaces()
           }}
-        />
-      )}
-
-      {selectedImage && (
-        <FaceTaggingDialog
-          imageId={selectedImage.id}
-          imageUrl={selectedImage.url}
-          open={!!selectedImage}
-          onOpenChange={(open) => {
-            if (!open) {
-              setSelectedImage(null)
-              setSelectedImageHasBeenProcessed(false)
-            }
-          }}
-          onSave={async () => {
-            await loadRecognitionStats()
-            setSelectedImage(null)
-            setSelectedImageHasBeenProcessed(false)
-          }}
-          hasBeenProcessed={selectedImageHasBeenProcessed}
         />
       )}
     </>
