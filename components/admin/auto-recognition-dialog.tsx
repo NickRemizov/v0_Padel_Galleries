@@ -102,15 +102,22 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
   }
 
   async function startProcessing() {
+    console.log(`[${VERSION}] AUTO-RECOGNITION: startProcessing called`)
+    console.log(`[${VERSION}] AUTO-RECOGNITION: mode =`, mode)
+    console.log(`[${VERSION}] AUTO-RECOGNITION: images.length =`, images.length)
+
     setProcessing(true)
     setCurrentIndex(-1)
 
     let imagesToProcess = images
 
     if (mode === "remaining") {
+      console.log(`[${VERSION}] AUTO-RECOGNITION: Mode is 'remaining', calling getBatchPhotoFacesAction...`)
       const batchResult = await getBatchPhotoFacesAction(images.map((img) => img.id))
+      console.log(`[${VERSION}] AUTO-RECOGNITION: getBatchPhotoFacesAction result:`, batchResult)
 
       if (batchResult.success && batchResult.data) {
+        console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.data.length =`, batchResult.data.length)
         const facesMap = new Map<string, any[]>()
         for (const face of batchResult.data) {
           if (!facesMap.has(face.photo_id)) {
@@ -119,12 +126,26 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
           facesMap.get(face.photo_id)!.push(face)
         }
 
+        console.log(`[${VERSION}] AUTO-RECOGNITION: facesMap size =`, facesMap.size)
+
         imagesToProcess = images.filter((image) => {
           const faces = facesMap.get(image.id) || []
           const hasUnverifiedFaces = faces.some((face) => !face.verified)
           return hasUnverifiedFaces
         })
+
+        console.log(`[${VERSION}] AUTO-RECOGNITION: After filter, imagesToProcess.length =`, imagesToProcess.length)
+      } else {
+        console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult NOT success or no data, using all images`)
       }
+    }
+
+    console.log(`[${VERSION}] AUTO-RECOGNITION: Final imagesToProcess.length =`, imagesToProcess.length)
+
+    if (imagesToProcess.length === 0) {
+      console.log(`[${VERSION}] AUTO-RECOGNITION: No images to process, finishing...`)
+      setProcessing(false)
+      return
     }
 
     const initialResults: ProcessingResult[] = imagesToProcess.map((img) => ({
@@ -135,6 +156,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
       status: "pending",
     }))
     setResults(initialResults)
+    console.log(`[${VERSION}] AUTO-RECOGNITION: Set initialResults, length =`, initialResults.length)
 
     const batchSize = 2
 
