@@ -10,14 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from "lucide-react"
-import { getPhotoFacesAction } from "@/app/admin/actions"
 import { createClient } from "@/lib/supabase/client"
-import type { Person, DetectedFace } from "@/lib/types"
+import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { debounce } from "@/lib/debounce"
-import { apiFetch } from "@/app/admin/utils"
 
-const VERSION = "v5.0"
+const VERSION = "v5.1"
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -97,10 +95,6 @@ export function FaceTaggingDialog({
     }
   }, [showAddPerson, open])
 
-  useEffect(() => {
-    loadFacesAndPeople()
-  }, [imageId])
-
   async function loadPeople() {
     const supabase = createClient()
     const { data } = await supabase.from("people").select("*").order("real_name", { ascending: true })
@@ -129,14 +123,13 @@ export function FaceTaggingDialog({
 
       console.log(`[${VERSION}] Process photo returned ${result.data.length} faces`)
 
-      // Map to tagged faces (WITHOUT embeddings!)
       const tagged: TaggedFace[] = result.data.map((f: any) => ({
         id: f.id,
         face: {
           boundingBox: f.insightface_bbox,
           confidence: f.insightface_confidence,
           blur_score: 0,
-          embedding: null, // No embeddings on frontend!
+          embedding: null,
         },
         personId: f.person_id,
         personName: f.people?.real_name || f.people?.telegram_name || null,
@@ -158,175 +151,6 @@ export function FaceTaggingDialog({
       drawFaces(tagged)
     } catch (error) {
       console.error(`[${VERSION}] Error loading faces:`, error)
-    }
-  }
-
-  async function loadFacesAndPeople() {
-    await loadPeople()
-
-    const existingResult = await getPhotoFacesAction(imageId)
-    const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
-
-    console.log(`[${VERSION}] Loading existing faces for image:`, imageId)
-    console.log(`[${VERSION}] Existing faces from DB:`, existingFaces)
-
-    if (existingFaces.length > 0) {
-      const tagged: TaggedFace[] = existingFaces.map((existing) => {
-        let embedding = existing.insightface_descriptor
-        if (typeof embedding === "string") {
-          try {
-            embedding = JSON.parse(embedding)
-          } catch (e) {
-            console.error(`[${VERSION}] Failed to parse embedding for face ${existing.id}:`, e)
-            embedding = null // null вместо [] чтобы различать "нет эмбеддинга" от "пустой массив"
-          }
-        }
-
-        if (!embedding || embedding.length === 0) {
-          console.warn(`[${VERSION}] Face ${existing.id} has NO embedding in DB!`)
-        }
-
-        return {
-          id: existing.id,
-          face: {
-            boundingBox: existing.insightface_bbox,
-            confidence: existing.recognition_confidence || 0,
-            blur_score: existing.blur_score,
-            embedding: embedding || null, // null вместо пустого массива
-          },
-          personId: existing.person_id,
-          personName: existing.people?.real_name || null,
-          recognitionConfidence: existing.recognition_confidence,
-          verified: existing.verified,
-        }
-      })
-
-      console.log(
-        `[${VERSION}] Tagged faces after mapping:`,
-        tagged.map((f) => ({
-          personId: f.personId,
-          personName: f.personName,
-          recognitionConfidence: f.recognitionConfidence,
-          verified: f.verified,
-          hasEmbedding: f.face.embedding && f.face.embedding.length > 0,
-          embeddingLength: f.face.embedding?.length,
-        })),
-      )
-
-      setTaggedFaces(tagged)
-      drawFaces(tagged)
-    }
-  }
-
-  async function detectAndRecognizeFaces() {
-    try {
-      setDetecting(true)
-      const faces = await detectFacesInsightFace(imageUrl)
-      const tagged: TaggedFace[] = await Promise.all(
-        faces.map(async (face) => {
-          const recognition = await recognizeFaceInsightFace(face.embedding)
-          console.log(`[${VERSION}] FaceTaggingDialog: Recognition result for face:`, {
-            face_bbox: face.boundingBox,
-            recognition_confidence: recognition?.confidence,
-            person_name: recognition?.person_name,
-          })
-          return {
-            face,
-            personId: recognition?.person_id || null,
-            personName: recognition?.person_name || null,
-            recognitionConfidence: recognition?.confidence || null,
-            verified: false,
-          }
-        }),
-      )
-
-      console.log(
-        `[${VERSION}] FaceTaggingDialog: All faces after detection:`,
-        tagged.map((t) => ({
-          personId: t.personId,
-          personName: t.personName,
-          recognitionConfidence: t.recognitionConfidence,
-          verified: t.verified,
-        })),
-      )
-
-      setTaggedFaces(tagged)
-      drawFaces(tagged)
-    } catch (error) {
-      console.error("Error detecting faces:", error)
-    } finally {
-      setDetecting(false)
-    }
-  }
-
-  async function detectFacesInsightFace(imageUrl: string): Promise<DetectedFace[]> {
-    const apiUrl = `/api/face-detection/detect`
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_url: imageUrl, apply_quality_filters: true }),
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      console.error("Detect faces error:", error)
-      throw new Error("Failed to detect faces")
-    }
-
-    const data = await response.json()
-
-    return data.faces.map((face: any) => ({
-      boundingBox: face.insightface_bbox,
-      confidence: face.confidence,
-      blur_score: face.blur_score,
-      embedding: face.embedding,
-    }))
-  }
-
-  async function recognizeFaceInsightFace(embedding: number[]) {
-    const apiUrl = `/api/face-detection/recognize`
-
-    const requestBody = {
-      embedding: embedding,
-      confidence_threshold: 0.0,
-    }
-    console.log(`[${VERSION}] recognizeFaceInsightFace: Sending request to ${apiUrl}`)
-    console.log(`[${VERSION}] Request body keys:`, Object.keys(requestBody))
-    console.log(
-      `[${VERSION}] Embedding length:`,
-      embedding.length,
-      "confidence_threshold:",
-      requestBody.confidence_threshold,
-    )
-
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`[${VERSION}] recognizeFaceInsightFace: API error`, response.status, response.statusText)
-      console.error(`[${VERSION}] Error body:`, errorText)
-      return null
-    }
-
-    const data = await response.json()
-
-    console.log(`[${VERSION}] Recognition API response:`, data)
-
-    if (!data.person_id) {
-      return null
-    }
-
-    const supabase = createClient()
-    const { data: person } = await supabase.from("people").select("real_name").eq("id", data.person_id).single()
-
-    return {
-      person_id: data.person_id,
-      person_name: person?.real_name || null,
-      confidence: data.confidence,
     }
   }
 
@@ -462,8 +286,7 @@ export function FaceTaggingDialog({
 
         console.log(`[${VERSION}] Verifying face ${taggedFace.id} with person ${taggedFace.personId}`)
 
-        // Call new verify endpoint - NO embeddings
-        const result = await apiFetch<{ success: boolean; data: any }>(`/api/faces/verify`, {
+        const result = await fetch(`/api/faces/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -471,7 +294,7 @@ export function FaceTaggingDialog({
             person_id: taggedFace.personId,
             verified: true,
           }),
-        })
+        }).then((r) => r.json())
 
         if (!result.success) {
           console.error(`[${VERSION}] Failed to verify face:`, result.error)
@@ -495,97 +318,59 @@ export function FaceTaggingDialog({
     }
   }
 
-  async function handleRedetect() {
-    try {
-      setRedetecting(true)
-      const faces = await detectFacesInsightFace(imageUrl)
-      const tagged: TaggedFace[] = await Promise.all(
-        faces.map(async (face) => {
-          const recognition = await recognizeFaceInsightFace(face.embedding)
-          return {
-            face,
-            personId: recognition?.person_id || null,
-            personName: recognition?.person_name || null,
-            recognitionConfidence: recognition?.confidence || null,
-            verified: false,
-          }
-        }),
-      )
-      setTaggedFaces(tagged)
-      setSelectedFaceIndex(0)
-      setHasRedetectedData(true)
-    } catch (error) {
-      console.error("Error redetecting faces:", error)
-    } finally {
-      setRedetecting(false)
-    }
-  }
-
   async function handleRedetectWithoutFilters() {
     try {
       setRedetecting(true)
-      console.log(`[${VERSION}] Redetecting faces WITHOUT quality filters`)
+      console.log(`[${VERSION}] Redetecting faces WITHOUT quality filters - calling backend`)
 
-      const apiUrl = `/api/face-detection/detect`
-      const response = await fetch(apiUrl, {
+      const result = await fetch(`/api/recognition/process-photo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          image_url: imageUrl,
+          photo_id: imageId,
+          force_redetect: true,
           apply_quality_filters: false,
         }),
-      })
+      }).then((r) => r.json())
 
-      if (!response.ok) {
-        throw new Error("Failed to detect faces")
+      if (!result.success || !result.data) {
+        throw new Error("Failed to redetect faces")
       }
 
-      const data = await response.json()
-      console.log(`[${VERSION}] Redetection result:`, data)
+      console.log(`[${VERSION}] Redetection result: ${result.data.length} faces found`)
 
-      const faces: DetectedFace[] = data.faces.map((face: any) => ({
-        boundingBox: face.insightface_bbox,
-        confidence: face.confidence,
-        blur_score: face.blur_score,
-        embedding: face.embedding,
+      const tagged: TaggedFace[] = result.data.map((f: any) => ({
+        id: f.id,
+        face: {
+          boundingBox: f.insightface_bbox,
+          confidence: f.insightface_confidence,
+          blur_score: f.blur_score || 0,
+          embedding: null,
+        },
+        personId: f.person_id,
+        personName: f.people?.real_name || f.people?.telegram_name || null,
+        recognitionConfidence: f.recognition_confidence,
+        verified: false,
       }))
-
-      const tagged: TaggedFace[] = await Promise.all(
-        faces.map(async (face) => {
-          const recognition = await recognizeFaceInsightFace(face.embedding)
-          return {
-            face,
-            personId: recognition?.person_id || null,
-            personName: recognition?.person_name || null,
-            recognitionConfidence: recognition?.confidence || null,
-            verified: false,
-          }
-        }),
-      )
 
       setTaggedFaces(tagged)
       drawFaces(tagged)
 
-      const detailed: DetailedFace[] = data.faces.map((face: any, index: number) => {
-        const bbox = face.insightface_bbox
+      const detailed: DetailedFace[] = result.data.map((f: any) => {
+        const bbox = f.insightface_bbox
         const size = Math.min(bbox.width, bbox.height)
 
         return {
           boundingBox: bbox,
           size: size,
-          blur_score: face.blur_score,
-          detection_score: face.confidence,
-          recognition_confidence: tagged[index].recognitionConfidence || undefined,
-          embedding_quality: face.embedding
-            ? Math.sqrt(face.embedding.reduce((sum: number, val: number) => sum + val * val, 0))
-            : undefined,
-          distance_to_nearest: face.distance_to_nearest,
-          top_matches: face.top_matches || [],
-          person_name: tagged[index].personName || undefined,
+          blur_score: f.blur_score || 0,
+          detection_score: f.insightface_confidence,
+          recognition_confidence: f.recognition_confidence || undefined,
+          person_name: f.people?.real_name || f.people?.telegram_name || undefined,
         }
       })
 
-      console.log(`[${VERSION}] Detailed faces:`, detailed)
+      console.log(`[${VERSION}] Detailed faces for metrics:`, detailed)
       setDetailedFaces(detailed)
       setHasRedetectedData(true)
     } catch (error) {
@@ -609,7 +394,7 @@ export function FaceTaggingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[90vw] h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Тегирование лиц v5.0</DialogTitle>
+          <DialogTitle>Тегирование лиц {VERSION}</DialogTitle>
           <DialogDescription title={fullFileName}>
             Файл: {displayFileName} | Обнаружено лиц: {taggedFaces.length}. Кликните на лицо, чтобы назначить человека.
           </DialogDescription>
