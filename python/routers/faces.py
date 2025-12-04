@@ -519,10 +519,9 @@ async def verify_face(
         embedding = face_data.get("insightface_descriptor")
         
         if not embedding:
-            logger.error(f"[Faces API] Face has no embedding!")
-            return {"success": False, "error": "Face has no embedding", "data": None}
-        
-        logger.info("[Faces API] Retrieved embedding from database")
+            logger.warning(f"[Faces API] Face has no embedding - will update person_id but skip index update")
+        else:
+            logger.info("[Faces API] Retrieved embedding from database")
         
         # Update photo_faces record
         update_data = {
@@ -540,7 +539,7 @@ async def verify_face(
         
         # If verified, add descriptor to recognition index
         index_updated = False
-        if request.verified and request.person_id:
+        if request.verified and request.person_id and embedding:
             try:
                 embedding_np = np.array(embedding, dtype=np.float32)
                 await face_service.add_descriptor(request.person_id, embedding_np)
@@ -548,6 +547,8 @@ async def verify_face(
                 logger.info(f"[Faces API] ✓ Added descriptor to recognition index")
             except Exception as e:
                 logger.error(f"[Faces API] Failed to update index: {str(e)}")
+        elif request.verified and not embedding:
+            logger.warning(f"[Faces API] Cannot update index - face has no embedding")
         
         # Return updated face WITHOUT embedding
         final_result = supabase_db.client.table("photo_faces") \
