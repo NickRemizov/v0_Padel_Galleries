@@ -7,10 +7,11 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle2, XCircle } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
-import { getPhotoFacesAction, getBatchPhotoFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions"
+import { getBatchPhotoFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions"
+import { processPhotoAction } from "@/app/admin/actions/faces"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v4.0" // Updated version for v2.0 architecture (no embeddings on frontend)
+const VERSION = "v4.1" // Updated for Server Actions architecture (no embeddings, no fetch)
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -34,91 +35,24 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
   const [currentIndex, setCurrentIndex] = useState(0)
   const [applyQualityFilters, setApplyQualityFilters] = useState(true)
 
-  async function detectFacesInsightFace(imageUrl: string) {
-    const apiUrl = `/api/face-detection/detect` // Fixed endpoint back to /api/face-detection/detect (Next.js proxy that calls FastAPI /detect-faces)
-    console.log(`[${VERSION}] Calling detect-faces proxy API:`, apiUrl)
+  async function processImageFaces(photoId: string, imageUrl: string) {
+    console.log(`[${VERSION}] Processing image: ${photoId}`)
     console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
 
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_url: imageUrl,
-        apply_quality_filters: applyQualityFilters,
-      }),
-    })
+    const result = await processPhotoAction(photoId)
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error(`[${VERSION}] Detect faces error:`, error)
-      throw new Error("Failed to detect faces")
+    if (!result.success) {
+      throw new Error(result.error || "Failed to process photo")
     }
 
-    const data = await response.json()
-    console.log(`[${VERSION}] Detected`, data.faces.length, "faces")
+    const facesFound = result.faces?.length || 0
+    const facesRecognized = result.faces?.filter((f: any) => f.person_id).length || 0
 
-    return data.faces
-      .filter((face: any) => face.insightface_bbox && face.insightface_bbox.x !== undefined)
-      .map((face: any) => ({
-        boundingBox: face.insightface_bbox, // Use insightface_bbox from backend
-        confidence: face.confidence,
-      }))
-  }
-
-  async function recognizeFaceInsightFace(embedding: number[]) {
-    const apiUrl = `/api/face-detection/recognize`
-    console.log(`[${VERSION}] Calling recognize-face proxy API:`, apiUrl)
-
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        embedding: embedding,
-      }),
-    })
-
-    if (!response.ok) {
-      console.log(`[${VERSION}] Recognize face failed (no match)`)
-      return null
-    }
-
-    const data = await response.json()
-    console.log(`[${VERSION}] Recognition result:`, data)
+    console.log(`[${VERSION}] Detected ${facesFound} faces, recognized ${facesRecognized}`)
 
     return {
-      personId: data.person_id,
-      confidence: data.confidence,
-    }
-  }
-
-  async function detectAndSaveFaces(imageUrl: string, photoId: string) {
-    const apiUrl = `/api/face-detection/detect-and-save`
-    console.log(`[${VERSION}] Calling detect-and-save API:`, apiUrl)
-    console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
-
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_url: imageUrl,
-        photo_id: photoId,
-        apply_quality_filters: applyQualityFilters,
-      }),
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      console.error(`[${VERSION}] Detect and save faces error:`, error)
-      throw new Error("Failed to detect and save faces")
-    }
-
-    const data = await response.json()
-    console.log(`[${VERSION}] Detected and saved`, data.faces_saved, "faces")
-    console.log(`[${VERSION}] Recognized`, data.faces_recognized, "faces")
-
-    return {
-      facesFound: data.faces_saved,
-      facesRecognized: data.faces_recognized,
+      facesFound,
+      facesRecognized,
     }
   }
 
@@ -217,12 +151,12 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
       setResults((prev) => prev.map((r, idx) => (idx === i ? { ...r, status: "processing" as const } : r)))
 
       try {
-        const existingFacesResult = await getPhotoFacesAction(image.id)
+        const existingFacesResult = await getBatchPhotoFacesAction([image.id])
         const existingFaces = existingFacesResult.success ? existingFacesResult.data || [] : []
 
         console.log(`[${VERSION}] Image ${image.original_filename}: Found ${existingFaces.length} existing faces`)
 
-        const result = await detectAndSaveFaces(image.image_url, image.id)
+        const result = await processImageFaces(image.id, image.image_url)
 
         console.log(`[${VERSION}] Processed ${result.facesFound} faces, recognized ${result.facesRecognized}`)
 

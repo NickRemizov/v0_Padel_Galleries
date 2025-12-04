@@ -149,7 +149,6 @@ async def save_face(
         logger.info(f"[Faces API] Photo ID: {request.photo_id}")
         logger.info(f"[Faces API] Person ID: {request.person_id}")
         logger.info(f"[Faces API] Verified: {request.verified}")
-        logger.info(f"[Faces API] Embedding length: {len(request.embedding)}")
         
         insert_data = {
             "photo_id": request.photo_id,
@@ -172,7 +171,7 @@ async def save_face(
         if request.embedding and len(request.embedding) > 0:
             vector_string = f"[{','.join(map(str, request.embedding))}]"
             insert_data["insightface_descriptor"] = vector_string
-            logger.info(f"[Faces API] Adding descriptor (dimension: {len(request.embedding)})")
+            logger.info("[Faces API] Adding face descriptor to database")
         
         logger.info(f"[Faces API] Insert data keys: {list(insert_data.keys())}")
         logger.info(f"[Faces API] Verified={insert_data.get('verified')}, Person ID={insert_data.get('person_id')}, Has descriptor={('insightface_descriptor' in insert_data)}")
@@ -202,15 +201,6 @@ async def save_face(
             verified_record = verify_response.data[0]
             has_descriptor = verified_record.get('insightface_descriptor') is not None
             logger.info(f"[Faces API] ✓ Verified record exists: id={saved_id}, person_id={verified_record.get('person_id')}, verified={verified_record.get('verified')}, has_descriptor={has_descriptor}")
-            
-            if has_descriptor:
-                descriptor = verified_record.get('insightface_descriptor')
-                if isinstance(descriptor, str):
-                    import json
-                    descriptor_array = json.loads(descriptor)
-                    logger.info(f"[Faces API] Descriptor from DB length: {len(descriptor_array)}")
-                elif isinstance(descriptor, list):
-                    logger.info(f"[Faces API] Descriptor from DB length: {len(descriptor)}")
         else:
             logger.error(f"[Faces API] ⚠️ Could not verify record {saved_id} was saved!")
         
@@ -438,7 +428,7 @@ async def batch_save_faces(
             if face.embedding and len(face.embedding) > 0:
                 vector_string = f"[{','.join(map(str, face.embedding))}]"
                 insert_data["insightface_descriptor"] = vector_string
-                logger.info(f"[Faces API] Face {idx+1}: Adding descriptor (dimension: {len(face.embedding)})")
+                logger.info(f"[Faces API] Face {idx+1}: Adding descriptor")
             
             response = supabase_db.client.table("photo_faces").insert(insert_data).execute()
             
@@ -532,7 +522,7 @@ async def verify_face(
             logger.error(f"[Faces API] Face has no embedding!")
             return {"success": False, "error": "Face has no embedding", "data": None}
         
-        logger.info(f"[Faces API] Retrieved embedding from DB, length: {len(embedding)}")
+        logger.info("[Faces API] Retrieved embedding from database")
         
         # Update photo_faces record
         update_data = {
