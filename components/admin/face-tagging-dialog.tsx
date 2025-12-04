@@ -138,41 +138,67 @@ export function FaceTaggingDialog({
 
       for (const face of unverifiedFaces) {
         console.log(`[${VERSION}] Re-running recognition for unverified face (person_id:`, face.person_id, ")")
-        console.log(
-          `[${VERSION}] Embedding length:`,
-          face.embedding?.length,
-          "First 3 values:",
-          face.embedding?.slice(0, 3),
-        )
 
-        const recognitionResult = await recognizeFaceInsightFace(face.embedding)
+        // Parse insightface_descriptor (can be string or array)
+        let embedding = face.insightface_descriptor
+        if (typeof embedding === "string") {
+          try {
+            embedding = JSON.parse(embedding)
+          } catch (e) {
+            console.error(`[${VERSION}] Failed to parse embedding:`, e)
+            continue
+          }
+        }
+
+        console.log(`[${VERSION}] Embedding length:`, embedding?.length, "First 3 values:", embedding?.slice(0, 3))
+
+        if (!embedding || embedding.length === 0) {
+          console.error(`[${VERSION}] No embedding found for face, skipping`)
+          continue
+        }
+
+        const recognitionResult = await recognizeFaceInsightFace(embedding)
         console.log(`[${VERSION}] Recognition result:`, recognitionResult)
+
         if (recognitionResult) {
           const updatedFace = {
             ...face,
             person_id: recognitionResult.person_id,
             people: { real_name: recognitionResult.person_name },
             recognition_confidence: recognitionResult.confidence,
-            verified: true,
+            verified: false, // Keep as false - only manual save should verify
           }
           setTaggedFaces((prevFaces) => prevFaces.map((f) => (f.id === face.id ? updatedFace : f)))
         }
       }
     } else {
       console.log(`[${VERSION}] All faces verified, displaying only`)
-      const tagged: TaggedFace[] = existingFaces.map((existing) => ({
-        id: existing.id,
-        face: {
-          boundingBox: existing.insightface_bbox,
-          confidence: existing.recognition_confidence || 0,
-          blur_score: existing.blur_score,
-          embedding: [],
-        },
-        personId: existing.person_id,
-        personName: existing.people?.real_name || null,
-        recognitionConfidence: existing.recognition_confidence,
-        verified: existing.verified,
-      }))
+
+      const tagged: TaggedFace[] = existingFaces.map((existing) => {
+        let embedding = existing.insightface_descriptor
+        if (typeof embedding === "string") {
+          try {
+            embedding = JSON.parse(embedding)
+          } catch (e) {
+            console.error(`[${VERSION}] Failed to parse embedding for face ${existing.id}:`, e)
+            embedding = []
+          }
+        }
+
+        return {
+          id: existing.id,
+          face: {
+            boundingBox: existing.insightface_bbox,
+            confidence: existing.recognition_confidence || 0,
+            blur_score: existing.blur_score,
+            embedding: embedding || [],
+          },
+          personId: existing.person_id,
+          personName: existing.people?.real_name || null,
+          recognitionConfidence: existing.recognition_confidence,
+          verified: existing.verified,
+        }
+      })
 
       setTaggedFaces(tagged)
       drawFaces(tagged)
@@ -189,19 +215,31 @@ export function FaceTaggingDialog({
     console.log(`[${VERSION}] Existing faces from DB:`, existingFaces)
 
     if (existingFaces.length > 0) {
-      const tagged: TaggedFace[] = existingFaces.map((existing) => ({
-        id: existing.id,
-        face: {
-          boundingBox: existing.insightface_bbox,
-          confidence: existing.recognition_confidence || 0,
-          blur_score: existing.blur_score,
-          embedding: [],
-        },
-        personId: existing.person_id,
-        personName: existing.people?.real_name || null,
-        recognitionConfidence: existing.recognition_confidence,
-        verified: existing.verified,
-      }))
+      const tagged: TaggedFace[] = existingFaces.map((existing) => {
+        let embedding = existing.insightface_descriptor
+        if (typeof embedding === "string") {
+          try {
+            embedding = JSON.parse(embedding)
+          } catch (e) {
+            console.error(`[${VERSION}] Failed to parse embedding for face ${existing.id}:`, e)
+            embedding = []
+          }
+        }
+
+        return {
+          id: existing.id,
+          face: {
+            boundingBox: existing.insightface_bbox,
+            confidence: existing.recognition_confidence || 0,
+            blur_score: existing.blur_score,
+            embedding: embedding || [],
+          },
+          personId: existing.person_id,
+          personName: existing.people?.real_name || null,
+          recognitionConfidence: existing.recognition_confidence,
+          verified: existing.verified,
+        }
+      })
 
       console.log(
         `[${VERSION}] Tagged faces after mapping:`,
@@ -210,6 +248,7 @@ export function FaceTaggingDialog({
           personName: f.personName,
           recognitionConfidence: f.recognitionConfidence,
           verified: f.verified,
+          hasEmbedding: f.face.embedding && f.face.embedding.length > 0,
         })),
       )
 
