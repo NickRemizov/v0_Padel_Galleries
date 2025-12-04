@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle2, XCircle } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
-  saveFaceDescriptorAction,
   savePhotoFaceAction,
   updatePhotoFaceAction,
   getPhotoFacesAction,
@@ -270,7 +269,6 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
               if (match.confidence < 1.0) {
                 allFacesFullConfidence = false
               }
-              await saveFaceDescriptorAction(match.personId, face.embedding, image.id)
               await updatePhotoFaceAction(overlappingFace.id, {
                 person_id: match.personId,
                 confidence: match.confidence,
@@ -292,7 +290,6 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
             if (match.confidence < 1.0) {
               allFacesFullConfidence = false
             }
-            await saveFaceDescriptorAction(match.personId, face.embedding, image.id)
             await savePhotoFaceAction(
               image.id,
               match.personId,

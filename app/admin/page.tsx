@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.2.6" // добавлено детальное debug логирование в auto-recognition-dialog для диагностики фильтра
+const APP_VERSION = "1.2.7" // удалены deprecated вызовы saveFaceDescriptorAction которые создавали дублирующие verified=true записи
 
 export const dynamic = "force-dynamic"
 
