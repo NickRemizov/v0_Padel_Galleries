@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.3.2" // увеличение версии до 1.3.2 - убраны лишние логи эмбеддингов, исправлен Optional confidence_threshold
+const APP_VERSION = "1.3.3" // Увеличение версии до 1.3.3 - унифицирована версия FaceTaggingDialog до v4.0 с агрессивным debug логированием recognize запросов
 
 export const dynamic = "force-dynamic"
 

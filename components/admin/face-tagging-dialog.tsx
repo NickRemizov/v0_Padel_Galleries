@@ -18,6 +18,8 @@ import { debounce } from "@/lib/debounce"
 
 const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
 
+const VERSION = "v4.0"
+
 interface FaceTaggingDialogProps {
   imageId: string
   imageUrl: string
@@ -53,7 +55,7 @@ export function FaceTaggingDialog({
   const debouncedSave = useMemo(
     () =>
       debounce((faces: TaggedFace[]) => {
-        console.log("[v3.11] Debounced save triggered for", faces.length, "faces")
+        console.log(`[${VERSION}] Debounced save triggered for`, faces.length, "faces")
       }, 500),
     [],
   )
@@ -111,94 +113,69 @@ export function FaceTaggingDialog({
   async function loadPeopleAndExistingFaces() {
     await loadPeople()
 
-    console.log("[v3.23] Loading faces for image:", imageId, "hasBeenProcessed:", hasBeenProcessed)
+    console.log(`[${VERSION}] Loading faces for image:`, imageId, "hasBeenProcessed:", hasBeenProcessed)
 
     const existingResult = await getPhotoFacesAction(imageId)
     const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
 
-    console.log("[v3.23] Existing faces from DB:", existingFaces.length)
+    console.log(`[${VERSION}] Existing faces from DB:`, existingFaces.length)
 
-    if (existingFaces.length > 0) {
-      const unverifiedFaces = existingFaces.filter((f) => !f.verified)
-      const unrecognizedFaces = existingFaces.filter((f) => f.person_id === null)
-      const recognizedFaces = existingFaces.filter((f) => f.person_id !== null)
+    const recognizedFaces = existingFaces.filter((face) => face.person_id !== null)
+    const unrecognizedFaces = existingFaces.filter((face) => face.person_id === null)
+    const unverifiedFaces = existingFaces.filter((face) => !face.verified)
 
-      console.log(
-        "[v3.23] Recognized:",
-        recognizedFaces.length,
-        "Unrecognized:",
-        unrecognizedFaces.length,
-        "Unverified:",
-        unverifiedFaces.length,
-      )
+    console.log(
+      `[${VERSION}] Recognized:`,
+      recognizedFaces.length,
+      "Unrecognized:",
+      unrecognizedFaces.length,
+      "Unverified:",
+      unverifiedFaces.length,
+    )
 
-      if (unverifiedFaces.length > 0) {
-        console.log("[v3.23] Found unverified faces, re-running recognition to update confidence")
-        const tagged: TaggedFace[] = existingFaces.map((existing) => ({
-          id: existing.id,
-          face: {
-            boundingBox: existing.insightface_bbox,
-            confidence: existing.recognition_confidence || 0,
-            blur_score: existing.blur_score,
-            embedding: existing.insightface_descriptor || [],
-          },
-          personId: existing.person_id,
-          personName: existing.people?.real_name || null,
-          recognitionConfidence: existing.recognition_confidence,
-          verified: existing.verified,
-        }))
+    if (unverifiedFaces.length > 0) {
+      console.log(`[${VERSION}] Found unverified faces, re-running recognition to update confidence`)
 
-        const updatedTagged = await Promise.all(
-          tagged.map(async (taggedFace) => {
-            if (!taggedFace.verified && taggedFace.face.embedding.length > 0) {
-              console.log("[v3.23] Re-running recognition for unverified face (person_id:", taggedFace.personId, ")")
-              const recognition = await recognizeFaceInsightFace(taggedFace.face.embedding)
-              if (recognition) {
-                console.log(
-                  "[v3.23] Recognition result:",
-                  recognition.person_name,
-                  "confidence:",
-                  recognition.confidence,
-                )
-                return {
-                  ...taggedFace,
-                  personId: recognition.person_id,
-                  personName: recognition.person_name,
-                  recognitionConfidence: recognition.confidence,
-                }
-              }
-            }
-            return taggedFace
-          }),
+      for (const face of unverifiedFaces) {
+        console.log(`[${VERSION}] Re-running recognition for unverified face (person_id:`, face.person_id, ")")
+        console.log(
+          `[${VERSION}] Embedding length:`,
+          face.embedding?.length,
+          "First 3 values:",
+          face.embedding?.slice(0, 3),
         )
 
-        setTaggedFaces(updatedTagged)
-        drawFaces(updatedTagged)
-      } else {
-        console.log("[v3.23] All faces verified, displaying only")
-        const tagged: TaggedFace[] = existingFaces.map((existing) => ({
-          id: existing.id,
-          face: {
-            boundingBox: existing.insightface_bbox,
-            confidence: existing.recognition_confidence || 0,
-            blur_score: existing.blur_score,
-            embedding: [],
-          },
-          personId: existing.person_id,
-          personName: existing.people?.real_name || null,
-          recognitionConfidence: existing.recognition_confidence,
-          verified: existing.verified,
-        }))
-
-        setTaggedFaces(tagged)
-        drawFaces(tagged)
+        const recognitionResult = await recognizeFaceInsightFace(face.embedding)
+        console.log(`[${VERSION}] Recognition result:`, recognitionResult)
+        if (recognitionResult) {
+          const updatedFace = {
+            ...face,
+            person_id: recognitionResult.person_id,
+            people: { real_name: recognitionResult.person_name },
+            recognition_confidence: recognitionResult.confidence,
+            verified: true,
+          }
+          setTaggedFaces((prevFaces) => prevFaces.map((f) => (f.id === face.id ? updatedFace : f)))
+        }
       }
-    } else if (!hasBeenProcessed) {
-      console.log("[v3.23] New photo (not processed), running full detection + recognition")
-      await detectAndRecognizeFaces()
     } else {
-      console.log("[v3.23] Photo already processed but no faces found - manual recognition only")
-      setTaggedFaces([])
+      console.log(`[${VERSION}] All faces verified, displaying only`)
+      const tagged: TaggedFace[] = existingFaces.map((existing) => ({
+        id: existing.id,
+        face: {
+          boundingBox: existing.insightface_bbox,
+          confidence: existing.recognition_confidence || 0,
+          blur_score: existing.blur_score,
+          embedding: [],
+        },
+        personId: existing.person_id,
+        personName: existing.people?.real_name || null,
+        recognitionConfidence: existing.recognition_confidence,
+        verified: existing.verified,
+      }))
+
+      setTaggedFaces(tagged)
+      drawFaces(tagged)
     }
   }
 
@@ -208,8 +185,8 @@ export function FaceTaggingDialog({
     const existingResult = await getPhotoFacesAction(imageId)
     const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
 
-    console.log("[v3.23] Loading existing faces for image:", imageId)
-    console.log("[v3.23] Existing faces from DB:", existingFaces)
+    console.log(`[${VERSION}] Loading existing faces for image:`, imageId)
+    console.log(`[${VERSION}] Existing faces from DB:`, existingFaces)
 
     if (existingFaces.length > 0) {
       const tagged: TaggedFace[] = existingFaces.map((existing) => ({
@@ -227,7 +204,7 @@ export function FaceTaggingDialog({
       }))
 
       console.log(
-        "[v3.23] Tagged faces after mapping:",
+        `[${VERSION}] Tagged faces after mapping:`,
         tagged.map((f) => ({
           personId: f.personId,
           personName: f.personName,
@@ -248,7 +225,7 @@ export function FaceTaggingDialog({
       const tagged: TaggedFace[] = await Promise.all(
         faces.map(async (face) => {
           const recognition = await recognizeFaceInsightFace(face.embedding)
-          console.log("[v4.0] FaceTaggingDialog: Recognition result for face:", {
+          console.log(`[${VERSION}] FaceTaggingDialog: Recognition result for face:`, {
             face_bbox: face.boundingBox,
             recognition_confidence: recognition?.confidence,
             person_name: recognition?.person_name,
@@ -264,7 +241,7 @@ export function FaceTaggingDialog({
       )
 
       console.log(
-        "[v4.0] FaceTaggingDialog: All faces after detection:",
+        `[${VERSION}] FaceTaggingDialog: All faces after detection:`,
         tagged.map((t) => ({
           personId: t.personId,
           personName: t.personName,
@@ -308,23 +285,36 @@ export function FaceTaggingDialog({
 
   async function recognizeFaceInsightFace(embedding: number[]) {
     const apiUrl = `/api/face-detection/recognize`
+
+    const requestBody = {
+      embedding: embedding,
+      confidence_threshold: 0.0,
+    }
+    console.log(`[${VERSION}] recognizeFaceInsightFace: Sending request to ${apiUrl}`)
+    console.log(`[${VERSION}] Request body keys:`, Object.keys(requestBody))
+    console.log(
+      `[${VERSION}] Embedding length:`,
+      embedding.length,
+      "confidence_threshold:",
+      requestBody.confidence_threshold,
+    )
+
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        embedding: embedding,
-        confidence_threshold: 0.0, // Get all matches, we'll filter on frontend
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
-      console.error("[v3.23] recognizeFaceInsightFace: API error", response.status, response.statusText)
+      const errorText = await response.text()
+      console.error(`[${VERSION}] recognizeFaceInsightFace: API error`, response.status, response.statusText)
+      console.error(`[${VERSION}] Error body:`, errorText)
       return null
     }
 
     const data = await response.json()
 
-    console.log("[v4.0] FaceTaggingDialog: Recognition API response:", data)
+    console.log(`[${VERSION}] Recognition API response:`, data)
 
     if (!data.person_id) {
       return null
@@ -342,7 +332,7 @@ export function FaceTaggingDialog({
 
   function calculateIoU(box1: any, box2: any): number {
     if (!box1 || !box2) {
-      console.log("[v0] calculateIoU: one of the boxes is null", { box1, box2 })
+      console.log(`[${VERSION}] calculateIoU: one of the boxes is null`, { box1, box2 })
       return 0
     }
 
@@ -457,7 +447,7 @@ export function FaceTaggingDialog({
 
   async function handleSaveWithoutClose() {
     if (saving) {
-      console.log("[v3.11] Save already in progress, ignoring")
+      console.log(`[${VERSION}] Save already in progress, ignoring`)
       return
     }
 
@@ -522,7 +512,7 @@ export function FaceTaggingDialog({
 
   async function handleSave() {
     if (saving) {
-      console.log("[v3.11] Save already in progress, ignoring")
+      console.log(`[${VERSION}] Save already in progress, ignoring`)
       return
     }
 
@@ -615,7 +605,7 @@ export function FaceTaggingDialog({
   async function handleRedetectWithoutFilters() {
     try {
       setRedetecting(true)
-      console.log("[v0] Redetecting faces WITHOUT quality filters")
+      console.log(`[${VERSION}] Redetecting faces WITHOUT quality filters`)
 
       const apiUrl = `/api/face-detection/detect`
       const response = await fetch(apiUrl, {
@@ -632,7 +622,7 @@ export function FaceTaggingDialog({
       }
 
       const data = await response.json()
-      console.log("[v0] Redetection result:", data)
+      console.log(`[${VERSION}] Redetection result:`, data)
 
       const faces: DetectedFace[] = data.faces.map((face: any) => ({
         boundingBox: face.insightface_bbox,
@@ -676,11 +666,11 @@ export function FaceTaggingDialog({
         }
       })
 
-      console.log("[v0] Detailed faces:", detailed)
+      console.log(`[${VERSION}] Detailed faces:`, detailed)
       setDetailedFaces(detailed)
       setHasRedetectedData(true)
     } catch (error) {
-      console.error("[v0] Error redetecting faces:", error)
+      console.error(`[${VERSION}] Error redetecting faces:`, error)
       alert("Ошибка при повторном распознавании")
     } finally {
       setRedetecting(false)
@@ -700,7 +690,7 @@ export function FaceTaggingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[90vw] h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Тегирование лиц v3.10</DialogTitle>
+          <DialogTitle>Тегирование лиц v4.0</DialogTitle>
           <DialogDescription title={fullFileName}>
             Файл: {displayFileName} | Обнаружено лиц: {taggedFaces.length}. Кликните на лицо, чтобы назначить человека.
           </DialogDescription>
