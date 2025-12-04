@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { AddPersonDialog } from "./add-person-dialog"
 import { PersonList } from "./person-list"
-import { GenerateMissingDescriptorsDialog } from "./generate-missing-descriptors-dialog"
 import type { Person } from "@/lib/types"
 
 type PersonWithStats = Person & {
@@ -123,7 +122,6 @@ export async function PeopleManager() {
           <p className="text-muted-foreground">Управление базой людей для распознавания лиц</p>
         </div>
         <div className="flex gap-2">
-          <GenerateMissingDescriptorsDialog />
           <AddPersonDialog />
         </div>
       </div>

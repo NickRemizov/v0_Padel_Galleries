@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { cleanupDuplicateDescriptorsAction } from "@/app/admin/actions"
+import { cleanupDuplicateFacesAction } from "@/app/admin/actions"
 import { Loader2 } from "lucide-react"
 
 export function CleanupDuplicateDescriptorsButton() {
@@ -24,7 +24,7 @@ export function CleanupDuplicateDescriptorsButton() {
     setResult(null)
 
     try {
-      const response = await cleanupDuplicateDescriptorsAction()
+      const response = await cleanupDuplicateFacesAction()
 
       if (response.error) {
         alert(`Ошибка: ${response.error}`)
@@ -44,28 +44,23 @@ export function CleanupDuplicateDescriptorsButton() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
-          Удалить дубликаты дескрипторов
+          Удалить дубликаты лиц
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Удалить дубликаты дескрипторов</DialogTitle>
+          <DialogTitle>Удалить дубликаты лиц</DialogTitle>
           <DialogDescription>
-            Эта операция удалит дублирующие записи в таблице face_descriptors, оставив только один дескриптор для каждой
-            комбинации человек+фото (самый старый по дате создания).
+            Эта операция удалит дублирующие записи в таблице photo_faces, оставив только уникальные лица для каждого
+            фото.
           </DialogDescription>
         </DialogHeader>
 
         {result && (
           <div className="space-y-2 rounded-lg bg-muted p-4 text-sm">
             <div className="font-semibold">Результаты очистки:</div>
-            <div>До очистки: {result.before.descriptors} дескрипторов</div>
-            <div>После очистки: {result.after.descriptors} дескрипторов</div>
-            <div>Удалено дубликатов: {result.deletedDescriptors}</div>
-            <div>Групп с дубликатами: {result.duplicateGroups}</div>
-            <div className="mt-2 text-muted-foreground">
-              Теперь в базе: {result.after.photoFaces} записей photo_faces и {result.after.descriptors} дескрипторов
-            </div>
+            <div>Найдено дубликатов: {result.duplicatesFound || 0}</div>
+            <div>Удалено: {result.deletedCount || 0}</div>
           </div>
         )}
 

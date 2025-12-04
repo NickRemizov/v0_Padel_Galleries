@@ -15,7 +15,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "1.2.7" // удалены deprecated вызовы saveFaceDescriptorAction которые создавали дублирующие verified=true записи
+const APP_VERSION = "1.2.8" // удалены deprecated компоненты: generate-missing-descriptors-dialog, regenerate-all-descriptors-dialog, regenerate-descriptors-dialog, use-face-detection hook
 
 export const dynamic = "force-dynamic"
 
