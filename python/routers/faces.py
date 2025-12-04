@@ -77,6 +77,16 @@ class BatchVerifyRequest(BaseModel):
     kept_faces: List[dict]  # [{id, person_id}]
 
 
+class KeptFace(BaseModel):
+    id: str
+    person_id: Optional[str]
+
+
+class BatchVerifyRequest(BaseModel):
+    photo_id: str
+    kept_faces: List[KeptFace]
+
+
 @router.post("/batch")
 async def get_batch_photo_faces(
     request: BatchPhotoIdsRequest,

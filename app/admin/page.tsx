@@ -1,5 +1,5 @@
-const APP_VERSION = "v2.3.1" // Fixed batch-verify logic: confidence=1.0 only for faces with person_id
+const APP_VERSION = "v2.3.2" // Removed save blocking, added KeptFace model typing
 
 export default function AdminPage() {
-  // /** rest of code here **/
+  // Admin page content here
 }

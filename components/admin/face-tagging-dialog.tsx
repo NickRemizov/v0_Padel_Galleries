@@ -341,7 +341,7 @@ export function FaceTaggingDialog({
   }, [imageFitMode])
 
   const hasUnassignedFaces = taggedFaces.some((face) => !face.personId)
-  const canSave = !saving && !hasUnassignedFaces
+  const canSave = !saving
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
