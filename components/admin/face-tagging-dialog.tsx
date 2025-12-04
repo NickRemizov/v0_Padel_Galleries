@@ -137,20 +137,46 @@ export function FaceTaggingDialog({
         verified: f.verified,
       }))
 
-      console.log(
-        `[${VERSION}] Tagged faces:`,
-        tagged.map((t) => ({
-          personId: t.personId,
-          personName: t.personName,
-          recognitionConfidence: t.recognitionConfidence,
-          verified: t.verified,
-        })),
-      )
+      console.log(`[${VERSION}] Tagged faces:`, tagged)
 
       setTaggedFaces(tagged)
       drawFaces(tagged)
     } catch (error) {
       console.error(`[${VERSION}] Error loading faces:`, error)
+    }
+  }
+
+  async function handleRedetect() {
+    if (redetecting) return
+
+    setRedetecting(true)
+    try {
+      console.log(`[${VERSION}] Starting redetect for image ${imageId}`)
+
+      // Вызываем process-photo с force_redetect (backend сделает новую детекцию)
+      const result = await fetch(`/api/face-detection/detect-and-save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          photo_id: imageId,
+          image_url: imageUrl,
+          apply_quality_filters: true,
+        }),
+      }).then((r) => r.json())
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to redetect faces")
+      }
+
+      console.log(`[${VERSION}] Redetect successful, reloading faces`)
+
+      // Перезагружаем лица после redetect
+      await loadPeopleAndExistingFaces()
+    } catch (error) {
+      console.error(`[${VERSION}] Error redetecting faces:`, error)
+      alert(`Error redetecting faces: ${error}`)
+    } finally {
+      setRedetecting(false)
     }
   }
 
