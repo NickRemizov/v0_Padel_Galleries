@@ -130,7 +130,20 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
 
         imagesToProcess = images.filter((image) => {
           const faces = facesMap.get(image.id) || []
+
+          // Если нет лиц в БД - это новое фото, нужно обработать
+          if (faces.length === 0) {
+            console.log(`[${VERSION}] AUTO-RECOGNITION: Photo ${image.id} has NO faces in DB, will process`)
+            return true
+          }
+
+          // Если есть лица - обрабатываем только если есть неверифицированные
           const hasUnverifiedFaces = faces.some((face) => !face.verified)
+          if (hasUnverifiedFaces) {
+            console.log(`[${VERSION}] AUTO-RECOGNITION: Photo ${image.id} has unverified faces, will process`)
+          } else {
+            console.log(`[${VERSION}] AUTO-RECOGNITION: Photo ${image.id} has only verified faces, skipping`)
+          }
           return hasUnverifiedFaces
         })
 
