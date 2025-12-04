@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from "lucide-react"
-import { savePhotoFaceAction, getPhotoFacesAction, deletePhotoFaceAction } from "@/app/admin/actions"
+import { getPhotoFacesAction } from "@/app/admin/actions"
 import { createClient } from "@/lib/supabase/client"
 import type { Person, DetectedFace } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
@@ -445,86 +445,6 @@ export function FaceTaggingDialog({
     debouncedSave(updated)
   }
 
-  async function handleSaveWithoutClose() {
-    if (saving) {
-      console.log(`[${VERSION}] Save already in progress, ignoring`)
-      return
-    }
-
-    setSaving(true)
-    try {
-      const existingResult = await getPhotoFacesAction(imageId)
-      const existingFaces = existingResult.success && existingResult.data ? existingResult.data : []
-
-      for (const face of existingFaces) {
-        await deletePhotoFaceAction(face.id)
-      }
-
-      if (taggedFaces.length === 0) {
-        const result = await savePhotoFaceAction(imageId, null, null, [], null, null, false)
-
-        if (!result.success) {
-          console.error("Save failed:", result.error)
-          alert(`Ошибка сохранения: ${result.error}`)
-          setSaving(false)
-          return
-        }
-      } else {
-        for (const taggedFace of taggedFaces) {
-          if (!taggedFace.personId) continue
-
-          const isVerified = true
-          const recognitionConfidenceToSave = taggedFace.recognitionConfidence ?? 1.0
-          const confidenceToSave = taggedFace.face.confidence ?? 1.0
-
-          console.log(`[${VERSION}] Saving face:`, {
-            personId: taggedFace.personId,
-            verified: isVerified,
-            hasEmbedding: taggedFace.face.embedding && taggedFace.face.embedding.length > 0,
-            embeddingLength: taggedFace.face.embedding?.length,
-            recognitionConfidence: recognitionConfidenceToSave,
-          })
-
-          if (!taggedFace.face.embedding || taggedFace.face.embedding.length === 0) {
-            console.error(`[${VERSION}] Face has NO embedding, cannot save!`)
-            alert(`Ошибка: у лица нет эмбеддинга. Попробуйте переоткрыть фото.`)
-            setSaving(false)
-            return
-          }
-
-          const result = await savePhotoFaceAction(
-            imageId,
-            taggedFace.personId,
-            taggedFace.face.boundingBox,
-            taggedFace.face.embedding,
-            confidenceToSave,
-            recognitionConfidenceToSave,
-            isVerified,
-          )
-
-          if (!result.success) {
-            console.error("Save failed:", result.error)
-            if (result.errorDetail) {
-              console.error("Error details:", result.errorDetail)
-            }
-            alert(`Ошибка сохранения: ${result.error}`)
-            setSaving(false)
-            return
-          }
-        }
-      }
-
-      if (onSave) {
-        onSave()
-      }
-    } catch (error) {
-      console.error("Error saving face tags:", error)
-      alert("Ошибка при сохранении тегов")
-    } finally {
-      setSaving(false)
-    }
-  }
-
   async function handleSave() {
     if (saving) {
       console.log(`[${VERSION}] Save already in progress`)
@@ -699,7 +619,7 @@ export function FaceTaggingDialog({
                 <span>
                   <Button
                     size="sm"
-                    onClick={handleSaveWithoutClose}
+                    onClick={handleSave}
                     disabled={!canSave}
                     className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700 text-white"
                   >
