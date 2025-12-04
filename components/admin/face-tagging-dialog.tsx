@@ -14,8 +14,9 @@ import { createClient } from "@/lib/supabase/client"
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { debounce } from "@/lib/debounce"
+import { processPhotoAction, verifyFaceAction, saveDetectedFaceAction } from "@/app/admin/actions/faces"
 
-const VERSION = "v5.1"
+const VERSION = "v5.2" // Увеличена версия для архитектуры v2.2.0
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -109,27 +110,23 @@ export function FaceTaggingDialog({
     await loadPeople()
 
     try {
-      const result = await fetch(`/api/recognition/process-photo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photo_id: imageId }),
-      }).then((r) => r.json())
+      const result = await processPhotoAction(imageId)
 
-      if (!result.success || !result.data) {
+      if (!result.success || !result.faces) {
         console.log(`[${VERSION}] No faces returned from process-photo`)
         setTaggedFaces([])
         return
       }
 
-      console.log(`[${VERSION}] Process photo returned ${result.data.length} faces`)
+      console.log(`[${VERSION}] Process photo returned ${result.faces.length} faces`)
 
-      const tagged: TaggedFace[] = result.data.map((f: any) => ({
+      const tagged: TaggedFace[] = result.faces.map((f: any) => ({
         id: f.id,
         face: {
           boundingBox: f.insightface_bbox,
           confidence: f.insightface_confidence,
           blur_score: 0,
-          embedding: null,
+          embedding: null, // Backend manages embeddings
         },
         personId: f.person_id,
         personName: f.people?.real_name || f.people?.telegram_name || null,
@@ -154,15 +151,7 @@ export function FaceTaggingDialog({
       console.log(`[${VERSION}] Starting redetect for image ${imageId}`)
 
       // Вызываем process-photo с force_redetect (backend сделает новую детекцию)
-      const result = await fetch(`/api/face-detection/detect-and-save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          photo_id: imageId,
-          image_url: imageUrl,
-          apply_quality_filters: true,
-        }),
-      }).then((r) => r.json())
+      const result = await saveDetectedFaceAction(imageId, imageUrl, true)
 
       if (!result.success) {
         throw new Error(result.error || "Failed to redetect faces")
@@ -313,18 +302,15 @@ export function FaceTaggingDialog({
         if (!taggedFace.id) {
           console.log(`[${VERSION}] Saving NEW face with person ${taggedFace.personId}`)
 
-          const saveResult = await fetch(`/api/faces/save`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              photo_id: imageId,
-              person_id: taggedFace.personId,
-              bounding_box: taggedFace.face.boundingBox,
-              confidence: taggedFace.face.confidence,
-              recognition_confidence: taggedFace.recognitionConfidence,
-              verified: true,
-            }),
-          }).then((r) => r.json())
+          const saveResult = await saveDetectedFaceAction(
+            imageId,
+            taggedFace.personId,
+            taggedFace.face.boundingBox,
+            taggedFace.face.confidence,
+            taggedFace.recognitionConfidence,
+            true,
+            imageUrl,
+          )
 
           if (!saveResult.success) {
             console.error(`[${VERSION}] Failed to save new face:`, saveResult.error)
@@ -339,15 +325,7 @@ export function FaceTaggingDialog({
 
         console.log(`[${VERSION}] Verifying existing face ${taggedFace.id} with person ${taggedFace.personId}`)
 
-        const result = await fetch(`/api/faces/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            photo_face_id: taggedFace.id,
-            person_id: taggedFace.personId,
-            verified: true,
-          }),
-        }).then((r) => r.json())
+        const result = await verifyFaceAction(taggedFace.id, taggedFace.personId, true)
 
         if (!result.success) {
           console.error(`[${VERSION}] Failed to verify face:`, result.error)
@@ -359,14 +337,13 @@ export function FaceTaggingDialog({
         console.log(`[${VERSION}] ✓ Face verified successfully`)
       }
 
+      console.log(`[${VERSION}] All faces saved and verified successfully!`)
+      setSaving(false)
+      onSave?.()
       onOpenChange(false)
-      if (onSave) {
-        onSave()
-      }
     } catch (error) {
-      console.error(`[${VERSION}] Save error:`, error)
-      alert("Ошибка при сохранении")
-    } finally {
+      console.error(`[${VERSION}] Error saving faces:`, error)
+      alert(`Ошибка: ${error instanceof Error ? error.message : String(error)}`)
       setSaving(false)
     }
   }
@@ -376,15 +353,16 @@ export function FaceTaggingDialog({
       setRedetecting(true)
       console.log(`[${VERSION}] Redetecting faces WITHOUT quality filters - calling backend`)
 
-      const result = await fetch(`/api/recognition/process-photo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          photo_id: imageId,
-          force_redetect: true,
-          apply_quality_filters: false,
-        }),
-      }).then((r) => r.json())
+      const result = await saveDetectedFaceAction(
+        imageId,
+        imageUrl,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+      )
 
       if (!result.success || !result.data) {
         throw new Error("Failed to redetect faces")
