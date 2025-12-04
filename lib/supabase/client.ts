@@ -6,13 +6,24 @@ export function createClient() {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    logger.error("supabase/client", "Missing Supabase environment variables")
-    logger.error("supabase/client", `NEXT_PUBLIC_SUPABASE_URL: ${supabaseUrl ? "present" : "missing"}`)
-    logger.error("supabase/client", `NEXT_PUBLIC_SUPABASE_ANON_KEY: ${supabaseAnonKey ? "present" : "missing"}`)
+    logger.warn("supabase/client", "Supabase env variables missing - using mock client for preview")
+    logger.warn("supabase/client", `NEXT_PUBLIC_SUPABASE_URL: ${supabaseUrl ? "present" : "missing"}`)
+    logger.warn("supabase/client", `NEXT_PUBLIC_SUPABASE_ANON_KEY: ${supabaseAnonKey ? "present" : "missing"}`)
 
-    throw new Error(
-      "Supabase environment variables are not configured. Please check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment variables.",
-    )
+    // Return a mock client that won't break the app in preview
+    return {
+      from: () => ({
+        select: () => Promise.resolve({ data: [], error: null }),
+        insert: () => Promise.resolve({ data: null, error: new Error("Supabase not configured") }),
+        update: () => Promise.resolve({ data: null, error: new Error("Supabase not configured") }),
+        delete: () => Promise.resolve({ data: null, error: new Error("Supabase not configured") }),
+      }),
+      auth: {
+        getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+        getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+        signOut: () => Promise.resolve({ error: null }),
+      },
+    } as any
   }
 
   return createBrowserClient(supabaseUrl, supabaseAnonKey)
