@@ -1,5 +1,6 @@
-const APP_VERSION = "2.2.4"
+const APP_VERSION = "v2.3.0" // Auto-save detected faces to database
 
+// Default export
 export default function AdminPage() {
-  // Admin page content here
+  return <div>Admin Page</div>
 }
