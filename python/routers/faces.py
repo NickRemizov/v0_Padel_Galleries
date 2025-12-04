@@ -141,6 +141,7 @@ async def save_face(
     """
     Save a face with descriptor to database and automatically update recognition index.
     This is the single source of truth for face data - all face saves must go through here.
+    
     """
     try:
         logger.info("=" * 80)
@@ -172,8 +173,6 @@ async def save_face(
             vector_string = f"[{','.join(map(str, request.embedding))}]"
             insert_data["insightface_descriptor"] = vector_string
             logger.info(f"[Faces API] Adding descriptor (dimension: {len(request.embedding)})")
-            logger.info(f"[Faces API] Embedding sample (first 5): {request.embedding[:5]}")
-            logger.info(f"[Faces API] Embedding sample (last 5): {request.embedding[-5:]}")
         
         logger.info(f"[Faces API] Insert data keys: {list(insert_data.keys())}")
         logger.info(f"[Faces API] Verified={insert_data.get('verified')}, Person ID={insert_data.get('person_id')}, Has descriptor={('insightface_descriptor' in insert_data)}")

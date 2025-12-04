@@ -305,12 +305,39 @@ export function FaceTaggingDialog({
 
     try {
       for (const taggedFace of taggedFaces) {
-        if (!taggedFace.personId || !taggedFace.id) {
-          console.log(`[${VERSION}] Skipping face without person_id or id`)
+        if (!taggedFace.personId) {
+          console.log(`[${VERSION}] Skipping face without person_id`)
           continue
         }
 
-        console.log(`[${VERSION}] Verifying face ${taggedFace.id} with person ${taggedFace.personId}`)
+        if (!taggedFace.id) {
+          console.log(`[${VERSION}] Saving NEW face with person ${taggedFace.personId}`)
+
+          const saveResult = await fetch(`/api/faces/save`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              photo_id: imageId,
+              person_id: taggedFace.personId,
+              bounding_box: taggedFace.face.boundingBox,
+              confidence: taggedFace.face.confidence,
+              recognition_confidence: taggedFace.recognitionConfidence,
+              verified: true,
+            }),
+          }).then((r) => r.json())
+
+          if (!saveResult.success) {
+            console.error(`[${VERSION}] Failed to save new face:`, saveResult.error)
+            alert(`Ошибка сохранения: ${saveResult.error}`)
+            setSaving(false)
+            return
+          }
+
+          console.log(`[${VERSION}] ✓ New face saved successfully`)
+          continue
+        }
+
+        console.log(`[${VERSION}] Verifying existing face ${taggedFace.id} with person ${taggedFace.personId}`)
 
         const result = await fetch(`/api/faces/verify`, {
           method: "POST",

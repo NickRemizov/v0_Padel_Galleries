@@ -774,8 +774,8 @@ async def process_photo(
 ):
     """
     Process a photo: detect OR recheck faces based on what exists in DB.
-    - If no faces in DB → detect + recognize + save
-    - If unverified faces exist → read embeddings from DB + recognize + update
+    - If no faces in DB → detect + recognize (NO SAVE)
+    - If unverified faces exist → read embeddings from DB + recognize + update confidence
     - Returns faces WITHOUT embeddings (only person_id, confidence, bbox, etc)
     """
     try:
@@ -792,9 +792,8 @@ async def process_photo(
         faces_in_db = existing_result.data if existing_result.data else []
         logger.info(f"[Recognition] Found {len(faces_in_db)} faces in DB")
         
-        # Case 1: No faces in DB → full detect + recognize
         if not faces_in_db:
-            logger.info("[Recognition] No faces in DB, running full detection")
+            logger.info("[Recognition] No faces in DB, running detection WITHOUT saving")
             
             # Get image URL
             image_result = supabase_client_instance.client.table("gallery_images") \
@@ -812,18 +811,20 @@ async def process_photo(
             detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=True)
             logger.info(f"[Recognition] Detected {len(detected_faces)} faces")
             
-            saved_faces = []
+            preview_faces = []
             for face in detected_faces:
                 embedding = face["embedding"]
                 
                 # Recognize
                 person_id, confidence = await face_service.recognize_face(embedding, confidence_threshold=0.0)
                 
-                # Save to DB
-                insert_data = {
+                # Build preview face object (NO DB insert)
+                preview_face = {
+                    "id": None,  # No id yet, not saved
                     "photo_id": request.photo_id,
                     "person_id": person_id,
-                    "insightface_descriptor": embedding.tolist(),
+                    "recognition_confidence": confidence,
+                    "verified": False,
                     "insightface_bbox": {
                         "x": float(face["bbox"][0]),
                         "y": float(face["bbox"][1]),
@@ -831,34 +832,19 @@ async def process_photo(
                         "height": float(face["bbox"][3] - face["bbox"][1]),
                     },
                     "insightface_confidence": float(face["det_score"]),
-                    "recognition_confidence": confidence,
-                    "verified": False
+                    "people": None if not person_id else {
+                        "id": person_id,
+                        "real_name": None,  # Will be fetched by frontend if needed
+                        "telegram_name": None
+                    }
                 }
-                
-                save_result = supabase_client_instance.client.table("photo_faces") \
-                    .insert(insert_data) \
-                    .execute()
-                
-                if save_result.data:
-                    saved_faces.append(save_result.data[0])
+                preview_faces.append(preview_face)
             
-            # Update has_been_processed flag
-            supabase_client_instance.client.table("gallery_images") \
-                .update({"has_been_processed": True}) \
-                .eq("id", request.photo_id) \
-                .execute()
-            
-            # Return faces WITHOUT embeddings
-            final_result = supabase_client_instance.client.table("photo_faces") \
-                .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, people(id, real_name, telegram_name)") \
-                .eq("photo_id", request.photo_id) \
-                .execute()
-            
-            logger.info(f"[Recognition] Saved {len(saved_faces)} faces")
+            logger.info(f"[Recognition] Returning {len(preview_faces)} preview faces (NOT saved)")
             logger.info("[Recognition] ===== PROCESS PHOTO COMPLETE =====")
             logger.info("=" * 80)
             
-            return {"success": True, "data": final_result.data, "error": None}
+            return {"success": True, "data": preview_faces, "error": None}
         
         # Case 2: Faces exist, check if any are unverified
         unverified_faces = [f for f in faces_in_db if not f.get("verified", False)]
@@ -874,7 +860,6 @@ async def process_photo(
             
             return {"success": True, "data": final_result.data, "error": None}
         
-        # Case 3: Recheck unverified faces
         logger.info(f"[Recognition] Rechecking {len(unverified_faces)} unverified faces")
         
         for face in unverified_faces:
@@ -888,7 +873,7 @@ async def process_photo(
             # Recognize with updated index
             person_id, confidence = await face_service.recognize_face(embedding_np, confidence_threshold=0.0)
             
-            # Update DB
+            # Update DB with new confidence
             supabase_client_instance.client.table("photo_faces") \
                 .update({
                     "person_id": person_id,
@@ -913,7 +898,6 @@ async def process_photo(
     except Exception as e:
         logger.error(f"[Recognition] Error: {str(e)}", exc_info=True)
         return {"success": False, "error": str(e), "data": None}
-
 
 def calculate_iou(box1: dict, box2: dict) -> float:
     """Calculate Intersection over Union"""
