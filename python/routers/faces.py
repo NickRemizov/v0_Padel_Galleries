@@ -625,12 +625,12 @@ async def batch_verify_faces(
             if face_id:
                 update_data = {
                     "person_id": person_id,
-                    "recognition_confidence": 1.0,
+                    "recognition_confidence": 1.0 if person_id else None,
                     "verified": bool(person_id),
                 }
                 
                 supabase_db.client.table("photo_faces").update(update_data).eq("id", face_id).execute()
-                logger.info(f"[Faces API] ✓ Updated face {face_id}: person_id={person_id}, verified={bool(person_id)}")
+                logger.info(f"[Faces API] ✓ Updated face {face_id}: person_id={person_id}, confidence={update_data['recognition_confidence']}, verified={bool(person_id)}")
         
         # Rebuild index
         logger.info("[Faces API] Rebuilding recognition index...")

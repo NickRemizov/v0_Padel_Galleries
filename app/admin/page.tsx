@@ -1,6 +1,5 @@
-const APP_VERSION = "v2.3.0" // Auto-save detected faces to database
+const APP_VERSION = "v2.3.1" // Fixed batch-verify logic: confidence=1.0 only for faces with person_id
 
-// Default export
 export default function AdminPage() {
-  return <div>Admin Page</div>
+  // /** rest of code here **/
 }
