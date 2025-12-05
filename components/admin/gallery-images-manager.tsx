@@ -739,19 +739,30 @@ export function GalleryImagesManager({
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {sortedImages.map((image) => (
-                  <GalleryImageCard
-                    key={image.id}
-                    image={image}
-                    photoFacesMap={photoFacesMap}
-                    recognitionStats={recognitionStats}
-                    onTag={handleTagImage}
-                    onDelete={handleDelete}
-                    isSelected={selectedPhotos.has(image.id)}
-                    onToggleSelect={togglePhotoSelection}
-                  />
-                ))}
+              <div className="relative">
+                {isDragging && (
+                  <div className="sticky top-20 z-50 mx-auto my-8 max-w-md p-8 flex items-center justify-center backdrop-blur-sm border-4 border-dashed border-primary rounded-lg bg-white/90 dark:bg-black/90 pointer-events-none">
+                    <div className="text-center">
+                      <Upload className="h-16 w-16 mx-auto mb-4 text-primary" />
+                      <p className="text-xl font-semibold">Перетащите фото сюда</p>
+                      <p className="text-sm text-muted-foreground mt-2">Отпустите, чтобы загрузить</p>
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {sortedImages.map((image) => (
+                    <GalleryImageCard
+                      key={image.id}
+                      image={image}
+                      photoFacesMap={photoFacesMap}
+                      recognitionStats={recognitionStats}
+                      onTag={handleTagImage}
+                      onDelete={handleDelete}
+                      isSelected={selectedPhotos.has(image.id)}
+                      onToggleSelect={togglePhotoSelection}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>
