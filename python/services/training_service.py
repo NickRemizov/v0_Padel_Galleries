@@ -496,19 +496,27 @@ class TrainingService:
         """
         Получить историю обучений.
         """
-        sessions = self.supabase.get_training_history(limit, offset)
-        
-        import sqlite3
-        conn = sqlite3.connect(self.supabase.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM training_sessions")
-        total = cursor.fetchone()[0]
-        conn.close()
-        
-        return {
-            'sessions': sessions,
-            'total': total
-        }
+        try:
+            sessions = self.local_db.get_training_history(limit, offset)
+            
+            import sqlite3
+            conn = sqlite3.connect(self.local_db.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM training_sessions")
+            total = cursor.fetchone()[0]
+            conn.close()
+            
+            return {
+                'sessions': sessions,
+                'total': total
+            }
+        except Exception as e:
+            print(f"[TrainingService] Error getting training history: {e}")
+            # Return empty history instead of crashing
+            return {
+                'sessions': [],
+                'total': 0
+            }
     
     async def batch_recognize(
         self,
