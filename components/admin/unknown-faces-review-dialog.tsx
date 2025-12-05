@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card } from "@/components/ui/card"
 import { UserPlus, X, Loader2, RefreshCw, ChevronLeft, ChevronRight, SkipForward } from "lucide-react"
-import {
-  getUnknownFaceClustersAction,
-  rejectFaceClusterAction,
-  assignClusterToPersonAction,
-  regenerateUnknownDescriptorsAction,
-} from "@/app/admin/actions"
+// TODO: implement or remove these functions
+// import {
+//   getUnknownFaceClustersAction,
+//   rejectFaceClusterAction,
+//   assignClusterToPersonAction,
+//   regenerateUnknownDescriptorsAction,
+// } from "@/app/admin/actions"
 import { AddPersonDialog } from "./add-person-dialog"
 import type { UnknownFaceCluster, UnknownFace } from "@/lib/types"
 import { toast } from "sonner"
@@ -44,14 +45,16 @@ export function UnknownFacesReviewDialog({ galleryId, open, onOpenChange, onComp
 
   async function loadClusters() {
     setLoading(true)
-    const result = await getUnknownFaceClustersAction(galleryId)
-    if (result.success && result.data) {
-      const sortedClusters = result.data.sort(
-        (a: UnknownFaceCluster, b: UnknownFaceCluster) => b.faces.length - a.faces.length,
-      )
-      setClusters(sortedClusters)
-      setCurrentIndex(0)
-    }
+    // TODO: implement or remove - getUnknownFaceClustersAction was a stub
+    // const result = await getUnknownFaceClustersAction(galleryId)
+    // if (result.success && result.data) {
+    //   const sortedClusters = result.data.sort(
+    //     (a: UnknownFaceCluster, b: UnknownFaceCluster) => b.faces.length - a.faces.length,
+    //   )
+    //   setClusters(sortedClusters)
+    //   setCurrentIndex(0)
+    // }
+    setClusters([]) // Temporary: return empty clusters
     setLoading(false)
   }
 
@@ -64,23 +67,9 @@ export function UnknownFacesReviewDialog({ galleryId, open, onOpenChange, onComp
     toast.info("Начинаем регенерацию дескрипторов...")
 
     try {
-      const result = await regenerateUnknownDescriptorsAction(galleryId)
-
-      if (result.success && result.data) {
-        const { totalFaces, regenerated, failed, alreadyHadDescriptor } = result.data
-
-        toast.success(
-          `Регенерация завершена!\n` +
-            `Всего лиц: ${totalFaces}\n` +
-            `Регенерировано: ${regenerated}\n` +
-            `Уже были дескрипторы: ${alreadyHadDescriptor}\n` +
-            `Ошибок: ${failed}`,
-        )
-
-        await loadClusters()
-      } else {
-        toast.error(result.error || "Ошибка при регенерации дескрипторов")
-      }
+      // TODO: implement or remove - regenerateUnknownDescriptorsAction was a stub
+      // const result = await regenerateUnknownDescriptorsAction(galleryId)
+      toast.info("Эта функция временно недоступна")
     } catch (error: any) {
       console.error("[v0] Error regenerating descriptors:", error)
       toast.error("Ошибка при регенерации дескрипторов")
@@ -122,7 +111,10 @@ export function UnknownFacesReviewDialog({ galleryId, open, onOpenChange, onComp
       descriptor: face.descriptor,
     }))
 
-    const result = await rejectFaceClusterAction(faces)
+    // TODO: implement or remove - rejectFaceClusterAction was a stub
+    // const result = await rejectFaceClusterAction(faces)
+    const result = { success: false, error: "Функция временно недоступна" }
+
     if (result.success) {
       if (currentIndex < clusters.length - 1) {
         setCurrentIndex(currentIndex + 1)
@@ -167,7 +159,9 @@ export function UnknownFacesReviewDialog({ galleryId, open, onOpenChange, onComp
 
     console.log("[v0] Calling assignClusterToPersonAction with:", { personId, facesCount: faces.length })
 
-    const result = await assignClusterToPersonAction(personId, faces)
+    // TODO: implement or remove - assignClusterToPersonAction was a stub
+    // const result = await assignClusterToPersonAction(personId, faces)
+    const result = { success: false, error: "Функция временно недоступна" }
 
     console.log("[v0] assignClusterToPersonAction result:", result)
 
