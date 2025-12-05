@@ -138,6 +138,20 @@ galeries/
 
 ## 🗄️ Схема базы данных
 
+### Database Architecture
+
+**SINGLE SOURCE OF TRUTH: Supabase PostgreSQL**
+
+**PROHIBITED:**
+- Using SQLite (database.py removed in v2.5.0)
+- Direct database access from frontend
+- Local data caching
+
+**CORRECT:**
+- All data in Supabase
+- All operations through FastAPI endpoints
+- HNSWLIB index synchronized with Supabase
+
 ### Основные таблицы
 
 **galleries** - Галереи событий

@@ -39,8 +39,7 @@ galeries.zip
     │   ├── database.py
     │   ├── face_recognition.py
     │   ├── supabase_client.py
-    │   ├── supabase_database.py
-    │   └── training_service.py
+    │   └── supabase_database.py
     └── models/           # Pydantic схемы
         └── schemas.py
 \`\`\`
