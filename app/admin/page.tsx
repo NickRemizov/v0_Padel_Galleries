@@ -33,8 +33,10 @@ export default async function AdminPage() {
       <header className="border-b bg-card">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
-            <h1 className="font-serif text-2xl font-bold">Панель администратора {APP_VERSION}</h1>
-            <p className="text-sm text-muted-foreground">Управление галереями, фотографами, локациями и людьми</p>
+            <h1 className="font-serif text-2xl font-bold">Админ-панель</h1>
+            <span className="inline-flex items-center rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
+              {APP_VERSION}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <RecognitionStatsDialog />
