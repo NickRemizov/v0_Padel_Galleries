@@ -472,12 +472,7 @@ async def batch_verify_faces(
                 supabase_db.client.table("photo_faces").update(update_data).eq("id", face_id).execute()
                 logger.info(f"[Faces API] ✓ Updated face {face_id}: person_id={person_id}, confidence={update_data['recognition_confidence']}, verified={bool(person_id)}")
         
-        # Update gallery_images.verified status
-        supabase_db.client.table("gallery_images").update({
-            "verified": all_have_person_id
-        }).eq("id", request.photo_id).execute()
-        
-        logger.info(f"[Faces API] ✓ Photo verified status: {all_have_person_id}")
+        logger.info(f"[Faces API] ✓ Batch verify completed. All faces have person_id: {all_have_person_id}")
         
         # Rebuild index if any faces have person_id
         index_updated = False

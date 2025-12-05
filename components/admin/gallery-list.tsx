@@ -9,7 +9,7 @@ import { deleteGalleryAction } from "@/app/admin/actions"
 import { EditGalleryDialog } from "./edit-gallery-dialog"
 import { GalleryImagesManager } from "./gallery-images-manager"
 import type { Gallery, Photographer, Location, Organizer } from "@/lib/types"
-import { getGalleryFaceRecognitionStatsAction } from "@/app/admin/actions"
+import { getGalleriesFaceRecognitionStatsAction } from "@/app/admin/actions/galleries"
 
 interface GalleryListProps {
   galleries: Gallery[]
@@ -37,27 +37,20 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
 
   useEffect(() => {
     async function loadStats() {
-      const statsMap = new Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>()
+      if (galleries.length === 0) return
 
-      for (const gallery of galleries) {
-        const result = await getGalleryFaceRecognitionStatsAction(gallery.id)
+      const galleryIds = galleries.map((g) => g.id)
+      const result = await getGalleriesFaceRecognitionStatsAction(galleryIds)
 
-        if (result.success && result.data) {
-          const stats = Object.values(result.data)
-          const hasImages = stats.length > 0
-          const allVerified = stats.every((stat) => stat.fullyRecognized)
-          const verifiedCount = stats.filter((stat) => stat.fullyRecognized).length
-          const totalCount = stats.length
+      if (result.success && result.data) {
+        const statsMap = new Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>()
 
-          statsMap.set(gallery.id, {
-            isFullyVerified: hasImages && allVerified,
-            verifiedCount,
-            totalCount,
-          })
+        for (const [galleryId, stats] of Object.entries(result.data)) {
+          statsMap.set(galleryId, stats)
         }
-      }
 
-      setGalleryStats(statsMap)
+        setGalleryStats(statsMap)
+      }
     }
 
     loadStats()

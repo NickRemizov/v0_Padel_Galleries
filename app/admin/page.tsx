@@ -13,7 +13,7 @@ import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "v2.3.3" // Fixed KeptFace attribute access in batch-verify (f.id instead of f["id"])
+const APP_VERSION = "v2.3.4" // Optimized gallery stats loading (N+1 → 1 query), removed invalid gallery_images.verified update
 
 export const dynamic = "force-dynamic"
 
