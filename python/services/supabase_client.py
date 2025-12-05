@@ -563,3 +563,48 @@ class SupabaseClient:
             import traceback
             traceback.print_exc()
             raise
+
+    def get_training_history(self, limit: int = 10, offset: int = 0) -> List[Dict]:
+        """
+        Получить историю обучений из face_training_sessions.
+        """
+        try:
+            response = self.client.table("face_training_sessions").select(
+                "*"
+            ).order("created_at", desc=True).limit(limit).offset(offset).execute()
+            
+            return response.data if response.data else []
+            
+        except Exception as e:
+            print(f"[SupabaseClient] Error getting training history: {e}")
+            return []
+    
+    def get_training_sessions_count(self) -> int:
+        """
+        Получить общее количество сессий обучения.
+        """
+        try:
+            response = self.client.table("face_training_sessions").select(
+                "id", count="exact"
+            ).execute()
+            
+            return response.count if response.count is not None else 0
+            
+        except Exception as e:
+            print(f"[SupabaseClient] Error getting training sessions count: {e}")
+            return 0
+    
+    def get_training_session(self, session_id: str) -> Optional[Dict]:
+        """
+        Получить сессию обучения по ID.
+        """
+        try:
+            response = self.client.table("face_training_sessions").select(
+                "*"
+            ).eq("id", session_id).execute()
+            
+            return response.data[0] if response.data else None
+            
+        except Exception as e:
+            print(f"[SupabaseClient] Error getting training session: {e}")
+            return None

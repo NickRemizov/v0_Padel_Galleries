@@ -494,17 +494,11 @@ class TrainingService:
     
     def get_training_history(self, limit: int = 10, offset: int = 0) -> Dict:
         """
-        Получить историю обучений.
+        Получить историю обучений из Supabase.
         """
         try:
-            sessions = self.local_db.get_training_history(limit, offset)
-            
-            import sqlite3
-            conn = sqlite3.connect(self.local_db.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM training_sessions")
-            total = cursor.fetchone()[0]
-            conn.close()
+            sessions = self.supabase.get_training_history(limit, offset)
+            total = self.supabase.get_training_sessions_count()
             
             return {
                 'sessions': sessions,
@@ -512,6 +506,8 @@ class TrainingService:
             }
         except Exception as e:
             print(f"[TrainingService] Error getting training history: {e}")
+            import traceback
+            print(traceback.format_exc())
             # Return empty history instead of crashing
             return {
                 'sessions': [],
