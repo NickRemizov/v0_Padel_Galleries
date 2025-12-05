@@ -12,8 +12,8 @@ export default function AdminPage() {
   return (
     <div className="container mx-auto py-10">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">Панель администратора {APP_VERSION}</h1>
-        <p className="text-muted-foreground">Управление галереями, фотографами, локациями и людьми</p>
+        <h1 className="font-serif text-4xl font-bold mb-2">Панель администратора {APP_VERSION}</h1>
+        <p className="font-serif text-muted-foreground">Управление галереями, фотографами, локациями и людьми</p>
       </div>
 
       <Tabs defaultValue="galleries" className="w-full">
