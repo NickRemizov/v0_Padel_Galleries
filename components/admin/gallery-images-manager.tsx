@@ -680,6 +680,18 @@ export function GalleryImagesManager({
                 />
               </label>
               {images.length > 0 && (
+                <Select value={sortBy} onValueChange={handleSortChange}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Сортировка" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="filename">По названию файла</SelectItem>
+                    <SelectItem value="created">По времени создания</SelectItem>
+                    <SelectItem value="added">По времени добавления</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {images.length > 0 && (
                 <Button
                   variant="secondary"
                   onClick={() => setAutoRecognitionMode("remaining")}
@@ -706,17 +718,10 @@ export function GalleryImagesManager({
                   {selectedPhotos.size > 0 ? `Удалить ${selectedPhotos.size} фото` : "Удалить все фото"}
                 </Button>
               )}
-              {images.length > 0 && (
-                <Select value={sortBy} onValueChange={handleSortChange}>
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="Сортировка" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="filename">По названию файла</SelectItem>
-                    <SelectItem value="created">По времени создания</SelectItem>
-                    <SelectItem value="added">По времени добавления</SelectItem>
-                  </SelectContent>
-                </Select>
+              {selectedPhotos.size > 0 && (
+                <Button variant="outline" onClick={handleClearSelection}>
+                  Снять выделение
+                </Button>
               )}
               {uploading && <span className="text-sm text-muted-foreground">{uploadProgress}</span>}
             </div>
@@ -749,21 +754,10 @@ export function GalleryImagesManager({
                 ))}
               </div>
             )}
+          </div>
 
-            <div className="flex items-center justify-between">
-              {selectedPhotos.size > 0 && (
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handleClearSelection}>
-                    Снять выделение
-                  </Button>
-                  <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
-                    Удалить выбранные ({selectedPhotos.size})
-                  </Button>
-                </div>
-              )}
-
-              <p className="text-sm text-muted-foreground">Всего фотографий: {images.length}</p>
-            </div>
+          <div className="flex items-center justify-end">
+            <p className="text-sm text-muted-foreground">Всего фотографий: {images.length}</p>
           </div>
         </DialogContent>
       </Dialog>
