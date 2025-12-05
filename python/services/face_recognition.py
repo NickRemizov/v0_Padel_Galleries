@@ -761,26 +761,44 @@ class FaceRecognitionService:
                 "error": str(e)
             }
 
-    async def detect_faces(self, image_url: str, apply_quality_filters: bool = True) -> List[Dict]:
+    async def detect_faces(
+        self, 
+        image_url: str, 
+        apply_quality_filters: bool = True,
+        min_detection_score: Optional[float] = None,
+        min_face_size: Optional[float] = None,
+        min_blur_score: Optional[float] = None
+    ) -> List[Dict]:
         """
         Detect faces on an image from URL with optional quality filtering
         
         Args:
             image_url: URL of the image to process
             apply_quality_filters: Whether to apply quality filters (default: True)
-            
+            min_detection_score: Minimum detection confidence score
+            min_face_size: Minimum face size in pixels
+            min_blur_score: Minimum blur score
+        
         Returns:
             List of detected faces with bbox, det_score, blur_score, and embedding
         """
         self._ensure_initialized()
         
+        if min_detection_score is not None or min_face_size is not None or min_blur_score is not None:
+            # Temporarily override quality filters
+            original_filters = self.quality_filters.copy()
+            if min_detection_score is not None:
+                self.quality_filters["min_detection_score"] = min_detection_score
+            if min_face_size is not None:
+                self.quality_filters["min_face_size"] = min_face_size
+            if min_blur_score is not None:
+                self.quality_filters["min_blur_score"] = min_blur_score
+            print(f"[FaceRecognition] Temporarily overriding quality filters: {self.quality_filters}")
+        
         if apply_quality_filters:
-            await self.load_quality_filters()
             print(f"[FaceRecognition] detect_faces called with URL: {image_url}, apply_quality_filters=True")
             print(f"[FaceRecognition] Quality filters: {self.quality_filters}")
-        else:
-            print(f"[FaceRecognition] detect_faces called with URL: {image_url}, apply_quality_filters=False (skipping filters)")
-        
+
         try:
             # Download image from URL
             import httpx
@@ -840,6 +858,11 @@ class FaceRecognitionService:
                 print(f"[FaceRecognition] After filtering: {len(filtered_results)} faces kept, {filtered_count} filtered out")
             else:
                 print(f"[FaceRecognition] No filtering applied: {len(filtered_results)} faces kept")
+            
+            # Restore original quality filters
+            if min_detection_score is not None or min_face_size is not None or min_blur_score is not None:
+                self.quality_filters = original_filters
+                print(f"[FaceRecognition] Restored original quality filters: {self.quality_filters}")
             
             return filtered_results
             

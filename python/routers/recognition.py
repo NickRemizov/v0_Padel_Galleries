@@ -31,6 +31,9 @@ def set_services(face_service: FaceRecognitionService, supabase_client: Supabase
 class DetectFacesRequest(BaseModel):
     image_url: str
     apply_quality_filters: bool = True
+    min_detection_score: float = 0.7
+    min_face_size: float = 80.0
+    min_blur_score: float = 80.0
 
 
 class RecognizeFaceRequest(BaseModel):
@@ -89,14 +92,20 @@ async def detect_faces(
         
         # Detect faces
         logger.info(f"[v3.1] Calling face_service.detect_faces()...")
-        faces = await face_service.detect_faces(request.image_url, apply_quality_filters=request.apply_quality_filters)
+        detected_faces = await face_service.detect_faces(
+            request.image_url, 
+            apply_quality_filters=request.apply_quality_filters,
+            min_detection_score=request.min_detection_score,
+            min_face_size=request.min_face_size,
+            min_blur_score=request.min_blur_score
+        )
         
-        logger.info(f"[v3.1] ✓ Detected {len(faces)} faces")
+        logger.info(f"[v3.1] ✓ Detected {len(detected_faces)} faces")
         
         # Format response
         faces_data = []
-        for idx, face in enumerate(faces):
-            logger.info(f"[v3.1] Processing face {idx + 1}/{len(faces)}")
+        for idx, face in enumerate(detected_faces):
+            logger.info(f"[v3.1] Processing face {idx + 1}/{len(detected_faces)}")
             logger.info(f"[v3.1]   - BBox: {face['bbox']}")
             logger.info(f"[v3.1]   - Det score: {face['det_score']}")
             logger.info(f"[v3.1]   - Blur score: {face.get('blur_score', 0)}")
@@ -848,7 +857,7 @@ async def process_photo(
                 det_confidence = float(face["det_score"])
                 
                 # Recognize
-                person_id, rec_confidence = await face_service.recognize_face(embedding)
+                person_id, rec_confidence = await face_service.recognize_face(embedding, confidence_threshold=request.confidence_threshold)
                 
                 if rec_confidence and rec_confidence < request.confidence_threshold:
                     person_id = None
@@ -926,7 +935,7 @@ async def process_photo(
                     continue
                 
                 # Recognize
-                person_id, rec_confidence = await face_service.recognize_face(embedding)
+                person_id, rec_confidence = await face_service.recognize_face(embedding, confidence_threshold=request.confidence_threshold)
                 
                 if rec_confidence and rec_confidence < request.confidence_threshold:
                     person_id = None
