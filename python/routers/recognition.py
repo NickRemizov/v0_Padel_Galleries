@@ -53,6 +53,10 @@ class ProcessPhotoRequest(BaseModel):
     photo_id: str
     force_redetect: bool = False  # Добавлен параметр для принудительной переdetекции
     apply_quality_filters: bool = True  # Параметр применения фильтров качества
+    confidence_threshold: float = 0.60
+    min_detection_score: float = 0.7
+    min_face_size: float = 80.0
+    min_blur_score: float = 80.0
 
 
 class ProcessPhotoResponse(BaseModel):
@@ -218,9 +222,9 @@ async def batch_recognize(
         
         config = await supabase_client_instance.get_recognition_config()
         quality_filters = config.get('quality_filters', {})
-        min_detection_score = quality_filters.get('min_detection_score', 0.7)
-        min_face_size = quality_filters.get('min_face_size', 80.0)
-        min_blur_score = quality_filters.get('min_blur_score', 100.0)
+        min_detection_score = quality_filters.get('min_detection_score', request.min_detection_score)
+        min_face_size = quality_filters.get('min_face_size', request.min_face_size)
+        min_blur_score = quality_filters.get('min_blur_score', request.min_blur_score)
         
         logger.info(f"[v3.22] Quality filters loaded:")
         logger.info(f"[v3.22]   min_detection_score: {min_detection_score}")
@@ -787,6 +791,14 @@ async def process_photo(
     5. Return all faces (WITHOUT embeddings)
     """
     try:
+        if request.apply_quality_filters:
+            face_service.quality_filters = {
+                "min_detection_score": request.min_detection_score,
+                "min_face_size": request.min_face_size,
+                "min_blur_score": request.min_blur_score
+            }
+            logger.info(f"[v2.4.1] Quality filters: det={request.min_detection_score}, size={request.min_face_size}, blur={request.min_blur_score}")
+        
         logger.info("=" * 80)
         logger.info("[v2.3] ===== PROCESS PHOTO REQUEST START =====")
         logger.info(f"[v2.3] Photo ID: {request.photo_id}")
@@ -837,6 +849,10 @@ async def process_photo(
                 
                 # Recognize
                 person_id, rec_confidence = await face_service.recognize_face(embedding)
+                
+                if rec_confidence and rec_confidence < request.confidence_threshold:
+                    person_id = None
+                    logger.info(f"[v2.4.1]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold}")
                 
                 logger.info(f"[v2.3]   Recognition: person_id={person_id}, confidence={rec_confidence}")
                 
@@ -911,6 +927,10 @@ async def process_photo(
                 
                 # Recognize
                 person_id, rec_confidence = await face_service.recognize_face(embedding)
+                
+                if rec_confidence and rec_confidence < request.confidence_threshold:
+                    person_id = None
+                    logger.info(f"[v2.4.1]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold}")
                 
                 if person_id and rec_confidence:
                     logger.info(f"[v2.3]   Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")

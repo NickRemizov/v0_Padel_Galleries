@@ -35,7 +35,10 @@ export function BatchRecognitionManager() {
   const [results, setResults] = useState<ProcessingResult[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [totalImages, setTotalImages] = useState(0)
-  const [confidenceThreshold, setConfidenceThreshold] = useState(0.7)
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.6)
+  const [minDetectionScore, setMinDetectionScore] = useState(0.7)
+  const [minFaceSize, setMinFaceSize] = useState(80)
+  const [minBlurScore, setMinBlurScore] = useState(80)
 
   useEffect(() => {
     loadGalleries()
@@ -80,7 +83,12 @@ export function BatchRecognitionManager() {
     try {
       console.log("[BatchRecognition] Starting batch processing with FastAPI backend...")
       console.log("[BatchRecognition] Selected galleries:", selectedGalleries)
-      console.log("[BatchRecognition] Confidence threshold:", confidenceThreshold)
+      console.log("[BatchRecognition] Quality params:", {
+        confidenceThreshold,
+        minDetectionScore,
+        minFaceSize,
+        minBlurScore,
+      })
 
       const supabase = createClient()
       const { data: images, error } = await supabase
@@ -118,6 +126,7 @@ export function BatchRecognitionManager() {
             image.id,
             false, // force_redetect = false
             true, // auto_save = true
+            { confidenceThreshold, minDetectionScore, minFaceSize, minBlurScore }, // Pass all quality parameters to processPhotoAction
           )
 
           const facesFound = result.faces?.length || 0
@@ -165,7 +174,7 @@ export function BatchRecognitionManager() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Пакетная обработка фото [v2.4.0-FastAPI]</h2>
+        <h2 className="text-2xl font-bold">Пакетная обработка фото [v2.4.1-FullQuality]</h2>
         <p className="text-muted-foreground">Автоматическое распознавание лиц на всех фотографиях</p>
       </div>
 
@@ -177,21 +186,70 @@ export function BatchRecognitionManager() {
               <CardDescription>Система обработает все фотографии в выбранных галереях</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Порог уверенности: {(confidenceThreshold * 100).toFixed(0)}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={confidenceThreshold * 100}
-                  onChange={(e) => setConfidenceThreshold(Number(e.target.value) / 100)}
-                  className="w-full"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Лица с уверенностью ниже этого порога будут сохранены как неопознанные
-                </p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Порог уверенности распознавания: {(confidenceThreshold * 100).toFixed(0)}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={confidenceThreshold * 100}
+                    onChange={(e) => setConfidenceThreshold(Number(e.target.value) / 100)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Лица с уверенностью ниже этого порога будут сохранены как неопознанные
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Порог детекции (det_score): {(minDetectionScore * 100).toFixed(0)}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={minDetectionScore * 100}
+                    onChange={(e) => setMinDetectionScore(Number(e.target.value) / 100)}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Минимальная уверенность детектора что это лицо (не объект)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Минимальный размер лица: {minFaceSize.toFixed(0)} px</label>
+                  <input
+                    type="range"
+                    min="30"
+                    max="200"
+                    value={minFaceSize}
+                    onChange={(e) => setMinFaceSize(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">Лица меньше этого размера будут отфильтрованы</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Резкость изображения (blur_score): {minBlurScore.toFixed(0)}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={minBlurScore}
+                    onChange={(e) => setMinBlurScore(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Лица с резкостью ниже порога будут отфильтрованы (выше = четче)
+                  </p>
+                </div>
               </div>
 
               <div className="max-h-[400px] space-y-2 overflow-y-auto">

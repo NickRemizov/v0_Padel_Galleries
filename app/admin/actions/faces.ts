@@ -10,8 +10,19 @@ import { apiFetch } from "@/lib/apiClient"
  * @param photoId - Photo ID
  * @param forceRedetect - Force redetection (deletes existing faces)
  * @param applyQualityFilters - Apply quality filters (blur, size, confidence)
+ * @param qualityParams - Quality filter parameters (optional)
  */
-export async function processPhotoAction(photoId: string, forceRedetect = false, applyQualityFilters = true) {
+export async function processPhotoAction(
+  photoId: string,
+  forceRedetect = false,
+  applyQualityFilters = true,
+  qualityParams?: {
+    confidenceThreshold?: number
+    minDetectionScore?: number
+    minFaceSize?: number
+    minBlurScore?: number
+  },
+) {
   try {
     const result = await apiFetch("/api/recognition/process-photo", {
       method: "POST",
@@ -19,6 +30,10 @@ export async function processPhotoAction(photoId: string, forceRedetect = false,
         photo_id: photoId,
         force_redetect: forceRedetect,
         apply_quality_filters: applyQualityFilters,
+        confidence_threshold: qualityParams?.confidenceThreshold ?? 0.6,
+        min_detection_score: qualityParams?.minDetectionScore ?? 0.7,
+        min_face_size: qualityParams?.minFaceSize ?? 80,
+        min_blur_score: qualityParams?.minBlurScore ?? 80,
       }),
     })
 
