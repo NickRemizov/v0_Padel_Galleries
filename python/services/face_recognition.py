@@ -686,6 +686,17 @@ class FaceRecognitionService:
             
             print(f"[FaceRecognition] Searching in HNSWLIB index (verified threshold={verified_threshold:.2f}, unverified threshold={unverified_threshold:.2f})")
             
+            # Safety check: if index is None, try to load it
+            if self.players_index is None:
+                print("[FaceRecognition] WARNING: Index is None, attempting to initialize...")
+                try:
+                    self._load_players_index()
+                    print("[FaceRecognition] ✓ Index initialized successfully")
+                except Exception as init_error:
+                    print(f"[FaceRecognition] ERROR: Cannot initialize index: {init_error}")
+                    print("[FaceRecognition] Returning None - no recognition possible without index")
+                    return None, None
+            
             # Find nearest neighbor
             labels, distances = self.players_index.knn_query(
                 embedding.reshape(1, -1),
