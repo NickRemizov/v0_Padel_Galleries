@@ -325,4 +325,4 @@ export async function requireAdmin() {
 **Последнее обновление:** 2025-01-31
 \`\`\`
 
-```markdown file="" isHidden
+\`\`\`markdown file="" isHidden

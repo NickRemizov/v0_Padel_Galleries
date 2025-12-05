@@ -246,4 +246,4 @@ tail -f server.log
 - Группировка игроков
 \`\`\`
 
-```python file="" isHidden
+\`\`\`python file="" isHidden
