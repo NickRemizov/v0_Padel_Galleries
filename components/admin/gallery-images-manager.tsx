@@ -725,44 +725,37 @@ export function GalleryImagesManager({
             ) : images.length === 0 ? (
               <Card className="relative">
                 <CardContent className="flex min-h-[200px] items-center justify-center">
-                  {isDragging ? (
+                  <p className="text-muted-foreground">Нет фотографий. Загрузите первые фото!</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="relative">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {sortedImages.map((image) => (
+                    <GalleryImageCard
+                      key={image.id}
+                      image={image}
+                      photoFacesMap={photoFacesMap}
+                      recognitionStats={recognitionStats}
+                      onTag={handleTagImage}
+                      onDelete={handleDelete}
+                      isSelected={selectedPhotos.has(image.id)}
+                      onToggleSelect={togglePhotoSelection}
+                    />
+                  ))}
+                </div>
+                {isDragging && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm border-4 border-dashed border-primary rounded-lg bg-white/80 dark:bg-black/80">
                     <div className="text-center">
                       <Upload className="h-16 w-16 mx-auto mb-4 text-primary" />
                       <p className="text-xl font-semibold">Перетащите фото сюда</p>
                       <p className="text-sm text-muted-foreground mt-2">Отпустите, чтобы загрузить</p>
                     </div>
-                  ) : (
-                    <p className="text-muted-foreground">Нет фотографий. Загрузите первые фото!</p>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {sortedImages.map((image) => (
-                  <GalleryImageCard
-                    key={image.id}
-                    image={image}
-                    photoFacesMap={photoFacesMap}
-                    recognitionStats={recognitionStats}
-                    onTag={handleTagImage}
-                    onDelete={handleDelete}
-                    isSelected={selectedPhotos.has(image.id)}
-                    onToggleSelect={togglePhotoSelection}
-                  />
-                ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
-
-          {isDragging && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm border-4 border-dashed border-primary rounded-lg bg-white/80 dark:bg-black/80">
-              <div className="text-center">
-                <Upload className="h-16 w-16 mx-auto mb-4 text-primary" />
-                <p className="text-xl font-semibold">Перетащите фото сюда</p>
-                <p className="text-sm text-muted-foreground mt-2">Отпустите, чтобы загрузить</p>
-              </div>
-            </div>
-          )}
 
           <div className="flex items-center justify-end">
             <p className="text-sm text-muted-foreground">Всего фотографий: {images.length}</p>
