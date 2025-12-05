@@ -33,7 +33,7 @@ export default async function AdminPage() {
       <header className="border-b bg-card">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-bold">Админ-панель</h1>
+            <h1 className="text-2xl font-bold">Админ-панель</h1>
             <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">{APP_VERSION}</span>
           </div>
           <div className="flex items-center gap-2">
