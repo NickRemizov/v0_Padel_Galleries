@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, Scan, CheckCircle2, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { Gallery } from "@/lib/types"
+import { processPhotoAction } from "@/app/admin/actions/faces"
 
 interface ProcessingResult {
   imageId: string
@@ -34,7 +35,7 @@ export function BatchRecognitionManager() {
   const [results, setResults] = useState<ProcessingResult[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [totalImages, setTotalImages] = useState(0)
-  const [confidenceThreshold, setConfidenceThreshold] = useState(0.6)
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.7)
 
   useEffect(() => {
     loadGalleries()
@@ -77,25 +78,24 @@ export function BatchRecognitionManager() {
     setCurrentIndex(0)
 
     try {
-      console.log("[v2.20] Starting batch processing with proxy API...")
-      console.log("[v2.20] Selected galleries:", selectedGalleries)
-      console.log("[v2.20] Confidence threshold:", confidenceThreshold)
+      console.log("[BatchRecognition] Starting batch processing with FastAPI backend...")
+      console.log("[BatchRecognition] Selected galleries:", selectedGalleries)
+      console.log("[BatchRecognition] Confidence threshold:", confidenceThreshold)
 
-      const response = await fetch("/api/batch-face-recognition", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ galleryIds: selectedGalleries }),
-      })
+      const supabase = createClient()
+      const { data: images, error } = await supabase
+        .from("gallery_images")
+        .select("id, original_filename, image_url, gallery_id")
+        .in("gallery_id", selectedGalleries)
+        .order("created_at", { ascending: true })
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch images: ${response.statusText}`)
+      if (error || !images) {
+        throw new Error(`Failed to fetch images: ${error?.message}`)
       }
 
-      const { images } = await response.json()
-      console.log("[v2.20] Fetched images:", images.length)
       setTotalImages(images.length)
 
-      const initialResults: ProcessingResult[] = images.map((img: any) => ({
+      const initialResults: ProcessingResult[] = images.map((img) => ({
         imageId: img.id,
         filename: img.original_filename,
         galleryTitle: galleries.find((g) => g.id === img.gallery_id)?.title || "Unknown",
@@ -112,117 +112,31 @@ export function BatchRecognitionManager() {
         setResults((prev) => prev.map((r, idx) => (idx === i ? { ...r, status: "processing" as const } : r)))
 
         try {
-          console.log(`[v2.20] Processing image ${i + 1}/${images.length}: ${image.original_filename}`)
+          console.log(`[BatchRecognition] Processing image ${i + 1}/${images.length}: ${image.original_filename}`)
 
-          const detectResponse = await fetch(`/api/face-detection/detect`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              image_url: image.image_url,
-              apply_quality_filters: true,
-            }),
-          })
+          const result = await processPhotoAction(
+            image.id,
+            false, // force_redetect = false
+            true, // auto_save = true
+          )
 
-          if (!detectResponse.ok) {
-            throw new Error(`Proxy detect-faces failed: ${detectResponse.statusText}`)
-          }
-
-          const { faces } = await detectResponse.json()
-          console.log(`[v2.20] Detected ${faces.length} faces in ${image.original_filename}`)
-
-          if (faces.length === 0) {
-            setResults((prev) =>
-              prev.map((r, idx) =>
-                idx === i
-                  ? {
-                      ...r,
-                      facesFound: 0,
-                      facesRecognized: 0,
-                      status: "success" as const,
-                    }
-                  : r,
-              ),
-            )
-            continue
-          }
-
-          let recognizedCount = 0
-
-          for (const face of faces) {
-            try {
-              const recognizeResponse = await fetch(`/api/face-detection/recognize`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  embedding: face.embedding,
-                  confidence_threshold: confidenceThreshold,
-                }),
-              })
-
-              if (!recognizeResponse.ok) {
-                console.error(`[v2.20] Proxy recognize-face failed: ${recognizeResponse.statusText}`)
-                continue
-              }
-
-              const recognition = await recognizeResponse.json()
-              console.log(`[v2.20] Recognition result:`, recognition)
-
-              const supabase = createClient()
-
-              if (recognition.person_id && recognition.confidence >= confidenceThreshold) {
-                const vectorString = `[${face.embedding.join(",")}]`
-
-                await supabase.from("photo_faces").insert({
-                  photo_id: image.id,
-                  person_id: recognition.person_id,
-                  insightface_bbox: face.insightface_bbox,
-                  insightface_descriptor: vectorString,
-                  insightface_confidence: face.confidence,
-                  recognition_confidence: recognition.confidence,
-                  verified: false,
-                })
-
-                await supabase.from("face_descriptors").insert({
-                  person_id: recognition.person_id,
-                  descriptor: face.embedding,
-                  source_photo_id: image.id,
-                })
-
-                recognizedCount++
-                console.log(`[v2.20] Saved recognized face: ${recognition.person_id} (${recognition.confidence})`)
-              } else {
-                const vectorString = `[${face.embedding.join(",")}]`
-
-                await supabase.from("photo_faces").insert({
-                  photo_id: image.id,
-                  person_id: null,
-                  insightface_bbox: face.insightface_bbox,
-                  insightface_descriptor: vectorString,
-                  insightface_confidence: face.confidence,
-                  recognition_confidence: recognition.confidence,
-                  verified: false,
-                })
-                console.log(`[v2.20] Saved unknown face (confidence: ${recognition.confidence})`)
-              }
-            } catch (faceError) {
-              console.error("[v2.20] Error recognizing face:", faceError)
-            }
-          }
+          const facesFound = result.faces?.length || 0
+          const facesRecognized = result.faces?.filter((f) => f.person_id).length || 0
 
           setResults((prev) =>
             prev.map((r, idx) =>
               idx === i
                 ? {
                     ...r,
-                    facesFound: faces.length,
-                    facesRecognized: recognizedCount,
+                    facesFound,
+                    facesRecognized,
                     status: "success" as const,
                   }
                 : r,
             ),
           )
         } catch (error) {
-          console.error("[v2.20] Error processing image:", error)
+          console.error("[BatchRecognition] Error processing image:", error)
           setResults((prev) =>
             prev.map((r, idx) =>
               idx === i
@@ -236,10 +150,8 @@ export function BatchRecognitionManager() {
           )
         }
       }
-
-      console.log("[v2.20] Batch processing completed")
     } catch (error) {
-      console.error("[v2.20] Batch processing error:", error)
+      console.error("[BatchRecognition] Batch processing error:", error)
       alert(`Ошибка при пакетной обработке: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       setProcessing(false)
@@ -253,7 +165,7 @@ export function BatchRecognitionManager() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Пакетная обработка фото [v2.20-SUPABASE]</h2>
+        <h2 className="text-2xl font-bold">Пакетная обработка фото [v2.4.0-FastAPI]</h2>
         <p className="text-muted-foreground">Автоматическое распознавание лиц на всех фотографиях</p>
       </div>
 
