@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { signInAction, signUpAction } from "@/app/admin/actions"
+import { signInAction, signUpAction } from "@/app/admin/actions/auth"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, CheckCircle2 } from "lucide-react"
 
@@ -20,7 +20,10 @@ export function LoginForm() {
     setError(null)
     setMessage(null)
 
-    const result = await signInAction(formData)
+    const email = formData.get("email") as string
+    const password = formData.get("password") as string
+
+    const result = await signInAction(email, password)
 
     if (result?.error) {
       if (result.error.includes("Invalid login credentials")) {
@@ -37,7 +40,10 @@ export function LoginForm() {
     setError(null)
     setMessage(null)
 
-    const result = await signUpAction(formData)
+    const email = formData.get("email") as string
+    const password = formData.get("password") as string
+
+    const result = await signUpAction(email, password)
 
     if (result?.error) {
       setError(result.error)

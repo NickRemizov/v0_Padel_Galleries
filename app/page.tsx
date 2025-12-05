@@ -40,8 +40,7 @@ export default async function HomePage() {
       organizers (
         id,
         name
-      ),
-      gallery_images (count)
+      )
     `,
     )
     .order("shoot_date", { ascending: false })
@@ -51,13 +50,21 @@ export default async function HomePage() {
     console.error("[v0] Error details:", JSON.stringify(error, null, 2))
   }
 
-  const galleriesWithCount = galleries?.map((gallery: any) => ({
-    ...gallery,
-    _count: {
-      gallery_images: gallery.gallery_images?.[0]?.count || 0,
-    },
-    gallery_images: undefined,
-  }))
+  const galleriesWithCount = await Promise.all(
+    (galleries || []).map(async (gallery: any) => {
+      const { count } = await supabase
+        .from("gallery_images")
+        .select("*", { count: "exact", head: true })
+        .eq("gallery_id", gallery.id)
+
+      return {
+        ...gallery,
+        _count: {
+          gallery_images: count || 0,
+        },
+      }
+    }),
+  )
 
   return (
     <main className="min-h-screen bg-background border-background">
