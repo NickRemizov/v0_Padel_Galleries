@@ -653,16 +653,6 @@ export function GalleryImagesManager({
               <DialogDescription>{galleryTitle}</DialogDescription>
             </DialogHeader>
 
-            {isDragging && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm border-4 border-dashed border-primary rounded-lg bg-white/80 dark:bg-black/80">
-                <div className="text-center">
-                  <Upload className="h-16 w-16 mx-auto mb-4 text-primary" />
-                  <p className="text-xl font-semibold">Перетащите фото сюда</p>
-                  <p className="text-sm text-muted-foreground mt-2">Отпустите, чтобы загрузить</p>
-                </div>
-              </div>
-            )}
-
             <div className="flex items-center gap-4 flex-wrap mt-4">
               <label htmlFor="image-upload" className="cursor-pointer">
                 <div className="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 hover:bg-accent hover:text-accent-foreground">
@@ -733,9 +723,17 @@ export function GalleryImagesManager({
                 <p className="text-muted-foreground">Загрузка...</p>
               </div>
             ) : images.length === 0 ? (
-              <Card>
+              <Card className="relative">
                 <CardContent className="flex min-h-[200px] items-center justify-center">
-                  <p className="text-muted-foreground">Нет фотографий. Загрузите первые фото!</p>
+                  {isDragging ? (
+                    <div className="text-center">
+                      <Upload className="h-16 w-16 mx-auto mb-4 text-primary" />
+                      <p className="text-xl font-semibold">Перетащите фото сюда</p>
+                      <p className="text-sm text-muted-foreground mt-2">Отпустите, чтобы загрузить</p>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">Нет фотографий. Загрузите первые фото!</p>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -755,6 +753,16 @@ export function GalleryImagesManager({
               </div>
             )}
           </div>
+
+          {isDragging && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm border-4 border-dashed border-primary rounded-lg bg-white/80 dark:bg-black/80">
+              <div className="text-center">
+                <Upload className="h-16 w-16 mx-auto mb-4 text-primary" />
+                <p className="text-xl font-semibold">Перетащите фото сюда</p>
+                <p className="text-sm text-muted-foreground mt-2">Отпустите, чтобы загрузить</p>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-end">
             <p className="text-sm text-muted-foreground">Всего фотографий: {images.length}</p>
