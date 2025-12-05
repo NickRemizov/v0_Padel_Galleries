@@ -741,7 +741,7 @@ export function GalleryImagesManager({
             ) : (
               <div className="relative">
                 {isDragging && (
-                  <div className="sticky top-20 z-50 mx-auto my-8 max-w-md p-8 flex items-center justify-center backdrop-blur-sm border-4 border-dashed border-primary rounded-lg bg-white/90 dark:bg-black/90 pointer-events-none">
+                  <div className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm border-4 border-dashed border-primary rounded-lg bg-white/80 dark:bg-black/80">
                     <div className="text-center">
                       <Upload className="h-16 w-16 mx-auto mb-4 text-primary" />
                       <p className="text-xl font-semibold">Перетащите фото сюда</p>
