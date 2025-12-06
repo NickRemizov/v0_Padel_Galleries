@@ -82,9 +82,12 @@ async def get_person(person_id: str):
 async def get_person_photos(person_id: str):
     """Get all photos containing this person."""
     try:
+        config = supabase_db_instance.get_recognition_config()
+        confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
+        
         result = supabase_db_instance.client.table("photo_faces").select(
             "id, photo_id, verified, recognition_confidence, gallery_images!inner(id, image_url, original_filename, gallery_id)"
-        ).eq("person_id", person_id).or_("verified.eq.true,recognition_confidence.gte.0.6").execute()
+        ).eq("person_id", person_id).or_(f"verified.eq.true,recognition_confidence.gte.{confidence_threshold}").execute()
         return {"success": True, "data": result.data or []}
     except Exception as e:
         logger.error(f"[People API] Error getting photos: {e}")
@@ -174,6 +177,9 @@ async def delete_person(person_id: str):
 async def _calculate_people_stats(people: list) -> list:
     """Calculate face statistics for all people."""
     try:
+        config = supabase_db_instance.get_recognition_config()
+        confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
+        
         faces_result = supabase_db_instance.client.table("photo_faces").select(
             "person_id, photo_id, verified, recognition_confidence"
         ).execute()
@@ -200,7 +206,7 @@ async def _calculate_people_stats(people: list) -> list:
                 photo_id = face.get("photo_id")
                 if face.get("verified"):
                     verified_photos.add(photo_id)
-                elif (face.get("recognition_confidence") or 0) >= 0.6:
+                elif (face.get("recognition_confidence") or 0) >= confidence_threshold:
                     high_conf_photos.add(photo_id)
             
             high_conf_photos -= verified_photos
