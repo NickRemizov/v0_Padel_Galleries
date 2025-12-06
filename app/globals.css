@@ -19,7 +19,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -75,10 +75,10 @@
 }
 
 @theme inline {
-  /* Added font variables for Oswald and Playfair Display */
-  --font-sans: var(--font-oswald), ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-playfair), ui-serif, Georgia, serif;
-
+  --font-sans: var(--font-oswald), "Geist", "Geist Fallback";
+  --font-serif: var(--font-playfair), "Georgia", serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -123,75 +123,5 @@
   }
   body {
     @apply bg-background text-foreground;
-  }
-}
-
-@layer components {
-  .isotope-grid {
-    position: relative;
-  }
-
-  .gallery-item {
-    margin-bottom: 1rem;
-  }
-
-  .isotope-grid .gallery-item {
-    transition-property: opacity;
-    transition-duration: 0.4s;
-    transition-timing-function: ease-in-out;
-  }
-
-  .isotope-grid .gallery-item.isotope-hidden {
-    pointer-events: none;
-    opacity: 0;
-  }
-
-  .isotope-gallery-grid {
-    position: relative;
-  }
-
-  .gallery-image-item {
-    width: calc(50% - 4px);
-    margin-bottom: 0.5rem;
-  }
-
-  .gallery-image-item--width2 {
-    width: calc(100% - 4px);
-  }
-
-  @media (min-width: 640px) {
-    .gallery-image-item {
-      width: calc(50% - 4px);
-    }
-    .gallery-image-item--width2 {
-      width: calc(100% - 4px);
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .gallery-image-item {
-      width: calc(33.333% - 5.33px);
-    }
-    .gallery-image-item--width2 {
-      width: calc(66.666% - 5.33px);
-    }
-  }
-
-  @media (min-width: 1280px) {
-    .gallery-image-item {
-      width: calc(25% - 6px);
-    }
-    .gallery-image-item--width2 {
-      width: calc(50% - 6px);
-    }
-  }
-
-  @media (min-width: 1536px) {
-    .gallery-image-item {
-      width: calc(20% - 7.2px);
-    }
-    .gallery-image-item--width2 {
-      width: calc(40% - 7.2px);
-    }
   }
 }

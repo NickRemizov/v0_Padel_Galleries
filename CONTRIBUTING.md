@@ -83,28 +83,90 @@ git push origin feature/your-feature-name
 - Предпочитайте `const` и `let` вместо `var`
 - Используйте async/await вместо промисов где возможно
 
-**Пример:**
+**Пример Server Actions с новыми паттернами:**
 
 \`\`\`typescript
-// ✅ Хорошо
-export async function fetchGalleries(): Promise<Gallery[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('galleries')
-    .select('*')
-  
-  if (error) throw error
-  return data
+// ✅ Хорошо - используем withSupabase декоратор и Result тип
+import { withSupabase } from "@/lib/supabase/with-supabase"
+import { success, failure, type Result } from "@/lib/types"
+import { logger } from "@/lib/logger"
+
+export async function addGalleryAction(formData: FormData): Promise<Result<void>> {
+  return withSupabase(async (supabase) => {
+    const title = formData.get("title") as string
+    
+    logger.debug("addGalleryAction", "Adding gallery", { title })
+    
+    const { error } = await supabase.from("galleries").insert({ title })
+    
+    if (error) {
+      logger.error("addGalleryAction", "Failed to add gallery", error)
+      return failure(error.message)
+    }
+    
+    logger.info("addGalleryAction", "Gallery added successfully")
+    return success(undefined)
+  })
 }
 
-// ❌ Плохо
-export function fetchGalleries() {
-  return createClient().then(supabase => {
-    return supabase.from('galleries').select('*').then(result => {
-      if (result.error) throw result.error
-      return result.data
-    })
-  })
+// ❌ Плохо - старый паттерн с ручным созданием клиента
+export async function addGalleryAction(formData: FormData) {
+  const supabase = await createClient()
+  if (!supabase) {
+    return { error: "Failed to connect" }
+  }
+  
+  const title = formData.get("title") as string
+  console.log("[v0] Adding gallery:", title)
+  
+  const { error } = await supabase.from("galleries").insert({ title })
+  
+  if (error) {
+    console.error("[v0] Error:", error)
+    return { error: error.message }
+  }
+  
+  return { success: true }
+}
+\`\`\`
+
+**Пример использования logger:**
+
+\`\`\`typescript
+// ✅ Хорошо - используем logger с компонентом и сообщением
+import { logger } from "@/lib/logger"
+
+function MyComponent() {
+  useEffect(() => {
+    logger.debug("MyComponent", "Component mounted")
+    loadData()
+  }, [])
+  
+  async function loadData() {
+    try {
+      const data = await fetchData()
+      logger.info("MyComponent", "Data loaded successfully", { count: data.length })
+    } catch (error) {
+      logger.error("MyComponent", "Failed to load data", error)
+    }
+  }
+}
+
+// ❌ Плохо - console.log напрямую
+function MyComponent() {
+  useEffect(() => {
+    console.log("[v0] Component mounted")
+    loadData()
+  }, [])
+  
+  async function loadData() {
+    try {
+      const data = await fetchData()
+      console.log("[v0] Data loaded:", data.length)
+    } catch (error) {
+      console.error("[v0] Error:", error)
+    }
+  }
 }
 \`\`\`
 

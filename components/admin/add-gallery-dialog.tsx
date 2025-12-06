@@ -44,7 +44,6 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
   const [cropperSquareOpen, setCropperSquareOpen] = useState(false)
   const [originalImage, setOriginalImage] = useState("")
   const [externalGalleryUrl, setExternalGalleryUrl] = useState("")
-  const [error, setError] = useState<string | null>(null)
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -137,8 +136,6 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
   }
 
   async function handleSubmit(formData: FormData) {
-    console.log("[v0] AddGalleryDialog: handleSubmit called")
-
     if (coverImageUrl) {
       formData.set("cover_image_url", coverImageUrl)
     }
@@ -150,32 +147,20 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
     }
 
     setLoading(true)
-    setError(null)
+    const result = await addGalleryAction(formData)
+    setLoading(false)
 
-    try {
-      const result = await addGalleryAction(formData)
-      console.log("[v0] AddGalleryDialog: result =", result)
-
-      if (result.success) {
-        setOpen(false)
-        setCoverImageUrl("")
-        setCoverImageSquareUrl("")
-        setPreviewUrl("")
-        setPreviewSquareUrl("")
-        setTitle("")
-        setShootDate("")
-        setPhotographerId("")
-        setExternalGalleryUrl("")
-        onSuccess?.()
-      } else if (result.error) {
-        console.error("[v0] AddGalleryDialog: error =", result.error)
-        setError(result.error)
-      }
-    } catch (err: any) {
-      console.error("[v0] AddGalleryDialog: exception =", err)
-      setError(err.message || "Неизвестная ошибка")
-    } finally {
-      setLoading(false)
+    if (result.success) {
+      setOpen(false)
+      setCoverImageUrl("")
+      setCoverImageSquareUrl("")
+      setPreviewUrl("")
+      setPreviewSquareUrl("")
+      setTitle("")
+      setShootDate("")
+      setPhotographerId("")
+      setExternalGalleryUrl("")
+      onSuccess?.()
     }
   }
 
@@ -204,10 +189,6 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
             </DialogHeader>
 
             <div className="grid gap-4 py-4">
-              {error && (
-                <div className="text-sm text-red-500 bg-red-50 p-3 rounded border border-red-200">Ошибка: {error}</div>
-              )}
-
               <div className="grid gap-2">
                 <Label htmlFor="title">Название съемки</Label>
                 <Input id="title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} required />

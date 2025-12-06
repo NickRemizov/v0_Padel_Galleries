@@ -2,7 +2,6 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { RegenerateAllDescriptorsDialog } from "@/components/admin/regenerate-all-descriptors-dialog"
 import { CleanupDuplicateDescriptorsButton } from "@/components/admin/cleanup-duplicate-descriptors-button"
 import { CleanupDuplicatesButton } from "@/components/admin/cleanup-duplicates-button"
 import { CleanupFacesButton } from "@/components/admin/cleanup-faces-button"
@@ -45,16 +44,6 @@ export function ServiceManager() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Регенерация дескрипторов</div>
-                <div className="text-sm text-muted-foreground">Пересоздать дескрипторы лиц для всех людей</div>
-              </div>
-              <RegenerateAllDescriptorsDialog />
-            </div>
-
-            <Separator />
-
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">Очистка дублирующихся дескрипторов</div>

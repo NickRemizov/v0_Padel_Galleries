@@ -1,10 +1,12 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { AddGalleryDialog } from "@/components/admin/add-gallery-dialog"
 import { GalleryList } from "@/components/admin/gallery-list"
 import { Button } from "@/components/ui/button"
 import type { Gallery, Photographer, Location, Organizer } from "@/lib/types"
+import { logger } from "@/lib/logger"
 
 export function GalleriesManager() {
   const [galleries, setGalleries] = useState<Gallery[]>([])
@@ -16,48 +18,54 @@ export function GalleriesManager() {
 
   useEffect(() => {
     loadData()
-  }, [])
-
-  const sortedGalleries = useMemo(() => {
-    return [...galleries].sort((a, b) => {
-      const dateA = sortBy === "shoot_date" ? a.shoot_date : a.created_at
-      const dateB = sortBy === "shoot_date" ? b.shoot_date : b.created_at
-
-      if (!dateA && !dateB) return 0
-      if (!dateA) return 1
-      if (!dateB) return -1
-
-      return new Date(dateB).getTime() - new Date(dateA).getTime()
-    })
-  }, [galleries, sortBy])
+  }, [sortBy])
 
   async function loadData() {
     setLoading(true)
+    logger.debug("GalleriesManager", "Loading galleries data", { sortBy })
 
-    try {
-      const [galleriesRes, photographersRes, locationsRes, organizersRes] = await Promise.all([
-        fetch(`/api/data/galleries`),
-        fetch(`/api/data/photographers`),
-        fetch(`/api/data/locations`),
-        fetch(`/api/data/organizers`),
+    const supabase = createClient()
+
+    const [{ data: galleriesData }, { data: photographersData }, { data: locationsData }, { data: organizersData }] =
+      await Promise.all([
+        supabase
+          .from("galleries")
+          .select(
+            `
+        *,
+        photographers (
+          id,
+          name
+        ),
+        locations (
+          id,
+          name
+        ),
+        organizers (
+          id,
+          name
+        ),
+        gallery_images (
+          id
+        )
+      `,
+          )
+          .order(sortBy, { ascending: false }),
+        supabase.from("photographers").select("*").order("name"),
+        supabase.from("locations").select("*").order("name"),
+        supabase.from("organizers").select("*").order("name"),
       ])
 
-      const [galleriesData, photographersData, locationsData, organizersData] = await Promise.all([
-        galleriesRes.ok ? galleriesRes.json() : [],
-        photographersRes.ok ? photographersRes.json() : [],
-        locationsRes.ok ? locationsRes.json() : [],
-        organizersRes.ok ? organizersRes.json() : [],
-      ])
+    setGalleries((galleriesData as Gallery[]) || [])
+    setPhotographers(photographersData || [])
+    setLocations(locationsData || [])
+    setOrganizers(organizersData || [])
+    setLoading(false)
 
-      setGalleries(galleriesData || [])
-      setPhotographers(photographersData || [])
-      setLocations(locationsData || [])
-      setOrganizers(organizersData || [])
-    } catch (error) {
-      console.error("[v0] Failed to load data:", error)
-    } finally {
-      setLoading(false)
-    }
+    logger.debug("GalleriesManager", "Galleries data loaded", {
+      galleriesCount: galleriesData?.length || 0,
+      photographersCount: photographersData?.length || 0,
+    })
   }
 
   function toggleSort() {
@@ -73,7 +81,7 @@ export function GalleriesManager() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={toggleSort} disabled={loading}>
-            {sortBy === "created_at" ? "По дате добавления" : "По дате события"}
+            {sortBy === "created_at" ? "По дате события" : "По дате добавления"}
           </Button>
           <AddGalleryDialog
             photographers={photographers}
@@ -85,7 +93,7 @@ export function GalleriesManager() {
       </div>
 
       <GalleryList
-        galleries={sortedGalleries}
+        galleries={galleries}
         photographers={photographers}
         locations={locations}
         organizers={organizers}

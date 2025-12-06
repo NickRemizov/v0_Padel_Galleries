@@ -1,4 +1,4 @@
-import { sql } from "@/lib/db"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 5, initialDelay = 2000): Promise<T> {
   let lastError: Error | null = null
@@ -46,95 +46,117 @@ async function safeSupabaseCall<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export async function saveFaceDescriptor(
+  supabase: SupabaseClient,
   personId: string,
-  descriptor: number[], // changed from Float32Array to number[] for easier handling
+  descriptor: Float32Array,
   sourceImageId: string | null,
 ) {
   return retryWithBackoff(async () => {
-    try {
+    return safeSupabaseCall(async () => {
       if (sourceImageId) {
-        await sql`
-          DELETE FROM face_descriptors 
-          WHERE person_id = ${personId} AND source_image_id = ${sourceImageId}
-        `
+        const { error: deleteError } = await supabase
+          .from("face_descriptors")
+          .delete()
+          .eq("person_id", personId)
+          .eq("source_image_id", sourceImageId)
+
+        if (deleteError) {
+          console.error("[v0] Error deleting old descriptors:", deleteError)
+          // Don't throw - continue with insert even if delete fails
+        } else {
+          console.log(`[v0] Deleted old descriptors for person ${personId} on photo ${sourceImageId}`)
+        }
       }
 
-      const embeddingString = `[${descriptor.join(",")}]`
-      const [data] = await sql`
-        INSERT INTO face_descriptors (person_id, descriptor, source_image_id)
-        VALUES (${personId}, ${embeddingString}, ${sourceImageId})
-        RETURNING *
-      `
+      const { data, error } = await supabase.from("face_descriptors").insert({
+        person_id: personId,
+        descriptor: Array.from(descriptor),
+        source_image_id: sourceImageId,
+      })
+
+      if (error) {
+        console.error("[v0] Error saving face descriptor:", error)
+        throw error
+      }
+
+      console.log(`[v0] Saved new descriptor for person ${personId} on photo ${sourceImageId}`)
       return data
-    } catch (error) {
-      console.error("[v0] Error saving face descriptor:", error)
-      throw error
-    }
+    })
   })
 }
 
-export async function getAllFaceDescriptors() {
+export async function getAllFaceDescriptors(supabase: SupabaseClient) {
   return retryWithBackoff(async () => {
-    try {
-      const descriptors = await sql`
-        SELECT fd.id, fd.person_id, fd.descriptor, fd.source_image_id, p.real_name
-        FROM face_descriptors fd
-        LEFT JOIN people p ON fd.person_id = p.id
-        ORDER BY fd.created_at DESC
-      `
+    return safeSupabaseCall(async () => {
+      const { data: descriptors, error: descriptorsError } = await supabase
+        .from("face_descriptors")
+        .select("id, person_id, descriptor, source_image_id")
+        .order("created_at", { ascending: false })
+
+      if (descriptorsError) {
+        console.error("[v0] Error fetching face descriptors:", descriptorsError)
+        throw descriptorsError
+      }
+
+      if (!descriptors || descriptors.length === 0) {
+        return []
+      }
+
+      const personIds = [...new Set(descriptors.map((d) => d.person_id).filter(Boolean))]
+
+      const { data: people, error: peopleError } = await supabase
+        .from("people")
+        .select("id, real_name")
+        .in("id", personIds)
+
+      if (peopleError) {
+        console.error("[v0] Error fetching people:", peopleError)
+        throw peopleError
+      }
+
+      const peopleMap = new Map(people?.map((p) => [p.id, p.real_name]) || [])
 
       return descriptors.map((item) => ({
         id: item.id,
         personId: item.person_id,
-        personName: item.real_name || "Unknown",
-        descriptor: typeof item.descriptor === "string" ? JSON.parse(item.descriptor) : item.descriptor,
+        personName: peopleMap.get(item.person_id) || "Unknown",
+        descriptor: item.descriptor,
         sourceImageId: item.source_image_id || null,
       }))
-    } catch (error) {
-      console.error("[v0] Error fetching face descriptors:", error)
-      throw error
-    }
+    })
   })
 }
 
 export async function savePhotoFace(
+  supabase: SupabaseClient,
   photoId: string,
   personId: string | null,
-  insightface_bbox: any,
-  confidence: number | null, // legacy param kept for signature compatibility, but mapped to insightface_confidence
+  boundingBox: { x: number; y: number; width: number; height: number },
+  confidence: number | null,
   verified = false,
-  recognition_confidence?: number | null,
 ) {
   return retryWithBackoff(async () => {
-    try {
-      const [data] = await sql`
-        INSERT INTO photo_faces (
-            photo_id, 
-            person_id, 
-            insightface_bbox, 
-            insightface_confidence, 
-            recognition_confidence, 
-            verified
-        )
-        VALUES (
-            ${photoId}, 
-            ${personId}, 
-            ${sql.json(insightface_bbox)}, 
-            ${confidence}, 
-            ${recognition_confidence || null}, 
-            ${verified}
-        )
-        RETURNING *
-      `
+    return safeSupabaseCall(async () => {
+      const { data, error } = await supabase.from("photo_faces").insert({
+        photo_id: photoId,
+        person_id: personId,
+        insightface_bbox: boundingBox,
+        confidence,
+        verified,
+      })
+
+      if (error) {
+        console.error("[v0] Error saving photo face:", error)
+        throw error
+      }
+
       return data
-    } catch (error) {
-      console.error("[v0] Error saving photo face:", error)
-      throw error
-    }
+    })
   })
 }
 
 export async function updatePhotoFace(
+  supabase: SupabaseClient,
   faceId: string,
   updates: {
     person_id?: string | null
@@ -142,55 +164,74 @@ export async function updatePhotoFace(
   },
 ) {
   return retryWithBackoff(async () => {
-    try {
-      const [data] = await sql`
-        UPDATE photo_faces
-        SET ${sql(updates)}
-        WHERE id = ${faceId}
-        RETURNING *
-      `
+    return safeSupabaseCall(async () => {
+      const { data, error } = await supabase.from("photo_faces").update(updates).eq("id", faceId)
+
+      if (error) {
+        console.error("[v0] Error updating photo face:", error)
+        throw error
+      }
+
       return data
-    } catch (error) {
-      console.error("[v0] Error updating photo face:", error)
-      throw error
-    }
+    })
   })
 }
 
-export async function getPhotoFaces(photoId: string) {
+export async function getPhotoFaces(supabase: SupabaseClient, photoId: string) {
   return retryWithBackoff(async () => {
-    try {
-      const faces = await sql`
-        SELECT pf.*, p.real_name, p.id as person_pk
-        FROM photo_faces pf
-        LEFT JOIN people p ON pf.person_id = p.id
-        WHERE pf.photo_id = ${photoId}
-      `
+    return safeSupabaseCall(async () => {
+      const { data: faces, error: facesError } = await supabase
+        .from("photo_faces")
+        .select("id, person_id, insightface_bbox, confidence, recognition_confidence, blur_score, verified")
+        .eq("photo_id", photoId)
+
+      if (facesError) {
+        console.error("[v0] Error fetching photo faces:", facesError)
+        throw facesError
+      }
+
+      if (!faces || faces.length === 0) {
+        return []
+      }
+
+      const personIds = [...new Set(faces.map((f) => f.person_id).filter(Boolean))]
+
+      if (personIds.length === 0) {
+        return faces.map((face) => ({
+          ...face,
+          people: null,
+        }))
+      }
+
+      const { data: people, error: peopleError } = await supabase
+        .from("people")
+        .select("id, real_name")
+        .in("id", personIds)
+
+      if (peopleError) {
+        console.error("[v0] Error fetching people:", peopleError)
+        throw peopleError
+      }
+
+      const peopleMap = new Map(people?.map((p) => [p.id, { id: p.id, real_name: p.real_name }]) || [])
 
       return faces.map((face) => ({
-        id: face.id,
-        person_id: face.person_id,
-        insightface_bbox: face.insightface_bbox,
-        confidence: face.insightface_confidence, // mapping for compatibility
-        recognition_confidence: face.recognition_confidence,
-        blur_score: face.blur_score,
-        verified: face.verified,
-        people: face.person_id ? { id: face.person_pk, real_name: face.real_name } : null,
+        ...face,
+        people: face.person_id ? peopleMap.get(face.person_id) || null : null,
       }))
-    } catch (error) {
-      console.error("[v0] Error fetching photo faces:", error)
-      throw error
-    }
+    })
   })
 }
 
-export async function deletePhotoFace(faceId: string) {
+export async function deletePhotoFace(supabase: SupabaseClient, faceId: string) {
   return retryWithBackoff(async () => {
-    try {
-      await sql`DELETE FROM photo_faces WHERE id = ${faceId}`
-    } catch (error) {
-      console.error("[v0] Error deleting photo face:", error)
-      throw error
-    }
+    return safeSupabaseCall(async () => {
+      const { error } = await supabase.from("photo_faces").delete().eq("id", faceId)
+
+      if (error) {
+        console.error("[v0] Error deleting photo face:", error)
+        throw error
+      }
+    })
   })
 }

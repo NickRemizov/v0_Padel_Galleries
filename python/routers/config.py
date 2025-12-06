@@ -1,79 +1,64 @@
+"""
+Config API Router
+Endpoints для управления конфигурацией
+"""
+
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
-from services.postgres_client import db_client
-import logging
+from typing import Optional
+from services.supabase_client import SupabaseClient
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/v2", tags=["config"])
 
-router = APIRouter(tags=["config"])
+class QualityConfig(BaseModel):
+    min_face_size: Optional[int] = None
+    min_detection_score: Optional[float] = None
+    min_blur_score: Optional[int] = None
 
-class FullConfig(BaseModel):
-    confidence_thresholds: Optional[Dict[str, float]] = None
-    quality_filters: Optional[Dict[str, Any]] = None
-    context_weight: Optional[float] = None
-    min_faces_per_person: Optional[int] = None
-    auto_retrain_threshold: Optional[int] = None
-    auto_retrain_percentage: Optional[float] = None
-    model_version: Optional[str] = None
-    last_full_training: Optional[str] = None
-    faces_since_last_training: Optional[int] = None
+supabase_client_instance = None
+
+def set_supabase_client(client: SupabaseClient):
+    global supabase_client_instance
+    supabase_client_instance = client
 
 @router.get("/config")
-async def get_config():
-    """Get current recognition configuration"""
-    logger.info("[Config] GET /config request received")
+async def get_config(
+    supabase_client: SupabaseClient = Depends(lambda: supabase_client_instance)
+):
+    """Получение текущей конфигурации распознавания"""
     try:
-        logger.info("[Config] Fetching recognition config...")
-        config = await db_client.get_recognition_config()
-        logger.info(f"[Config] Config from DB: {config}")
+        # Получаем настройки из БД
+        response = supabase_client.client.table('recognition_settings').select('*').eq('key', 'quality_filters').single().execute()
         
-        return JSONResponse(content=config)
+        if response.data:
+            return response.data.get('value', {})
+        else:
+            # Дефолтные настройки
+            return {
+                "min_face_size": 40,
+                "min_detection_score": 0.5,
+                "min_blur_score": 80
+            }
         
     except Exception as e:
-        logger.error(f"[Config] Error in get_config: {str(e)}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "connection_failed",
-                "message": f"Internal Server Error: {str(e)}"
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/config")
-async def update_config(config: FullConfig):
-    """Update recognition configuration"""
-    logger.info(f"[Config] PUT /config request received")
+async def update_config(
+    config: QualityConfig,
+    supabase_client: SupabaseClient = Depends(lambda: supabase_client_instance)
+):
+    """Обновление конфигурации распознавания"""
     try:
+        # Обновляем настройки в БД
         config_dict = config.dict(exclude_none=True)
-        logger.info(f"[Config] Fields to update: {list(config_dict.keys())}")
         
-        if 'quality_filters' in config_dict:
-            quality_filters = config_dict.pop('quality_filters')
-            # Save each quality filter as a separate key in face_recognition_config
-            for key, value in quality_filters.items():
-                logger.info(f"[Config] Updating quality filter key '{key}' with value: {value}")
-                await db_client.update_config(key, value)
+        supabase_client.client.table('recognition_settings').upsert({
+            'key': 'quality_filters',
+            'value': config_dict
+        }, on_conflict='key').execute()
         
-        # Update remaining fields
-        for key, value in config_dict.items():
-            logger.info(f"[Config] Updating key '{key}' with value: {value}")
-            await db_client.update_config(key, value)
-        
-        # Get updated config to return
-        updated_config = await db_client.get_recognition_config()
-        
-        logger.info("[Config] Config saved successfully")
-        return JSONResponse(content={"status": "ok", "config": updated_config})
+        return {"status": "ok", "config": config_dict}
         
     except Exception as e:
-        logger.error(f"[Config] Error in update_config: {str(e)}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "connection_failed",
-                "message": f"Internal Server Error: {str(e)}"
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))

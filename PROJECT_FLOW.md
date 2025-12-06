@@ -19,27 +19,14 @@
         │                      │                      │
         └──────────────────────┼──────────────────────┘
                                ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                      FastAPI Backend (Hetzner)                  │
-│                      http://api.vlcpadel.com:8001               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │  /api/crud  │  │ /api/faces  │  │/api/recogn- │            │
-│  │   people    │  │   save      │  │   ition     │            │
-│  │  galleries  │  │   delete    │  │   detect    │            │
-│  │   images    │  │   tags      │  │   recognize │            │
-│  └─────────────┘  └─────────────┘  └─────────────┘            │
-└─────────────────────────────────────────────────────────────────┘
-                               ↓
         ┌──────────────────────┼──────────────────────┐
         ↓                      ↓                      ↓
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  PostgreSQL  │    │    MinIO     │    │  InsightFace │
-│   (Hetzner)  │    │   Storage    │    │    Model     │
+│   SUPABASE   │    │ VERCEL BLOB  │    │   FastAPI    │
+│ PostgreSQL   │    │   STORAGE    │    │   BACKEND    │
 │   (данные)   │    │   (фото)     │    │ (распознавание)
 └──────────────┘    └──────────────┘    └──────────────┘
 \`\`\`
-
-**ВАЖНО: Supabase больше НЕ используется для данных. Все операции идут через Python API.**
 
 ## 1. ЗАГРУЗКА ФОТО
 
@@ -51,15 +38,16 @@
     ↓
 uploadAction() в app/admin/actions.ts
     ↓
-MinIO Storage (через Python API)
+Vercel Blob Storage
     │
     ├─ Сохранение изображения
-    └─ Получение url: api.vlcpadel.com/api/s3-proxy/galleries/...
+    └─ Получение blob_url
     ↓
-PostgreSQL (Hetzner): gallery_images
+Supabase: gallery_images
     │
     ├─ gallery_id: uuid
-    ├─ image_url: text
+    ├─ filename: text
+    ├─ blob_url: text
     └─ has_been_processed: FALSE
     ↓
 UI показывает фото БЕЗ БЕЙДЖА (новое)
@@ -83,7 +71,7 @@ AutoRecognitionDialog открывается
     │   │
     │   ├─ Next.js API: /api/face-detection/detect
     │   │       ↓
-    │   │   FastAPI: POST /api/recognition/detect
+    │   │   FastAPI: POST /detect-faces
     │   │       ↓
     │   │   InsightFace детекция:
     │   │       • app.get(image) → находит лица
@@ -92,58 +80,69 @@ AutoRecognitionDialog открывается
     │   │           ├─ det_score (уверенность детекции)
     │   │           ├─ blur_score (резкость, Laplacian)
     │   │           ├─ face_size (ширина bbox)
-    │   │           └─ embedding (512-мерный вектор) - НЕ ОТПРАВЛЯЕТСЯ НА ФРОНТЕНД
-    │   │
-    │   │   ВАЖНО: Embedding остаётся на бэкенде, фронтенд получает только:
-    │   │       {
-    │   │           bbox: {x, y, width, height},
-    │   │           insightface_confidence: det_score,
-    │   │           blur_score: float,
-    │   │           face_id: uuid (для последующего сохранения)
+    │   │           └─ embedding (512-мерный вектор)
+    │   │       ↓
+    │   │   Фильтрация (если apply_quality_filters=true):
+    │   │       Загрузка настроек из face_recognition_config:
+    │   │           • min_face_size (default: 80px)
+    │   │           • min_blur_score (default: 100.0)
+    │   │           • min_detection_score (default: 0.7)
+    │   │       ↓
+    │   │       Отбрасывание лиц:
+    │   │           ✗ face_size < min_face_size
+    │   │           ✗ blur_score < min_blur_score
+    │   │           ✗ det_score < min_detection_score
+    │   │       ↓
+    │   │   Сохранение в БД:
+    │   │       face_descriptors {
+    │   │           gallery_image_id: uuid
+    │   │           person_id: NULL
+    │   │           embedding: vector(512)
+    │   │           bbox: jsonb
+    │   │           det_score: float
+    │   │           blur_score: float
+    │   │           verified: false
     │   │       }
+    │   │       ↓
+    │   │   gallery_images.has_been_processed = TRUE
     │
     └─ РАСПОЗНАВАНИЕ ЛИЦ
         │
-        ├─ FastAPI: POST /api/recognition/recognize
+        ├─ Next.js API: /api/face-detection/recognize
+        │       ↓
+        │   FastAPI: POST /recognize-face
         │       ↓
         │   Поиск похожих лиц:
-        │       1. Загрузка верифицированных эмбеддингов из PostgreSQL
+        │       1. Загрузка верифицированных эмбеддингов из БД
         │       2. HNSWLIB индекс (быстрый поиск)
         │       3. Порог для verified: 0.6
         │       4. Порог для unverified: 0.75
         │       ↓
-        │   Возврат результата:
-        │       {
-        │           person_id: "uuid" | null,
-        │           person_name: "Имя Фамилия" | null,
-        │           confidence: float
-        │       }
+        │   Если найдено совпадение (confidence >= порог):
+        │       ├─ person_id = найденный игрок
+        │       └─ confidence = similarity
+        │   Если НЕ найдено:
+        │       ├─ person_id = NULL (неизвестное лицо)
+        │       └─ confidence = 0
         │       ↓
-        │   Сохранение в photo_faces через savePhotoFaceAction:
-        │       INSERT INTO photo_faces (
-        │           photo_id,
-        │           person_id,
-        │           insightface_bbox,
-        │           insightface_descriptor,
-        │           insightface_confidence,     // ← От детектора (0.7-1.0)
-        │           recognition_confidence,     // ← От распознавания (0.0-1.0)
-        │           verified
-        │       )
-        │       ↓
-        │   ВАЖНО: Два разных поля confidence:
-        │       • insightface_confidence - "Это точно лицо?" (качество обнаружения)
-        │       • recognition_confidence - "Это точно человек X?" (качество идентификации)
-        │       
-        │   Примеры:
-        │       • Хорошее обнаружение + плохое распознавание:
-        │         insightface_confidence: 0.98, recognition_confidence: 0.45
-        │       • Плохое обнаружение + хорошее распознавание:
-        │         insightface_confidence: 0.70, recognition_confidence: 0.92
+        │   Обновление face_descriptors:
+        │       UPDATE face_descriptors SET
+        │           person_id = ?,
+        │           confidence = ?,
+        │           verified = false
 \`\`\`
+
+### Результат - бейджи на фото
+- **Без бейджа** - новое фото (has_been_processed = false)
+- **NFD** (серый) - лица не найдены
+- **XX/YY** (оранжевый) - XX неопознанных из YY лиц
+- **XX%** (синий) - минимальная уверенность распознавания
+- **✓** (зеленый) - все лица верифицированы
 
 ### Файлы
 - `components/admin/auto-recognition-dialog.tsx` → UI автораспознавания
 - `app/api/face-detection/detect/route.ts` → API детекции
+- `app/api/face-detection/recognize/route.ts` → API распознавания
 - `python/routers/recognition.py` → FastAPI endpoints
 - `python/services/face_recognition.py` → Логика InsightFace
 
@@ -207,7 +206,7 @@ AddPersonDialog открывается
     • Рейтинг
     • Аватар (первое фото из кластера)
     ↓
-createPersonAction() → PostgreSQL (Hetzner)
+createPersonAction() → Supabase
     ↓
 people {
     id: uuid (НОВЫЙ)
@@ -274,21 +273,21 @@ FaceTaggingDialog открывается
     │       ↓
     │       Кнопка "Распознать заново без настроек"
     │           ↓
-    │           Удалить все photo_faces для этого фото
+    │           Удалить все face_descriptors для этого фото
     │           ↓
-    │           /api/recognition/detect с apply_quality_filters=false
+    │           /detect-faces с apply_quality_filters=false
     │           ↓
     │           Детальное окно с метриками:
     │               • Размер лица: XX px
     │               • Blur score: XX.X
-    │               • Detection score: 0.XX (insightface_confidence)
+    │               • Detection score: 0.XX
     │               • Качество эмбеддинга: XX.X
     │               • Distance to nearest: 0.XX
     │               • Top-3 похожих лиц
     │
     └─ НЕТ: Автоматически запустить распознавание
             ↓
-            /api/recognition/detect + /api/recognition/recognize
+            /detect-faces + /recognize-face
             ↓
 UI показывает все лица на фото:
     • Фото с синими рамками
@@ -297,46 +296,18 @@ UI показывает все лица на фото:
     ↓
 Админ выбирает игрока для каждого лица
     ↓
-Кнопка "Сохранить"
+Кнопка "Сохранить" активна (когда все назначены)
     ↓
-saveFaceTagsAction(photoId, imageUrl, tags):
+saveFaceTagsAction():
+    UPDATE face_descriptors SET
+        person_id = выбранный игрок,
+        confidence = 1.0,
+        verified = true  (РУЧНАЯ ВЕРИФИКАЦИЯ)
     ↓
-    FastAPI: POST /api/faces/save-face-tags
-    {
-        photo_id: uuid,
-        image_url: string,  // ← Для генерации embedding на бэкенде
-        tags: [
-            {
-                face_id: uuid | null,
-                person_id: uuid | null,
-                bbox: {x, y, width, height},
-                verified: boolean
-            }
-        ]
-    }
+Перестроение индекса
     ↓
-    Бэкенд:
-        1. Удаляет все существующие photo_faces для этого фото
-        2. Удаляет связанные face_descriptors
-        3. Для каждого тега:
-            - Генерирует embedding из image_url + bbox (InsightFace)
-            - Сохраняет в photo_faces с insightface_descriptor
-            - Если verified=true, добавляет в face_descriptors
-        4. Устанавливает has_been_processed = true
-        5. Перестраивает HNSWLIB индекс
-    ↓
-    Если tags.length === 0:
-        - Устанавливает has_been_processed = true
-        - Фото получает статус NFD (No Faces Detected)
-    ↓
-Бейдж фото обновляется
+Бейдж фото меняется на ✓
 \`\`\`
-
-### Важно: Embedding на бэкенде
-**Фронтенд НЕ работает с embedding напрямую!**
-- При детекции embedding остаётся на бэкенде
-- При сохранении передаётся `image_url` + `bbox`
-- Бэкенд сам генерирует embedding из изображения
 
 ### Файлы
 - `components/admin/face-tagging-dialog.tsx` → UI тегирования
@@ -350,7 +321,7 @@ saveFaceTagsAction(photoId, imageUrl, tags):
     ↓
 Next.js SSR: app/page.tsx
     ↓
-PostgreSQL запрос:
+Supabase запрос:
     SELECT galleries.*, 
            locations.name,
            COUNT(DISTINCT face_descriptors.person_id) as players,
@@ -372,7 +343,7 @@ PostgreSQL запрос:
     ↓
 Next.js SSR: app/gallery/[id]/page.tsx
     ↓
-PostgreSQL запросы:
+Supabase запросы:
     1. Информация о галерее
     2. Список игроков (только verified)
     3. Все фото (только verified)
@@ -391,7 +362,7 @@ PostgreSQL запросы:
     ↓
 Next.js SSR: app/players/[id]/page.tsx
     ↓
-PostgreSQL запрос:
+Supabase запрос:
     SELECT gallery_images.*
     FROM face_descriptors
     JOIN gallery_images ON face_descriptors.gallery_image_id = gallery_images.id
@@ -485,12 +456,8 @@ Telegram отправляет webhook → /api/telegram/webhook
 ## Технологии
 
 - **Frontend**: Next.js 15, React 19, TailwindCSS v4, shadcn/ui
-- **Backend**: FastAPI, Python 3.11 (Hetzner VPS)
-- **ML**: InsightFace (antelopev2), HNSWLIB, HDBSCAN
-- **Database**: PostgreSQL (Hetzner) - основная БД
-- **Storage**: MinIO (Hetzner) через S3 proxy
-- **Deployment**: Vercel (frontend), Hetzner (backend + DB + storage)
-
-**НЕ ИСПОЛЬЗУЕТСЯ:**
-- ~~Supabase~~ - полностью удалён из data flow
-- ~~Vercel Blob~~ - заменён на MinIO
+- **Backend**: FastAPI, Python 3.11
+- **ML**: InsightFace, HNSWLIB, HDBSCAN
+- **Database**: Supabase (PostgreSQL с pgvector)
+- **Storage**: Vercel Blob
+- **Deployment**: Vercel (frontend), Hetzner (backend)

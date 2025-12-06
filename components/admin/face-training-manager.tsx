@@ -11,7 +11,7 @@ import { RefreshCw, Loader2, CheckCircle2, AlertCircle, TrendingUp, AlertTriangl
 import { TrainingHistoryList } from "./training-history-list"
 import { TrainingStatsCard } from "./training-stats-card"
 
-const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL!
+const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
 
 interface TrainingSession {
   id: string
@@ -41,7 +41,6 @@ interface Config {
     min_detection_score: number
     min_face_size: number
     min_blur_score: number
-    verified_threshold: number
   }
 }
 
@@ -70,7 +69,6 @@ const DEFAULT_CONFIG: Config = {
     min_detection_score: 0.7,
     min_face_size: 80,
     min_blur_score: 100.0,
-    verified_threshold: 0.99,
   },
 }
 
@@ -598,85 +596,20 @@ export function FaceTrainingManager() {
                   10 - размытые лица | 60-80 - рекомендуемый | 150 - только четкие
                 </p>
               </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">Порог автоверификации (verified threshold)</Label>
-                  <span className="text-sm font-medium">
-                    {((localConfig.quality_filters?.verified_threshold || 0.99) * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <Slider
-                  value={[(localConfig.quality_filters?.verified_threshold || 0.99) * 100]}
-                  onValueChange={([value]) =>
-                    setLocalConfig({
-                      ...localConfig,
-                      quality_filters: {
-                        ...localConfig.quality_filters!,
-                        verified_threshold: value / 100,
-                      },
-                    })
-                  }
-                  min={60}
-                  max={99}
-                  step={1}
-                />
-                <p className="text-xs text-muted-foreground">
-                  60% - мягкий | 85% - средний | 99% - строгий (практически идентичные фото)
-                </p>
-              </div>
             </div>
           </div>
 
           {/* Confidence Thresholds */}
           <div className="space-y-4 pt-4 border-t">
-            <h4 className="text-sm font-medium">Пороги Confidence для обучения</h4>
+            <h4 className="text-sm font-medium">Пороги уверенности распознавания</h4>
 
             <div className="space-y-3">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm">3-4 лица (Low Data)</Label>
-                  <span className="text-sm font-medium">{localConfig.confidence_thresholds.low_data.toFixed(2)}</span>
-                </div>
-                <Slider
-                  value={[localConfig.confidence_thresholds.low_data]}
-                  onValueChange={([value]) =>
-                    setLocalConfig({
-                      ...localConfig,
-                      confidence_thresholds: { ...localConfig.confidence_thresholds, low_data: value },
-                    })
-                  }
-                  min={0.5}
-                  max={1.0}
-                  step={0.05}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">5-9 лиц (Medium Data)</Label>
+                  <Label className="text-sm">Минимальная уверенность для сохранения person_id, для распознавания</Label>
                   <span className="text-sm font-medium">
-                    {localConfig.confidence_thresholds.medium_data.toFixed(2)}
+                    {(localConfig.confidence_thresholds.high_data * 100).toFixed(0)}%
                   </span>
-                </div>
-                <Slider
-                  value={[localConfig.confidence_thresholds.medium_data]}
-                  onValueChange={([value]) =>
-                    setLocalConfig({
-                      ...localConfig,
-                      confidence_thresholds: { ...localConfig.confidence_thresholds, medium_data: value },
-                    })
-                  }
-                  min={0.5}
-                  max={1.0}
-                  step={0.05}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">10+ лиц (High Data)</Label>
-                  <span className="text-sm font-medium">{localConfig.confidence_thresholds.high_data.toFixed(2)}</span>
                 </div>
                 <Slider
                   value={[localConfig.confidence_thresholds.high_data]}
@@ -686,60 +619,66 @@ export function FaceTrainingManager() {
                       confidence_thresholds: { ...localConfig.confidence_thresholds, high_data: value },
                     })
                   }
-                  min={0.5}
-                  max={1.0}
+                  min={0.3}
+                  max={0.9}
                   step={0.05}
                 />
+                <p className="text-xs text-muted-foreground">
+                  30% - очень мягкий | 60% - рекомендуемый | 80% - строгий
+                </p>
               </div>
-            </div>
-          </div>
 
-          {/* Save Threshold */}
-          <div className="space-y-4 pt-4 border-t">
-            <h4 className="text-sm font-medium">Порог сохранения в БД</h4>
-            <p className="text-xs text-muted-foreground">
-              При пакетном распознавании лица с уверенностью ниже порога сохраняются как "Неизвестные"
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Минимальная уверенность для сохранения person_id</Label>
-                <span className="text-sm font-medium">
-                  {((localConfig.confidence_thresholds.high_data || 0.6) * 100).toFixed(0)}%
-                </span>
+              <div className="space-y-2 opacity-50">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Средняя уверенность (не используется)</Label>
+                  <span className="text-sm font-medium">
+                    {(localConfig.confidence_thresholds.medium_data * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <Slider
+                  disabled
+                  value={[localConfig.confidence_thresholds.medium_data]}
+                  min={0.3}
+                  max={0.9}
+                  step={0.05}
+                />
+                <p className="text-xs text-muted-foreground">Будет использоваться с HDBSCAN clustering</p>
               </div>
-              <Slider
-                value={[(localConfig.confidence_thresholds.high_data || 0.6) * 100]}
-                onValueChange={([value]) =>
-                  setLocalConfig({
-                    ...localConfig,
-                    confidence_thresholds: { ...localConfig.confidence_thresholds, high_data: value / 100 },
-                  })
-                }
-                min={30}
-                max={80}
-                step={5}
-              />
-              <p className="text-xs text-muted-foreground">30% - очень мягкий | 60% - рекомендуемый | 80% - строгий</p>
+
+              <div className="space-y-2 opacity-50">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Низкая уверенность (не используется)</Label>
+                  <span className="text-sm font-medium">
+                    {(localConfig.confidence_thresholds.low_data * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <Slider disabled value={[localConfig.confidence_thresholds.low_data]} min={0.3} max={0.9} step={0.05} />
+                <p className="text-xs text-muted-foreground">Будет использоваться с HDBSCAN clustering</p>
+              </div>
             </div>
           </div>
 
           {/* Context Weight */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Context Weight</Label>
-              <span className="text-sm font-medium">{localConfig.context_weight.toFixed(2)}</span>
-            </div>
-            <Slider
-              value={[localConfig.context_weight]}
-              onValueChange={([value]) => setLocalConfig({ ...localConfig, context_weight: value })}
-              min={0}
-              max={0.5}
-              step={0.05}
-            />
+          <div className="space-y-4 pt-4 border-t opacity-50">
+            <h4 className="text-sm font-medium">Контекстное распознавание (не используется)</h4>
             <p className="text-xs text-muted-foreground">
-              0.00 - контекст не учитывается | 0.10 - минимальное влияние | 0.30 - среднее влияние | 0.50 - максимальное
-              влияние
+              Вес контекстной информации (галерея, дата) при распознавании
             </p>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Context Weight</Label>
+                <span className="text-sm font-medium">{localConfig.context_weight.toFixed(2)}</span>
+              </div>
+              <Slider disabled value={[localConfig.context_weight]} min={0.0} max={0.5} step={0.05} />
+              <p className="text-xs text-muted-foreground">
+                0.00 - контекст не учитывается | 0.10 - минимальное влияние | 0.30 - среднее влияние | 0.50 -
+                максимальное влияние
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Будет использоваться с HDBSCAN для учёта совместных появлений людей
+              </p>
+            </div>
           </div>
 
           <div className="flex gap-2">

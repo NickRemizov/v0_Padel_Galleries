@@ -53,7 +53,7 @@ cd python && ./start.sh
 
 #### Детекция лиц с метриками (НОВОЕ в v3.2.8)
 \`\`\`bash
-POST /api/detect-faces
+POST /detect-faces
 Content-Type: application/json
 
 {
@@ -81,7 +81,7 @@ Response:
 
 #### Распознавание лица
 \`\`\`bash
-POST /api/recognize-face
+POST /recognize-face
 Content-Type: application/json
 
 {
@@ -92,7 +92,7 @@ Content-Type: application/json
 
 #### Пакетное распознавание
 \`\`\`bash
-POST /api/batch-recognize
+POST /batch-recognize
 Content-Type: application/json
 
 {
@@ -103,12 +103,12 @@ Content-Type: application/json
 
 #### Кластеризация неизвестных лиц
 \`\`\`bash
-POST /api/cluster-unknown-faces?gallery_id=xxx&min_cluster_size=2
+POST /cluster-unknown-faces?gallery_id=xxx&min_cluster_size=2
 \`\`\`
 
 #### Перестроение индекса
 \`\`\`bash
-POST /api/rebuild-index
+POST /rebuild-index
 \`\`\`
 
 ### Training API (v2)
@@ -147,7 +147,7 @@ NEXT_PUBLIC_FASTAPI_URL=http://23.88.61.20:8001
 
 \`\`\`typescript
 // Детекция лиц без фильтров качества
-const response = await fetch(`${API_URL}/api/detect-faces`, {
+const response = await fetch(`${API_URL}/detect-faces`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -171,7 +171,7 @@ faces.forEach(face => {
 
 Проверьте:
 1. Версия бэкенда v3.2.8: `grep "version=" /home/nickr/python/main.py`
-2. Логи сервера: `tail -f /home/nickr/python/nohup.out`
+2. Логи сервера: `tail -f /home/nickr/python/server.log`
 3. Индекс загружен: должны быть сообщения `[v3.0] ✓ HNSW index created`
 
 ### Ошибка "players_id_map is empty"
@@ -196,17 +196,17 @@ faces.forEach(face => {
 
 ## 📝 Логи
 
-Логи сервера сохраняются в `nohup.out`:
+Логи сервера сохраняются в `server.log`:
 
 \`\`\`bash
 cd /home/nickr/python
-tail -f nohup.out
+tail -f server.log
 \`\`\`
 
 ## 🆘 Поддержка
 
 При проблемах проверьте:
-1. Логи сервера: `tail -f /home/nickr/python/nohup.out`
+1. Логи сервера: `tail -f /home/nickr/python/server.log`
 2. Доступность порта 8001: `curl http://23.88.61.20:8001/api/health`
 3. Наличие свободного места на диске: `df -h`
 4. Версию Python: `python3.11 --version`
@@ -244,3 +244,6 @@ tail -f nohup.out
 - Базовая версия с распознаванием лиц
 - Google OAuth аутентификация
 - Группировка игроков
+\`\`\`
+
+\`\`\`python file="" isHidden

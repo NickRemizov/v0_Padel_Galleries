@@ -19,28 +19,14 @@ import { addPhotographerAction } from "@/app/admin/actions"
 export function AddPhotographerDialog() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(formData: FormData) {
-    console.log("[v0] AddPhotographerDialog: handleSubmit called")
     setLoading(true)
-    setError(null)
+    const result = await addPhotographerAction(formData)
+    setLoading(false)
 
-    try {
-      const result = await addPhotographerAction(formData)
-      console.log("[v0] AddPhotographerDialog: result =", result)
-
-      if (result.success) {
-        setOpen(false)
-      } else if (result.error) {
-        console.error("[v0] AddPhotographerDialog: error =", result.error)
-        setError(result.error)
-      }
-    } catch (err: any) {
-      console.error("[v0] AddPhotographerDialog: exception =", err)
-      setError(err.message || "Неизвестная ошибка")
-    } finally {
-      setLoading(false)
+    if (result.success) {
+      setOpen(false)
     }
   }
 
@@ -64,7 +50,6 @@ export function AddPhotographerDialog() {
               <Label htmlFor="name">Имя</Label>
               <Input id="name" name="name" required />
             </div>
-            {error && <div className="text-sm text-red-500 bg-red-50 p-2 rounded">Ошибка: {error}</div>}
           </div>
 
           <DialogFooter>

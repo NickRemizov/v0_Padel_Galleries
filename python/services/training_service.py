@@ -10,15 +10,15 @@ import hnswlib
 import httpx
 from sklearn.model_selection import train_test_split
 
-from services.postgres_client import db_client
+from services.supabase_client import SupabaseClient
 from services.face_recognition import FaceRecognitionService
 
 
 class TrainingService:
-    def __init__(self):
+    def __init__(self, face_service: 'FaceRecognitionService' = None, supabase_client: 'SupabaseClient' = None):
         """Инициализация сервиса обучения"""
-        self.face_service = FaceRecognitionService()
-        self.db_client = db_client
+        self.face_service = face_service if face_service else FaceRecognitionService()
+        self.supabase = supabase_client if supabase_client else SupabaseClient()
         self.current_session_id = None
         self.current_progress = {'current': 0, 'total': 0, 'step': ''}
         print("[TrainingService] Initialized")
@@ -36,10 +36,8 @@ class TrainingService:
         """
         print("[TrainingService] Preparing dataset...")
         
-        await self.db_client.connect()
-        
-        # Get verified faces from PostgreSQL
-        faces = await self.db_client.get_verified_faces(
+        # Get verified faces from Supabase
+        faces = await self.supabase.get_verified_faces(
             event_ids=filters.get('event_ids'),
             person_ids=filters.get('person_ids'),
             date_from=filters.get('date_from'),
@@ -51,7 +49,7 @@ class TrainingService:
         if options.get('include_co_occurring'):
             event_ids = list(set(f['gallery_id'] for f in faces if f['gallery_id']))
             if event_ids:
-                co_occurring = await self.db_client.get_co_occurring_people(event_ids)
+                co_occurring = await self.supabase.get_co_occurring_people(event_ids)
                 # Add faces of co-occurring people
                 # (Implementation depends on requirements)
         
@@ -127,10 +125,8 @@ class TrainingService:
             'status': 'running'
         }
         
-        await self.db_client.connect()
-        await self.db_client.create_training_session(session_data)
-        
-        self.current_session_id = session_id
+        # Save to Supabase
+        await self.supabase.create_training_session(session_data)
         
         print(f"[TrainingService] Training session created: {session_id}")
         
@@ -159,9 +155,7 @@ class TrainingService:
                 'step': 'Loading verified faces from database'
             }
             
-            await self.db_client.connect()
-            
-            faces = await self.db_client.get_verified_faces_with_descriptors(
+            faces = await self.supabase.get_verified_faces_with_descriptors(
                 event_ids=filters.get('event_ids'),
                 person_ids=filters.get('person_ids'),
                 date_from=filters.get('date_from'),
@@ -262,10 +256,23 @@ class TrainingService:
                                 descriptors.append(descriptor)
                                 person_ids.append(face_data['person_id'])
                                 
-                                await self.db_client.store_face_descriptor(
-                                    photo_face_id=face_data['face_id'],
-                                    person_id=face_data['person_id'],
-                                    descriptor=descriptor
+                                # Save to database
+                                await self.supabase.update_face_descriptor(
+                                    face_id=face_data['face_id'],
+                                    descriptor=descriptor,
+                                    confidence=confidence,
+                                    bbox={
+                                        'x': float(best_match.bbox[0]),
+                                        'y': float(best_match.bbox[1]),
+                                        'width': float(best_match.bbox[2] - best_match.bbox[0]),
+                                        'height': float(best_match.bbox[3] - best_match.bbox[1])
+                                    },
+                                    training_context={
+                                        'gallery_id': face_data.get('gallery_id'),
+                                        'gallery_name': face_data.get('gallery_name'),
+                                        'training_session_id': session_id,
+                                        'bbox_iou': best_iou
+                                    }
                                 )
                                 
                                 print(f"[TrainingService] Extracted descriptor for face {face_data['face_id']} (IoU: {best_iou:.2f})")
@@ -325,6 +332,7 @@ class TrainingService:
             
             metrics = await self._calculate_metrics(descriptors, person_ids)
             
+            # Update session
             updates = {
                 'faces_count': len(descriptors),
                 'people_count': len(set(person_ids)),
@@ -332,7 +340,7 @@ class TrainingService:
                 'status': 'completed'
             }
             
-            await self.db_client.update_training_session(session_id, updates)
+            await self.supabase.update_training_session(session_id, updates)
             
             self.current_progress['step'] = 'Completed'
             print(f"[TrainingService] Training completed successfully")
@@ -346,44 +354,32 @@ class TrainingService:
                 'status': 'failed',
                 'metrics': {'error': str(e)}
             }
-            await self.db_client.update_training_session(session_id, updates)
+            await self.supabase.update_training_session(session_id, updates)
     
-    async def _download_photo(self, photo_url: str) -> Optional[np.ndarray]:
+    async def _download_photo(self, photo_url: str) -> np.ndarray:
         """
-        Скачать фото.
+        Скачать фото с кэшированием.
         """
-        try:
-            async with httpx.AsyncClient() as client:
-                print(f"[TrainingService] Downloading {photo_url}...")
-                try:
-                    response = await client.get(photo_url, timeout=10.0)
-                    response.raise_for_status()
-                except httpx.RequestError as e:
-                    print(f"[TrainingService] Network error downloading {photo_url}: {e}")
-                    return None
-                except httpx.HTTPStatusError as e:
-                    print(f"[TrainingService] HTTP error downloading {photo_url}: {e}")
-                    return None
-                
-                cache_dir = 'data/cache/photos'
-                os.makedirs(cache_dir, exist_ok=True)
-                
-                filename = hashlib.md5(photo_url.encode()).hexdigest() + '.jpg'
-                local_path = os.path.join(cache_dir, filename)
-                
-                with open(local_path, 'wb') as f:
-                    f.write(response.content)
-                
-                img = cv2.imread(local_path)
-                if img is None:
-                    print(f"[TrainingService] Failed to decode image from {local_path}")
-                    return None
-                    
-                return img
-                
-        except Exception as e:
-            print(f"[TrainingService] Error in _download_photo: {e}")
-            return None
+        cached_path = self.supabase.get_cached_photo(photo_url)
+        if cached_path and os.path.exists(cached_path):
+            return cv2.imread(cached_path)
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(photo_url)
+            response.raise_for_status()
+            
+            cache_dir = 'data/cache/photos'
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            filename = hashlib.md5(photo_url.encode()).hexdigest() + '.jpg'
+            local_path = os.path.join(cache_dir, filename)
+            
+            with open(local_path, 'wb') as f:
+                f.write(response.content)
+            
+            self.supabase.save_photo_cache(photo_url, local_path)
+            
+            return cv2.imread(local_path)
     
     async def _calculate_metrics(
         self,
@@ -462,24 +458,17 @@ class TrainingService:
         """
         Получить статус обучения.
         """
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            session = loop.run_until_complete(self._get_session_from_postgres(session_id))
-        finally:
-            loop.close()
-        
+        session = self.supabase.get_training_session(session_id)
         if not session:
             return {'error': 'Session not found'}
         
         result = {
             'session_id': session_id,
-            'status': session.get('status'),
-            'started_at': session.get('started_at')
+            'status': session['status'],
+            'started_at': session['created_at']
         }
         
-        if session_id == self.current_session_id and session.get('status') == 'running':
+        if session_id == self.current_session_id and session['status'] == 'running':
             result['progress'] = {
                 'current': self.current_progress['current'],
                 'total': self.current_progress['total'],
@@ -489,150 +478,204 @@ class TrainingService:
                 )
             }
             result['current_step'] = self.current_progress['step']
+            
+            if self.current_progress['current'] > 0:
+                try:
+                    elapsed = (datetime.now() - datetime.fromisoformat(session['created_at'])).total_seconds()
+                    avg_time_per_face = elapsed / self.current_progress['current']
+                    remaining_faces = self.current_progress['total'] - self.current_progress['current']
+                    estimated_seconds = remaining_faces * avg_time_per_face
+                    estimated_completion = datetime.now() + timedelta(seconds=estimated_seconds)
+                    result['estimated_completion'] = estimated_completion.isoformat()
+                except:
+                    pass
         
         return result
     
-    async def _get_session_from_postgres(self, session_id: str) -> Optional[Dict]:
-        """Helper to get training session from PostgreSQL"""
-        await self.db_client.connect()
-        query = "SELECT * FROM face_training_sessions WHERE id = $1"
-        return await self.db_client.fetchone(query, session_id)
-
-    async def get_training_statistics(self) -> Dict:
+    def get_training_history(self, limit: int = 10, offset: int = 0) -> Dict:
         """
-        Получить статистику обученных данных из PostgreSQL.
-        Возвращает количество людей с дескрипторами, общее количество лиц и уникальных фото.
+        Получить историю обучений из Supabase.
         """
-        await self.db_client.connect()
-        
-        # Get statistics from PostgreSQL
-        stats = await self.db_client.get_training_statistics()
-        
-        return {
-            'people_count': stats['people_count'],
-            'total_faces': stats['total_faces'],
-            'unique_photos': stats['unique_photos']
-        }
-    
-    async def batch_recognize(self, limit: int = 100):
-        """
-        Пакетное распознавание лиц на новых фото.
-        """
-        print(f"[TrainingService] Starting batch recognition (limit={limit})...")
-        
         try:
-            await self.db_client.connect()
-            print("[TrainingService] DB connected")
+            sessions = self.supabase.get_training_history(limit, offset)
+            total = self.supabase.get_training_sessions_count()
             
-            config = await self.db_client.get_recognition_config()
-            quality_filters = config.get('quality_filters', {})
-            verified_threshold = quality_filters.get('verified_threshold', 0.99)
-            print(f"[TrainingService] Using verified_threshold: {verified_threshold}")
-            
-            # Get unverified images
-            print(f"[TrainingService] Fetching unverified images (limit={limit})...")
-            images = await self.db_client.get_unverified_images(limit)
-            print(f"[TrainingService] Found {len(images)} images to process")
-            
-            processed_count = 0
-            recognized_count = 0
-            filtered_out_count = 0
-            
-            for img_data in images:
-                photo_id = img_data['id']
-                photo_url = img_data['image_url']
-                print(f"[TrainingService] Processing image {photo_id} ({photo_url})...")
-                
-                try:
-                    # Download photo
-                    print(f"[TrainingService] Downloading photo {photo_url}...")
-                    image = await self._download_photo(photo_url)
-                    if image is None:
-                        print(f"[TrainingService] Failed to download/read image {photo_id}")
-                        continue
-                    print(f"[TrainingService] Photo downloaded, shape: {image.shape}")
-                    
-                    # Detect faces
-                    print(f"[TrainingService] Detecting faces...")
-                    faces = self.face_service.app.get(image)
-                    print(f"[TrainingService] Detected {len(faces)} faces")
-                    
-                    if not faces:
-                        print(f"[TrainingService] No faces found in {photo_id}")
-                        continue
-                        
-                    for i, face in enumerate(faces):
-                        print(f"[TrainingService] Processing face {i+1}/{len(faces)}...")
-                        # Get embedding
-                        embedding = face.embedding
-                        det_score = float(face.det_score)
-                        bbox = {
-                            "x": float(face.bbox[0]),
-                            "y": float(face.bbox[1]),
-                            "width": float(face.bbox[2] - face.bbox[0]),
-                            "height": float(face.bbox[3] - face.bbox[1])
-                        }
-                        
-                        # Recognize
-                        print(f"[TrainingService] Recognizing face...")
-                        person_id, confidence = await self.face_service.recognize_face(embedding)
-                        print(f"[TrainingService] Recognition result: person_id={person_id}, confidence={confidence}")
-                        
-                        verified = False
-                        if confidence is not None and confidence >= verified_threshold:
-                            verified = True
-                            print(f"[TrainingService] Setting verified=True (confidence {confidence:.3f} >= threshold {verified_threshold:.3f})")
-                        else:
-                            print(f"[TrainingService] Setting verified=False (confidence {confidence if confidence else 0:.3f} < threshold {verified_threshold:.3f})")
-                        
-                        # Save to DB
-                        print(f"[TrainingService] Saving face to DB...")
-                        
-                        # Convert numpy array to list for JSON serialization if needed
-                        embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else embedding
-                        
-                        face_id = await self.db_client.save_photo_face(
-                            photo_id=photo_id,
-                            person_id=person_id,
-                            bbox=bbox,
-                            descriptor=embedding_list,
-                            insightface_confidence=det_score,
-                            recognition_confidence=confidence,
-                            verified=verified
-                        )
-                        print(f"[TrainingService] Face saved successfully with face_id={face_id}, verified={verified}")
-                        
-                        # If recognized, save descriptor for future training
-                        if person_id:
-                            recognized_count += 1
-                            print(f"[TrainingService] Saving descriptor for person {person_id}...")
-                            await self.db_client.save_face_descriptor(
-                                person_id=person_id,
-                                descriptor=embedding_list,
-                                source_image_id=photo_id
-                            )
-                            print(f"[TrainingService] Descriptor saved")
-                        else:
-                            filtered_out_count += 1
-
-                    processed_count += 1
-                    print(f"[TrainingService] Image {photo_id} processed successfully")
-                    
-                except Exception as e:
-                    print(f"[ERROR] ERROR processing image {photo_id}: {e}")
-                    import traceback
-                    print(traceback.format_exc())
-                    continue
-            
-            print(f"[TrainingService] Batch recognition completed. Processed {processed_count} images.")
             return {
-                "processed": processed_count,
-                "recognized": recognized_count,
-                "filtered_out": filtered_out_count
+                'sessions': sessions,
+                'total': total
             }
-            
         except Exception as e:
-            print(f"[TrainingService] CRITICAL ERROR in batch_recognize: {e}")
+            print(f"[TrainingService] Error getting training history: {e}")
             import traceback
             print(traceback.format_exc())
-            raise e
+            # Return empty history instead of crashing
+            return {
+                'sessions': [],
+                'total': 0
+            }
+    
+    async def batch_recognize(
+        self,
+        gallery_ids: Optional[List[str]] = None,
+        confidence_threshold: float = 0.60
+    ) -> Dict:
+        """
+        Пакетное распознавание фото без ручной верификации.
+        Обрабатывает только фото где verified = false или NULL.
+        
+        Args:
+            gallery_ids: Список gallery_id для обработки (None = все)
+            confidence_threshold: Порог для сохранения результата (0-1)
+        
+        Returns:
+            Statistics about recognition results
+        """
+        print(f"[TrainingService] Starting batch recognition with threshold {confidence_threshold}")
+        
+        try:
+            # Ensure InsightFace is initialized
+            self.face_service._ensure_initialized()
+            
+            query = self.supabase.client.table("photo_faces").select(
+                "id, photo_id, insightface_bbox, insightface_descriptor, "
+                "gallery_images(id, image_url, gallery_id)"
+            ).or_("verified.is.null,verified.eq.false")
+            
+            if gallery_ids:
+                # Filter by gallery_ids through join
+                query = query.in_("gallery_images.gallery_id", gallery_ids)
+            
+            response = query.execute()
+            unverified_faces = response.data
+            
+            print(f"[TrainingService] Found {len(unverified_faces)} unverified faces")
+            
+            total_processed = 0
+            recognized_count = 0
+            unknown_count = 0
+            
+            for face_data in unverified_faces:
+                face_id = face_data['id']
+                photo_id = face_data['photo_id']
+                descriptor = face_data.get('insightface_descriptor')
+                
+                # If no descriptor, extract it first
+                if not descriptor:
+                    try:
+                        photo = face_data.get('gallery_images')
+                        if not photo:
+                            continue
+                        
+                        photo_url = photo['image_url']
+                        bbox = face_data['insightface_bbox']
+                        
+                        # Download and process photo
+                        image = await self._download_photo(photo_url)
+                        detected_faces = self.face_service.app.get(image)
+                        
+                        if not detected_faces:
+                            continue
+                        
+                        # Match to saved bbox via IoU
+                        saved_x1 = bbox['x']
+                        saved_y1 = bbox['y']
+                        saved_x2 = bbox['x'] + bbox['width']
+                        saved_y2 = bbox['y'] + bbox['height']
+                        
+                        best_match = None
+                        best_iou = 0
+                        
+                        for detected in detected_faces:
+                            det_bbox = detected.bbox
+                            
+                            x1 = max(saved_x1, det_bbox[0])
+                            y1 = max(saved_y1, det_bbox[1])
+                            x2 = min(saved_x2, det_bbox[2])
+                            y2 = min(saved_y2, det_bbox[3])
+                            
+                            intersection = max(0, x2 - x1) * max(0, y2 - y1)
+                            
+                            saved_area = (saved_x2 - saved_x1) * (saved_y2 - saved_y1)
+                            det_area = (det_bbox[2] - det_bbox[0]) * (det_bbox[3] - det_bbox[1])
+                            union = saved_area + det_area - intersection
+                            
+                            iou = intersection / union if union > 0 else 0
+                            
+                            if iou > best_iou:
+                                best_iou = iou
+                                best_match = detected
+                        
+                        if best_match and best_iou > 0.3:
+                            descriptor = best_match.embedding
+                            
+                            # Save descriptor to DB
+                            await self.supabase.update_face_descriptor(
+                                face_id=face_id,
+                                descriptor=descriptor,
+                                confidence=float(best_match.det_score),
+                                bbox={
+                                    'x': float(best_match.bbox[0]),
+                                    'y': float(best_match.bbox[1]),
+                                    'width': float(best_match.bbox[2] - best_match.bbox[0]),
+                                    'height': float(best_match.bbox[3] - best_match.bbox[1])
+                                },
+                                training_context={
+                                    'batch_recognition': True,
+                                    'bbox_iou': best_iou
+                                }
+                            )
+                        else:
+                            print(f"[WARNING] No match for face {face_id}")
+                            continue
+                    
+                    except Exception as e:
+                        print(f"[ERROR] Failed to extract descriptor for face {face_id}: {e}")
+                        continue
+
+                # Now recognize using the descriptor
+                if descriptor:
+                    descriptor_array = np.array(descriptor)
+                    
+                    # Recognize face
+                    result = await self.face_service.recognize_face(
+                        embedding=descriptor_array,
+                        confidence_threshold=confidence_threshold
+                    )
+                    
+                    if result:
+                        # Recognized with sufficient confidence
+                        await self.supabase.update_recognition_result(
+                            face_id=face_id,
+                            person_id=result['person_id'],
+                            recognition_confidence=result['confidence'],
+                            verified=False
+                        )
+                        recognized_count += 1
+                        print(f"[TrainingService] Recognized face {face_id} as {result['person_id']} ({result['confidence']:.2f})")
+                    else:
+                        # Below threshold - mark as unknown
+                        await self.supabase.update_recognition_result(
+                            face_id=face_id,
+                            person_id=None,
+                            recognition_confidence=0.0,
+                            verified=False
+                        )
+                        unknown_count += 1
+                    
+                    total_processed += 1
+            
+            print(f"[TrainingService] Batch recognition completed: {recognized_count} recognized, {unknown_count} unknown")
+            
+            return {
+                'total_processed': total_processed,
+                'recognized': recognized_count,
+                'unknown': unknown_count,
+                'recognition_rate': (recognized_count / total_processed * 100) if total_processed > 0 else 0,
+                'confidence_threshold': confidence_threshold
+            }
+        
+        except Exception as e:
+            print(f"[ERROR] Batch recognition failed: {e}")
+            import traceback
+            print(traceback.format_exc())
+            raise

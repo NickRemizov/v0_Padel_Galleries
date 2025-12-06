@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     console.log("[v2.21] Proxy: Image URL:", body.image_url)
     console.log("[v2.21] Proxy: Apply quality filters:", body.apply_quality_filters)
 
-    const data = await apiFetch("/detect-faces", {
+    const data = await apiFetch("/api/recognition/detect-faces", {
       method: "POST",
       body: JSON.stringify(body),
     })

@@ -7,11 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Trash2, Pencil, Images, RefreshCw } from "lucide-react"
+import { Trash2, Pencil, Images } from "lucide-react"
 import { deletePersonAction, updatePersonVisibilityAction } from "@/app/admin/actions"
 import { EditPersonDialog } from "./edit-person-dialog"
 import { PersonGalleryDialog } from "./person-gallery-dialog"
-import { RegenerateDescriptorsDialog } from "./regenerate-descriptors-dialog"
 import { getInitials } from "@/lib/utils/get-initials"
 import type { Person } from "@/lib/types"
 
@@ -29,7 +28,6 @@ export function PersonList({ people }: PersonListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingPerson, setEditingPerson] = useState<PersonWithStats | null>(null)
   const [galleryPerson, setGalleryPerson] = useState<PersonWithStats | null>(null)
-  const [regeneratePerson, setRegeneratePerson] = useState<PersonWithStats | null>(null)
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null)
 
   async function handleDelete(id: string) {
@@ -113,7 +111,6 @@ export function PersonList({ people }: PersonListProps) {
 
           const totalPhotoCount = (person.verified_photos_count || 0) + (person.high_confidence_photos_count || 0)
           const descriptorCount = person.descriptor_count || 0
-          const needsRegeneration = descriptorCount !== totalPhotoCount || totalPhotoCount === 0
 
           return (
             <Card key={person.id}>
@@ -183,19 +180,6 @@ export function PersonList({ people }: PersonListProps) {
                       <Button variant="outline" size="sm" onClick={() => setGalleryPerson(person)}>
                         <Images className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setRegeneratePerson(person)}
-                        disabled={!needsRegeneration}
-                        title={
-                          needsRegeneration
-                            ? "Регенерировать дескрипторы"
-                            : "Дескрипторы в порядке (количество совпадает с количеством фото)"
-                        }
-                      >
-                        <RefreshCw className="h-4 w-4" />
-                      </Button>
                       <Button variant="outline" size="sm" onClick={() => setEditingPerson(person)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -258,15 +242,6 @@ export function PersonList({ people }: PersonListProps) {
           personName={galleryPerson.real_name}
           open={!!galleryPerson}
           onOpenChange={(open) => !open && setGalleryPerson(null)}
-        />
-      )}
-
-      {regeneratePerson && (
-        <RegenerateDescriptorsDialog
-          personId={regeneratePerson.id}
-          personName={regeneratePerson.real_name}
-          open={!!regeneratePerson}
-          onOpenChange={(open) => !open && setRegeneratePerson(null)}
         />
       )}
     </>

@@ -2,12 +2,11 @@ import { z } from "zod"
 
 const envSchema = z.object({
   // Server-side only
-  FASTAPI_URL: z.string().url("FASTAPI_URL must be a valid URL"),
-  API_SECRET_KEY: z.string().min(1, "API_SECRET_KEY is required for Python API auth"),
+  FASTAPI_URL: z.string().url("FASTAPI_URL must be a valid URL").optional(),
 
-  // Supabase (required)
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL"),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
+  // Supabase (optional for client preview)
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL").optional(),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required").optional(),
 
   // Optional server-side variables
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
@@ -50,13 +49,10 @@ function validateEnv() {
     if (error instanceof z.ZodError) {
       const missingVars = error.errors.map((err) => `${err.path.join(".")}: ${err.message}`).join("\n")
 
-      console.error("❌ Invalid environment variables:")
-      console.error(missingVars)
+      console.warn("⚠️ Invalid environment variables:")
+      console.warn(missingVars)
 
-      throw new Error(
-        `Environment validation failed. Missing or invalid variables:\n${missingVars}\n\n` +
-          `Please check your environment variables in Vercel dashboard or .env file.`,
-      )
+      return process.env as any
     }
     throw error
   }

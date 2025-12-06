@@ -18,7 +18,15 @@ interface ApiFetchOptions extends RequestInit {
 }
 
 export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<T> {
-  const { timeout = 30000, retries = 2, headers = {}, ...fetchOptions } = options
+  const { timeout = 30000, retries = 3, headers = {}, ...fetchOptions } = options
+
+  if (!env.FASTAPI_URL) {
+    throw new ApiError(
+      503,
+      "FASTAPI_URL_MISSING",
+      "FASTAPI_URL environment variable is not set. Please configure it in Vercel dashboard.",
+    )
+  }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`
   const url = `${env.FASTAPI_URL}${normalizedPath}`
@@ -37,7 +45,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         headers: {
           "Content-Type": "application/json",
           "x-request-id": requestId,
-          "X-API-Key": env.API_SECRET_KEY,
           ...headers,
         },
         signal: controller.signal,
@@ -56,7 +63,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
             errorMessage = errorData.message || errorData.detail || errorMessage
             errorCode = errorData.code
           } catch {
-            // Failed to parse error JSON, use status text
             errorMessage = response.statusText || errorMessage
           }
         } else {
@@ -64,9 +70,14 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
           errorMessage = text || response.statusText || errorMessage
         }
 
-        if (response.status >= 500 && attemptNumber < retries) {
-          console.warn(`[apiClient] Request ${requestId} failed with ${response.status}, retrying...`)
-          await new Promise((resolve) => setTimeout(resolve, 1000 * attemptNumber))
+        const shouldRetry = (response.status >= 500 || response.status === 503) && attemptNumber < retries
+
+        if (shouldRetry) {
+          const backoffDelay = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000)
+          console.warn(
+            `[apiClient] Request ${requestId} failed with ${response.status}, retrying after ${backoffDelay}ms...`,
+          )
+          await new Promise((resolve) => setTimeout(resolve, backoffDelay))
           return fetchWithTimeout(attemptNumber + 1)
         }
 
@@ -86,11 +97,12 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
       if (error instanceof Error && error.name === "AbortError") {
         if (attemptNumber < retries) {
-          console.warn(`[apiClient] Request ${requestId} timed out, retrying...`)
-          await new Promise((resolve) => setTimeout(resolve, 1000 * attemptNumber))
+          const backoffDelay = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000)
+          console.warn(`[apiClient] Request ${requestId} timed out, retrying after ${backoffDelay}ms...`)
+          await new Promise((resolve) => setTimeout(resolve, backoffDelay))
           return fetchWithTimeout(attemptNumber + 1)
         }
-        throw new ApiError(408, "TIMEOUT", `Request timed out after ${timeout}ms`)
+        throw new ApiError(408, "TIMEOUT", `Request timed out after ${timeout}ms (${retries} attempts)`)
       }
 
       if (error instanceof ApiError) {

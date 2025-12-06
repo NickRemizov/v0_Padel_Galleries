@@ -380,5 +380,5 @@ console.log("[v0] Face metrics:", {
    - RECOGNITION_PROCESS_DOCUMENTATION.md
 \`\`\`
 
-```md file="AUTO-DEPLOY-README.md" isDeleted="true"
+\`\`\`md file="AUTO-DEPLOY-README.md" isDeleted="true"
 ...deleted...

@@ -7,19 +7,12 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle2, XCircle } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  saveFaceDescriptorAction,
-  savePhotoFaceAction,
-  updatePhotoFaceAction,
-  getPhotoFacesAction,
-  getBatchPhotoFacesAction,
-  deletePhotoFaceAction,
-  markPhotoAsProcessedAction, // Added import for marking photo as processed
-} from "@/app/admin/actions"
-import { calculateIoU } from "@/lib/face-recognition/utils"
+import { getBatchPhotoFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions"
+import { processPhotoAction } from "@/app/admin/actions/faces"
+import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v3.15" // Updated version to track has_been_processed marking
+const VERSION = "v4.2-UnifiedConfig" // Updated for unified config
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -43,74 +36,65 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
   const [currentIndex, setCurrentIndex] = useState(0)
   const [applyQualityFilters, setApplyQualityFilters] = useState(true)
 
-  async function detectFacesInsightFace(imageUrl: string) {
-    const apiUrl = `/api/face-detection/detect` // Fixed endpoint back to /api/face-detection/detect (Next.js proxy that calls FastAPI /detect-faces)
-    console.log(`[${VERSION}] Calling detect-faces proxy API:`, apiUrl)
+  async function processImageFaces(photoId: string, imageUrl: string, qualityParams: any) {
+    console.log(`[${VERSION}] Processing image: ${photoId}`)
     console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
+    console.log(`[${VERSION}] Quality params:`, qualityParams)
 
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_url: imageUrl,
-        apply_quality_filters: applyQualityFilters,
-      }),
-    })
+    const result = await processPhotoAction(
+      photoId,
+      false,
+      applyQualityFilters,
+      applyQualityFilters ? qualityParams : undefined,
+    )
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error(`[${VERSION}] Detect faces error:`, error)
-      throw new Error("Failed to detect faces")
+    if (!result.success) {
+      throw new Error(result.error || "Failed to process photo")
     }
 
-    const data = await response.json()
-    console.log(`[${VERSION}] Detected`, data.faces.length, "faces")
+    const facesFound = result.faces?.length || 0
+    const facesRecognized = result.faces?.filter((f: any) => f.person_id).length || 0
 
-    return data.faces
-      .filter((face: any) => face.insightface_bbox && face.insightface_bbox.x !== undefined)
-      .map((face: any) => ({
-        insightface_bbox: face.insightface_bbox, // Use insightface_bbox from backend
-        insightface_confidence: face.confidence, // Map from API response
-        insightface_descriptor: face.embedding, // Map from API response
-      }))
-  }
-
-  async function recognizeFaceInsightFace(embedding: number[]) {
-    const apiUrl = `/api/face-detection/recognize`
-    console.log(`[${VERSION}] Calling recognize-face proxy API:`, apiUrl)
-
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        embedding: embedding,
-      }),
-    })
-
-    if (!response.ok) {
-      console.log(`[${VERSION}] Recognize face failed (no match)`)
-      return null
-    }
-
-    const data = await response.json()
-    console.log(`[${VERSION}] Recognition result:`, data)
+    console.log(`[${VERSION}] Detected ${facesFound} faces, recognized ${facesRecognized}`)
 
     return {
-      personId: data.person_id,
-      confidence: data.confidence,
+      facesFound,
+      facesRecognized,
     }
   }
 
   async function startProcessing() {
+    console.log(`[${VERSION}] AUTO-RECOGNITION: startProcessing called`)
+    console.log(`[${VERSION}] AUTO-RECOGNITION: mode =`, mode)
+    console.log(`[${VERSION}] AUTO-RECOGNITION: images.length =`, images.length)
+
+    const configResult = await getRecognitionConfigAction()
+    const qualityParams = {
+      confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
+      minDetectionScore: configResult.config?.quality_filters?.min_detection_score || 0.7,
+      minFaceSize: configResult.config?.quality_filters?.min_face_size || 80,
+      minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
+    }
+    console.log(`[${VERSION}] AUTO-RECOGNITION: Using quality params from config:`, qualityParams)
+
     setProcessing(true)
     setCurrentIndex(-1)
 
     let imagesToProcess = images
 
     if (mode === "remaining") {
+      console.log(`[${VERSION}] AUTO-RECOGNITION: Mode is 'remaining', calling getBatchPhotoFacesAction...`)
       const batchResult = await getBatchPhotoFacesAction(images.map((img) => img.id))
+      console.log(`[${VERSION}] AUTO-RECOGNITION: getBatchPhotoFacesAction result:`, batchResult)
+
+      console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.success =`, batchResult.success)
+      console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.data type =`, typeof batchResult.data)
+      console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.data Array.isArray =`, Array.isArray(batchResult.data))
 
       if (batchResult.success && batchResult.data) {
+        console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult.data.length =`, batchResult.data.length)
+        console.log(`[${VERSION}] AUTO-RECOGNITION: First 3 faces:`, batchResult.data.slice(0, 3))
+
         const facesMap = new Map<string, any[]>()
         for (const face of batchResult.data) {
           if (!facesMap.has(face.photo_id)) {
@@ -119,12 +103,49 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
           facesMap.get(face.photo_id)!.push(face)
         }
 
+        console.log(`[${VERSION}] AUTO-RECOGNITION: facesMap size =`, facesMap.size)
+        console.log(`[${VERSION}] AUTO-RECOGNITION: facesMap keys:`, Array.from(facesMap.keys()))
+
         imagesToProcess = images.filter((image) => {
           const faces = facesMap.get(image.id) || []
+
+          console.log(`[${VERSION}] AUTO-RECOGNITION: Checking photo ${image.id} (${image.original_filename})`)
+          console.log(`[${VERSION}] AUTO-RECOGNITION:   - faces.length = ${faces.length}`)
+
+          // Если нет лиц в БД - это новое фото, нужно обработать
+          if (faces.length === 0) {
+            console.log(`[${VERSION}] AUTO-RECOGNITION:   - Decision: PROCESS (no faces in DB)`)
+            return true
+          }
+
+          faces.forEach((face, idx) => {
+            console.log(
+              `[${VERSION}] AUTO-RECOGNITION:   - Face ${idx}: person_id=${face.person_id}, verified=${face.verified}`,
+            )
+          })
+
+          // Если есть лица - обрабатываем только если есть неверифицированные
           const hasUnverifiedFaces = faces.some((face) => !face.verified)
+          if (hasUnverifiedFaces) {
+            console.log(`[${VERSION}] AUTO-RECOGNITION:   - Decision: PROCESS (has unverified faces)`)
+          } else {
+            console.log(`[${VERSION}] AUTO-RECOGNITION:   - Decision: SKIP (all faces verified)`)
+          }
           return hasUnverifiedFaces
         })
+
+        console.log(`[${VERSION}] AUTO-RECOGNITION: After filter, imagesToProcess.length =`, imagesToProcess.length)
+      } else {
+        console.log(`[${VERSION}] AUTO-RECOGNITION: batchResult NOT success or no data, using all images`)
       }
+    }
+
+    console.log(`[${VERSION}] AUTO-RECOGNITION: Final imagesToProcess.length =`, imagesToProcess.length)
+
+    if (imagesToProcess.length === 0) {
+      console.log(`[${VERSION}] AUTO-RECOGNITION: No images to process, finishing...`)
+      setProcessing(false)
+      return
     }
 
     const initialResults: ProcessingResult[] = imagesToProcess.map((img) => ({
@@ -135,6 +156,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
       status: "pending",
     }))
     setResults(initialResults)
+    console.log(`[${VERSION}] AUTO-RECOGNITION: Set initialResults, length =`, initialResults.length)
 
     const batchSize = 2
 
@@ -145,152 +167,14 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
       setResults((prev) => prev.map((r, idx) => (idx === i ? { ...r, status: "processing" as const } : r)))
 
       try {
-        const existingFacesResult = await getPhotoFacesAction(image.id)
+        const existingFacesResult = await getBatchPhotoFacesAction([image.id])
         const existingFaces = existingFacesResult.success ? existingFacesResult.data || [] : []
 
         console.log(`[${VERSION}] Image ${image.original_filename}: Found ${existingFaces.length} existing faces`)
 
-        const faces = await detectFacesInsightFace(image.image_url)
+        const result = await processImageFaces(image.id, image.image_url, qualityParams)
 
-        const matchedFaceIds = new Set<string>()
-
-        if (faces.length === 0) {
-          if (applyQualityFilters) {
-            console.log(`[${VERSION}] No faces detected with quality filters, deleting all unverified faces`)
-            for (const existingFace of existingFaces) {
-              if (!existingFace.verified) {
-                await deletePhotoFaceAction(existingFace.id)
-                console.log(`[${VERSION}] Deleted unverified face ${existingFace.id}`)
-              }
-            }
-          }
-
-          await markPhotoAsProcessedAction(image.id)
-          console.log(`[${VERSION}] Marked photo ${image.id} as processed (no faces detected)`)
-
-          setResults((prev) =>
-            prev.map((r, idx) =>
-              idx === i
-                ? {
-                    ...r,
-                    facesFound: 0,
-                    facesRecognized: 0,
-                    status: "success" as const,
-                  }
-                : r,
-            ),
-          )
-          continue
-        }
-
-        let recognizedCount = 0
-        let skippedCount = 0
-        let allFacesFullConfidence = true
-
-        for (let j = 0; j < faces.length; j++) {
-          const face = faces[j]
-
-          if (!face.insightface_bbox || face.insightface_bbox.x === undefined) {
-            console.warn(`[${VERSION}] Skipping face with invalid bounding box`)
-            continue
-          }
-
-          const match = await recognizeFaceInsightFace(face.insightface_descriptor)
-
-          const overlappingFace = existingFaces.find((existing) => {
-            if (!existing.insightface_bbox) return false
-            const iou = calculateIoU(face.insightface_bbox, existing.insightface_bbox)
-            return iou > 0.5
-          })
-
-          if (overlappingFace) {
-            matchedFaceIds.add(overlappingFace.id)
-
-            if (overlappingFace.verified) {
-              console.log(
-                `[${VERSION}] Skipping face - already verified as ${overlappingFace.people?.real_name || "unknown"}`,
-              )
-              skippedCount++
-              continue
-            }
-
-            console.log(`[${VERSION}] Updating unverified face with new recognition results`)
-            if (match && match.personId) {
-              if (match.confidence < 1.0) {
-                allFacesFullConfidence = false
-              }
-              await saveFaceDescriptorAction(match.personId, face.insightface_descriptor, image.id)
-              await updatePhotoFaceAction(overlappingFace.id, {
-                person_id: match.personId,
-                insightface_confidence: face.insightface_confidence, // Detection confidence from detector
-                recognition_confidence: match.confidence, // Recognition confidence from matching
-                verified: false,
-              })
-              recognizedCount++
-            } else {
-              allFacesFullConfidence = false
-              await updatePhotoFaceAction(overlappingFace.id, {
-                person_id: null,
-                recognition_confidence: null, // No recognition confidence when not matched
-                verified: false,
-              })
-            }
-            continue
-          }
-
-          if (match && match.personId) {
-            if (match.confidence < 1.0) {
-              allFacesFullConfidence = false
-            }
-            await saveFaceDescriptorAction(match.personId, face.insightface_descriptor, image.id)
-            await savePhotoFaceAction(
-              image.id,
-              match.personId,
-              face.insightface_bbox,
-              face.insightface_descriptor,
-              face.insightface_confidence, // Detection confidence
-              match.confidence, // Recognition confidence
-              false,
-            )
-            recognizedCount++
-          } else {
-            allFacesFullConfidence = false
-            await savePhotoFaceAction(
-              image.id,
-              null,
-              face.insightface_bbox,
-              face.insightface_descriptor,
-              face.insightface_confidence,
-              0, // Recognition confidence is 0 when not recognized
-              false,
-            )
-          }
-        }
-
-        if (applyQualityFilters) {
-          for (const existingFace of existingFaces) {
-            if (!existingFace.verified && !matchedFaceIds.has(existingFace.id)) {
-              await deletePhotoFaceAction(existingFace.id)
-              console.log(
-                `[${VERSION}] Deleted unmatched unverified face ${existingFace.id} (filtered out by quality settings)`,
-              )
-            }
-          }
-        }
-
-        if (mode === "all" && !allFacesFullConfidence) {
-          for (const existingFace of existingFaces) {
-            if (existingFace.verified) {
-              await updatePhotoFaceAction(existingFace.id, {
-                verified: false,
-              })
-            }
-          }
-        }
-
-        console.log(
-          `[${VERSION}] Processed ${faces.length} faces, recognized ${recognizedCount}, skipped ${skippedCount} verified faces`,
-        )
+        console.log(`[${VERSION}] Processed ${result.facesFound} faces, recognized ${result.facesRecognized}`)
 
         await markPhotoAsProcessedAction(image.id)
         console.log(`[${VERSION}] Marked photo ${image.id} as processed`)
@@ -300,8 +184,8 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
             idx === i
               ? {
                   ...r,
-                  facesFound: faces.length,
-                  facesRecognized: recognizedCount,
+                  facesFound: result.facesFound,
+                  facesRecognized: result.facesRecognized,
                   status: "success" as const,
                 }
               : r,
@@ -368,7 +252,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
                   htmlFor="apply-quality-filters-auto"
                   className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
-                  Применять настройки качества
+                  Применять настройки качества из глобального конфига
                 </label>
               </div>
               <p className="text-xs text-muted-foreground">

@@ -32,8 +32,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ru" className={`${oswald.variable} ${playfair.variable}`}>
-      <body className="font-sans antialiased">
+    <html lang="ru">
+      <body className={`font-sans ${oswald.variable} ${playfair.variable}`}>
         <AuthProvider>
           <Suspense fallback={null}>{children}</Suspense>
         </AuthProvider>

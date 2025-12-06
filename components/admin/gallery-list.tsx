@@ -7,9 +7,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Trash2, ExternalLink } from "lucide-react"
 import { deleteGalleryAction } from "@/app/admin/actions"
 import { EditGalleryDialog } from "./edit-gallery-dialog"
-import { GalleryImagesManager } from "./gallery-images-manager"
+import { GalleryImagesManager } from "./gallery-images"
 import type { Gallery, Photographer, Location, Organizer } from "@/lib/types"
-import { getGalleryFaceRecognitionStatsAction } from "@/app/admin/actions"
+import { getGalleriesFaceRecognitionStatsAction } from "@/app/admin/actions/galleries"
 
 interface GalleryListProps {
   galleries: Gallery[]
@@ -36,30 +36,24 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
   >(new Map())
 
   useEffect(() => {
-    async function loadVerificationStatus() {
-      const statsMap = new Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>()
+    async function loadStats() {
+      if (galleries.length === 0) return
 
-      for (const gallery of galleries) {
-        const result = await getGalleryFaceRecognitionStatsAction(gallery.id)
-        if (result.success && result.data) {
-          const stats = Object.values(result.data)
-          const hasImages = stats.length > 0
-          const allVerified = stats.every((stat) => stat.fullyRecognized)
-          const verifiedCount = stats.filter((stat) => stat.fullyRecognized).length
-          const totalCount = stats.length
+      const galleryIds = galleries.map((g) => g.id)
+      const result = await getGalleriesFaceRecognitionStatsAction(galleryIds)
 
-          statsMap.set(gallery.id, {
-            isFullyVerified: hasImages && allVerified,
-            verifiedCount,
-            totalCount,
-          })
+      if (result.success && result.data) {
+        const statsMap = new Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>()
+
+        for (const [galleryId, stats] of Object.entries(result.data)) {
+          statsMap.set(galleryId, stats)
         }
-      }
 
-      setGalleryStats(statsMap)
+        setGalleryStats(statsMap)
+      }
     }
 
-    loadVerificationStatus()
+    loadStats()
   }, [galleries])
 
   async function handleDelete(id: string) {

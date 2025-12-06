@@ -6,16 +6,14 @@ import { PhotographersManager } from "@/components/admin/photographers-manager"
 import { LocationsManager } from "@/components/admin/locations-manager"
 import { OrganizersManager } from "@/components/admin/organizers-manager"
 import { PeopleManager } from "@/components/admin/people-manager"
-// UNUSED: Batch recognition disabled - code kept for future reference
-// import { BatchRecognitionManager } from "@/components/admin/batch-recognition-manager"
 import { RecognitionStatsDialog } from "@/components/admin/recognition-stats-dialog"
 import { LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { signOutAction } from "@/app/admin/actions"
+import { signOutAction } from "@/app/admin/actions/auth"
 import { FaceTrainingManager } from "@/components/admin/face-training-manager"
 import { ServiceManager } from "@/components/admin/service-manager"
 
-const APP_VERSION = "0.8.2" // Updated version to 0.8.2 after documentation update
+const APP_VERSION = "v2.3.7"
 
 export const dynamic = "force-dynamic"
 
@@ -36,7 +34,7 @@ export default async function AdminPage() {
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">Админ-панель</h1>
-            <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">v{APP_VERSION}</span>
+            <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">{APP_VERSION}</span>
           </div>
           <div className="flex items-center gap-2">
             <RecognitionStatsDialog />
@@ -77,11 +75,6 @@ export default async function AdminPage() {
           <TabsContent value="locations" className="mt-6">
             <LocationsManager />
           </TabsContent>
-
-          {/* UNUSED: Batch recognition disabled - code kept for future reference */}
-          {/* <TabsContent value="batch" className="mt-6">
-            <BatchRecognitionManager />
-          </TabsContent> */}
 
           <TabsContent value="photographers" className="mt-6">
             <PhotographersManager />

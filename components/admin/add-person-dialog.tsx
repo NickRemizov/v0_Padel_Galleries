@@ -31,7 +31,6 @@ export function AddPersonDialog({
 }: AddPersonDialogProps = {}) {
   const [internalOpen, setInternalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setOpen = controlledOnOpenChange || setInternalOpen
@@ -41,11 +40,7 @@ export function AddPersonDialog({
     const form = event.currentTarget
     const formData = new FormData(form)
     setLoading(true)
-    setError(null)
-    console.log("[v0] AddPersonDialog: handleSubmit called")
-
     const result = await addPersonAction(formData)
-    console.log("[v0] AddPersonDialog: result =", result)
     setLoading(false)
 
     if (result.success) {
@@ -53,9 +48,6 @@ export function AddPersonDialog({
       if (onPersonCreated && result.data) {
         onPersonCreated(result.data.id, result.data.real_name)
       }
-    } else {
-      console.log("[v0] AddPersonDialog: error =", result.error)
-      setError(result.error || "Неизвестная ошибка")
     }
   }
 
@@ -66,8 +58,6 @@ export function AddPersonDialog({
           <DialogTitle>Добавить человека</DialogTitle>
           <DialogDescription>Заполните информацию о человеке</DialogDescription>
         </DialogHeader>
-
-        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
 
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">

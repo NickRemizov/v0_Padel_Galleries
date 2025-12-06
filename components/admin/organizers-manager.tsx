@@ -1,23 +1,11 @@
-import { env } from "@/lib/env"
+import { createClient } from "@/lib/supabase/server"
 import { AddOrganizerDialog } from "@/components/admin/add-organizer-dialog"
 import { OrganizerList } from "@/components/admin/organizer-list"
 
-async function getOrganizers() {
-  const res = await fetch(`${env.FASTAPI_URL}/api/crud/organizers`, {
-    cache: "no-store",
-    headers: {
-      "X-API-Key": env.API_SECRET_KEY,
-    },
-  })
-  if (!res.ok) {
-    console.error("[v0] Failed to fetch organizers:", res.status)
-    return []
-  }
-  return res.json()
-}
-
 export async function OrganizersManager() {
-  const organizers = await getOrganizers()
+  const supabase = await createClient()
+
+  const { data: organizers } = await supabase.from("organizers").select("*").order("name")
 
   return (
     <div className="space-y-6">
