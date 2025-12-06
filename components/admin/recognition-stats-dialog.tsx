@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { BarChart3 } from "lucide-react"
-import { getRecognitionStatsAction } from "@/app/admin/actions"
+import { getRecognitionStatsAction, getRecognitionConfigAction } from "@/app/admin/actions"
 
 export function RecognitionStatsDialog() {
   const [open, setOpen] = useState(false)
@@ -21,7 +21,10 @@ export function RecognitionStatsDialog() {
 
   const loadStats = async () => {
     setLoading(true)
-    const result = await getRecognitionStatsAction()
+    const configResult = await getRecognitionConfigAction()
+    const confidenceThreshold = configResult.config?.confidence_thresholds?.high_data || 0.6
+
+    const result = await getRecognitionStatsAction(confidenceThreshold)
     if (result.success && result.data) {
       setStats(result.data)
     }

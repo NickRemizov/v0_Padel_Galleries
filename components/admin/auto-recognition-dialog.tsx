@@ -9,9 +9,10 @@ import { Loader2, CheckCircle2, XCircle } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { getBatchPhotoFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions"
 import { processPhotoAction } from "@/app/admin/actions/faces"
+import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v4.1" // Updated for Server Actions architecture (no embeddings, no fetch)
+const VERSION = "v4.2-UnifiedConfig" // Updated for unified config
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -35,11 +36,17 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
   const [currentIndex, setCurrentIndex] = useState(0)
   const [applyQualityFilters, setApplyQualityFilters] = useState(true)
 
-  async function processImageFaces(photoId: string, imageUrl: string) {
+  async function processImageFaces(photoId: string, imageUrl: string, qualityParams: any) {
     console.log(`[${VERSION}] Processing image: ${photoId}`)
     console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
+    console.log(`[${VERSION}] Quality params:`, qualityParams)
 
-    const result = await processPhotoAction(photoId)
+    const result = await processPhotoAction(
+      photoId,
+      false,
+      applyQualityFilters,
+      applyQualityFilters ? qualityParams : undefined,
+    )
 
     if (!result.success) {
       throw new Error(result.error || "Failed to process photo")
@@ -60,6 +67,15 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     console.log(`[${VERSION}] AUTO-RECOGNITION: startProcessing called`)
     console.log(`[${VERSION}] AUTO-RECOGNITION: mode =`, mode)
     console.log(`[${VERSION}] AUTO-RECOGNITION: images.length =`, images.length)
+
+    const configResult = await getRecognitionConfigAction()
+    const qualityParams = {
+      confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
+      minDetectionScore: configResult.config?.quality_filters?.min_detection_score || 0.7,
+      minFaceSize: configResult.config?.quality_filters?.min_face_size || 80,
+      minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
+    }
+    console.log(`[${VERSION}] AUTO-RECOGNITION: Using quality params from config:`, qualityParams)
 
     setProcessing(true)
     setCurrentIndex(-1)
@@ -156,7 +172,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
 
         console.log(`[${VERSION}] Image ${image.original_filename}: Found ${existingFaces.length} existing faces`)
 
-        const result = await processImageFaces(image.id, image.image_url)
+        const result = await processImageFaces(image.id, image.image_url, qualityParams)
 
         console.log(`[${VERSION}] Processed ${result.facesFound} faces, recognized ${result.facesRecognized}`)
 
@@ -236,7 +252,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
                   htmlFor="apply-quality-filters-auto"
                   className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
-                  Применять настройки качества
+                  Применять настройки качества из глобального конфига
                 </label>
               </div>
               <p className="text-xs text-muted-foreground">

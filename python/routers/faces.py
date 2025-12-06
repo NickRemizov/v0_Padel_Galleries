@@ -510,3 +510,96 @@ async def batch_verify_faces(
             "index_updated": False,
             "verified": False
         }
+
+
+@router.get("/statistics")
+async def get_face_statistics(
+    confidence_threshold: float = 0.6,
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Get face recognition statistics for admin panel.
+    
+    Args:
+        confidence_threshold: Minimum confidence for high-confidence faces (default: 0.6)
+    
+    Returns:
+        Statistics including total people, verified faces, and high-confidence faces
+    """
+    try:
+        logger.info(f"[Faces API] Getting face statistics with confidence_threshold={confidence_threshold}")
+        
+        # Count people
+        people_result = supabase_db.client.table("people").select("id, real_name, telegram_name", count="exact").execute()
+        people_data = people_result.data or []
+        total_people = people_result.count or 0
+        
+        # Get all photo_faces
+        faces_result = supabase_db.client.table("photo_faces").select(
+            "id, photo_id, person_id, verified, confidence"
+        ).execute()
+        
+        faces = faces_result.data or []
+        
+        # Calculate statistics
+        verified_count = len([f for f in faces if f.get("verified")])
+        high_conf_count = len([
+            f for f in faces 
+            if f.get("confidence", 0) >= confidence_threshold and not f.get("verified")
+        ])
+        
+        # Calculate per-person statistics
+        faces_by_person = {}
+        for face in faces:
+            person_id = face.get("person_id")
+            if not person_id:
+                continue
+            
+            if person_id not in faces_by_person:
+                faces_by_person[person_id] = []
+            faces_by_person[person_id].append(face)
+        
+        people_stats = []
+        for person in people_data:
+            person_id = person["id"]
+            person_faces = faces_by_person.get(person_id, [])
+            
+            # Get unique photo IDs
+            verified_photo_ids = set(
+                f["photo_id"] for f in person_faces if f.get("verified")
+            )
+            high_conf_photo_ids = set(
+                f["photo_id"] for f in person_faces 
+                if f.get("confidence", 0) >= confidence_threshold and not f.get("verified")
+            )
+            
+            total_confirmed = len(verified_photo_ids) + len(high_conf_photo_ids)
+            
+            people_stats.append({
+                "id": person_id,
+                "name": person.get("real_name"),
+                "telegramName": person.get("telegram_name"),
+                "verifiedPhotos": len(verified_photo_ids),
+                "highConfidencePhotos": len(high_conf_photo_ids),
+                "totalConfirmed": total_confirmed,
+            })
+        
+        # Sort by total confirmed photos
+        people_stats.sort(key=lambda x: x["totalConfirmed"], reverse=True)
+        
+        logger.info(f"[Faces API] Statistics: {total_people} people, {verified_count} verified faces, {high_conf_count} high-confidence faces")
+        
+        return {
+            "success": True,
+            "data": {
+                "summary": {
+                    "totalPeople": total_people,
+                    "totalVerifiedFaces": verified_count,
+                    "totalHighConfidenceFaces": high_conf_count,
+                },
+                "peopleStats": people_stats,
+            }
+        }
+    except Exception as e:
+        logger.error(f"[Faces API] Error getting statistics: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
