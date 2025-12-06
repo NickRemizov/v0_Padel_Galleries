@@ -1,3 +1,5 @@
+import type { BoundingBox } from "./utils/geometry"
+
 export interface Photographer {
   id: string
   name: string
@@ -139,12 +141,7 @@ export interface PhotoFace {
   id: string
   photo_id: string
   person_id: string | null
-  insightface_bbox: {
-    x: number
-    y: number
-    width: number
-    height: number
-  }
+  insightface_bbox: BoundingBox
   confidence: number | null
   verified: boolean
   created_at: string
@@ -154,7 +151,7 @@ export interface PhotoFace {
 }
 
 export interface DetectedFace {
-  boundingBox: { x: number; y: number; width: number; height: number }
+  boundingBox: BoundingBox
   confidence: number
   blur_score?: number
   embedding: number[]
@@ -169,24 +166,14 @@ export interface UnknownFaceCluster {
 export interface UnknownFace {
   photo_id: string
   photo_url: string
-  bbox: {
-    x: number
-    y: number
-    width: number
-    height: number
-  }
+  bbox: BoundingBox
   descriptor: number[]
 }
 
 export interface TaggedFace {
   id: string
   face: {
-    boundingBox: {
-      x: number
-      y: number
-      width: number
-      height: number
-    }
+    boundingBox: BoundingBox
     confidence: number
     blur_score: number
     embedding: number[] | null
@@ -197,5 +184,6 @@ export interface TaggedFace {
   verified: boolean
 }
 
+export type { BoundingBox }
 export type { Result } from "./types/result"
 export { success, failure, isSuccess, isFailure } from "./types/result"
