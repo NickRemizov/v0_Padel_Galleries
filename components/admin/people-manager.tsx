@@ -12,14 +12,20 @@ type PersonWithStats = Person & {
 export async function PeopleManager() {
   const supabase = await createClient()
 
+  const { data: configData } = await supabase.from("face_training_config").select("settings").eq("id", 1).single()
+
+  const confidenceThreshold = configData?.settings?.confidence_thresholds?.high_data ?? 0.6
+  // </CHANGE>
+
   const { data: people } = await supabase.from("people").select("*").order("real_name", { ascending: true })
 
   let allPhotoFaces: Array<{
     person_id: string
     photo_id: string
     verified: boolean | null
-    confidence: number | null
+    recognition_confidence: number | null
   }> = []
+  // </CHANGE>
 
   const pageSize = 1000
   let page = 0
@@ -31,8 +37,9 @@ export async function PeopleManager() {
 
     const { data: pageData } = await supabase
       .from("photo_faces")
-      .select("person_id, photo_id, verified, confidence")
+      .select("person_id, photo_id, verified, recognition_confidence")
       .range(from, to)
+    // </CHANGE>
 
     if (pageData && pageData.length > 0) {
       allPhotoFaces = [...allPhotoFaces, ...pageData]
@@ -79,7 +86,10 @@ export async function PeopleManager() {
     const photoIdsMap = new Map<string, { hasVerified: boolean; hasHighConfidence: boolean }>()
 
     for (const face of personFaces) {
-      const meetsDisplayCriteria = face.verified === true || (face.confidence !== null && face.confidence >= 0.6)
+      const meetsDisplayCriteria =
+        face.verified === true ||
+        (face.recognition_confidence !== null && face.recognition_confidence >= confidenceThreshold)
+      // </CHANGE>
 
       if (!meetsDisplayCriteria) {
         continue
@@ -95,9 +105,10 @@ export async function PeopleManager() {
         photoData.hasVerified = true
       }
 
-      if (face.confidence !== null && face.confidence >= 0.6) {
+      if (face.recognition_confidence !== null && face.recognition_confidence >= confidenceThreshold) {
         photoData.hasHighConfidence = true
       }
+      // </CHANGE>
     }
 
     const verifiedPhotosCount = Array.from(photoIdsMap.values()).filter((data) => data.hasVerified).length
