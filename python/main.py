@@ -58,7 +58,6 @@ app.add_middleware(
 
 print("[Main] ✓ CORS middleware configured with allow_origins=['*']")
 
-# ... existing code ...
 
 print("[Main] Creating singleton service instances...")
 

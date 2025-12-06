@@ -183,14 +183,15 @@ export async function deleteOrganizerAction(organizerId: string) {
   }
 }
 
-// Deprecated Photographer Actions - moved to app/admin/actions/photographers.ts
-// Use addPhotographerAction, updatePhotographerAction, deletePhotographerAction from photographers.ts
-export async function addPhotographerActionDeprecated(name: string) {
-  // Deprecated - use photographers.ts instead
+// Photographers
+export async function addPhotographerAction(name: string) {
   try {
     const supabase = await createClient()
+
     const { error } = await supabase.from("photographers").insert({ name })
+
     if (error) throw error
+
     revalidatePath("/admin")
     logger.info("actions/entities", "Photographer added successfully", { name })
     return { success: true }
@@ -200,12 +201,14 @@ export async function addPhotographerActionDeprecated(name: string) {
   }
 }
 
-export async function updatePhotographerActionDeprecated(photographerId: string, name: string) {
-  // Deprecated - use photographers.ts instead
+export async function updatePhotographerAction(photographerId: string, name: string) {
   try {
     const supabase = await createClient()
+
     const { error } = await supabase.from("photographers").update({ name }).eq("id", photographerId)
+
     if (error) throw error
+
     revalidatePath("/admin")
     logger.info("actions/entities", "Photographer updated successfully", { photographerId })
     return { success: true }
@@ -215,12 +218,14 @@ export async function updatePhotographerActionDeprecated(photographerId: string,
   }
 }
 
-export async function deletePhotographerActionDeprecated(photographerId: string) {
-  // Deprecated - use photographers.ts instead
+export async function deletePhotographerAction(photographerId: string) {
   try {
     const supabase = await createClient()
+
     const { error } = await supabase.from("photographers").delete().eq("id", photographerId)
+
     if (error) throw error
+
     revalidatePath("/admin")
     logger.info("actions/entities", "Photographer deleted successfully", { photographerId })
     return { success: true }

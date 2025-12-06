@@ -1,10 +1,10 @@
 import { AddPhotographerDialog } from "@/components/admin/add-photographer-dialog"
 import { PhotographerList } from "@/components/admin/photographer-list"
-import { getPhotographersAction } from "@/app/admin/actions/photographers"
+import { createClient } from "@/lib/supabase/server"
 
 export async function PhotographersManager() {
-  const result = await getPhotographersAction()
-  const photographers = result.data || []
+  const supabase = await createClient()
+  const { data: photographers } = await supabase.from("photographers").select("*").order("name")
 
   return (
     <div className="space-y-6">
@@ -16,7 +16,7 @@ export async function PhotographersManager() {
         <AddPhotographerDialog />
       </div>
 
-      <PhotographerList photographers={photographers} />
+      <PhotographerList photographers={photographers || []} />
     </div>
   )
 }
