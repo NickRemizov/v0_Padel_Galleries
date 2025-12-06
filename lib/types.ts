@@ -178,5 +178,24 @@ export interface UnknownFace {
   descriptor: number[]
 }
 
+export interface TaggedFace {
+  id: string
+  face: {
+    boundingBox: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+    confidence: number
+    blur_score: number
+    embedding: number[] | null
+  }
+  personId: string | null
+  personName: string | null
+  recognitionConfidence: number | null
+  verified: boolean
+}
+
 export type { Result } from "./types/result"
 export { success, failure, isSuccess, isFailure } from "./types/result"
