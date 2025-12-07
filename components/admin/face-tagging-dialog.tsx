@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+// import { createClient } from "@/lib/supabase/client"
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { debounce } from "@/lib/debounce"
 import { processPhotoAction, batchVerifyFacesAction } from "@/app/admin/actions/faces"
+import { getPeopleAction } from "@/app/admin/actions/entities" // Add import for people action
 
 const VERSION = "v6.0" // Увеличена версия для финальной архитектуры v2.3.0
 
@@ -97,10 +98,9 @@ export function FaceTaggingDialog({
   }, [showAddPerson, open])
 
   async function loadPeople() {
-    const supabase = createClient()
-    const { data } = await supabase.from("people").select("*").order("real_name", { ascending: true })
-    if (data) {
-      setPeople(data)
+    const result = await getPeopleAction()
+    if (result.success && result.data) {
+      setPeople(result.data)
     }
   }
 

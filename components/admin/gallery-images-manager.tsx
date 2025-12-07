@@ -32,12 +32,13 @@ import {
   addGalleryImagesAction,
   deleteGalleryImageAction,
   deleteAllGalleryImagesAction,
-  updateGallerySortOrderAction, // Added missing import
+  updateGallerySortOrderAction,
   getGalleryFaceRecognitionStatsAction,
   getBatchPhotoFacesAction,
+  getGalleryImagesAction, // Added import for new action
 } from "@/app/admin/actions"
 import type { GalleryImage } from "@/lib/types"
-import { createClient } from "@/lib/supabase/client"
+// import { createClient } from "@/lib/supabase/client" // Removed Supabase client import - now using FastAPI
 import { FaceTaggingDialog } from "./face-tagging-dialog"
 import { AutoRecognitionDialog } from "./auto-recognition-dialog"
 
@@ -227,19 +228,11 @@ export function GalleryImagesManager({
 
   async function loadImages() {
     setLoading(true)
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("gallery_images")
-      .select(
-        "id, image_url, original_url, original_filename, file_size, width, height, display_order, gallery_id, created_at, download_count, has_been_processed",
-      )
-      .eq("gallery_id", galleryId)
-      .order("display_order", { ascending: true })
-
-    if (!error && data) {
-      setImages(data)
-    } else if (error) {
-      console.error("[v0] Error loading images:", error)
+    const result = await getGalleryImagesAction(galleryId)
+    if (result.success && result.data) {
+      setImages(result.data)
+    } else if (result.error) {
+      console.error("[v0] Error loading images:", result.error)
     }
     setLoading(false)
   }
