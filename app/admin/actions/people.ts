@@ -5,30 +5,9 @@ import { revalidatePath } from "next/cache"
 import { logger } from "@/lib/logger"
 import { safeSupabaseCall } from "@/lib/supabase/safe-call"
 
-export async function getPersonPhotosAction(personId: string) {
-  const supabase = await createClient()
-
-  try {
-    const { data: photoFaces, error } = await supabase
-      .from("photo_faces")
-      .select("photo_id, person_id, verified, confidence, gallery_images(id, image_url, gallery_id, width, height)")
-      .eq("person_id", personId)
-      .or(`verified.eq.true,confidence.gte.0.6`)
-
-    if (error) throw error
-
-    const photos = (photoFaces || [])
-      .map((pf: any) => pf.gallery_images)
-      .filter((img: any) => img !== null)
-      .filter((img: any, index: number, self: any[]) => self.findIndex((i: any) => i.id === img.id) === index)
-
-    logger.debug("actions/people", `Found ${photos?.length || 0} photos for person ${personId}`)
-    return { success: true, data: photos || [] }
-  } catch (error: any) {
-    logger.error("actions/people", "Error getting person photos", error)
-    return { error: error.message || "Failed to get person photos" }
-  }
-}
+// - getPersonPhotosAction (moved to entities.ts)
+// - updatePersonAvatarAction (moved to entities.ts)
+// - updatePersonVisibilityAction (moved to entities.ts)
 
 export async function getPersonPhotosWithDetailsAction(personId: string) {
   const supabase = await createClient()
@@ -129,23 +108,6 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
   }
 }
 
-export async function updatePersonAvatarAction(personId: string, avatarUrl: string) {
-  const supabase = await createClient()
-
-  try {
-    const { error } = await supabase.from("people").update({ avatar_url: avatarUrl }).eq("id", personId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/people", "Person avatar updated successfully", { personId, avatarUrl })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/people", "Error updating person avatar", error)
-    return { error: error.message || "Failed to update person avatar" }
-  }
-}
-
 export async function verifyPersonOnPhotoAction(photoId: string, personId: string) {
   const supabase = await createClient()
 
@@ -167,30 +129,6 @@ export async function verifyPersonOnPhotoAction(photoId: string, personId: strin
   } catch (error: any) {
     logger.error("actions/people", "Error verifying person on photo", error)
     return { error: error.message || "Failed to verify person" }
-  }
-}
-
-export async function updatePersonVisibilityAction(
-  personId: string,
-  field: "show_in_players_gallery" | "show_photos_in_galleries",
-  value: boolean,
-) {
-  const supabase = await createClient()
-
-  try {
-    const { error } = await supabase
-      .from("people")
-      .update({ [field]: value })
-      .eq("id", personId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/people", "Person visibility updated successfully", { personId, field, value })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/people", "Error updating person visibility", error)
-    return { error: error.message || "Failed to update person visibility" }
   }
 }
 

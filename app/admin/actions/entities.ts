@@ -56,15 +56,12 @@ export async function updatePersonAvatarAction(personId: string, avatarUrl: stri
 
 export async function updatePersonVisibilityAction(
   personId: string,
-  showInPlayersGallery?: boolean,
-  showPhotosInGalleries?: boolean,
+  field: "show_in_players_gallery" | "show_photos_in_galleries",
+  value: boolean,
 ) {
   const result = await apiFetch(`/api/people/${personId}/visibility`, {
     method: "PATCH",
-    body: JSON.stringify({
-      show_in_players_gallery: showInPlayersGallery,
-      show_photos_in_galleries: showPhotosInGalleries,
-    }),
+    body: JSON.stringify({ [field]: value }),
   })
   if (result.success) revalidatePath("/admin")
   return result
