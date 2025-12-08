@@ -56,6 +56,68 @@ class MarkProcessedResponse(BaseModel):
     success: bool
     message: str
 
+class GalleryImagesResponse(BaseModel):
+    success: bool
+    data: list
+    error: Optional[str] = None
+
+class BatchSortOrderItem(BaseModel):
+    id: str
+    order: int
+
+class BatchSortOrderRequest(BaseModel):
+    image_orders: list[BatchSortOrderItem]
+
+@router.get("/gallery/{gallery_id}", response_model=GalleryImagesResponse)
+async def get_gallery_images(gallery_id: str):
+    """
+    Получает все изображения галереи с сортировкой по display_order.
+    """
+    try:
+        logger.info(f"[Images API] Getting images for gallery: {gallery_id}")
+        
+        result = supabase_db.client.table("gallery_images")\
+            .select("*")\
+            .eq("gallery_id", gallery_id)\
+            .order("display_order")\
+            .execute()
+        
+        images = result.data or []
+        logger.info(f"[Images API] Found {len(images)} images")
+        
+        return GalleryImagesResponse(
+            success=True,
+            data=images
+        )
+    except Exception as e:
+        logger.error(f"[Images API] Error getting gallery images: {e}")
+        return GalleryImagesResponse(
+            success=False,
+            data=[],
+            error=str(e)
+        )
+
+@router.patch("/gallery/{gallery_id}/sort-order")
+async def update_images_sort_order(gallery_id: str, request: BatchSortOrderRequest):
+    """
+    Обновляет порядок отображения изображений в галерее.
+    """
+    try:
+        logger.info(f"[Images API] Updating sort order for gallery {gallery_id}, {len(request.image_orders)} images")
+        
+        for item in request.image_orders:
+            supabase_db.client.table("gallery_images")\
+                .update({"display_order": item.order})\
+                .eq("id", item.id)\
+                .eq("gallery_id", gallery_id)\
+                .execute()
+        
+        logger.info(f"[Images API] Sort order updated successfully")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"[Images API] Error updating sort order: {e}")
+        return {"success": False, "error": str(e)}
+
 @router.delete("/{image_id}", response_model=DeleteImageResponse)
 async def delete_image(image_id: str):
     """
