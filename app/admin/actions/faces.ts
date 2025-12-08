@@ -383,7 +383,7 @@ export async function markPhotoAsProcessedAction(photoId: string) {
 
 export async function clusterUnknownFacesAction(galleryId: string) {
   try {
-    console.log("[clusterUnknownFacesAction] Clustering faces for gallery:", galleryId)
+    console.log("[v0] [clusterUnknownFacesAction] START - Gallery ID:", galleryId)
 
     const result = await apiFetch("/api/recognition/cluster-unknown-faces", {
       method: "POST",
@@ -392,6 +392,11 @@ export async function clusterUnknownFacesAction(galleryId: string) {
         min_cluster_size: 2,
       }),
     })
+
+    console.log("[v0] [clusterUnknownFacesAction] FastAPI response:", result)
+    console.log("[v0] [clusterUnknownFacesAction] Result success:", result.success)
+    console.log("[v0] [clusterUnknownFacesAction] Result clusters:", result.clusters)
+    console.log("[v0] [clusterUnknownFacesAction] Clusters length:", result.clusters?.length)
 
     if (!result.success && result.clusters === undefined) {
       throw new Error(result.error || "Failed to cluster faces")
