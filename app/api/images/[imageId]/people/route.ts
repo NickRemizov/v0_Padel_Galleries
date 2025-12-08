@@ -1,38 +1,18 @@
-import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { apiFetch } from "@/lib/apiClient"
 
 export async function GET(request: Request, { params }: { params: { imageId: string } }) {
   try {
-    const supabase = await createClient()
+    const result = await apiFetch<{ id: string; name: string }[]>(`/api/images/${params.imageId}/people`)
 
-    const { data, error } = await supabase
-      .from("photo_faces")
-      .select(
-        `
-        person_id,
-        people!inner (
-          id,
-          real_name,
-          telegram_name
-        )
-      `,
-      )
-      .eq("photo_id", params.imageId)
-      .eq("verified", true)
-
-    if (error) {
-      console.error("[v0] Error fetching verified people:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!result.success || !result.data) {
+      console.error("[v0] Error fetching verified people:", result.error)
+      return NextResponse.json([], { status: 200 })
     }
 
-    const people = data.map((item: any) => ({
-      id: item.people.id,
-      name: item.people.real_name || item.people.telegram_name || "Unknown",
-    }))
-
-    return NextResponse.json(people)
+    return NextResponse.json(result.data)
   } catch (error) {
     console.error("[v0] Error in people API:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json([], { status: 200 })
   }
 }
