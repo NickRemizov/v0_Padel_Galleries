@@ -391,24 +391,21 @@ export async function clusterUnknownFacesAction(galleryId: string) {
   try {
     console.log("[v0] [clusterUnknownFacesAction] START - Gallery ID:", galleryId)
 
-    const result = await apiFetch(`/api/recognition/cluster-unknown-faces?gallery_id=${galleryId}&min_cluster_size=2`, {
-      method: "POST",
-    })
+    const result = await apiFetch<{ clusters: any[]; ungrouped_faces: any[] }>(
+      `/api/recognition/cluster-unknown-faces?gallery_id=${galleryId}&min_cluster_size=2`,
+      {
+        method: "POST",
+      },
+    )
 
     console.log("[v0] [clusterUnknownFacesAction] FastAPI raw response:", JSON.stringify(result, null, 2))
-
-    if (!result.success) {
-      console.error("[v0] [clusterUnknownFacesAction] FastAPI returned error:", result.error)
-      throw new Error(result.error || "Failed to cluster faces")
-    }
-
-    console.log("[v0] [clusterUnknownFacesAction] Clusters count:", result.data?.clusters?.length || 0)
+    console.log("[v0] [clusterUnknownFacesAction] Clusters count:", result.clusters?.length || 0)
 
     return {
       success: true,
       data: {
-        clusters: result.data?.clusters || [],
-        ungrouped_faces: result.data?.ungrouped_faces || [],
+        clusters: result.clusters || [],
+        ungrouped_faces: result.ungrouped_faces || [],
       },
     }
   } catch (error) {
