@@ -446,6 +446,8 @@ async def cluster_unknown_faces(
                     # Fallback: use original bbox
                     face["bbox"] = face.get("insightface_bbox")
                 
+                face["image_url"] = face.pop("photo_url", None)
+                
                 normalized_faces.append(face)
             
             clusters.append({
