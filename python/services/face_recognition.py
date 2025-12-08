@@ -384,7 +384,10 @@ class FaceRecognitionService:
                         )
                         
                         similarity = 1 - distances[0][0]
-                        if similarity > 0.6:  # 60% схожести
+                        config = self.supabase_db.get_recognition_config_sync()
+                        min_similarity = config.get('recognition_threshold', 0.60)
+                        
+                        if similarity > min_similarity:
                             player_id = self.player_ids_map[labels[0][0]]
                             confidence = float(similarity)
                             recognized_faces += 1
@@ -666,7 +669,7 @@ class FaceRecognitionService:
     async def recognize_face(
         self,
         embedding: np.ndarray,
-        confidence_threshold: float = 0.60
+        confidence_threshold: Optional[float] = None
     ) -> Tuple[Optional[str], Optional[float]]:
         """
         Распознать лицо по эмбеддингу с порогом confidence.
@@ -679,51 +682,49 @@ class FaceRecognitionService:
         Returns:
             Tuple of (person_id, confidence) or (None, None) if below threshold
         """
-        try:
-            # Для верифицированных лиц порог ниже (0.60), для неверифицированных выше (0.75)
-            unverified_threshold = confidence_threshold + 0.15
-            verified_threshold = confidence_threshold
-            
-            print(f"[FaceRecognition] Searching in HNSWLIB index (verified threshold={verified_threshold:.2f}, unverified threshold={unverified_threshold:.2f})")
-            
-            # Safety check: if index is None, try to load it
-            if self.players_index is None:
-                print("[FaceRecognition] WARNING: Index is None, attempting to initialize...")
-                try:
-                    self._load_players_index()
-                    print("[FaceRecognition] ✓ Index initialized successfully")
-                except Exception as init_error:
-                    print(f"[FaceRecognition] ERROR: Cannot initialize index: {init_error}")
-                    print("[FaceRecognition] Returning None - no recognition possible without index")
-                    return None, None
-            
-            # Find nearest neighbor
-            labels, distances = self.players_index.knn_query(
-                embedding.reshape(1, -1),
-                k=1
-            )
-            
-            # Convert cosine distance to similarity
-            similarity = 1 - distances[0][0]
-            raw_confidence = float(similarity)
-            
-            person_id = self.player_ids_map[labels[0][0]]
-            
-            if raw_confidence >= verified_threshold:
-                print(f"[FaceRecognition] ✓ Match found: person_id={person_id}")
-                print(f"[FaceRecognition]   Confidence: {raw_confidence:.3f}")
-                
-                return person_id, raw_confidence
-            else:
-                print(f"[FaceRecognition] Confidence {raw_confidence:.3f} below threshold {verified_threshold:.2f}, returning None")
+        self._ensure_initialized()
+        
+        if confidence_threshold is None:
+            config = self.supabase_db.get_recognition_config_sync()
+            confidence_threshold = config.get('recognition_threshold', 0.60)
+        
+        unverified_threshold = confidence_threshold + 0.15
+        verified_threshold = confidence_threshold
+        
+        print(f"[FaceRecognition] Searching in HNSWLIB index (verified threshold={verified_threshold:.2f}, unverified threshold={unverified_threshold:.2f})")
+        
+        # Safety check: if index is None, try to load it
+        if self.players_index is None:
+            print("[FaceRecognition] WARNING: Index is None, attempting to initialize...")
+            try:
+                self._load_players_index()
+                print("[FaceRecognition] ✓ Index initialized successfully")
+            except Exception as init_error:
+                print(f"[FaceRecognition] ERROR: Cannot initialize index: {init_error}")
+                print("[FaceRecognition] Returning None - no recognition possible without index")
                 return None, None
-                
-        except Exception as e:
-            print(f"[FaceRecognition] ERROR during recognition: {type(e).__name__}: {str(e)}")
-            import traceback
-            print(f"[FaceRecognition] Traceback:\n{traceback.format_exc()}")
+        
+        # Find nearest neighbor
+        labels, distances = self.players_index.knn_query(
+            embedding.reshape(1, -1),
+            k=1
+        )
+        
+        # Convert cosine distance to similarity
+        similarity = 1 - distances[0][0]
+        raw_confidence = float(similarity)
+        
+        person_id = self.player_ids_map[labels[0][0]]
+        
+        if raw_confidence >= verified_threshold:
+            print(f"[FaceRecognition] ✓ Match found: person_id={person_id}")
+            print(f"[FaceRecognition]   Confidence: {raw_confidence:.3f}")
+            
+            return person_id, raw_confidence
+        else:
+            print(f"[FaceRecognition] Confidence {raw_confidence:.3f} below threshold {verified_threshold:.2f}, returning None")
             return None, None
-
+    
     async def rebuild_players_index(self) -> Dict:
         """
         Rebuild the HNSWLIB index from Supabase database.
