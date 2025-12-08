@@ -57,10 +57,19 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
   async function loadClusters() {
     setLoading(true)
     try {
+      console.log("[v0] Loading clusters for gallery:", galleryId)
+
       const result = await clusterUnknownFacesAction(galleryId)
+
+      console.log("[v0] Cluster action result:", result)
+      console.log("[v0] Result success:", result.success)
+      console.log("[v0] Result data:", result.data)
+      console.log("[v0] Clusters array:", result.data?.clusters)
+
       if (result.success && result.data) {
         setClusters(result.data.clusters || [])
         setCurrentClusterIndex(0)
+        console.log("[v0] Set clusters state:", result.data.clusters?.length || 0, "clusters")
       }
     } catch (error) {
       console.error("[UnknownFacesReview] Error loading clusters:", error)
