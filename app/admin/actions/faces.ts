@@ -393,27 +393,34 @@ export async function clusterUnknownFacesAction(galleryId: string) {
       }),
     })
 
-    console.log("[v0] [clusterUnknownFacesAction] FastAPI response:", result)
-    console.log("[v0] [clusterUnknownFacesAction] Result success:", result.success)
-    console.log("[v0] [clusterUnknownFacesAction] Result clusters:", result.clusters)
-    console.log("[v0] [clusterUnknownFacesAction] Clusters length:", result.clusters?.length)
+    console.log("[v0] [clusterUnknownFacesAction] FastAPI raw response:", JSON.stringify(result, null, 2))
 
-    if (!result.success && result.clusters === undefined) {
+    if (!result.success) {
+      console.error("[v0] [clusterUnknownFacesAction] FastAPI returned error:", result.error)
       throw new Error(result.error || "Failed to cluster faces")
     }
+
+    console.log("[v0] [clusterUnknownFacesAction] Clusters count:", result.data?.clusters?.length || 0)
 
     return {
       success: true,
       data: {
-        clusters: result.clusters || [],
-        ungrouped_faces: result.ungrouped_faces || [],
+        clusters: result.data?.clusters || [],
+        ungrouped_faces: result.data?.ungrouped_faces || [],
       },
     }
   } catch (error) {
-    console.error("[clusterUnknownFacesAction] Error:", error)
+    console.error(
+      "[v0] [clusterUnknownFacesAction] Full error:",
+      JSON.stringify(error, Object.getOwnPropertyNames(error)),
+    )
+    console.error(
+      "[v0] [clusterUnknownFacesAction] Error message:",
+      error instanceof Error ? error.message : String(error),
+    )
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: error instanceof Error ? error.message : String(error),
     }
   }
 }
