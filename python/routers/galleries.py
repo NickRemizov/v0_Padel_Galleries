@@ -81,25 +81,30 @@ async def get_gallery_stats(gallery_id: str):
         image_ids = [img["id"] for img in (images_result.data or [])]
         
         if not image_ids:
-            return {"success": True, "data": {"total_images": 0, "total_faces": 0}}
+            return {
+                "success": True, 
+                "data": {
+                    "isFullyVerified": False,
+                    "verifiedCount": 0,
+                    "totalCount": 0
+                }
+            }
         
         faces_result = supabase_db_instance.client.table("photo_faces").select(
-            "id, photo_id, person_id, verified"
-        ).in_("photo_id", image_ids).execute()
-        faces = faces_result.data or []
+            "photo_id, verified"
+        ).in_("photo_id", image_ids).eq("verified", True).execute()
         
-        photos_with_faces = set(f["photo_id"] for f in faces)
-        recognized = [f for f in faces if f.get("person_id")]
-        verified = [f for f in faces if f.get("verified")]
+        verified_photo_ids = set(f["photo_id"] for f in (faces_result.data or []))
+        verified_count = len(verified_photo_ids)
+        total_count = len(image_ids)
+        is_fully_verified = verified_count == total_count and total_count > 0
         
         return {
             "success": True,
             "data": {
-                "total_images": len(image_ids),
-                "images_with_faces": len(photos_with_faces),
-                "total_faces": len(faces),
-                "recognized_faces": len(recognized),
-                "verified_faces": len(verified)
+                "isFullyVerified": is_fully_verified,
+                "verifiedCount": verified_count,
+                "totalCount": total_count
             }
         }
     except Exception as e:
