@@ -1,7 +1,6 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
 import { apiFetch } from "@/lib/apiClient"
 
 export async function getGalleryImagesAction(galleryId: string) {
@@ -13,16 +12,13 @@ export async function updateGallerySortOrderAction(
   imageOrders: Array<{ id: string; order: number }>,
 ) {
   try {
-    const supabase = await createClient()
+    const result = await apiFetch(`/api/images/gallery/${galleryId}/sort-order`, {
+      method: "PATCH",
+      body: JSON.stringify({ image_orders: imageOrders }),
+    })
 
-    for (const { id, order } of imageOrders) {
-      const { error } = await supabase
-        .from("gallery_images")
-        .update({ display_order: order })
-        .eq("id", id)
-        .eq("gallery_id", galleryId)
-
-      if (error) throw error
+    if (result.error) {
+      return { success: false, error: result.error }
     }
 
     revalidatePath("/admin")
