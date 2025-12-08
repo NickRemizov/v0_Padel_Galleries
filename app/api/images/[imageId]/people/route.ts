@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 import { apiFetch } from "@/lib/apiClient"
 
-export async function GET(request: Request, { params }: { params: { imageId: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ imageId: string }> }) {
   try {
+    const { imageId } = await params
     const result = await apiFetch<{ success: boolean; data: { id: string; name: string }[] }>(
-      `/images/${params.imageId}/people`,
+      `/images/${imageId}/people`,
     )
 
     if (!result.success || !result.data) {
