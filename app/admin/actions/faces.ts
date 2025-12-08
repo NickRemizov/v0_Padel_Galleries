@@ -381,16 +381,18 @@ export async function markPhotoAsProcessedAction(photoId: string) {
   }
 }
 
+/**
+ * Batch verify faces: update person_ids + delete removed faces
+ *
+ * @param photoId - Photo ID
+ * @param keptFaces - Array of faces to keep [{id, person_id}]
+ */
 export async function clusterUnknownFacesAction(galleryId: string) {
   try {
     console.log("[v0] [clusterUnknownFacesAction] START - Gallery ID:", galleryId)
 
-    const result = await apiFetch("/api/recognition/cluster-unknown-faces", {
+    const result = await apiFetch(`/api/recognition/cluster-unknown-faces?gallery_id=${galleryId}&min_cluster_size=2`, {
       method: "POST",
-      body: JSON.stringify({
-        gallery_id: galleryId,
-        min_cluster_size: 2,
-      }),
     })
 
     console.log("[v0] [clusterUnknownFacesAction] FastAPI raw response:", JSON.stringify(result, null, 2))
