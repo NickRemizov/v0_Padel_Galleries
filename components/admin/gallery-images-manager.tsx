@@ -41,6 +41,7 @@ import type { GalleryImage } from "@/lib/types"
 // import { createClient } from "@/lib/supabase/client" // Removed Supabase client import - now using FastAPI
 import { FaceTaggingDialog } from "./face-tagging-dialog"
 import { AutoRecognitionDialog } from "./auto-recognition-dialog"
+import { UnknownFacesReviewDialog } from "./unknown-faces-review-dialog"
 
 interface GalleryImagesManagerProps {
   galleryId: string
@@ -853,7 +854,17 @@ export function GalleryImagesManager({
         />
       )}
 
-      {/* Removed UnknownFacesReviewDialog component - functionality not implemented */}
+      {showUnknownFaces && (
+        <UnknownFacesReviewDialog
+          open={showUnknownFaces}
+          onOpenChange={setShowUnknownFaces}
+          galleryId={galleryId}
+          onComplete={() => {
+            loadImages()
+            loadPhotoFaces()
+          }}
+        />
+      )}
     </>
   )
 }

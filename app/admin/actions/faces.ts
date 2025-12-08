@@ -380,3 +380,59 @@ export async function markPhotoAsProcessedAction(photoId: string) {
     }
   }
 }
+
+export async function clusterUnknownFacesAction(galleryId: string) {
+  try {
+    console.log("[clusterUnknownFacesAction] Clustering faces for gallery:", galleryId)
+
+    const result = await apiFetch("/api/recognition/cluster-unknown-faces", {
+      method: "POST",
+      body: JSON.stringify({
+        gallery_id: galleryId,
+        min_cluster_size: 2,
+      }),
+    })
+
+    if (!result.success && result.clusters === undefined) {
+      throw new Error(result.error || "Failed to cluster faces")
+    }
+
+    return {
+      success: true,
+      data: {
+        clusters: result.clusters || [],
+        ungrouped_faces: result.ungrouped_faces || [],
+      },
+    }
+  } catch (error) {
+    console.error("[clusterUnknownFacesAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
+export async function assignFacesToPersonAction(faceIds: string[], personId: string) {
+  try {
+    console.log("[assignFacesToPersonAction] Assigning", faceIds.length, "faces to person:", personId)
+
+    // Update each face with the person_id
+    for (const faceId of faceIds) {
+      await updatePhotoFaceAction(faceId, {
+        person_id: personId,
+        verified: true,
+        recognition_confidence: 1.0,
+      })
+    }
+
+    revalidatePath("/admin")
+    return { success: true }
+  } catch (error) {
+    console.error("[assignFacesToPersonAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
