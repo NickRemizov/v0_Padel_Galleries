@@ -1,7 +1,7 @@
 -- Проверка статуса верификации фотографий в галереях
--- Запускается для анализа текущего состояния БД
+-- ОБНОВЛЕНО: теперь не требует параметров, показывает ВСЕ галереи
 
--- 1. Статистика по галереям
+-- 1. Статистика по всем галереям
 SELECT 
     g.id AS gallery_id,
     g.title AS gallery_title,
@@ -40,7 +40,20 @@ SELECT
             AND pf2.person_id IS NOT NULL
         )
         THEN gi.id 
-    END) AS photos_not_verified
+    END) AS photos_not_verified,
+    -- Добавлен процент верификации
+    ROUND(
+        100.0 * COUNT(DISTINCT CASE 
+            WHEN pf.id IS NOT NULL 
+            AND NOT EXISTS (
+                SELECT 1 FROM photo_faces pf2 
+                WHERE pf2.photo_id = gi.id 
+                AND (pf2.verified = false OR pf2.person_id IS NULL)
+            )
+            THEN gi.id 
+        END) / NULLIF(COUNT(DISTINCT gi.id), 0),
+        2
+    ) AS verification_percentage
 FROM galleries g
 LEFT JOIN gallery_images gi ON gi.gallery_id = g.id
 LEFT JOIN photo_faces pf ON pf.photo_id = gi.id
@@ -54,10 +67,17 @@ SELECT
     gi.filename,
     COUNT(pf.id) AS total_faces,
     COUNT(CASE WHEN pf.verified = true AND pf.person_id IS NOT NULL THEN 1 END) AS verified_faces,
-    COUNT(CASE WHEN pf.verified = false OR pf.person_id IS NULL THEN 1 END) AS unverified_faces
+    COUNT(CASE WHEN pf.verified = false OR pf.person_id IS NULL THEN 1 END) AS unverified_faces,
+    -- Добавлены имена верифицированных людей
+    STRING_AGG(
+        CASE WHEN pf.verified = true AND pf.person_id IS NOT NULL 
+        THEN p.name ELSE NULL END, 
+        ', '
+    ) AS verified_people
 FROM gallery_images gi
 JOIN galleries g ON g.id = gi.gallery_id
 LEFT JOIN photo_faces pf ON pf.photo_id = gi.id
+LEFT JOIN people p ON p.id = pf.person_id
 WHERE pf.id IS NOT NULL
 GROUP BY gi.id, g.title, gi.filename
 HAVING 
