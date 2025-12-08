@@ -5,7 +5,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ imag
   try {
     const { imageId } = await params
     const result = await apiFetch<{ success: boolean; data: { id: string; name: string }[] }>(
-      `/images/${imageId}/people`,
+      `/api/images/${imageId}/people`,
     )
 
     if (!result.success || !result.data) {
