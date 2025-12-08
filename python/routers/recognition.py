@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from services.face_recognition import FaceRecognitionService
 from services.supabase_client import SupabaseClient
 import logging
@@ -75,6 +75,54 @@ class FaceDetectionResponse(BaseModel):
 class FaceRecognitionResponse(BaseModel):
     person_id: Optional[str]
     confidence: Optional[float]
+
+def generate_face_crop_url(photo_url: str, bbox: dict, img_width: int, img_height: int) -> str:
+    """
+    Generate Vercel Blob URL with crop parameters for face + 50% padding.
+    
+    Args:
+        photo_url: Full image URL
+        bbox: Bounding box dict with x, y, width, height (in pixels)
+        img_width: Original image width
+        img_height: Original image height
+    
+    Returns:
+        URL with crop parameters
+    """
+    if not photo_url or not bbox:
+        return photo_url
+    
+    # Get bbox coordinates in pixels
+    x = bbox.get('x', 0)
+    y = bbox.get('y', 0)
+    width = bbox.get('width', 0)
+    height = bbox.get('height', 0)
+    
+    # Calculate 50% padding
+    padding_x = width * 0.5
+    padding_y = height * 0.5
+    
+    # Calculate crop coordinates with padding
+    crop_x = max(0, int(x - padding_x))
+    crop_y = max(0, int(y - padding_y))
+    crop_width = int(width + padding_x * 2)
+    crop_height = int(height + padding_y * 2)
+    
+    # Ensure crop doesn't exceed image bounds
+    if crop_x + crop_width > img_width:
+        crop_width = img_width - crop_x
+    if crop_y + crop_height > img_height:
+        crop_height = img_height - crop_y
+    
+    # Generate Vercel Blob crop URL
+    # Format: ?width=W&height=H&fit=crop&left=X&top=Y
+    crop_params = f"?width={crop_width}&height={crop_height}&fit=crop&left={crop_x}&top={crop_y}"
+    
+    # If URL already has query params, append with &, otherwise use ?
+    if '?' in photo_url:
+        return f"{photo_url}&{crop_params.lstrip('?')}"
+    else:
+        return f"{photo_url}{crop_params}"
 
 
 @router.post("/detect-faces", response_model=FaceDetectionResponse)
@@ -357,8 +405,7 @@ async def batch_recognize(
 async def cluster_unknown_faces(
     gallery_id: str = Query(...),
     min_cluster_size: int = Query(2),
-    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
-):
+) -> Dict:
     """
     Cluster unknown faces in a gallery by similarity
     Returns clusters sorted by size (largest first)
@@ -422,12 +469,13 @@ async def cluster_unknown_faces(
             for face in faces:
                 # Get image dimensions from gallery_images
                 photo_response = supabase_client_instance.client.table("gallery_images").select(
-                    "width, height"
+                    "width, height, image_url"
                 ).eq("id", face["photo_id"]).execute()
                 
                 if photo_response.data and len(photo_response.data) > 0:
                     img_width = photo_response.data[0].get("width")
                     img_height = photo_response.data[0].get("height")
+                    photo_url = photo_response.data[0].get("image_url")
                     
                     # Normalize bbox if image dimensions are available
                     if img_width and img_height and face.get("insightface_bbox"):
@@ -439,14 +487,22 @@ async def cluster_unknown_faces(
                             "height": bbox["height"] / img_height,
                         }
                         face["bbox"] = normalized_bbox
+                        
+                        face["photo_url"] = generate_face_crop_url(
+                            photo_url,
+                            bbox,  # Use original bbox in pixels
+                            img_width,
+                            img_height
+                        )
                     else:
                         # Fallback: use original bbox (might be in pixels)
                         face["bbox"] = face.get("insightface_bbox")
+                        face["photo_url"] = photo_url
                 else:
-                    # Fallback: use original bbox
                     face["bbox"] = face.get("insightface_bbox")
+                    face["photo_url"] = face.get("photo_url", None) # Use existing photo_url if available
                 
-                face["image_url"] = face.pop("photo_url", None)
+                face.pop("insightface_descriptor", None) # Remove descriptor from response
                 
                 normalized_faces.append(face)
             
@@ -672,7 +728,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
         # Get faces without descriptors (person_id = NULL AND insightface_descriptor IS NULL)
         faces_response = supabase_client_instance.client.table("photo_faces").select(
             "id, photo_id, insightface_bbox, insightface_descriptor, "
-            "gallery_images(id, image_url)"
+            "gallery_images(id, image_url, width, height)"
         ).in_("photo_id", photo_ids).is_("person_id", "null").execute()
         
         if not faces_response.data:
@@ -694,9 +750,9 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
         
         for face in faces_response.data:
             face_id = face["id"]
-            photo = face.get("gallery_images")
+            photo_data = face.get("gallery_images")
             
-            if not photo:
+            if not photo_data:
                 logger.warning(f"[v3.24] Face {face_id} has no photo data, skipping")
                 failed += 1
                 continue
@@ -717,7 +773,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
                 logger.info(f"[v3.24] Regenerating descriptor for face {face_id}")
                 
                 # Download and detect faces on image
-                image_url = photo["image_url"]
+                image_url = photo_data["image_url"]
                 detected_faces = await face_service.detect_faces(image_url)
                 
                 if not detected_faces:
