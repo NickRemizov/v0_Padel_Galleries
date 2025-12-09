@@ -12,7 +12,7 @@ import { processPhotoAction } from "@/app/admin/actions/faces"
 import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v4.3-DebugNullParams" // Updated for debugging null params
+const VERSION = "v4.4-SimplifiedParams" // Updated for deployment tracking
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -39,14 +39,10 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
   async function processImageFaces(photoId: string, imageUrl: string, qualityParams: any) {
     console.log(`[${VERSION}] Processing image: ${photoId}`)
     console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
-    console.log(`[${VERSION}] Quality params:`, applyQualityFilters ? qualityParams : null)
+    console.log(`[${VERSION}] Quality params:`, qualityParams)
 
-    const result = await processPhotoAction(
-      photoId,
-      false,
-      applyQualityFilters,
-      applyQualityFilters ? qualityParams : undefined,
-    )
+    // Pass only 3 params when applyQualityFilters=false, let qualityParams be undefined
+    const result = await processPhotoAction(photoId, false, applyQualityFilters)
 
     console.log(`[${VERSION}] processPhotoAction result:`, result)
 
@@ -79,7 +75,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
           minFaceSize: configResult.config?.quality_filters?.min_face_size || 80,
           minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
         }
-      : null
+      : undefined
     console.log(`[${VERSION}] AUTO-RECOGNITION: Using quality params from config:`, qualityParams)
 
     setProcessing(true)
