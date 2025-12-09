@@ -87,7 +87,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       const contentType = response.headers.get("content-type")
       if (contentType?.includes("application/json")) {
         const data = await response.json()
-        console.log(`[apiClient] Request ${requestId} succeeded`)
+        console.log(`[apiClient] Request ${requestId} succeeded - Response:`, JSON.stringify(data, null, 2))
         return data
       }
 
