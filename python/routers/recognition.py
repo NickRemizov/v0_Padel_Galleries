@@ -78,7 +78,7 @@ class FaceRecognitionResponse(BaseModel):
 
 def generate_face_crop_url(photo_url: str, bbox: dict, img_width: int, img_height: int) -> str:
     """
-    Generate Vercel Blob URL with crop parameters for face + 50% padding.
+    Generate Vercel Blob URL with crop parameters for face + 30% padding.
     
     Args:
         photo_url: Full image URL
@@ -99,8 +99,8 @@ def generate_face_crop_url(photo_url: str, bbox: dict, img_width: int, img_heigh
     height = bbox.get('height', 0)
     
     # Calculate 50% padding
-    padding_x = width * 0.5
-    padding_y = height * 0.5
+    padding_x = width * 0.3
+    padding_y = height * 0.3
     
     # Calculate crop coordinates with padding
     crop_x = max(0, int(x - padding_x))
