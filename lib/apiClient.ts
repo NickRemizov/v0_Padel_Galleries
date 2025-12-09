@@ -39,6 +39,9 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
     try {
       console.log(`[apiClient] Request ${requestId} (attempt ${attemptNumber}): ${fetchOptions.method || "GET"} ${url}`)
+      if (fetchOptions.body) {
+        console.log(`[apiClient] Request ${requestId} body:`, fetchOptions.body)
+      }
 
       const response = await fetch(url, {
         ...fetchOptions,
