@@ -173,7 +173,20 @@ export function FaceTaggingDialog({
         verified: f.verified,
       }))
 
+      const detailed: DetailedFace[] = result.faces.map((f: any) => ({
+        boundingBox: f.insightface_bbox,
+        size: Math.max(f.insightface_bbox.width, f.insightface_bbox.height),
+        blur_score: f.blur_score,
+        detection_score: f.insightface_confidence,
+        recognition_confidence: f.recognition_confidence,
+        embedding_quality: f.embedding_quality,
+        distance_to_nearest: f.distance_to_nearest,
+        top_matches: f.top_matches,
+        person_name: f.people?.real_name || f.people?.telegram_name || null,
+      }))
+
       setTaggedFaces(tagged)
+      setDetailedFaces(detailed) // Set detailed faces for metrics dialog
       drawFaces(tagged)
       setHasRedetectedData(true)
     } catch (error) {
