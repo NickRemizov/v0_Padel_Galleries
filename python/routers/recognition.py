@@ -403,32 +403,29 @@ async def batch_recognize(
 
 @router.post("/cluster-unknown-faces")
 async def cluster_unknown_faces(
-    gallery_id: str = Query(...),
-    min_cluster_size: int = Query(2),
-) -> Dict:
+    gallery_id: str = Query(..., description="ID галереи"),
+    min_cluster_size: int = Query(2, description="Минимальный размер кластера"),
+):
     """
-    Cluster unknown faces in a gallery by similarity
-    Returns clusters sorted by size (largest first)
+    Кластеризация неизвестных лиц в галерее с HDBSCAN
     """
     try:
-        logger.info(f"[v3.23] ===== CLUSTER UNKNOWN FACES =====")
-        logger.info(f"[v3.23] Gallery ID: {gallery_id}")
-        logger.info(f"[v3.23] Min cluster size: {min_cluster_size}")
+        logger.info(f"Clustering unknown faces for gallery {gallery_id}")
         
-        unknown_faces = await supabase_client_instance.get_unknown_faces_from_gallery(gallery_id)
+        # Get unknown faces
+        faces = await supabase_client_instance.get_unknown_faces_from_gallery(gallery_id)
         
-        if len(unknown_faces) < min_cluster_size:
-            logger.info(f"[v3.23] Not enough faces to cluster ({len(unknown_faces)} < {min_cluster_size})")
+        if not faces or len(faces) < min_cluster_size:
             return {
                 "clusters": [],
-                "ungrouped_faces": unknown_faces
+                "ungrouped_faces": []
             }
         
-        logger.info(f"[v3.23] Clustering {len(unknown_faces)} faces...")
+        logger.info(f"Clustering {len(faces)} faces...")
         
         # Extract embeddings
         embeddings = []
-        for face in unknown_faces:
+        for face in faces:
             descriptor = face["insightface_descriptor"]
             if isinstance(descriptor, list):
                 embeddings.append(np.array(descriptor, dtype=np.float32))
@@ -448,13 +445,13 @@ async def cluster_unknown_faces(
         
         cluster_labels = clusterer.fit_predict(embeddings_array)
         
-        logger.info(f"[v3.23] Found {len(set(cluster_labels))} unique labels")
+        logger.info(f"Found {len(set(cluster_labels))} unique labels")
         
         # Group faces by cluster
         clusters_dict = {}
         ungrouped = []
         
-        for face, label in zip(unknown_faces, cluster_labels):
+        for face, label in zip(faces, cluster_labels):
             if label == -1:
                 ungrouped.append(face)
             else:
@@ -497,10 +494,7 @@ async def cluster_unknown_faces(
                     else:
                         # Fallback: use original bbox (might be in pixels)
                         face["bbox"] = face.get("insightface_bbox")
-                        face["photo_url"] = photo_url
-                else:
-                    face["bbox"] = face.get("insightface_bbox")
-                    face["photo_url"] = face.get("photo_url", None) # Use existing photo_url if available
+                        face["photo_url"] = face.get("photo_url", None) # Use existing photo_url if available
                 
                 face.pop("insightface_descriptor", None) # Remove descriptor from response
                 
@@ -517,8 +511,7 @@ async def cluster_unknown_faces(
         
         clusters.sort(key=lambda x: x["size"], reverse=True)
         
-        logger.info(f"[v3.23] ✓ Returning {len(clusters)} clusters, {len(ungrouped)} ungrouped")
-        logger.info(f"[v3.23] Cluster sizes: {[c['size'] for c in clusters]}")
+        logger.info(f"Returning {len(clusters)} clusters with {len(ungrouped)} ungrouped faces")
         
         return {
             "clusters": clusters,
@@ -526,7 +519,7 @@ async def cluster_unknown_faces(
         }
         
     except Exception as e:
-        logger.error(f"[v3.23] ERROR clustering faces: {str(e)}", exc_info=True)
+        logger.error(f"Error clustering faces: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -694,7 +687,7 @@ async def rebuild_index(face_service: FaceRecognitionService = Depends(lambda: f
         return result
         
     except Exception as e:
-        logger.error(f"[v3.31] ERROR rebuilding index: {str(e)}", exc_info=True)
+        logger.error(f"[v3.31] ERROR rebuilding index: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -845,7 +838,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
         }
         
     except Exception as e:
-        logger.error(f"[v3.24] ERROR regenerating descriptors: {str(e)}", exc_info=True)
+        logger.error(f"[v3.24] ERROR regenerating descriptors: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

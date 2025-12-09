@@ -168,9 +168,6 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
                       src={face.image_url || "/placeholder.svg"}
                       alt={`Face ${index + 1}`}
                       className="w-full h-full object-cover rounded-lg border-2 border-primary"
-                      style={{
-                        objectPosition: `${face.bbox.x * 100}% ${face.bbox.y * 100}%`,
-                      }}
                     />
                     <Badge variant="secondary" className="absolute top-2 right-2">
                       {index + 1}
