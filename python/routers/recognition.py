@@ -1044,6 +1044,3 @@ def calculate_iou(box1: dict, box2: dict) -> float:
     union = area1 + area2 - intersection
     
     return intersection / union if union > 0 else 0.0
- = area1 + area2 - intersection
-    
-    return intersection / union if union > 0 else 0.0
