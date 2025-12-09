@@ -30,10 +30,10 @@ export async function processPhotoAction(
         photo_id: photoId,
         force_redetect: forceRedetect,
         apply_quality_filters: applyQualityFilters,
-        confidence_threshold: qualityParams?.confidenceThreshold ?? 0.6,
-        min_detection_score: qualityParams?.minDetectionScore ?? 0.7,
-        min_face_size: qualityParams?.minFaceSize ?? 80,
-        min_blur_score: qualityParams?.minBlurScore ?? 80,
+        confidence_threshold: applyQualityFilters ? (qualityParams?.confidenceThreshold ?? 0.6) : null,
+        min_detection_score: applyQualityFilters ? (qualityParams?.minDetectionScore ?? 0.7) : null,
+        min_face_size: applyQualityFilters ? (qualityParams?.minFaceSize ?? 80) : null,
+        min_blur_score: applyQualityFilters ? (qualityParams?.minBlurScore ?? 80) : null,
       }),
     })
 
