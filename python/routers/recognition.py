@@ -58,7 +58,7 @@ class ProcessPhotoRequest(BaseModel):
     apply_quality_filters: bool = True  # Параметр применения фильтров качества
     confidence_threshold: Optional[float] = None
     min_detection_score: Optional[float] = None
-    min_face_size: float = 80.0
+    min_face_size: float = 60.0
     min_blur_score: float = 80.0
 
 
