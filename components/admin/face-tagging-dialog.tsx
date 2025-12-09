@@ -175,6 +175,7 @@ export function FaceTaggingDialog({
 
       setTaggedFaces(tagged)
       drawFaces(tagged)
+      setHasRedetectedData(true)
     } catch (error) {
       console.error(`[${VERSION}] Error redetecting faces:`, error)
       alert(`Error redetecting faces: ${error}`)
