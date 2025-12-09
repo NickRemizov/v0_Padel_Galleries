@@ -12,7 +12,7 @@ import { processPhotoAction } from "@/app/admin/actions/faces"
 import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v4.7-DebugErrorObject" // Updated version for deployment tracking
+const VERSION = "v4.9-FixedValidationErrors" // Updated version for deployment tracking
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]

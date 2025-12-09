@@ -63,7 +63,20 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         if (contentType?.includes("application/json")) {
           try {
             const errorData = await response.json()
-            errorMessage = errorData.message || errorData.detail || errorMessage
+
+            // Handle FastAPI validation errors (detail is array of error objects)
+            if (Array.isArray(errorData.detail)) {
+              const validationErrors = errorData.detail
+                .map((err: any) => {
+                  const field = Array.isArray(err.loc) ? err.loc.join(".") : "unknown"
+                  return `${field}: ${err.msg || err.message || "validation error"}`
+                })
+                .join("; ")
+              errorMessage = validationErrors || errorMessage
+            } else {
+              errorMessage = errorData.message || errorData.detail || errorMessage
+            }
+
             errorCode = errorData.code
           } catch {
             errorMessage = response.statusText || errorMessage
