@@ -43,8 +43,15 @@ export async function processPhotoAction(
         faces: result.data || [],
       }
     } else {
-      const errorMessage =
-        typeof result.error === "string" ? result.error : JSON.stringify(result.error || "Failed to process photo")
+      let errorMessage = "Failed to process photo"
+
+      if (typeof result.error === "string") {
+        errorMessage = result.error
+      } else if (Array.isArray(result.error)) {
+        errorMessage = result.error.map((e) => (typeof e === "string" ? e : JSON.stringify(e))).join(", ")
+      } else if (result.error) {
+        errorMessage = JSON.stringify(result.error)
+      }
 
       console.error("[processPhotoAction] Backend error:", errorMessage)
 
