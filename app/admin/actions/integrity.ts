@@ -80,7 +80,11 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // 1. Verified без person_id
     const { data: verifiedWithoutPerson, error: e1 } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id, verified, confidence, bbox, gallery_images!inner(url)")
+      .select(`
+        id, photo_id, person_id, verified, confidence, bbox,
+        gallery_images!inner(id, url, gallery_id, galleries(title)),
+        people(real_name)
+      `)
       .eq("verified", true)
       .is("person_id", null)
 
@@ -93,7 +97,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // 2. Verified с неправильным confidence
     const { data: verifiedWithWrongConfidence, error: e2 } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, confidence, bbox, gallery_images!inner(url)")
+      .select(`
+        id, photo_id, confidence, bbox,
+        gallery_images!inner(id, url, gallery_id, galleries(title))
+      `)
       .eq("verified", true)
       .neq("confidence", 1.0)
 
@@ -106,7 +113,11 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // 3. Person_id есть, но confidence=null
     const { data: personWithoutConfidence, error: e3 } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id, bbox, gallery_images!inner(url)")
+      .select(`
+        id, photo_id, person_id, bbox,
+        people(real_name),
+        gallery_images!inner(id, url, gallery_id, galleries(title))
+      `)
       .not("person_id", "is", null)
       .is("confidence", null)
 
@@ -119,7 +130,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // 4. Person_id не существует в people
     const { data: allPhotoFaces } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id, bbox, gallery_images!inner(url)")
+      .select(`
+        id, photo_id, person_id, bbox,
+        gallery_images!inner(id, url, gallery_id, galleries(title))
+      `)
       .not("person_id", "is", null)
 
     if (allPhotoFaces) {
@@ -160,10 +174,22 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     if (allDescriptors) {
       const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
-      const { data: existingPhotoFaces } = await supabase.from("photo_faces").select("id").in("id", sourceImageIds)
+      const { data: existingPhotoFaces } = await supabase
+        .from("photo_faces")
+        .select(`
+          id, photo_id, bbox,
+          gallery_images!inner(url, gallery_id, galleries(title))
+        `)
+        .in("id", sourceImageIds)
 
       const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
-      const orphanedDescriptors = allDescriptors.filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
+      // Enrich orphaned descriptors with photo data
+      const orphanedDescriptors = allDescriptors
+        .filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
+        .map((fd) => {
+          const photoFace = existingPhotoFaces?.find((pf) => pf.id === fd.source_image_id)
+          return { ...fd, photoFace }
+        })
 
       faceDescriptors.orphanedDescriptors = orphanedDescriptors.length
       console.log("[v0] orphanedDescriptors count:", faceDescriptors.orphanedDescriptors)
@@ -538,10 +564,23 @@ export async function getIssueDetailsAction(
 
         if (allDescriptors) {
           const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
-          const { data: existingPhotoFaces } = await supabase.from("photo_faces").select("id").in("id", sourceImageIds)
+          const { data: existingPhotoFaces } = await supabase
+            .from("photo_faces")
+            .select(`
+              id, photo_id, bbox,
+              gallery_images!inner(url, gallery_id, galleries(title))
+            `)
+            .in("id", sourceImageIds)
 
           const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
-          details = allDescriptors.filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id)).slice(0, limit)
+          // Enrich orphaned descriptors with photo data
+          details = allDescriptors
+            .filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
+            .map((fd) => {
+              const photoFace = existingPhotoFaces?.find((pf) => pf.id === fd.source_image_id)
+              return { ...fd, photoFace }
+            })
+            .slice(0, limit)
         }
         break
       }

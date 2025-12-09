@@ -193,17 +193,21 @@ export function DatabaseIntegrityChecker() {
             <div className="text-xs text-muted-foreground">Показаны первые {Math.min(10, details.length)} записей:</div>
             <div className="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto">
               {details.slice(0, 10).map((item: any, index: number) => (
-                <div key={index} className="bg-background p-2 rounded border space-y-2">
+                <div key={index} className="bg-background p-3 rounded border space-y-2">
                   {item.gallery_images?.url && item.bbox && (
                     <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
                       <FaceCropPreview imageUrl={item.gallery_images.url} bbox={item.bbox} size={200} />
                     </div>
                   )}
-                  <div className="text-xs font-mono">
-                    <div>ID: {item.id?.slice(0, 8)}...</div>
-                    <div>Photo: {item.photo_id?.slice(0, 8)}...</div>
-                    {item.person_id && <div>Person: {item.person_id.slice(0, 8)}...</div>}
-                    {item.confidence !== undefined && <div>Confidence: {item.confidence}</div>}
+                  <div className="text-xs space-y-1">
+                    {item.people?.real_name && <div className="font-medium">{item.people.real_name}</div>}
+                    {item.gallery_images?.galleries?.title && (
+                      <div className="text-muted-foreground">Галерея: {item.gallery_images.galleries.title}</div>
+                    )}
+                    {item.confidence !== undefined && <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>}
+                    <div className="font-mono text-[10px] text-muted-foreground pt-1 border-t">
+                      ID: {item.id?.slice(0, 8)}...
+                    </div>
                   </div>
                 </div>
               ))}
