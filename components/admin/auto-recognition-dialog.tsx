@@ -48,7 +48,10 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
       applyQualityFilters ? qualityParams : undefined,
     )
 
+    console.log(`[${VERSION}] processPhotoAction result:`, result)
+
     if (!result.success) {
+      console.error(`[${VERSION}] processPhotoAction failed:`, result.error)
       throw new Error(result.error || "Failed to process photo")
     }
 

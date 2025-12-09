@@ -43,16 +43,23 @@ export async function processPhotoAction(
         faces: result.data || [],
       }
     } else {
+      const errorMessage =
+        typeof result.error === "string" ? result.error : JSON.stringify(result.error || "Failed to process photo")
+
+      console.error("[processPhotoAction] Backend error:", errorMessage)
+
       return {
         success: false,
-        error: result.error || "Failed to process photo",
+        error: errorMessage,
       }
     }
   } catch (error) {
-    console.error("[processPhotoAction] Error:", error)
+    console.error("[processPhotoAction] Exception:", error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: errorMessage,
     }
   }
 }
