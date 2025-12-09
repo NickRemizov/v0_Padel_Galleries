@@ -80,7 +80,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // 1. Verified без person_id
     const { data: verifiedWithoutPerson, error: e1 } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id, verified, confidence")
+      .select("id, photo_id, person_id, verified, confidence, bbox, gallery_images!inner(url)")
       .eq("verified", true)
       .is("person_id", null)
 
@@ -93,7 +93,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // 2. Verified с неправильным confidence
     const { data: verifiedWithWrongConfidence, error: e2 } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, confidence")
+      .select("id, photo_id, confidence, bbox, gallery_images!inner(url)")
       .eq("verified", true)
       .neq("confidence", 1.0)
 
@@ -106,7 +106,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // 3. Person_id есть, но confidence=null
     const { data: personWithoutConfidence, error: e3 } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id")
+      .select("id, photo_id, person_id, bbox, gallery_images!inner(url)")
       .not("person_id", "is", null)
       .is("confidence", null)
 
@@ -119,7 +119,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // 4. Person_id не существует в people
     const { data: allPhotoFaces } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id")
+      .select("id, photo_id, person_id, bbox, gallery_images!inner(url)")
       .not("person_id", "is", null)
 
     if (allPhotoFaces) {
@@ -137,7 +137,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     }
 
     // 5. Photo_id не существует в gallery_images
-    const { data: allPhotoFacesWithPhotos } = await supabase.from("photo_faces").select("id, photo_id")
+    const { data: allPhotoFacesWithPhotos } = await supabase.from("photo_faces").select("id, photo_id, bbox")
 
     if (allPhotoFacesWithPhotos) {
       const photoIds = [...new Set(allPhotoFacesWithPhotos.map((pf) => pf.photo_id))]
@@ -149,7 +149,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.nonExistentPhoto = nonExistentPhotoFaces.length
       console.log("[v0] nonExistentPhoto count:", photoFaces.nonExistentPhoto)
       if (nonExistentPhotoFaces.length > 0) {
-        details.nonExistentPhoto = nonExistentPhotoFaces.slice(0, 10)
+        details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 10)
       }
     }
 

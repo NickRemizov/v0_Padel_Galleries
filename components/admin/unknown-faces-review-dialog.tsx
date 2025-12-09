@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { clusterUnknownFacesAction, assignFacesToPersonAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 import type { Person } from "@/lib/types"
+import FaceCropPreview from "@/components/FaceCropPreview"
 
 interface UnknownFacesReviewDialogProps {
   open: boolean
@@ -35,65 +36,6 @@ interface Cluster {
   cluster_id: number
   size: number
   faces: ClusterFace[]
-}
-
-function FaceCropPreview({
-  imageUrl,
-  bbox,
-}: {
-  imageUrl: string
-  bbox: { x: number; y: number; width: number; height: number }
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    const img = new Image()
-    img.crossOrigin = "anonymous"
-
-    img.onload = () => {
-      // 50% padding on each side
-      const padding = 0.5
-      const paddedWidth = bbox.width * (1 + padding * 2)
-      const paddedHeight = bbox.height * (1 + padding * 2)
-      const paddedX = Math.max(0, bbox.x - bbox.width * padding)
-      const paddedY = Math.max(0, bbox.y - bbox.height * padding)
-
-      const cropX = Math.max(0, paddedX)
-      const cropY = Math.max(0, paddedY)
-      const cropWidth = Math.min(paddedWidth, img.width - cropX)
-      const cropHeight = Math.min(paddedHeight, img.height - cropY)
-
-      const previewSize = 200
-      canvas.width = previewSize
-      canvas.height = previewSize
-
-      ctx.fillStyle = "#000000"
-      ctx.fillRect(0, 0, previewSize, previewSize)
-
-      const scale = Math.min(previewSize / cropWidth, previewSize / cropHeight)
-      const scaledWidth = cropWidth * scale
-      const scaledHeight = cropHeight * scale
-
-      const offsetX = (previewSize - scaledWidth) / 2
-      const offsetY = (previewSize - scaledHeight) / 2
-
-      ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, offsetX, offsetY, scaledWidth, scaledHeight)
-    }
-
-    img.onerror = () => {
-      console.error("[FaceCropPreview] Failed to load image:", imageUrl)
-    }
-
-    img.src = imageUrl
-  }, [imageUrl, bbox])
-
-  return <canvas ref={canvasRef} className="w-full h-full rounded-lg border-2 border-primary" />
 }
 
 export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComplete }: UnknownFacesReviewDialogProps) {

@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator"
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Wrench, ChevronDown, ChevronRight, Info } from "lucide-react"
 import { checkDatabaseIntegrityAction, fixIntegrityIssueAction } from "@/app/admin/actions/integrity"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import FaceCropPreview from "@/components/FaceCropPreview" // Added import for FaceCropPreview component
 
 interface IntegrityReport {
   photoFaces: {
@@ -190,10 +191,20 @@ export function DatabaseIntegrityChecker() {
           <div className="ml-4 p-4 bg-muted rounded-lg space-y-2">
             <div className="text-sm font-medium">Найдено записей: {details.length}</div>
             <div className="text-xs text-muted-foreground">Показаны первые {Math.min(10, details.length)} записей:</div>
-            <div className="space-y-1 max-h-60 overflow-y-auto">
+            <div className="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto">
               {details.slice(0, 10).map((item: any, index: number) => (
-                <div key={index} className="text-xs font-mono bg-background p-2 rounded border">
-                  {JSON.stringify(item, null, 2)}
+                <div key={index} className="bg-background p-2 rounded border space-y-2">
+                  {item.gallery_images?.url && item.bbox && (
+                    <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
+                      <FaceCropPreview imageUrl={item.gallery_images.url} bbox={item.bbox} size={200} />
+                    </div>
+                  )}
+                  <div className="text-xs font-mono">
+                    <div>ID: {item.id?.slice(0, 8)}...</div>
+                    <div>Photo: {item.photo_id?.slice(0, 8)}...</div>
+                    {item.person_id && <div>Person: {item.person_id.slice(0, 8)}...</div>}
+                    {item.confidence !== undefined && <div>Confidence: {item.confidence}</div>}
+                  </div>
                 </div>
               ))}
             </div>
