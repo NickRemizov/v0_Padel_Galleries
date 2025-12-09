@@ -504,6 +504,9 @@ async def cluster_unknown_faces(
                 
                 face.pop("insightface_descriptor", None) # Remove descriptor from response
                 
+                if "photo_url" in face:
+                    face["image_url"] = face.pop("photo_url")
+                
                 normalized_faces.append(face)
             
             clusters.append({
