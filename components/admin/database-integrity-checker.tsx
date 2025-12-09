@@ -16,11 +16,10 @@ interface IntegrityReport {
     personWithoutConfidence: number
     nonExistentPerson: number
     nonExistentPhoto: number
-    withoutDescriptors: number
     inconsistentPersonId: number
   }
   faceDescriptors: {
-    orphaned: number
+    orphanedDescriptors: number // changed from "orphaned"
     nonExistentPerson: number
     withoutPerson: number
     withoutEmbedding: number
@@ -261,7 +260,6 @@ export function DatabaseIntegrityChecker() {
             report.photoFaces.personWithoutConfidence > 0 ||
             report.photoFaces.nonExistentPerson > 0 ||
             report.photoFaces.nonExistentPhoto > 0 ||
-            report.photoFaces.withoutDescriptors > 0 ||
             report.photoFaces.inconsistentPersonId > 0) && (
             <Card>
               <CardHeader>
@@ -273,7 +271,6 @@ export function DatabaseIntegrityChecker() {
                     report.photoFaces.personWithoutConfidence +
                     report.photoFaces.nonExistentPerson +
                     report.photoFaces.nonExistentPhoto +
-                    report.photoFaces.withoutDescriptors +
                     report.photoFaces.inconsistentPersonId}
                 </CardDescription>
               </CardHeader>
@@ -320,15 +317,6 @@ export function DatabaseIntegrityChecker() {
                     canFix={true}
                   />
                   <IssueRow
-                    title="Лица без дескрипторов"
-                    count={report.photoFaces.withoutDescriptors}
-                    issueType="facesWithoutDescriptors"
-                    description="Лица без записей в face_descriptors (ошибка обработки)"
-                    severity="medium"
-                    canFix={false}
-                    infoOnly={true}
-                  />
-                  <IssueRow
                     title="Несогласованность person_id"
                     count={report.photoFaces.inconsistentPersonId}
                     issueType="inconsistentPersonIds"
@@ -342,7 +330,7 @@ export function DatabaseIntegrityChecker() {
             </Card>
           )}
 
-          {(report.faceDescriptors.orphaned > 0 ||
+          {(report.faceDescriptors.orphanedDescriptors > 0 ||
             report.faceDescriptors.nonExistentPerson > 0 ||
             report.faceDescriptors.withoutPerson > 0 ||
             report.faceDescriptors.withoutEmbedding > 0 ||
@@ -352,7 +340,7 @@ export function DatabaseIntegrityChecker() {
                 <CardTitle>Проблемы с дескрипторами (Face Descriptors)</CardTitle>
                 <CardDescription>
                   Всего проблем:{" "}
-                  {report.faceDescriptors.orphaned +
+                  {report.faceDescriptors.orphanedDescriptors +
                     report.faceDescriptors.nonExistentPerson +
                     report.faceDescriptors.withoutPerson +
                     report.faceDescriptors.withoutEmbedding +
@@ -363,7 +351,7 @@ export function DatabaseIntegrityChecker() {
                 <div className="space-y-2">
                   <IssueRow
                     title="🎯 Потерянные дескрипторы (ваша проблема!)"
-                    count={report.faceDescriptors.orphaned}
+                    count={report.faceDescriptors.orphanedDescriptors}
                     issueType="orphanedDescriptors"
                     description="source_image_id не существует в photo_faces → Автофикс: удаляет мусор"
                     severity="critical"
