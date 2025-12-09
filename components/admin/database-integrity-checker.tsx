@@ -200,13 +200,25 @@ export function DatabaseIntegrityChecker() {
                     </div>
                   )}
                   <div className="text-xs space-y-1">
-                    {item.people?.real_name && <div className="font-medium">{item.people.real_name}</div>}
+                    {item.real_name && <div className="font-medium">Игрок: {item.real_name}</div>}
+                    {item.people?.real_name && <div className="font-medium">Игрок: {item.people.real_name}</div>}
+                    {item.duplicate_name && (
+                      <div className="font-medium">
+                        Имя: {item.duplicate_name} ({item.duplicate_count} дублей)
+                      </div>
+                    )}
                     {item.gallery_images?.galleries?.title && (
                       <div className="text-muted-foreground">Галерея: {item.gallery_images.galleries.title}</div>
                     )}
-                    {item.confidence !== undefined && <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>}
+                    {item.confidence !== undefined && item.confidence !== null && (
+                      <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>
+                    )}
+                    {item.verified !== undefined && <div>Verified: {item.verified ? "Да" : "Нет"}</div>}
+                    {item.key && <div className="text-muted-foreground">Ключ: {item.key}</div>}
+                    {item.count && <div>Дублей: {item.count}</div>}
+                    {item.ids && <div className="text-muted-foreground">IDs: {item.ids.slice(0, 3).join(", ")}...</div>}
                     <div className="font-mono text-[10px] text-muted-foreground pt-1 border-t">
-                      ID: {item.id?.slice(0, 8)}...
+                      {item.id ? `ID: ${item.id.slice(0, 8)}...` : ""}
                     </div>
                   </div>
                 </div>

@@ -146,7 +146,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.nonExistentPerson = nonExistentPersonFaces.length
       console.log("[v0] nonExistentPerson count:", photoFaces.nonExistentPerson)
       if (nonExistentPersonFaces.length > 0) {
-        details.nonExistentPerson = nonExistentPersonFaces.slice(0, 10)
+        details.nonExistentPersonFaces = nonExistentPersonFaces.slice(0, 10)
       }
     }
 
@@ -214,7 +214,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       faceDescriptors.nonExistentPerson = descriptorsWithNonExistentPerson.length
       console.log("[v0] descriptorsWithNonExistentPerson count:", faceDescriptors.nonExistentPerson)
       if (descriptorsWithNonExistentPerson.length > 0) {
-        details.descriptorsNonExistentPerson = descriptorsWithNonExistentPerson.slice(0, 10)
+        details.nonExistentPersonDescriptors = descriptorsWithNonExistentPerson.slice(0, 10)
       }
     }
 
@@ -313,11 +313,11 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       people.duplicateNames = duplicateNames.reduce((sum, [_, people]) => sum + (people.length - 1), 0)
       console.log("[v0] duplicateNames count:", people.duplicateNames)
       if (duplicateNames.length > 0) {
-        details.duplicateNames = duplicateNames.slice(0, 10).map(([name, people]) => ({
-          name,
-          count: people.length,
-          people,
-        }))
+        details.duplicateNames = duplicateNames
+          .slice(0, 10)
+          .flatMap(([name, people]) =>
+            people.map((p: any) => ({ ...p, duplicate_name: name, duplicate_count: people.length })),
+          )
       }
     }
 
@@ -626,11 +626,9 @@ export async function getIssueDetailsAction(
           details = Array.from(nameGroups.entries())
             .filter(([_, people]) => people.length > 1)
             .slice(0, limit)
-            .map(([name, people]) => ({
-              name,
-              count: people.length,
-              people,
-            }))
+            .flatMap(([name, people]) =>
+              people.map((p: any) => ({ ...p, duplicate_name: name, duplicate_count: people.length })),
+            )
         }
         break
       }
