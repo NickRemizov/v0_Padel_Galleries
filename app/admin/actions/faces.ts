@@ -45,38 +45,8 @@ export async function processPhotoAction(
         faces: result.data || [],
       }
     } else {
-      console.error("[processPhotoAction] Backend error object:", result.error)
-      console.error("[processPhotoAction] Backend error type:", typeof result.error)
-      console.error("[processPhotoAction] Backend error is array:", Array.isArray(result.error))
-
-      let errorMessage = "Failed to process photo"
-
-      // Handle FastAPI validation errors: {detail: [{loc: [], msg: "", type: ""}]}
-      if (result.error && typeof result.error === "object" && "detail" in result.error) {
-        const detail = (result.error as any).detail
-        if (Array.isArray(detail)) {
-          errorMessage = detail
-            .map((err: any) => {
-              if (typeof err === "object" && "msg" in err) {
-                return `${err.loc?.join(".") || "field"}: ${err.msg}`
-              }
-              return JSON.stringify(err)
-            })
-            .join("; ")
-        } else if (typeof detail === "string") {
-          errorMessage = detail
-        } else {
-          errorMessage = JSON.stringify(detail)
-        }
-      } else if (typeof result.error === "string") {
-        errorMessage = result.error
-      } else if (Array.isArray(result.error)) {
-        errorMessage = result.error.map((e) => (typeof e === "string" ? e : JSON.stringify(e))).join(", ")
-      } else if (result.error) {
-        errorMessage = JSON.stringify(result.error)
-      }
-
-      console.error("[processPhotoAction] Final error message:", errorMessage)
+      const errorMessage = result.error || "Failed to process photo"
+      console.error("[processPhotoAction] Backend error:", errorMessage)
 
       return {
         success: false,
