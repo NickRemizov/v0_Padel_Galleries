@@ -12,7 +12,7 @@ import { processPhotoAction } from "@/app/admin/actions/faces"
 import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v4.2-UnifiedConfig" // Updated for unified config
+const VERSION = "v4.3-DebugNullParams" // Updated for debugging null params
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
