@@ -272,11 +272,21 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // ========== PEOPLE CHECKS ==========
 
     // 11. People без descriptors (информационное)
-    const { data: allPeople } = await supabase.from("people").select("id, real_name")
+    const { data: allPeople } = await supabase.from("people").select(`
+      id, 
+      real_name, 
+      telegram_username
+    `)
 
-    if (allPeople && allDescriptors) {
-      const peopleWithDescriptors = new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id))
-      const peopleWithoutDescriptors = allPeople.filter((p) => !peopleWithDescriptors.has(p.id))
+    if (allPeople) {
+      // Get actual descriptor counts from database
+      const { data: descriptorCounts } = await supabase
+        .from("face_descriptors")
+        .select("person_id")
+        .not("person_id", "is", null)
+
+      const peopleWithDescriptorIds = new Set(descriptorCounts?.map((d) => d.person_id) || [])
+      const peopleWithoutDescriptors = allPeople.filter((p) => !peopleWithDescriptorIds.has(p.id))
 
       people.withoutDescriptors = peopleWithoutDescriptors.length
       console.log("[v0] peopleWithoutDescriptors count:", people.withoutDescriptors)
@@ -299,25 +309,33 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     // 13. Duplicate names (информационное)
     if (allPeople) {
+      // Group by real_name AND telegram_username (if both are same - true duplicate)
       const nameGroups = new Map<string, any[]>()
       for (const person of allPeople) {
         if (!person.real_name) continue
-        const name = person.real_name.toLowerCase()
-        if (!nameGroups.has(name)) {
-          nameGroups.set(name, [])
+        // Key includes both name and telegram to distinguish different people
+        const key = `${person.real_name.toLowerCase()}_${person.telegram_username || "notelegram"}`
+        if (!nameGroups.has(key)) {
+          nameGroups.set(key, [])
         }
-        nameGroups.get(name)!.push(person)
+        nameGroups.get(key)!.push(person)
       }
 
+      // Only count REAL duplicates (same name AND same telegram)
       const duplicateNames = Array.from(nameGroups.entries()).filter(([_, people]) => people.length > 1)
-      people.duplicateNames = duplicateNames.reduce((sum, [_, people]) => sum + (people.length - 1), 0)
-      console.log("[v0] duplicateNames count:", people.duplicateNames)
+
+      // Count total number of duplicate records
+      people.duplicateNames = duplicateNames.length
+      console.log("[v0] duplicateNames groups:", people.duplicateNames)
+
       if (duplicateNames.length > 0) {
-        details.duplicateNames = duplicateNames
-          .slice(0, 10)
-          .flatMap(([name, people]) =>
-            people.map((p: any) => ({ ...p, duplicate_name: name, duplicate_count: people.length })),
-          )
+        details.duplicateNames = duplicateNames.slice(0, 10).flatMap(([key, people]) =>
+          people.map((p: any) => ({
+            ...p,
+            duplicate_key: key,
+            duplicate_count: people.length,
+          })),
+        )
       }
     }
 
@@ -586,19 +604,19 @@ export async function getIssueDetailsAction(
       }
 
       case "peopleWithoutDescriptors": {
-        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_name")
+        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
 
         const { data: allDescriptors } = await supabase.from("face_descriptors").select("person_id")
 
         if (allPeople && allDescriptors) {
-          const peopleWithDescriptors = new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id))
-          details = allPeople.filter((p) => !peopleWithDescriptors.has(p.id)).slice(0, limit)
+          const peopleWithDescriptorIds = new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id))
+          details = allPeople.filter((p) => !peopleWithDescriptorIds.has(p.id)).slice(0, limit)
         }
         break
       }
 
       case "peopleWithoutFaces": {
-        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_name")
+        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
 
         const { data: allPhotoFaces } = await supabase.from("photo_faces").select("person_id")
 
@@ -610,24 +628,29 @@ export async function getIssueDetailsAction(
       }
 
       case "duplicateNames": {
-        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_name")
+        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
 
         if (allPeople) {
           const nameGroups = new Map<string, any[]>()
           for (const person of allPeople) {
             if (!person.real_name) continue
-            const name = person.real_name.toLowerCase()
-            if (!nameGroups.has(name)) {
-              nameGroups.set(name, [])
+            // Key includes both name and telegram to distinguish different people
+            const key = `${person.real_name.toLowerCase()}_${person.telegram_username || "notelegram"}`
+            if (!nameGroups.has(key)) {
+              nameGroups.set(key, [])
             }
-            nameGroups.get(name)!.push(person)
+            nameGroups.get(key)!.push(person)
           }
 
           details = Array.from(nameGroups.entries())
             .filter(([_, people]) => people.length > 1)
             .slice(0, limit)
-            .flatMap(([name, people]) =>
-              people.map((p: any) => ({ ...p, duplicate_name: name, duplicate_count: people.length })),
+            .flatMap(([key, people]) =>
+              people.map((p: any) => ({
+                ...p,
+                duplicate_key: key,
+                duplicate_count: people.length,
+              })),
             )
         }
         break

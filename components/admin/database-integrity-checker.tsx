@@ -202,10 +202,11 @@ export function DatabaseIntegrityChecker() {
                   <div className="text-xs space-y-1">
                     {item.real_name && <div className="font-medium">Игрок: {item.real_name}</div>}
                     {item.people?.real_name && <div className="font-medium">Игрок: {item.people.real_name}</div>}
-                    {item.duplicate_name && (
-                      <div className="font-medium">
-                        Имя: {item.duplicate_name} ({item.duplicate_count} дублей)
-                      </div>
+                    {item.telegram_username && (
+                      <div className="text-muted-foreground">Telegram: @{item.telegram_username}</div>
+                    )}
+                    {item.duplicate_key && (
+                      <div className="font-medium">Дубли: {item.duplicate_count} записей с одинаковым именем и ТГ</div>
                     )}
                     {item.gallery_images?.galleries?.title && (
                       <div className="text-muted-foreground">Галерея: {item.gallery_images.galleries.title}</div>
@@ -324,7 +325,7 @@ export function DatabaseIntegrityChecker() {
                     count={report.photoFaces.personWithoutConfidence}
                     issueType="personWithoutConfidence"
                     description="Лица с person_id, но confidence = null → Автофикс: устанавливает confidence=0.5"
-                    severity="high"
+                    severity="medium"
                     canFix={true}
                   />
                   <IssueRow
@@ -457,7 +458,7 @@ export function DatabaseIntegrityChecker() {
                     title="Дубликаты имен"
                     count={report.people.duplicateNames}
                     issueType="duplicateNames"
-                    description="Несколько игроков с одинаковым именем (разные люди, требует ручного разбора)"
+                    description="Несколько игроков с ОДИНАКОВЫМИ именем И telegram (разные ТГ = разные люди, не ошибка)"
                     severity="medium"
                     canFix={false}
                     infoOnly={true}
