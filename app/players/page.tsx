@@ -27,6 +27,8 @@ export default async function PlayersPage() {
       `
       person_id,
       photo_id,
+      verified,
+      recognition_confidence,
       gallery_images!inner (
         gallery_id,
         galleries!inner (
@@ -45,7 +47,29 @@ export default async function PlayersPage() {
   const playersWithData = players?.map((player: any) => {
     // Get all photo faces for this player
     const playerPhotoFaces = photoFaces?.filter((pf: any) => pf.person_id === player.id) || []
+
+    // Count unique verified photos and high confidence photos
+    const verifiedPhotoIds = new Set<string>()
+    const highConfPhotoIds = new Set<string>()
+
+    playerPhotoFaces.forEach((pf: any) => {
+      if (pf.verified) {
+        verifiedPhotoIds.add(pf.photo_id)
+      } else if ((pf.recognition_confidence || 0) >= 0.8) {
+        highConfPhotoIds.add(pf.photo_id)
+      }
+    })
+
+    // Remove verified photos from high confidence count
+    highConfPhotoIds.forEach((id) => {
+      if (verifiedPhotoIds.has(id)) {
+        highConfPhotoIds.delete(id)
+      }
+    })
+
     const photoCount = playerPhotoFaces.length
+    const verifiedPhotoCount = verifiedPhotoIds.size
+    const highConfidencePhotoCount = highConfPhotoIds.size
 
     // Find the most recent gallery date for this player
     let mostRecentDate: string | null = null
@@ -61,6 +85,8 @@ export default async function PlayersPage() {
 
     return {
       ...player,
+      verified_photos_count: verifiedPhotoCount,
+      high_confidence_photos_count: highConfidencePhotoCount,
       _count: {
         photo_faces: photoCount,
       },
