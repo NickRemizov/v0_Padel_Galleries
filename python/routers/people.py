@@ -338,20 +338,47 @@ async def _calculate_people_stats(people: list) -> list:
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
-        faces_result = supabase_db_instance.client.table("photo_faces").select(
-            "person_id, photo_id, verified, recognition_confidence"
-        ).execute()
-        all_faces = faces_result.data or []
+        all_faces = []
+        offset = 0
+        page_size = 1000
+        while True:
+            faces_result = supabase_db_instance.client.table("photo_faces").select(
+                "person_id, photo_id, verified, recognition_confidence"
+            ).range(offset, offset + page_size - 1).execute()
+            
+            batch = faces_result.data or []
+            all_faces.extend(batch)
+            
+            if len(batch) < page_size:
+                break
+            offset += page_size
         
-        descriptors_result = supabase_db_instance.client.table("face_descriptors").select("person_id").execute()
-        all_descriptors = descriptors_result.data or []
+        logger.info(f"[People API] Loaded {len(all_faces)} total photo_faces for stats")
         
+        all_descriptors = []
+        offset = 0
+        while True:
+            descriptors_result = supabase_db_instance.client.table("face_descriptors").select(
+                "person_id"
+            ).range(offset, offset + page_size - 1).execute()
+            
+            batch = descriptors_result.data or []
+            all_descriptors.extend(batch)
+            
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        
+        logger.info(f"[People API] Loaded {len(all_descriptors)} total descriptors for stats")
+        
+        # Считаем дескрипторы по person_id
         descriptor_counts = {}
         for d in all_descriptors:
             pid = d.get("person_id")
             if pid:
                 descriptor_counts[pid] = descriptor_counts.get(pid, 0) + 1
         
+        # Считаем статистику для каждого человека
         result = []
         for person in people:
             person_id = person["id"]
@@ -367,6 +394,7 @@ async def _calculate_people_stats(people: list) -> list:
                 elif (face.get("recognition_confidence") or 0) >= confidence_threshold:
                     high_conf_photos.add(photo_id)
             
+            # Убираем из high_conf те что уже verified
             high_conf_photos -= verified_photos
             
             result.append({
