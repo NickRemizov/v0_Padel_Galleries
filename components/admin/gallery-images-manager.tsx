@@ -42,6 +42,7 @@ import type { GalleryImage } from "@/lib/types"
 import { FaceTaggingDialog } from "./face-tagging-dialog"
 import { AutoRecognitionDialog } from "./auto-recognition-dialog"
 import { UnknownFacesReviewDialog } from "./unknown-faces-review-dialog"
+import { logger } from "@/lib/logger"
 
 interface GalleryImagesManagerProps {
   galleryId: string
@@ -233,7 +234,7 @@ export function GalleryImagesManager({
     if (result.success && result.data) {
       setImages(result.data)
     } else if (result.error) {
-      console.error("[v0] Error loading images:", result.error)
+      logger.error("GalleryImagesManager", "Failed to load images", result.error)
     }
     setLoading(false)
   }
@@ -246,28 +247,27 @@ export function GalleryImagesManager({
   }
 
   async function loadPhotoFaces() {
-    console.log("[v0] [GalleryImagesManager] loadPhotoFaces START")
-    console.log("[v0] [GalleryImagesManager] images count:", images.length)
+    logger.debug("GalleryImagesManager", "Starting loadPhotoFaces")
+    logger.debug("GalleryImagesManager", "Images count", { count: images.length })
 
     const photoIds = images.map((img) => img.id)
 
-    console.log("[v0] [GalleryImagesManager] Calling getBatchPhotoFacesAction with photoIds:", photoIds)
+    logger.debug("GalleryImagesManager", "Calling getBatchPhotoFacesAction", { photoIds })
 
     const result = await getBatchPhotoFacesAction(photoIds)
 
-    console.log("[v0] [GalleryImagesManager] getBatchPhotoFacesAction result:", {
+    logger.debug("GalleryImagesManager", "getBatchPhotoFacesAction result", {
       success: result.success,
       successType: typeof result.success,
       dataLength: result.data?.length,
       error: result.error,
-      fullResult: result,
     })
 
     if (result.success && result.data) {
       const facesMap: Record<string, { verified: boolean; confidence: number; person_id: string | null }[]> = {}
 
       for (const face of result.data) {
-        console.log("[v0] [GalleryImagesManager] Face from DB:", {
+        logger.debug("GalleryImagesManager", "Face from database", {
           photo_id: face.photo_id,
           person_id: face.person_id,
           recognition_confidence: face.recognition_confidence,
@@ -284,14 +284,14 @@ export function GalleryImagesManager({
         })
       }
 
-      console.log("[v0] [GalleryImagesManager] Loaded photo faces map:", {
+      logger.debug("GalleryImagesManager", "Loaded photo faces map", {
         photosCount: Object.keys(facesMap).length,
         photoIds: Object.keys(facesMap),
       })
 
       setPhotoFacesMap(facesMap)
     } else {
-      console.log("[v0] [GalleryImagesManager] No faces data or error:", {
+      logger.debug("GalleryImagesManager", "No faces data or error occurred", {
         success: result.success,
         error: result.error,
         hasData: !!result.data,
@@ -440,7 +440,7 @@ export function GalleryImagesManager({
           uploadResults.success.push(file)
         } catch (uploadError) {
           const errorMessage = uploadError instanceof Error ? uploadError.message : "Неизвестная ошибка"
-          console.error(`[v0.9.0] Failed to upload ${file.name}:`, errorMessage)
+          logger.error("GalleryImagesManager", `Failed to upload ${file.name}`, errorMessage)
           uploadResults.failed.push({ file, error: errorMessage })
         }
       }
@@ -466,7 +466,7 @@ export function GalleryImagesManager({
         alert("Не удалось загрузить ни одного файла")
       }
     } catch (error) {
-      console.error("[v0.9.0] Error uploading images:", error)
+      logger.error("GalleryImagesManager", "Error uploading images", error)
       const errorMessage = error instanceof Error ? error.message : "Ошибка загрузки изображений"
       alert(errorMessage)
     } finally {
@@ -518,14 +518,14 @@ export function GalleryImagesManager({
       for (const photoId of selectedPhotos) {
         const result = await deleteGalleryImageAction(photoId, galleryId)
         if (result.error) {
-          console.error("Failed to delete photo:", result.error)
+          logger.error("GalleryImagesManager", "Failed to delete photo", result.error)
         }
       }
       setSelectedPhotos(new Set())
     } else {
       const result = await deleteAllGalleryImagesAction(galleryId)
       if (result.error) {
-        console.error("Failed to delete all photos:", result.error)
+        logger.error("GalleryImagesManager", "Failed to delete all photos", result.error)
       }
     }
     setConfirmDialog({ open: false, action: null, count: 0 })
@@ -537,7 +537,7 @@ export function GalleryImagesManager({
     setSortBy(value as SortOption)
     const result = await updateGallerySortOrderAction(galleryId, value as SortOption)
     if (result.error) {
-      console.error("Failed to update gallery sort order:", result.error)
+      logger.error("GalleryImagesManager", "Failed to update gallery sort order", result.error)
     }
   }
 
@@ -594,7 +594,7 @@ export function GalleryImagesManager({
       await loadImages()
       await loadPhotoFaces()
     } else if (result.error) {
-      console.error("Failed to delete photo:", result.error)
+      logger.error("GalleryImagesManager", "Failed to delete photo", result.error)
     }
 
     setSingleDeleteDialog({ open: false, imageId: null, filename: null })
@@ -603,7 +603,7 @@ export function GalleryImagesManager({
   const handleTagImage = (imageId: string, imageUrl: string) => {
     const image = images.find((img) => img.id === imageId)
     const hasBeenProcessed = image?.has_been_processed || false
-    console.log("[v4.7] Opening FaceTaggingDialog for image:", imageId, "hasBeenProcessed:", hasBeenProcessed)
+    logger.debug("GalleryImagesManager", "Opening FaceTaggingDialog", { imageId, hasBeenProcessed })
 
     setTaggingImage({ id: imageId, url: imageUrl, hasBeenProcessed })
   }
@@ -827,14 +827,13 @@ export function GalleryImagesManager({
           open={!!taggingImage}
           onOpenChange={async (open) => {
             if (!open) {
-              console.log("[v4.7] GalleryImagesManager: FaceTaggingDialog closed, keeping gallery open without reload")
+              logger.debug("GalleryImagesManager", "FaceTaggingDialog closed, keeping gallery open without reload")
               setTaggingImage(null)
             }
           }}
           onSave={async () => {
-            console.log("[v4.7] GalleryImagesManager: FaceTaggingDialog onSave called")
-            await loadRecognitionStats()
-            await loadPhotoFaces()
+            logger.info("GalleryImagesManager", "FaceTaggingDialog onSave called")
+            await loadImages()
           }}
         />
       )}
