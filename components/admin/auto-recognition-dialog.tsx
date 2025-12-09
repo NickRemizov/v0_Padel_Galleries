@@ -39,7 +39,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
   async function processImageFaces(photoId: string, imageUrl: string, qualityParams: any) {
     console.log(`[${VERSION}] Processing image: ${photoId}`)
     console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
-    console.log(`[${VERSION}] Quality params:`, qualityParams)
+    console.log(`[${VERSION}] Quality params:`, applyQualityFilters ? qualityParams : null)
 
     const result = await processPhotoAction(
       photoId,
@@ -69,12 +69,14 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     console.log(`[${VERSION}] AUTO-RECOGNITION: images.length =`, images.length)
 
     const configResult = await getRecognitionConfigAction()
-    const qualityParams = {
-      confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
-      minDetectionScore: configResult.config?.quality_filters?.min_detection_score || 0.7,
-      minFaceSize: configResult.config?.quality_filters?.min_face_size || 80,
-      minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
-    }
+    const qualityParams = applyQualityFilters
+      ? {
+          confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
+          minDetectionScore: configResult.config?.quality_filters?.min_detection_score || 0.7,
+          minFaceSize: configResult.config?.quality_filters?.min_face_size || 80,
+          minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
+        }
+      : null
     console.log(`[${VERSION}] AUTO-RECOGNITION: Using quality params from config:`, qualityParams)
 
     setProcessing(true)
