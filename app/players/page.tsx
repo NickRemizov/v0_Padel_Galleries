@@ -21,8 +21,9 @@ export default async function PlayersPage() {
       .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
       .map((player: any) => ({
         ...player,
+        // Keep _count for backward compatibility with existing code
         _count: {
-          photo_faces: player.verified_photos_count + player.high_confidence_photos_count,
+          photo_faces: player.verified_photos_count || 0,
         },
       }))
 

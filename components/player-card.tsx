@@ -1,5 +1,7 @@
 "use client"
 
+const VERSION = "v1.0-FixedPhotoCount"
+
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
