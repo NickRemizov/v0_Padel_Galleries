@@ -32,7 +32,7 @@ class DetectFacesRequest(BaseModel):
     image_url: str
     apply_quality_filters: bool = True
     min_detection_score: float = 0.7
-    min_face_size: float = 80.0
+    min_face_size: float = 60.0
     min_blur_score: float = 80.0
 
 
