@@ -45,73 +45,75 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
   data?: IntegrityReport
   error?: string
 }> {
+  console.log("[v0] Starting integrity check...")
   const supabase = await createClient()
 
   try {
     logger.debug("actions/integrity", "Starting FULL database integrity check...")
 
-    const report: IntegrityReport = {
-      photoFaces: {
-        verifiedWithoutPerson: 0,
-        verifiedWithWrongConfidence: 0,
-        personWithoutConfidence: 0,
-        nonExistentPerson: 0,
-        nonExistentPhoto: 0,
-        inconsistentPersonId: 0,
-      },
-      faceDescriptors: {
-        orphanedDescriptors: 0,
-        nonExistentPerson: 0,
-        withoutPerson: 0,
-        withoutEmbedding: 0,
-        duplicates: 0,
-        inconsistentPersonId: 0,
-      },
-      people: {
-        withoutDescriptors: 0,
-        withoutFaces: 0,
-        duplicateNames: 0,
-      },
-      totalIssues: 0,
-      details: {},
+    const photoFaces = {
+      verifiedWithoutPerson: 0,
+      verifiedWithWrongConfidence: 0,
+      personWithoutConfidence: 0,
+      nonExistentPerson: 0,
+      nonExistentPhoto: 0,
+      inconsistentPersonId: 0,
     }
+    const faceDescriptors = {
+      orphanedDescriptors: 0,
+      nonExistentPerson: 0,
+      withoutPerson: 0,
+      withoutEmbedding: 0,
+      duplicates: 0,
+      inconsistentPersonId: 0,
+    }
+    const people = {
+      withoutDescriptors: 0,
+      withoutFaces: 0,
+      duplicateNames: 0,
+    }
+    let totalIssues = 0
+    const details: any = {}
 
     // ========== PHOTO_FACES CHECKS ==========
 
     // 1. Verified без person_id
-    const { data: verifiedWithoutPerson } = await supabase
+    const { data: verifiedWithoutPerson, error: e1 } = await supabase
       .from("photo_faces")
-      .select("id, photo_id")
+      .select("id, photo_id, person_id, verified, confidence")
       .eq("verified", true)
       .is("person_id", null)
 
-    report.photoFaces.verifiedWithoutPerson = verifiedWithoutPerson?.length || 0
+    photoFaces.verifiedWithoutPerson = verifiedWithoutPerson?.length || 0
+    console.log("[v0] verifiedWithoutPerson count:", photoFaces.verifiedWithoutPerson)
     if (verifiedWithoutPerson && verifiedWithoutPerson.length > 0) {
-      report.details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 10)
+      details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 10)
     }
 
     // 2. Verified с неправильным confidence
-    const { data: verifiedWithWrongConfidence } = await supabase
+    const { data: verifiedWithWrongConfidence, error: e2 } = await supabase
       .from("photo_faces")
       .select("id, photo_id, confidence")
       .eq("verified", true)
       .neq("confidence", 1.0)
 
-    report.photoFaces.verifiedWithWrongConfidence = verifiedWithWrongConfidence?.length || 0
+    photoFaces.verifiedWithWrongConfidence = verifiedWithWrongConfidence?.length || 0
+    console.log("[v0] verifiedWithWrongConfidence count:", photoFaces.verifiedWithWrongConfidence)
     if (verifiedWithWrongConfidence && verifiedWithWrongConfidence.length > 0) {
-      report.details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 10)
+      details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 10)
     }
 
     // 3. Person_id есть, но confidence=null
-    const { data: personWithoutConfidence } = await supabase
+    const { data: personWithoutConfidence, error: e3 } = await supabase
       .from("photo_faces")
       .select("id, photo_id, person_id")
       .not("person_id", "is", null)
       .is("confidence", null)
 
-    report.photoFaces.personWithoutConfidence = personWithoutConfidence?.length || 0
+    photoFaces.personWithoutConfidence = personWithoutConfidence?.length || 0
+    console.log("[v0] personWithoutConfidence count:", photoFaces.personWithoutConfidence)
     if (personWithoutConfidence && personWithoutConfidence.length > 0) {
-      report.details.personWithoutConfidence = personWithoutConfidence.slice(0, 10)
+      details.personWithoutConfidence = personWithoutConfidence.slice(0, 10)
     }
 
     // 4. Person_id не существует в people
@@ -127,9 +129,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       const existingIds = new Set(existingPeople?.map((p) => p.id) || [])
       const nonExistentPersonFaces = allPhotoFaces.filter((pf) => !existingIds.has(pf.person_id!))
 
-      report.photoFaces.nonExistentPerson = nonExistentPersonFaces.length
+      photoFaces.nonExistentPerson = nonExistentPersonFaces.length
+      console.log("[v0] nonExistentPerson count:", photoFaces.nonExistentPerson)
       if (nonExistentPersonFaces.length > 0) {
-        report.details.nonExistentPerson = nonExistentPersonFaces.slice(0, 10)
+        details.nonExistentPerson = nonExistentPersonFaces.slice(0, 10)
       }
     }
 
@@ -143,9 +146,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       const existingPhotoIds = new Set(existingPhotos?.map((p) => p.id) || [])
       const nonExistentPhotoFaces = allPhotoFacesWithPhotos.filter((pf) => !existingPhotoIds.has(pf.photo_id))
 
-      report.photoFaces.nonExistentPhoto = nonExistentPhotoFaces.length
+      photoFaces.nonExistentPhoto = nonExistentPhotoFaces.length
+      console.log("[v0] nonExistentPhoto count:", photoFaces.nonExistentPhoto)
       if (nonExistentPhotoFaces.length > 0) {
-        report.details.nonExistentPhoto = nonExistentPhotoFaces.slice(0, 10)
+        details.nonExistentPhoto = nonExistentPhotoFaces.slice(0, 10)
       }
     }
 
@@ -161,9 +165,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
       const orphanedDescriptors = allDescriptors.filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
 
-      report.faceDescriptors.orphanedDescriptors = orphanedDescriptors.length
+      faceDescriptors.orphanedDescriptors = orphanedDescriptors.length
+      console.log("[v0] orphanedDescriptors count:", faceDescriptors.orphanedDescriptors)
       if (orphanedDescriptors.length > 0) {
-        report.details.orphanedDescriptors = orphanedDescriptors.slice(0, 10)
+        details.orphanedDescriptors = orphanedDescriptors.slice(0, 10)
       }
     }
 
@@ -180,32 +185,35 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         (d) => d.person_id && !existingPeopleIds.has(d.person_id),
       )
 
-      report.faceDescriptors.nonExistentPerson = descriptorsWithNonExistentPerson.length
+      faceDescriptors.nonExistentPerson = descriptorsWithNonExistentPerson.length
+      console.log("[v0] descriptorsWithNonExistentPerson count:", faceDescriptors.nonExistentPerson)
       if (descriptorsWithNonExistentPerson.length > 0) {
-        report.details.descriptorsNonExistentPerson = descriptorsWithNonExistentPerson.slice(0, 10)
+        details.descriptorsNonExistentPerson = descriptorsWithNonExistentPerson.slice(0, 10)
       }
     }
 
     // 8. Descriptors без person_id
-    const { data: descriptorsWithoutPerson } = await supabase
+    const { data: descriptorsWithoutPerson, error: e8 } = await supabase
       .from("face_descriptors")
       .select("id, source_image_id")
       .is("person_id", null)
 
-    report.faceDescriptors.withoutPerson = descriptorsWithoutPerson?.length || 0
+    faceDescriptors.withoutPerson = descriptorsWithoutPerson?.length || 0
+    console.log("[v0] descriptorsWithoutPerson count:", faceDescriptors.withoutPerson)
     if (descriptorsWithoutPerson && descriptorsWithoutPerson.length > 0) {
-      report.details.descriptorsWithoutPerson = descriptorsWithoutPerson.slice(0, 10)
+      details.descriptorsWithoutPerson = descriptorsWithoutPerson.slice(0, 10)
     }
 
     // 9. Descriptors без embedding
-    const { data: descriptorsWithoutEmbedding } = await supabase
+    const { data: descriptorsWithoutEmbedding, error: e9 } = await supabase
       .from("face_descriptors")
       .select("id, source_image_id, person_id")
       .is("embedding", null)
 
-    report.faceDescriptors.withoutEmbedding = descriptorsWithoutEmbedding?.length || 0
+    faceDescriptors.withoutEmbedding = descriptorsWithoutEmbedding?.length || 0
+    console.log("[v0] descriptorsWithoutEmbedding count:", faceDescriptors.withoutEmbedding)
     if (descriptorsWithoutEmbedding && descriptorsWithoutEmbedding.length > 0) {
-      report.details.descriptorsWithoutEmbedding = descriptorsWithoutEmbedding.slice(0, 10)
+      details.descriptorsWithoutEmbedding = descriptorsWithoutEmbedding.slice(0, 10)
     }
 
     // 10. Duplicate descriptors (одинаковые person_id + source_image_id)
@@ -224,9 +232,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       )
       const totalDuplicates = duplicateGroups.reduce((sum, [_, descriptors]) => sum + (descriptors.length - 1), 0)
 
-      report.faceDescriptors.duplicates = totalDuplicates
+      faceDescriptors.duplicates = totalDuplicates
+      console.log("[v0] duplicates count:", faceDescriptors.duplicates)
       if (duplicateGroups.length > 0) {
-        report.details.duplicateDescriptors = duplicateGroups.slice(0, 10).map(([key, descriptors]) => ({
+        details.duplicateDescriptors = duplicateGroups.slice(0, 10).map(([key, descriptors]) => ({
           key,
           count: descriptors.length,
           ids: descriptors.map((d) => d.id),
@@ -243,9 +252,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       const peopleWithDescriptors = new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id))
       const peopleWithoutDescriptors = allPeople.filter((p) => !peopleWithDescriptors.has(p.id))
 
-      report.people.withoutDescriptors = peopleWithoutDescriptors.length
+      people.withoutDescriptors = peopleWithoutDescriptors.length
+      console.log("[v0] peopleWithoutDescriptors count:", people.withoutDescriptors)
       if (peopleWithoutDescriptors.length > 0) {
-        report.details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 10)
+        details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 10)
       }
     }
 
@@ -254,9 +264,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       const peopleWithFaces = new Set(allPhotoFaces.filter((pf) => pf.person_id).map((pf) => pf.person_id))
       const peopleWithoutFaces = allPeople.filter((p) => !peopleWithFaces.has(p.id))
 
-      report.people.withoutFaces = peopleWithoutFaces.length
+      people.withoutFaces = peopleWithoutFaces.length
+      console.log("[v0] peopleWithoutFaces count:", people.withoutFaces)
       if (peopleWithoutFaces.length > 0) {
-        report.details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 10)
+        details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 10)
       }
     }
 
@@ -273,9 +284,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
 
       const duplicateNames = Array.from(nameGroups.entries()).filter(([_, people]) => people.length > 1)
-      report.people.duplicateNames = duplicateNames.reduce((sum, [_, people]) => sum + (people.length - 1), 0)
+      people.duplicateNames = duplicateNames.reduce((sum, [_, people]) => sum + (people.length - 1), 0)
+      console.log("[v0] duplicateNames count:", people.duplicateNames)
       if (duplicateNames.length > 0) {
-        report.details.duplicateNames = duplicateNames.slice(0, 10).map(([name, people]) => ({
+        details.duplicateNames = duplicateNames.slice(0, 10).map(([name, people]) => ({
           name,
           count: people.length,
           people,
@@ -285,22 +297,32 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     // ========== CALCULATE TOTAL ==========
 
-    report.totalIssues =
-      report.photoFaces.verifiedWithoutPerson +
-      report.photoFaces.verifiedWithWrongConfidence +
-      report.photoFaces.personWithoutConfidence +
-      report.photoFaces.nonExistentPerson +
-      report.photoFaces.nonExistentPhoto +
-      report.faceDescriptors.orphanedDescriptors +
-      report.faceDescriptors.nonExistentPerson +
-      report.faceDescriptors.withoutPerson +
-      report.faceDescriptors.withoutEmbedding +
-      report.faceDescriptors.duplicates
+    totalIssues =
+      photoFaces.verifiedWithoutPerson +
+      photoFaces.verifiedWithWrongConfidence +
+      photoFaces.personWithoutConfidence +
+      photoFaces.nonExistentPerson +
+      photoFaces.nonExistentPhoto +
+      faceDescriptors.orphanedDescriptors +
+      faceDescriptors.nonExistentPerson +
+      faceDescriptors.withoutPerson +
+      faceDescriptors.withoutEmbedding +
+      faceDescriptors.duplicates
 
-    logger.info("actions/integrity", `Integrity check complete. Total issues: ${report.totalIssues}`)
+    const report: IntegrityReport = {
+      photoFaces,
+      faceDescriptors,
+      people,
+      totalIssues,
+      details,
+    }
+
+    console.log("[v0] Integrity check complete. Total issues:", totalIssues)
+    console.log("[v0] Returning report:", JSON.stringify(report, null, 2))
 
     return { success: true, data: report }
   } catch (error: any) {
+    console.log("[v0] Error in integrity check:", error.message)
     logger.error("actions/integrity", "Error checking database integrity", error)
     return { success: false, error: error.message || "Failed to check database integrity" }
   }
@@ -483,12 +505,14 @@ export async function fixIntegrityIssuesAction(
     }
 
     logger.info("actions/integrity", `Fixed ${fixed} issues of type ${issueType}`)
+    console.log("[v0] Fixed issues count:", fixed)
 
     revalidatePath("/admin")
 
     return { success: true, data: { fixed, issueType, details } }
   } catch (error: any) {
     logger.error("actions/integrity", "Error fixing integrity issue", error)
+    console.error("[v0] Error fixing integrity issue:", error)
     return { success: false, error: error.message || "Failed to fix integrity issue" }
   }
 }
@@ -579,6 +603,7 @@ export async function getIssueDetailsAction(
     return { success: true, data: details }
   } catch (error: any) {
     logger.error("actions/integrity", "Error getting issue details", error)
+    console.error("[v0] Error getting issue details:", error)
     return { success: false, error: error.message || "Failed to get issue details" }
   }
 }
