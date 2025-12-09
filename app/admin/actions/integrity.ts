@@ -1,0 +1,587 @@
+"use server"
+
+import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+import { revalidatePath } from "next/cache"
+
+/**
+ * Database Integrity Checker
+ *
+ * Полная проверка целостности базы данных системы распознавания лиц
+ * 15 проверок + безопасные автофиксы
+ */
+
+export interface IntegrityReport {
+  photoFaces: {
+    verifiedWithoutPerson: number
+    verifiedWithWrongConfidence: number
+    personWithoutConfidence: number
+    nonExistentPerson: number
+    nonExistentPhoto: number
+    inconsistentPersonId: number
+  }
+  faceDescriptors: {
+    orphanedDescriptors: number
+    nonExistentPerson: number
+    withoutPerson: number
+    withoutEmbedding: number
+    duplicates: number
+    inconsistentPersonId: number
+  }
+  people: {
+    withoutDescriptors: number
+    withoutFaces: number
+    duplicateNames: number
+  }
+  totalIssues: number
+  details: Record<string, any[]>
+}
+
+/**
+ * Полная проверка целостности базы данных
+ */
+export async function checkDatabaseIntegrityFullAction(): Promise<{
+  success: boolean
+  data?: IntegrityReport
+  error?: string
+}> {
+  const supabase = await createClient()
+
+  try {
+    logger.debug("actions/integrity", "Starting FULL database integrity check...")
+
+    const report: IntegrityReport = {
+      photoFaces: {
+        verifiedWithoutPerson: 0,
+        verifiedWithWrongConfidence: 0,
+        personWithoutConfidence: 0,
+        nonExistentPerson: 0,
+        nonExistentPhoto: 0,
+        inconsistentPersonId: 0,
+      },
+      faceDescriptors: {
+        orphanedDescriptors: 0,
+        nonExistentPerson: 0,
+        withoutPerson: 0,
+        withoutEmbedding: 0,
+        duplicates: 0,
+        inconsistentPersonId: 0,
+      },
+      people: {
+        withoutDescriptors: 0,
+        withoutFaces: 0,
+        duplicateNames: 0,
+      },
+      totalIssues: 0,
+      details: {},
+    }
+
+    // ========== PHOTO_FACES CHECKS ==========
+
+    // 1. Verified без person_id
+    const { data: verifiedWithoutPerson } = await supabase
+      .from("photo_faces")
+      .select("id, photo_id")
+      .eq("verified", true)
+      .is("person_id", null)
+
+    report.photoFaces.verifiedWithoutPerson = verifiedWithoutPerson?.length || 0
+    if (verifiedWithoutPerson && verifiedWithoutPerson.length > 0) {
+      report.details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 10)
+    }
+
+    // 2. Verified с неправильным confidence
+    const { data: verifiedWithWrongConfidence } = await supabase
+      .from("photo_faces")
+      .select("id, photo_id, confidence")
+      .eq("verified", true)
+      .neq("confidence", 1.0)
+
+    report.photoFaces.verifiedWithWrongConfidence = verifiedWithWrongConfidence?.length || 0
+    if (verifiedWithWrongConfidence && verifiedWithWrongConfidence.length > 0) {
+      report.details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 10)
+    }
+
+    // 3. Person_id есть, но confidence=null
+    const { data: personWithoutConfidence } = await supabase
+      .from("photo_faces")
+      .select("id, photo_id, person_id")
+      .not("person_id", "is", null)
+      .is("confidence", null)
+
+    report.photoFaces.personWithoutConfidence = personWithoutConfidence?.length || 0
+    if (personWithoutConfidence && personWithoutConfidence.length > 0) {
+      report.details.personWithoutConfidence = personWithoutConfidence.slice(0, 10)
+    }
+
+    // 4. Person_id не существует в people
+    const { data: allPhotoFaces } = await supabase
+      .from("photo_faces")
+      .select("id, photo_id, person_id")
+      .not("person_id", "is", null)
+
+    if (allPhotoFaces) {
+      const personIds = [...new Set(allPhotoFaces.map((pf) => pf.person_id))]
+      const { data: existingPeople } = await supabase.from("people").select("id").in("id", personIds)
+
+      const existingIds = new Set(existingPeople?.map((p) => p.id) || [])
+      const nonExistentPersonFaces = allPhotoFaces.filter((pf) => !existingIds.has(pf.person_id!))
+
+      report.photoFaces.nonExistentPerson = nonExistentPersonFaces.length
+      if (nonExistentPersonFaces.length > 0) {
+        report.details.nonExistentPerson = nonExistentPersonFaces.slice(0, 10)
+      }
+    }
+
+    // 5. Photo_id не существует в gallery_images
+    const { data: allPhotoFacesWithPhotos } = await supabase.from("photo_faces").select("id, photo_id")
+
+    if (allPhotoFacesWithPhotos) {
+      const photoIds = [...new Set(allPhotoFacesWithPhotos.map((pf) => pf.photo_id))]
+      const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", photoIds)
+
+      const existingPhotoIds = new Set(existingPhotos?.map((p) => p.id) || [])
+      const nonExistentPhotoFaces = allPhotoFacesWithPhotos.filter((pf) => !existingPhotoIds.has(pf.photo_id))
+
+      report.photoFaces.nonExistentPhoto = nonExistentPhotoFaces.length
+      if (nonExistentPhotoFaces.length > 0) {
+        report.details.nonExistentPhoto = nonExistentPhotoFaces.slice(0, 10)
+      }
+    }
+
+    // ========== FACE_DESCRIPTORS CHECKS ==========
+
+    // 6. Orphaned descriptors (source_image_id не существует в photo_faces)
+    const { data: allDescriptors } = await supabase.from("face_descriptors").select("id, source_image_id, person_id")
+
+    if (allDescriptors) {
+      const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
+      const { data: existingPhotoFaces } = await supabase.from("photo_faces").select("id").in("id", sourceImageIds)
+
+      const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
+      const orphanedDescriptors = allDescriptors.filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
+
+      report.faceDescriptors.orphanedDescriptors = orphanedDescriptors.length
+      if (orphanedDescriptors.length > 0) {
+        report.details.orphanedDescriptors = orphanedDescriptors.slice(0, 10)
+      }
+    }
+
+    // 7. Descriptors с несуществующим person_id
+    if (allDescriptors) {
+      const descriptorPersonIds = [...new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id!))]
+      const { data: existingPeopleForDescriptors } = await supabase
+        .from("people")
+        .select("id")
+        .in("id", descriptorPersonIds)
+
+      const existingPeopleIds = new Set(existingPeopleForDescriptors?.map((p) => p.id) || [])
+      const descriptorsWithNonExistentPerson = allDescriptors.filter(
+        (d) => d.person_id && !existingPeopleIds.has(d.person_id),
+      )
+
+      report.faceDescriptors.nonExistentPerson = descriptorsWithNonExistentPerson.length
+      if (descriptorsWithNonExistentPerson.length > 0) {
+        report.details.descriptorsNonExistentPerson = descriptorsWithNonExistentPerson.slice(0, 10)
+      }
+    }
+
+    // 8. Descriptors без person_id
+    const { data: descriptorsWithoutPerson } = await supabase
+      .from("face_descriptors")
+      .select("id, source_image_id")
+      .is("person_id", null)
+
+    report.faceDescriptors.withoutPerson = descriptorsWithoutPerson?.length || 0
+    if (descriptorsWithoutPerson && descriptorsWithoutPerson.length > 0) {
+      report.details.descriptorsWithoutPerson = descriptorsWithoutPerson.slice(0, 10)
+    }
+
+    // 9. Descriptors без embedding
+    const { data: descriptorsWithoutEmbedding } = await supabase
+      .from("face_descriptors")
+      .select("id, source_image_id, person_id")
+      .is("embedding", null)
+
+    report.faceDescriptors.withoutEmbedding = descriptorsWithoutEmbedding?.length || 0
+    if (descriptorsWithoutEmbedding && descriptorsWithoutEmbedding.length > 0) {
+      report.details.descriptorsWithoutEmbedding = descriptorsWithoutEmbedding.slice(0, 10)
+    }
+
+    // 10. Duplicate descriptors (одинаковые person_id + source_image_id)
+    if (allDescriptors) {
+      const groupedDescriptors = new Map<string, any[]>()
+      for (const descriptor of allDescriptors) {
+        const key = `${descriptor.person_id}_${descriptor.source_image_id}`
+        if (!groupedDescriptors.has(key)) {
+          groupedDescriptors.set(key, [])
+        }
+        groupedDescriptors.get(key)!.push(descriptor)
+      }
+
+      const duplicateGroups = Array.from(groupedDescriptors.entries()).filter(
+        ([_, descriptors]) => descriptors.length > 1,
+      )
+      const totalDuplicates = duplicateGroups.reduce((sum, [_, descriptors]) => sum + (descriptors.length - 1), 0)
+
+      report.faceDescriptors.duplicates = totalDuplicates
+      if (duplicateGroups.length > 0) {
+        report.details.duplicateDescriptors = duplicateGroups.slice(0, 10).map(([key, descriptors]) => ({
+          key,
+          count: descriptors.length,
+          ids: descriptors.map((d) => d.id),
+        }))
+      }
+    }
+
+    // ========== PEOPLE CHECKS ==========
+
+    // 11. People без descriptors (информационное)
+    const { data: allPeople } = await supabase.from("people").select("id, real_name")
+
+    if (allPeople && allDescriptors) {
+      const peopleWithDescriptors = new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id))
+      const peopleWithoutDescriptors = allPeople.filter((p) => !peopleWithDescriptors.has(p.id))
+
+      report.people.withoutDescriptors = peopleWithoutDescriptors.length
+      if (peopleWithoutDescriptors.length > 0) {
+        report.details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 10)
+      }
+    }
+
+    // 12. People без faces (информационное)
+    if (allPeople && allPhotoFaces) {
+      const peopleWithFaces = new Set(allPhotoFaces.filter((pf) => pf.person_id).map((pf) => pf.person_id))
+      const peopleWithoutFaces = allPeople.filter((p) => !peopleWithFaces.has(p.id))
+
+      report.people.withoutFaces = peopleWithoutFaces.length
+      if (peopleWithoutFaces.length > 0) {
+        report.details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 10)
+      }
+    }
+
+    // 13. Duplicate names (информационное)
+    if (allPeople) {
+      const nameGroups = new Map<string, any[]>()
+      for (const person of allPeople) {
+        if (!person.real_name) continue
+        const name = person.real_name.toLowerCase()
+        if (!nameGroups.has(name)) {
+          nameGroups.set(name, [])
+        }
+        nameGroups.get(name)!.push(person)
+      }
+
+      const duplicateNames = Array.from(nameGroups.entries()).filter(([_, people]) => people.length > 1)
+      report.people.duplicateNames = duplicateNames.reduce((sum, [_, people]) => sum + (people.length - 1), 0)
+      if (duplicateNames.length > 0) {
+        report.details.duplicateNames = duplicateNames.slice(0, 10).map(([name, people]) => ({
+          name,
+          count: people.length,
+          people,
+        }))
+      }
+    }
+
+    // ========== CALCULATE TOTAL ==========
+
+    report.totalIssues =
+      report.photoFaces.verifiedWithoutPerson +
+      report.photoFaces.verifiedWithWrongConfidence +
+      report.photoFaces.personWithoutConfidence +
+      report.photoFaces.nonExistentPerson +
+      report.photoFaces.nonExistentPhoto +
+      report.faceDescriptors.orphanedDescriptors +
+      report.faceDescriptors.nonExistentPerson +
+      report.faceDescriptors.withoutPerson +
+      report.faceDescriptors.withoutEmbedding +
+      report.faceDescriptors.duplicates
+
+    logger.info("actions/integrity", `Integrity check complete. Total issues: ${report.totalIssues}`)
+
+    return { success: true, data: report }
+  } catch (error: any) {
+    logger.error("actions/integrity", "Error checking database integrity", error)
+    return { success: false, error: error.message || "Failed to check database integrity" }
+  }
+}
+
+/**
+ * Автоматическое исправление проблем целостности
+ * Только БЕЗОПАСНЫЕ операции
+ */
+export async function fixIntegrityIssuesAction(
+  issueType: string,
+): Promise<{ success: boolean; data?: any; error?: string }> {
+  const supabase = await createClient()
+
+  try {
+    logger.debug("actions/integrity", `Fixing integrity issue: ${issueType}`)
+
+    let fixed = 0
+    const details: any = {}
+
+    switch (issueType) {
+      // БЕЗОПАСНЫЕ АВТОФИКСЫ
+
+      case "orphanedDescriptors": {
+        // Удалить дескрипторы без photo_faces
+        const { data: allDescriptors } = await supabase.from("face_descriptors").select("id, source_image_id")
+
+        if (allDescriptors) {
+          const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
+          const { data: existingPhotoFaces } = await supabase.from("photo_faces").select("id").in("id", sourceImageIds)
+
+          const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
+          const orphanedIds = allDescriptors
+            .filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
+            .map((fd) => fd.id)
+
+          if (orphanedIds.length > 0) {
+            const { error: deleteError } = await supabase.from("face_descriptors").delete().in("id", orphanedIds)
+
+            if (deleteError) throw deleteError
+            fixed = orphanedIds.length
+            details.deletedIds = orphanedIds
+          }
+        }
+        break
+      }
+
+      case "verifiedWithoutPerson": {
+        // Снять verified у лиц без person_id
+        const { data: updated, error } = await supabase
+          .from("photo_faces")
+          .update({ verified: false, confidence: null })
+          .eq("verified", true)
+          .is("person_id", null)
+          .select("id")
+
+        if (error) throw error
+        fixed = updated?.length || 0
+        details.updatedIds = updated?.map((u) => u.id)
+        break
+      }
+
+      case "verifiedWithWrongConfidence": {
+        // Исправить confidence для verified=true
+        const { data: updated, error } = await supabase
+          .from("photo_faces")
+          .update({ confidence: 1.0 })
+          .eq("verified", true)
+          .neq("confidence", 1.0)
+          .select("id")
+
+        if (error) throw error
+        fixed = updated?.length || 0
+        details.updatedIds = updated?.map((u) => u.id)
+        break
+      }
+
+      case "nonExistentPerson": {
+        // Убрать person_id для удаленных людей
+        const { data: allPhotoFaces } = await supabase
+          .from("photo_faces")
+          .select("id, person_id")
+          .not("person_id", "is", null)
+
+        if (allPhotoFaces) {
+          const personIds = [...new Set(allPhotoFaces.map((pf) => pf.person_id!))]
+          const { data: existingPeople } = await supabase.from("people").select("id").in("id", personIds)
+
+          const existingIds = new Set(existingPeople?.map((p) => p.id) || [])
+          const invalidIds = allPhotoFaces.filter((pf) => !existingIds.has(pf.person_id!)).map((pf) => pf.id)
+
+          if (invalidIds.length > 0) {
+            const { error: updateError } = await supabase
+              .from("photo_faces")
+              .update({ person_id: null, verified: false, confidence: null })
+              .in("id", invalidIds)
+
+            if (updateError) throw updateError
+            fixed = invalidIds.length
+            details.updatedIds = invalidIds
+          }
+        }
+        break
+      }
+
+      case "nonExistentPhoto": {
+        // Удалить лица с несуществующих фото
+        const { data: allPhotoFaces } = await supabase.from("photo_faces").select("id, photo_id")
+
+        if (allPhotoFaces) {
+          const photoIds = [...new Set(allPhotoFaces.map((pf) => pf.photo_id))]
+          const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", photoIds)
+
+          const existingPhotoIds = new Set(existingPhotos?.map((p) => p.id) || [])
+          const invalidIds = allPhotoFaces.filter((pf) => !existingPhotoIds.has(pf.photo_id)).map((pf) => pf.id)
+
+          if (invalidIds.length > 0) {
+            const { error: deleteError } = await supabase.from("photo_faces").delete().in("id", invalidIds)
+
+            if (deleteError) throw deleteError
+            fixed = invalidIds.length
+            details.deletedIds = invalidIds
+          }
+        }
+        break
+      }
+
+      case "duplicateDescriptors": {
+        // Удалить дубликаты дескрипторов (оставить самый новый)
+        const { data: allDescriptors } = await supabase
+          .from("face_descriptors")
+          .select("id, source_image_id, person_id, created_at")
+          .order("created_at", { ascending: false })
+
+        if (allDescriptors) {
+          const groupedDescriptors = new Map<string, any[]>()
+          for (const descriptor of allDescriptors) {
+            const key = `${descriptor.person_id}_${descriptor.source_image_id}`
+            if (!groupedDescriptors.has(key)) {
+              groupedDescriptors.set(key, [])
+            }
+            groupedDescriptors.get(key)!.push(descriptor)
+          }
+
+          const idsToDelete: string[] = []
+          for (const [_, descriptors] of groupedDescriptors.entries()) {
+            if (descriptors.length > 1) {
+              // Оставить первый (самый новый), удалить остальные
+              idsToDelete.push(...descriptors.slice(1).map((d) => d.id))
+            }
+          }
+
+          if (idsToDelete.length > 0) {
+            const { error: deleteError } = await supabase.from("face_descriptors").delete().in("id", idsToDelete)
+
+            if (deleteError) throw deleteError
+            fixed = idsToDelete.length
+            details.deletedIds = idsToDelete
+          }
+        }
+        break
+      }
+
+      case "descriptorsWithoutEmbedding": {
+        // Удалить дескрипторы без embedding
+        const { data: deleted, error } = await supabase
+          .from("face_descriptors")
+          .delete()
+          .is("embedding", null)
+          .select("id")
+
+        if (error) throw error
+        fixed = deleted?.length || 0
+        details.deletedIds = deleted?.map((d) => d.id)
+        break
+      }
+
+      default:
+        return { success: false, error: `Unknown or unsupported issue type: ${issueType}` }
+    }
+
+    logger.info("actions/integrity", `Fixed ${fixed} issues of type ${issueType}`)
+
+    revalidatePath("/admin")
+
+    return { success: true, data: { fixed, issueType, details } }
+  } catch (error: any) {
+    logger.error("actions/integrity", "Error fixing integrity issue", error)
+    return { success: false, error: error.message || "Failed to fix integrity issue" }
+  }
+}
+
+/**
+ * Получить детальную информацию о конкретной проблеме
+ */
+export async function getIssueDetailsAction(
+  issueType: string,
+  limit = 50,
+): Promise<{ success: boolean; data?: any[]; error?: string }> {
+  const supabase = await createClient()
+
+  try {
+    let details: any[] = []
+
+    switch (issueType) {
+      case "orphanedDescriptors": {
+        const { data: allDescriptors } = await supabase
+          .from("face_descriptors")
+          .select("id, source_image_id, person_id, created_at")
+          .limit(1000)
+
+        if (allDescriptors) {
+          const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
+          const { data: existingPhotoFaces } = await supabase.from("photo_faces").select("id").in("id", sourceImageIds)
+
+          const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
+          details = allDescriptors.filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id)).slice(0, limit)
+        }
+        break
+      }
+
+      case "peopleWithoutDescriptors": {
+        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_name")
+
+        const { data: allDescriptors } = await supabase.from("face_descriptors").select("person_id")
+
+        if (allPeople && allDescriptors) {
+          const peopleWithDescriptors = new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id))
+          details = allPeople.filter((p) => !peopleWithDescriptors.has(p.id)).slice(0, limit)
+        }
+        break
+      }
+
+      case "peopleWithoutFaces": {
+        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_name")
+
+        const { data: allPhotoFaces } = await supabase.from("photo_faces").select("person_id")
+
+        if (allPeople && allPhotoFaces) {
+          const peopleWithFaces = new Set(allPhotoFaces.filter((pf) => pf.person_id).map((pf) => pf.person_id))
+          details = allPeople.filter((p) => !peopleWithFaces.has(p.id)).slice(0, limit)
+        }
+        break
+      }
+
+      case "duplicateNames": {
+        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_name")
+
+        if (allPeople) {
+          const nameGroups = new Map<string, any[]>()
+          for (const person of allPeople) {
+            if (!person.real_name) continue
+            const name = person.real_name.toLowerCase()
+            if (!nameGroups.has(name)) {
+              nameGroups.set(name, [])
+            }
+            nameGroups.get(name)!.push(person)
+          }
+
+          details = Array.from(nameGroups.entries())
+            .filter(([_, people]) => people.length > 1)
+            .slice(0, limit)
+            .map(([name, people]) => ({
+              name,
+              count: people.length,
+              people,
+            }))
+        }
+        break
+      }
+
+      default:
+        return { success: false, error: `Unknown issue type: ${issueType}` }
+    }
+
+    return { success: true, data: details }
+  } catch (error: any) {
+    logger.error("actions/integrity", "Error getting issue details", error)
+    return { success: false, error: error.message || "Failed to get issue details" }
+  }
+}
+
+export const checkDatabaseIntegrityAction = checkDatabaseIntegrityFullAction
+export const fixIntegrityIssueAction = fixIntegrityIssuesAction

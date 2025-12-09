@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os
+import logging  # Added logging import
 
 load_dotenv()
 
@@ -18,7 +19,7 @@ from services.face_recognition import FaceRecognitionService
 from services.training_service import TrainingService
 from services.supabase_database import SupabaseDatabase
 from services.supabase_client import SupabaseClient
-from routers import training, recognition, faces, config, images
+from routers import training, recognition, faces, config, images, photographers, people, galleries, locations, organizers
 
 from models.schemas import (
     RecognitionResponse,
@@ -56,9 +57,11 @@ app.add_middleware(
     max_age=3600,
 )
 
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Disable httpx INFO logs
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)  # Reduce uvicorn access logs
+
 print("[Main] ✓ CORS middleware configured with allow_origins=['*']")
 
-# ... existing code ...
 
 print("[Main] Creating singleton service instances...")
 
@@ -81,6 +84,12 @@ config.set_supabase_client(supabase_client)
 faces.set_services(face_service, supabase_db)
 recognition.set_services(face_service, supabase_client)
 images.set_services(supabase_db, face_service)
+photographers.set_services(supabase_db)
+people.set_services(supabase_db, face_service)
+galleries.set_services(supabase_db)
+locations.set_services(supabase_db)
+organizers.set_services(supabase_db)
+print("[Main] ✓ CRUD routers initialized")
 print("[Main] ✓ Service instances injected into all routers")
 
 os.makedirs("uploads", exist_ok=True)
@@ -122,6 +131,11 @@ app.include_router(recognition.router, prefix="/api/recognition", tags=["recogni
 app.include_router(faces.router, prefix="/api/faces", tags=["faces"])
 app.include_router(config.router, prefix="/api", tags=["config"])
 app.include_router(images.router, prefix="/api/images", tags=["images"])
+app.include_router(photographers.router, prefix="/api/photographers", tags=["photographers"])
+app.include_router(people.router, prefix="/api/people", tags=["people"])
+app.include_router(galleries.router, prefix="/api/galleries", tags=["galleries"])
+app.include_router(locations.router, prefix="/api/locations", tags=["locations"])
+app.include_router(organizers.router, prefix="/api/organizers", tags=["organizers"])
 
 if __name__ == "__main__":
     host = os.getenv("SERVER_HOST", "0.0.0.0")

@@ -27,7 +27,22 @@ export function EditPersonDialog({ person, open, onOpenChange }: EditPersonDialo
 
   async function handleSubmit(formData: FormData) {
     setLoading(true)
-    const result = await updatePersonAction(person.id, formData)
+    const data: Record<string, any> = {}
+    formData.forEach((value, key) => {
+      if (key === "tournament_results") {
+        try {
+          data[key] = JSON.parse(value as string)
+        } catch {
+          data[key] = []
+        }
+      } else if (key === "paddle_ranking") {
+        data[key] = value ? Number(value) : null
+      } else {
+        data[key] = value || null
+      }
+    })
+
+    const result = await updatePersonAction(person.id, data)
     setLoading(false)
 
     if (result.success) {

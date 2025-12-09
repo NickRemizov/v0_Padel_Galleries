@@ -1,5 +1,7 @@
 "use client"
 
+const VERSION = "v1.0-FixedPhotoCount"
+
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
@@ -21,7 +23,7 @@ export function PlayerCard({ player }: PlayerCardProps) {
   const firstName = nameParts[0] || ""
   const lastName = nameParts.slice(1).join(" ") || "\u00A0"
 
-  const photoCount = player._count?.photo_faces || 0
+  const photoCount = player.verified_photos_count || player._count?.photo_faces || 0
 
   return (
     <div onClick={handleCardClick} className="group cursor-pointer">

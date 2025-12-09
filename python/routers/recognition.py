@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from services.face_recognition import FaceRecognitionService
 from services.supabase_client import SupabaseClient
 import logging
@@ -32,18 +32,18 @@ class DetectFacesRequest(BaseModel):
     image_url: str
     apply_quality_filters: bool = True
     min_detection_score: float = 0.7
-    min_face_size: float = 80.0
+    min_face_size: float = 60.0
     min_blur_score: float = 80.0
 
 
 class RecognizeFaceRequest(BaseModel):
     embedding: List[float]
-    confidence_threshold: Optional[float] = 0.60
+    confidence_threshold: Optional[float] = None
 
 
 class BatchRecognizeRequest(BaseModel):
     gallery_ids: List[str]
-    confidence_threshold: float = 0.60
+    confidence_threshold: Optional[float] = None
     apply_quality_filters: bool = True
 
 
@@ -56,10 +56,10 @@ class ProcessPhotoRequest(BaseModel):
     photo_id: str
     force_redetect: bool = False  # Добавлен параметр для принудительной переdetекции
     apply_quality_filters: bool = True  # Параметр применения фильтров качества
-    confidence_threshold: float = 0.60
-    min_detection_score: float = 0.7
-    min_face_size: float = 80.0
-    min_blur_score: float = 80.0
+    confidence_threshold: Optional[float] = None
+    min_detection_score: Optional[float] = None
+    min_face_size: Optional[float] = None  # Make min_face_size and min_blur_score Optional to accept null from frontend
+    min_blur_score: Optional[float] = None
 
 
 class ProcessPhotoResponse(BaseModel):
@@ -75,6 +75,54 @@ class FaceDetectionResponse(BaseModel):
 class FaceRecognitionResponse(BaseModel):
     person_id: Optional[str]
     confidence: Optional[float]
+
+def generate_face_crop_url(photo_url: str, bbox: dict, img_width: int, img_height: int) -> str:
+    """
+    Generate Vercel Blob URL with crop parameters for face + 30% padding.
+    
+    Args:
+        photo_url: Full image URL
+        bbox: Bounding box dict with x, y, width, height (in pixels)
+        img_width: Original image width
+        img_height: Original image height
+    
+    Returns:
+        URL with crop parameters
+    """
+    if not photo_url or not bbox:
+        return photo_url
+    
+    # Get bbox coordinates in pixels
+    x = bbox.get('x', 0)
+    y = bbox.get('y', 0)
+    width = bbox.get('width', 0)
+    height = bbox.get('height', 0)
+    
+    # Calculate 50% padding
+    padding_x = width * 0.3
+    padding_y = height * 0.3
+    
+    # Calculate crop coordinates with padding
+    crop_x = max(0, int(x - padding_x))
+    crop_y = max(0, int(y - padding_y))
+    crop_width = int(width + padding_x * 2)
+    crop_height = int(height + padding_y * 2)
+    
+    # Ensure crop doesn't exceed image bounds
+    if crop_x + crop_width > img_width:
+        crop_width = img_width - crop_x
+    if crop_y + crop_height > img_height:
+        crop_height = img_height - crop_y
+    
+    # Generate Vercel Blob crop URL
+    # Format: ?width=W&height=H&fit=crop&left=X&top=Y
+    crop_params = f"?width={crop_width}&height={crop_height}&fit=crop&left={crop_x}&top={crop_y}"
+    
+    # If URL already has query params, append with &, otherwise use ?
+    if '?' in photo_url:
+        return f"{photo_url}&{crop_params.lstrip('?')}"
+    else:
+        return f"{photo_url}{crop_params}"
 
 
 @router.post("/detect-faces", response_model=FaceDetectionResponse)
@@ -196,13 +244,16 @@ async def recognize_face(
 ):
     """Recognize a single face using the trained model"""
     try:
-        logger.info(f"[Recognition] Recognizing face, threshold: {request.confidence_threshold}")
+        config = await supabase_client_instance.get_recognition_config()
+        threshold = request.confidence_threshold or config.get('recognition_threshold', 0.60)
+        
+        logger.info(f"[Recognition] Recognizing face, threshold: {threshold}")
         
         embedding = np.array(request.embedding, dtype=np.float32)
         
         person_id, confidence = await face_service.recognize_face(
             embedding, 
-            confidence_threshold=request.confidence_threshold or 0.60
+            confidence_threshold=threshold
         )
         
         logger.info(f"[Recognition] Result: person_id={person_id}, confidence={confidence}")
@@ -224,16 +275,18 @@ async def batch_recognize(
 ):
     """Batch recognize faces in galleries"""
     try:
+        config = await supabase_client_instance.get_recognition_config()
+        confidence_threshold = request.confidence_threshold or config.get('recognition_threshold', 0.60)
+        
         logger.info(f"[v3.22] ===== BATCH RECOGNIZE REQUEST =====")
         logger.info(f"[v3.22] Gallery IDs: {request.gallery_ids}")
-        logger.info(f"[v3.22] Confidence Threshold: {request.confidence_threshold}")
+        logger.info(f"[v3.22] Confidence Threshold: {confidence_threshold}")
         logger.info(f"[v3.22] Apply quality filters: {request.apply_quality_filters}")
         
-        config = await supabase_client_instance.get_recognition_config()
         quality_filters = config.get('quality_filters', {})
-        min_detection_score = quality_filters.get('min_detection_score', request.min_detection_score)
-        min_face_size = quality_filters.get('min_face_size', request.min_face_size)
-        min_blur_score = quality_filters.get('min_blur_score', request.min_blur_score)
+        min_detection_score = quality_filters.get('min_detection_score', 0.7)
+        min_face_size = quality_filters.get('min_face_size', 80.0)
+        min_blur_score = quality_filters.get('min_blur_score', 80.0)
         
         logger.info(f"[v3.22] Quality filters loaded:")
         logger.info(f"[v3.22]   min_detection_score: {min_detection_score}")
@@ -291,7 +344,7 @@ async def batch_recognize(
                     logger.info(f"[v3.22] Recognition result for image {image['id']}: person_id={person_id}, confidence={confidence}")
                     
                     # Apply threshold
-                    if confidence and confidence >= request.confidence_threshold:
+                    if confidence and (request.confidence_threshold is None or confidence >= request.confidence_threshold):
                         bbox = {
                             "x": float(face["bbox"][0]),
                             "y": float(face["bbox"][1]),
@@ -350,33 +403,29 @@ async def batch_recognize(
 
 @router.post("/cluster-unknown-faces")
 async def cluster_unknown_faces(
-    gallery_id: str = Query(...),
-    min_cluster_size: int = Query(2),
-    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+    gallery_id: str = Query(..., description="ID галереи"),
+    min_cluster_size: int = Query(2, description="Минимальный размер кластера"),
 ):
     """
-    Cluster unknown faces in a gallery by similarity
-    Returns clusters sorted by size (largest first)
+    Кластеризация неизвестных лиц в галерее с HDBSCAN
     """
     try:
-        logger.info(f"[v3.23] ===== CLUSTER UNKNOWN FACES =====")
-        logger.info(f"[v3.23] Gallery ID: {gallery_id}")
-        logger.info(f"[v3.23] Min cluster size: {min_cluster_size}")
+        logger.info(f"Clustering unknown faces for gallery {gallery_id}")
         
-        unknown_faces = await supabase_client_instance.get_unknown_faces_from_gallery(gallery_id)
+        # Get unknown faces
+        faces = await supabase_client_instance.get_unknown_faces_from_gallery(gallery_id)
         
-        if len(unknown_faces) < min_cluster_size:
-            logger.info(f"[v3.23] Not enough faces to cluster ({len(unknown_faces)} < {min_cluster_size})")
+        if not faces or len(faces) < min_cluster_size:
             return {
                 "clusters": [],
-                "ungrouped_faces": unknown_faces
+                "ungrouped_faces": []
             }
         
-        logger.info(f"[v3.23] Clustering {len(unknown_faces)} faces...")
+        logger.info(f"Clustering {len(faces)} faces...")
         
         # Extract embeddings
         embeddings = []
-        for face in unknown_faces:
+        for face in faces:
             descriptor = face["insightface_descriptor"]
             if isinstance(descriptor, list):
                 embeddings.append(np.array(descriptor, dtype=np.float32))
@@ -396,13 +445,13 @@ async def cluster_unknown_faces(
         
         cluster_labels = clusterer.fit_predict(embeddings_array)
         
-        logger.info(f"[v3.23] Found {len(set(cluster_labels))} unique labels")
+        logger.info(f"Found {len(set(cluster_labels))} unique labels")
         
         # Group faces by cluster
         clusters_dict = {}
         ungrouped = []
         
-        for face, label in zip(unknown_faces, cluster_labels):
+        for face, label in zip(faces, cluster_labels):
             if label == -1:
                 ungrouped.append(face)
             else:
@@ -412,34 +461,28 @@ async def cluster_unknown_faces(
         
         # Format clusters and sort by size (largest first)
         clusters = []
-        for cluster_id, faces in clusters_dict.items():
+        for cluster_id, cluster_faces in clusters_dict.items():
             normalized_faces = []
-            for face in faces:
-                # Get image dimensions from gallery_images
-                photo_response = supabase_client_instance.client.table("gallery_images").select(
-                    "width, height"
-                ).eq("id", face["photo_id"]).execute()
+            for face in cluster_faces:
+                face = face.copy()
                 
-                if photo_response.data and len(photo_response.data) > 0:
-                    img_width = photo_response.data[0].get("width")
-                    img_height = photo_response.data[0].get("height")
-                    
-                    # Normalize bbox if image dimensions are available
-                    if img_width and img_height and face.get("insightface_bbox"):
-                        bbox = face["insightface_bbox"]
-                        normalized_bbox = {
-                            "x": bbox["x"] / img_width,
-                            "y": bbox["y"] / img_height,
-                            "width": bbox["width"] / img_width,
-                            "height": bbox["height"] / img_height,
-                        }
-                        face["bbox"] = normalized_bbox
-                    else:
-                        # Fallback: use original bbox (might be in pixels)
-                        face["bbox"] = face.get("insightface_bbox")
-                else:
-                    # Fallback: use original bbox
-                    face["bbox"] = face.get("insightface_bbox")
+                bbox = face.get("insightface_bbox")
+                if bbox:
+                    face["bbox"] = {
+                        "x": bbox.get("x", 0),
+                        "y": bbox.get("y", 0),
+                        "width": bbox.get("width", 0),
+                        "height": bbox.get("height", 0),
+                    }
+                
+                face["image_url"] = face.get("photo_url")
+                
+                # Remove unnecessary fields
+                face.pop("insightface_descriptor", None)
+                face.pop("insightface_bbox", None)
+                face.pop("photo_url", None)
+                face.pop("width", None)
+                face.pop("height", None)
                 
                 normalized_faces.append(face)
             
@@ -451,8 +494,7 @@ async def cluster_unknown_faces(
         
         clusters.sort(key=lambda x: x["size"], reverse=True)
         
-        logger.info(f"[v3.23] ✓ Returning {len(clusters)} clusters, {len(ungrouped)} ungrouped")
-        logger.info(f"[v3.23] Cluster sizes: {[c['size'] for c in clusters]}")
+        logger.info(f"✓ Returning {len(clusters)} clusters, {len(ungrouped)} ungrouped")
         
         return {
             "clusters": clusters,
@@ -460,7 +502,7 @@ async def cluster_unknown_faces(
         }
         
     except Exception as e:
-        logger.error(f"[v3.23] ERROR clustering faces: {str(e)}", exc_info=True)
+        logger.error(f"Error clustering faces: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -628,7 +670,7 @@ async def rebuild_index(face_service: FaceRecognitionService = Depends(lambda: f
         return result
         
     except Exception as e:
-        logger.error(f"[v3.31] ERROR rebuilding index: {str(e)}", exc_info=True)
+        logger.error(f"[v3.31] ERROR rebuilding index: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -665,7 +707,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
         # Get faces without descriptors (person_id = NULL AND insightface_descriptor IS NULL)
         faces_response = supabase_client_instance.client.table("photo_faces").select(
             "id, photo_id, insightface_bbox, insightface_descriptor, "
-            "gallery_images(id, image_url)"
+            "gallery_images(id, image_url, width, height)"
         ).in_("photo_id", photo_ids).is_("person_id", "null").execute()
         
         if not faces_response.data:
@@ -687,9 +729,9 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
         
         for face in faces_response.data:
             face_id = face["id"]
-            photo = face.get("gallery_images")
+            photo_data = face.get("gallery_images")
             
-            if not photo:
+            if not photo_data:
                 logger.warning(f"[v3.24] Face {face_id} has no photo data, skipping")
                 failed += 1
                 continue
@@ -710,7 +752,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
                 logger.info(f"[v3.24] Regenerating descriptor for face {face_id}")
                 
                 # Download and detect faces on image
-                image_url = photo["image_url"]
+                image_url = photo_data["image_url"]
                 detected_faces = await face_service.detect_faces(image_url)
                 
                 if not detected_faces:
@@ -779,7 +821,7 @@ async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_serv
         }
         
     except Exception as e:
-        logger.error(f"[v3.24] ERROR regenerating descriptors: {str(e)}", exc_info=True)
+        logger.error(f"[v3.24] ERROR regenerating descriptors: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -800,19 +842,29 @@ async def process_photo(
     5. Return all faces (WITHOUT embeddings)
     """
     try:
+        config = await supabase_client.get_recognition_config()
+        quality_filters_config = config.get('quality_filters', {})
+        
         if request.apply_quality_filters:
             face_service.quality_filters = {
-                "min_detection_score": request.min_detection_score,
-                "min_face_size": request.min_face_size,
-                "min_blur_score": request.min_blur_score
+                "min_detection_score": request.min_detection_score or quality_filters_config.get('min_detection_score', 0.7),
+                "min_face_size": request.min_face_size or quality_filters_config.get('min_face_size', 80),
+                "min_blur_score": request.min_blur_score or quality_filters_config.get('min_blur_score', 100)
             }
-            logger.info(f"[v2.4.1] Quality filters: det={request.min_detection_score}, size={request.min_face_size}, blur={request.min_blur_score}")
+            logger.info(f"[v2.4.1] Quality filters: det={face_service.quality_filters['min_detection_score']}, size={face_service.quality_filters['min_face_size']}, blur={face_service.quality_filters['min_blur_score']}")
+        else:
+            logger.info(f"[v2.4.1] Quality filters DISABLED - all faces will be detected")
         
         logger.info("=" * 80)
         logger.info("[v2.3] ===== PROCESS PHOTO REQUEST START =====")
         logger.info(f"[v2.3] Photo ID: {request.photo_id}")
         logger.info(f"[v2.3] Force redetect: {request.force_redetect}")
         logger.info(f"[v2.3] Apply quality filters: {request.apply_quality_filters}")
+        logger.info(f"[v2.3] Quality params received:")
+        logger.info(f"[v2.3]   - confidence_threshold: {request.confidence_threshold}")
+        logger.info(f"[v2.3]   - min_detection_score: {request.min_detection_score}")
+        logger.info(f"[v2.3]   - min_face_size: {request.min_face_size}")
+        logger.info(f"[v2.3]   - min_blur_score: {request.min_blur_score}")
         
         if request.force_redetect:
             logger.info("[v2.3] Force redetect requested - deleting existing faces")
@@ -857,11 +909,11 @@ async def process_photo(
                 det_confidence = float(face["det_score"])
                 
                 # Recognize
-                person_id, rec_confidence = await face_service.recognize_face(embedding, confidence_threshold=request.confidence_threshold)
+                person_id, rec_confidence = await face_service.recognize_face(embedding, confidence_threshold=request.confidence_threshold or 0.60)
                 
-                if rec_confidence and rec_confidence < request.confidence_threshold:
+                if rec_confidence and rec_confidence < (request.confidence_threshold or 0.60):
                     person_id = None
-                    logger.info(f"[v2.4.1]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold}")
+                    logger.info(f"[v2.4.1]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold or 0.60}")
                 
                 logger.info(f"[v2.3]   Recognition: person_id={person_id}, confidence={rec_confidence}")
                 
@@ -935,11 +987,11 @@ async def process_photo(
                     continue
                 
                 # Recognize
-                person_id, rec_confidence = await face_service.recognize_face(embedding, confidence_threshold=request.confidence_threshold)
+                person_id, rec_confidence = await face_service.recognize_face(embedding, confidence_threshold=request.confidence_threshold or 0.60)
                 
-                if rec_confidence and rec_confidence < request.confidence_threshold:
+                if rec_confidence and rec_confidence < (request.confidence_threshold or 0.60):
                     person_id = None
-                    logger.info(f"[v2.4.1]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold}")
+                    logger.info(f"[v2.4.1]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold or 0.60}")
                 
                 if person_id and rec_confidence:
                     logger.info(f"[v2.3]   Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")
@@ -968,9 +1020,22 @@ async def process_photo(
     except Exception as e:
         logger.error("=" * 80)
         logger.error(f"[v2.3] ❌ ERROR in process_photo")
-        logger.error(f"[v2.3] Error: {str(e)}", exc_info=True)
+        logger.error(f"[v2.3] Photo ID: {request.photo_id}")
+        logger.error(f"[v2.3] Apply quality filters: {request.apply_quality_filters}")
+        logger.error(f"[v2.3] Error type: {type(e).__name__}")
+        logger.error(f"[v2.3] Error message: {str(e)}")
+        logger.error(f"[v2.3] Full traceback:", exc_info=True)
         logger.error("=" * 80)
-        return {"success": False, "data": None, "error": str(e)}
+        
+        # Сериализация ошибки для frontend
+        error_message = str(e)
+        if hasattr(e, '__dict__'):
+            try:
+                error_message = f"{type(e).__name__}: {str(e)}"
+            except:
+                pass
+        
+        return {"success": False, "data": None, "error": error_message}
 
 def calculate_iou(box1: dict, box2: dict) -> float:
     """Calculate Intersection over Union"""

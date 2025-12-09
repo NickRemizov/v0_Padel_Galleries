@@ -30,12 +30,14 @@ export async function processPhotoAction(
         photo_id: photoId,
         force_redetect: forceRedetect,
         apply_quality_filters: applyQualityFilters,
-        confidence_threshold: qualityParams?.confidenceThreshold ?? 0.6,
-        min_detection_score: qualityParams?.minDetectionScore ?? 0.7,
-        min_face_size: qualityParams?.minFaceSize ?? 80,
-        min_blur_score: qualityParams?.minBlurScore ?? 80,
+        confidence_threshold: applyQualityFilters ? (qualityParams?.confidenceThreshold ?? 0.6) : null,
+        min_detection_score: applyQualityFilters ? (qualityParams?.minDetectionScore ?? 0.7) : null,
+        min_face_size: applyQualityFilters ? (qualityParams?.minFaceSize ?? 80) : null,
+        min_blur_score: applyQualityFilters ? (qualityParams?.minBlurScore ?? 80) : null,
       }),
     })
+
+    console.log("[processPhotoAction] Backend response:", JSON.stringify(result, null, 2))
 
     if (result.success) {
       return {
@@ -43,16 +45,21 @@ export async function processPhotoAction(
         faces: result.data || [],
       }
     } else {
+      const errorMessage = result.error || "Failed to process photo"
+      console.error("[processPhotoAction] Backend error:", errorMessage)
+
       return {
         success: false,
-        error: result.error || "Failed to process photo",
+        error: errorMessage,
       }
     }
   } catch (error) {
-    console.error("[processPhotoAction] Error:", error)
+    console.error("[processPhotoAction] Exception:", error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: errorMessage,
     }
   }
 }
@@ -374,6 +381,73 @@ export async function markPhotoAsProcessedAction(photoId: string) {
     return { success: true }
   } catch (error) {
     console.error("[markPhotoAsProcessedAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
+/**
+ * Batch verify faces: update person_ids + delete removed faces
+ *
+ * @param photoId - Photo ID
+ * @param keptFaces - Array of faces to keep [{id, person_id}]
+ */
+export async function clusterUnknownFacesAction(galleryId: string) {
+  try {
+    console.log("[v0] [clusterUnknownFacesAction] START - Gallery ID:", galleryId)
+
+    const result = await apiFetch<{ clusters: any[]; ungrouped_faces: any[] }>(
+      `/api/recognition/cluster-unknown-faces?gallery_id=${galleryId}&min_cluster_size=2`,
+      {
+        method: "POST",
+      },
+    )
+
+    console.log("[v0] [clusterUnknownFacesAction] FastAPI raw response:", JSON.stringify(result, null, 2))
+    console.log("[v0] [clusterUnknownFacesAction] Clusters count:", result.clusters?.length || 0)
+
+    return {
+      success: true,
+      data: {
+        clusters: result.clusters || [],
+        ungrouped_faces: result.ungrouped_faces || [],
+      },
+    }
+  } catch (error) {
+    console.error(
+      "[v0] [clusterUnknownFacesAction] Full error:",
+      JSON.stringify(error, Object.getOwnPropertyNames(error)),
+    )
+    console.error(
+      "[v0] [clusterUnknownFacesAction] Error message:",
+      error instanceof Error ? error.message : String(error),
+    )
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+export async function assignFacesToPersonAction(faceIds: string[], personId: string) {
+  try {
+    console.log("[assignFacesToPersonAction] Assigning", faceIds.length, "faces to person:", personId)
+
+    // Update each face with the person_id
+    for (const faceId of faceIds) {
+      await updatePhotoFaceAction(faceId, {
+        person_id: personId,
+        verified: true,
+        recognition_confidence: 1.0,
+      })
+    }
+
+    revalidatePath("/admin")
+    return { success: true }
+  } catch (error) {
+    console.error("[assignFacesToPersonAction] Error:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

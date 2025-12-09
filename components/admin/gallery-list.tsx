@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Trash2, ExternalLink } from "lucide-react"
 import { deleteGalleryAction } from "@/app/admin/actions"
 import { EditGalleryDialog } from "./edit-gallery-dialog"
-import { GalleryImagesManager } from "./gallery-images"
+import { GalleryImagesManager } from "./gallery-images-manager"
 import type { Gallery, Photographer, Location, Organizer } from "@/lib/types"
 import { getGalleriesFaceRecognitionStatsAction } from "@/app/admin/actions/galleries"
 

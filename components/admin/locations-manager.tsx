@@ -1,22 +1,16 @@
-import { createClient } from "@/lib/supabase/server"
+import { getLocationsAction } from "@/app/admin/actions/entities"
 import { AddLocationDialog } from "@/components/admin/add-location-dialog"
 import { LocationList } from "@/components/admin/location-list"
 
 export async function LocationsManager() {
-  const supabase = await createClient()
-
-  const { data: locations } = await supabase.from("locations").select("*").order("name")
-
+  const result = await getLocationsAction()
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Управление местами съёмки</h2>
-          <p className="text-sm text-muted-foreground">Добавляйте, редактируйте и удаляйте места съёмки</p>
-        </div>
+        <h2 className="text-2xl font-bold">Локации</h2>
         <AddLocationDialog />
       </div>
-      <LocationList locations={locations} />
+      <LocationList locations={result.success ? result.data : []} />
     </div>
   )
 }

@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getGalleriesAction } from "@/app/admin/actions/galleries"
+import { getPhotographersAction, getLocationsAction, getOrganizersAction } from "@/app/admin/actions/entities"
 import { AddGalleryDialog } from "@/components/admin/add-gallery-dialog"
 import { GalleryList } from "@/components/admin/gallery-list"
 import { Button } from "@/components/ui/button"
@@ -22,50 +23,21 @@ export function GalleriesManager() {
 
   async function loadData() {
     setLoading(true)
-    logger.debug("GalleriesManager", "Loading galleries data", { sortBy })
+    logger.debug("GalleriesManager", "Loading data", { sortBy })
 
-    const supabase = createClient()
+    const [galleriesRes, photographersRes, locationsRes, organizersRes] = await Promise.all([
+      getGalleriesAction(sortBy),
+      getPhotographersAction(),
+      getLocationsAction(),
+      getOrganizersAction(),
+    ])
 
-    const [{ data: galleriesData }, { data: photographersData }, { data: locationsData }, { data: organizersData }] =
-      await Promise.all([
-        supabase
-          .from("galleries")
-          .select(
-            `
-        *,
-        photographers (
-          id,
-          name
-        ),
-        locations (
-          id,
-          name
-        ),
-        organizers (
-          id,
-          name
-        ),
-        gallery_images (
-          id
-        )
-      `,
-          )
-          .order(sortBy, { ascending: false }),
-        supabase.from("photographers").select("*").order("name"),
-        supabase.from("locations").select("*").order("name"),
-        supabase.from("organizers").select("*").order("name"),
-      ])
+    if (galleriesRes.success) setGalleries(galleriesRes.data as Gallery[])
+    if (photographersRes.success) setPhotographers(photographersRes.data)
+    if (locationsRes.success) setLocations(locationsRes.data)
+    if (organizersRes.success) setOrganizers(organizersRes.data)
 
-    setGalleries((galleriesData as Gallery[]) || [])
-    setPhotographers(photographersData || [])
-    setLocations(locationsData || [])
-    setOrganizers(organizersData || [])
     setLoading(false)
-
-    logger.debug("GalleriesManager", "Galleries data loaded", {
-      galleriesCount: galleriesData?.length || 0,
-      photographersCount: photographersData?.length || 0,
-    })
   }
 
   function toggleSort() {

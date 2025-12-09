@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+// import { createClient } from "@/lib/supabase/client"
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { debounce } from "@/lib/debounce"
 import { processPhotoAction, batchVerifyFacesAction } from "@/app/admin/actions/faces"
+import { getPeopleAction } from "@/app/admin/actions/entities" // Add import for people action
 
 const VERSION = "v6.0" // Увеличена версия для финальной архитектуры v2.3.0
 
@@ -97,10 +98,9 @@ export function FaceTaggingDialog({
   }, [showAddPerson, open])
 
   async function loadPeople() {
-    const supabase = createClient()
-    const { data } = await supabase.from("people").select("*").order("real_name", { ascending: true })
-    if (data) {
-      setPeople(data)
+    const result = await getPeopleAction()
+    if (result.success && result.data) {
+      setPeople(result.data)
     }
   }
 
@@ -173,8 +173,22 @@ export function FaceTaggingDialog({
         verified: f.verified,
       }))
 
+      const detailed: DetailedFace[] = result.faces.map((f: any) => ({
+        boundingBox: f.insightface_bbox,
+        size: Math.max(f.insightface_bbox.width, f.insightface_bbox.height),
+        blur_score: f.blur_score,
+        detection_score: f.insightface_confidence,
+        recognition_confidence: f.recognition_confidence,
+        embedding_quality: f.embedding_quality,
+        distance_to_nearest: f.distance_to_nearest,
+        top_matches: f.top_matches,
+        person_name: f.people?.real_name || f.people?.telegram_name || null,
+      }))
+
       setTaggedFaces(tagged)
+      setDetailedFaces(detailed) // Set detailed faces for metrics dialog
       drawFaces(tagged)
+      setHasRedetectedData(true)
     } catch (error) {
       console.error(`[${VERSION}] Error redetecting faces:`, error)
       alert(`Error redetecting faces: ${error}`)

@@ -1,236 +1,164 @@
 "use server"
 
+import { apiFetch } from "@/lib/apiClient"
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
-import { logger } from "@/lib/logger"
 
-// People
+// ===== PEOPLE =====
+
+export async function getPeopleAction(withStats = false) {
+  return await apiFetch(`/api/people?with_stats=${withStats}`)
+}
+
+export async function getPersonAction(personId: string) {
+  return await apiFetch(`/api/people/${personId}`)
+}
+
+export async function getPersonPhotosAction(personId: string) {
+  return await apiFetch(`/api/people/${personId}/photos`)
+}
+
 export async function addPersonAction(data: {
-  real_name?: string
+  real_name: string
   telegram_name?: string
   telegram_nickname?: string
   telegram_profile_url?: string
   facebook_profile_url?: string
   instagram_profile_url?: string
-  avatar_url?: string
   paddle_ranking?: number
-  tournament_results?: any
+  avatar_url?: string
+  show_in_players_gallery?: boolean
+  show_photos_in_galleries?: boolean
 }) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("people").insert(data)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Person added successfully")
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error adding person", error)
-    return { error: error.message || "Failed to add person" }
-  }
+  const result = await apiFetch("/api/people", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
-export async function updatePersonAction(
+export async function updatePersonAction(personId: string, data: Record<string, any>) {
+  const result = await apiFetch(`/api/people/${personId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
+}
+
+export async function updatePersonAvatarAction(personId: string, avatarUrl: string) {
+  const result = await apiFetch(`/api/people/${personId}/avatar?avatar_url=${encodeURIComponent(avatarUrl)}`, {
+    method: "PATCH",
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
+}
+
+export async function updatePersonVisibilityAction(
   personId: string,
-  data: {
-    real_name?: string
-    telegram_name?: string
-    telegram_nickname?: string
-    telegram_profile_url?: string
-    facebook_profile_url?: string
-    instagram_profile_url?: string
-    avatar_url?: string
-    paddle_ranking?: number
-    tournament_results?: any
-  },
+  field: "show_in_players_gallery" | "show_photos_in_galleries",
+  value: boolean,
 ) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("people").update(data).eq("id", personId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Person updated successfully", { personId })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error updating person", error)
-    return { error: error.message || "Failed to update person" }
-  }
+  const result = await apiFetch(`/api/people/${personId}/visibility`, {
+    method: "PATCH",
+    body: JSON.stringify({ [field]: value }),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
 export async function deletePersonAction(personId: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("people").delete().eq("id", personId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Person deleted successfully", { personId })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error deleting person", error)
-    return { error: error.message || "Failed to delete person" }
-  }
+  const result = await apiFetch(`/api/people/${personId}`, { method: "DELETE" })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
-// Photographers
+// ===== PHOTOGRAPHERS =====
+
+export async function getPhotographersAction() {
+  return await apiFetch("/api/photographers")
+}
+
 export async function addPhotographerAction(name: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("photographers").insert({ name })
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Photographer added successfully", { name })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error adding photographer", error)
-    return { error: error.message || "Failed to add photographer" }
-  }
+  const result = await apiFetch("/api/photographers", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
 export async function updatePhotographerAction(photographerId: string, name: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("photographers").update({ name }).eq("id", photographerId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Photographer updated successfully", { photographerId })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error updating photographer", error)
-    return { error: error.message || "Failed to update photographer" }
-  }
+  const result = await apiFetch(`/api/photographers/${photographerId}`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
 export async function deletePhotographerAction(photographerId: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("photographers").delete().eq("id", photographerId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Photographer deleted successfully", { photographerId })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error deleting photographer", error)
-    return { error: error.message || "Failed to delete photographer" }
-  }
+  const result = await apiFetch(`/api/photographers/${photographerId}`, { method: "DELETE" })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
-// Locations
+// ===== LOCATIONS =====
+
+export async function getLocationsAction() {
+  return await apiFetch("/api/locations")
+}
+
 export async function addLocationAction(name: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("locations").insert({ name })
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Location added successfully", { name })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error adding location", error)
-    return { error: error.message || "Failed to add location" }
-  }
+  const result = await apiFetch("/api/locations", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
 export async function updateLocationAction(locationId: string, name: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("locations").update({ name }).eq("id", locationId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Location updated successfully", { locationId })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error updating location", error)
-    return { error: error.message || "Failed to update location" }
-  }
+  const result = await apiFetch(`/api/locations/${locationId}`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
 export async function deleteLocationAction(locationId: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("locations").delete().eq("id", locationId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Location deleted successfully", { locationId })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error deleting location", error)
-    return { error: error.message || "Failed to delete location" }
-  }
+  const result = await apiFetch(`/api/locations/${locationId}`, { method: "DELETE" })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
-// Organizers
+// ===== ORGANIZERS =====
+
+export async function getOrganizersAction() {
+  return await apiFetch("/api/organizers")
+}
+
 export async function addOrganizerAction(name: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("organizers").insert({ name })
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Organizer added successfully", { name })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error adding organizer", error)
-    return { error: error.message || "Failed to add organizer" }
-  }
+  const result = await apiFetch("/api/organizers", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
 export async function updateOrganizerAction(organizerId: string, name: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("organizers").update({ name }).eq("id", organizerId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Organizer updated successfully", { organizerId })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error updating organizer", error)
-    return { error: error.message || "Failed to update organizer" }
-  }
+  const result = await apiFetch(`/api/organizers/${organizerId}`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
 }
 
 export async function deleteOrganizerAction(organizerId: string) {
-  try {
-    const supabase = await createClient()
-
-    const { error } = await supabase.from("organizers").delete().eq("id", organizerId)
-
-    if (error) throw error
-
-    revalidatePath("/admin")
-    logger.info("actions/entities", "Organizer deleted successfully", { organizerId })
-    return { success: true }
-  } catch (error: any) {
-    logger.error("actions/entities", "Error deleting organizer", error)
-    return { error: error.message || "Failed to delete organizer" }
-  }
+  const result = await apiFetch(`/api/organizers/${organizerId}`, { method: "DELETE" })
+  if (result.success) revalidatePath("/admin")
+  return result
 }

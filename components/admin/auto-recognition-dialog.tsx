@@ -12,7 +12,7 @@ import { processPhotoAction } from "@/app/admin/actions/faces"
 import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v4.2-UnifiedConfig" // Updated for unified config
+const VERSION = "v5.0-FixedForceRedetect" // Updated version for deployment tracking
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -41,14 +41,24 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
     console.log(`[${VERSION}] Quality params:`, qualityParams)
 
-    const result = await processPhotoAction(
-      photoId,
-      false,
-      applyQualityFilters,
-      applyQualityFilters ? qualityParams : undefined,
-    )
+    // Pass only 3 params when applyQualityFilters=false, let qualityParams be undefined
+    const result = await processPhotoAction(photoId, !applyQualityFilters, applyQualityFilters)
+
+    console.log(`[${VERSION}] processPhotoAction result:`, result)
+    console.log(`[${VERSION}] result.error type:`, typeof result.error)
+    console.log(`[${VERSION}] result.error value:`, result.error)
+    if (typeof result.error === "string") {
+      console.log(`[${VERSION}] Error is string, trying to parse as JSON...`)
+      try {
+        const parsed = JSON.parse(result.error)
+        console.log(`[${VERSION}] Parsed error:`, parsed)
+      } catch (e) {
+        console.log(`[${VERSION}] Cannot parse error as JSON`)
+      }
+    }
 
     if (!result.success) {
+      console.error(`[${VERSION}] processPhotoAction failed:`, result.error)
       throw new Error(result.error || "Failed to process photo")
     }
 
@@ -69,12 +79,14 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     console.log(`[${VERSION}] AUTO-RECOGNITION: images.length =`, images.length)
 
     const configResult = await getRecognitionConfigAction()
-    const qualityParams = {
-      confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
-      minDetectionScore: configResult.config?.quality_filters?.min_detection_score || 0.7,
-      minFaceSize: configResult.config?.quality_filters?.min_face_size || 80,
-      minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
-    }
+    const qualityParams = applyQualityFilters
+      ? {
+          confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
+          minDetectionScore: configResult.config?.quality_filters?.min_detection_score || 0.7,
+          minFaceSize: configResult.config?.quality_filters?.min_face_size || 80,
+          minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
+        }
+      : undefined
     console.log(`[${VERSION}] AUTO-RECOGNITION: Using quality params from config:`, qualityParams)
 
     setProcessing(true)

@@ -56,6 +56,73 @@ class MarkProcessedResponse(BaseModel):
     success: bool
     message: str
 
+class GalleryImagesResponse(BaseModel):
+    success: bool
+    data: list
+    error: Optional[str] = None
+
+class BatchSortOrderItem(BaseModel):
+    id: str
+    order: int
+
+class BatchSortOrderRequest(BaseModel):
+    image_orders: list[BatchSortOrderItem]
+
+class VerifiedPeopleResponse(BaseModel):
+    success: bool
+    data: list
+    error: Optional[str] = None
+
+@router.get("/gallery/{gallery_id}", response_model=GalleryImagesResponse)
+async def get_gallery_images(gallery_id: str):
+    """
+    Получает все изображения галереи с сортировкой по display_order.
+    """
+    try:
+        logger.info(f"[Images API] Getting images for gallery: {gallery_id}")
+        
+        result = supabase_db.client.table("gallery_images")\
+            .select("*")\
+            .eq("gallery_id", gallery_id)\
+            .order("display_order")\
+            .execute()
+        
+        images = result.data or []
+        logger.info(f"[Images API] Found {len(images)} images")
+        
+        return GalleryImagesResponse(
+            success=True,
+            data=images
+        )
+    except Exception as e:
+        logger.error(f"[Images API] Error getting gallery images: {e}")
+        return GalleryImagesResponse(
+            success=False,
+            data=[],
+            error=str(e)
+        )
+
+@router.patch("/gallery/{gallery_id}/sort-order")
+async def update_images_sort_order(gallery_id: str, request: BatchSortOrderRequest):
+    """
+    Обновляет порядок отображения изображений в галерее.
+    """
+    try:
+        logger.info(f"[Images API] Updating sort order for gallery {gallery_id}, {len(request.image_orders)} images")
+        
+        for item in request.image_orders:
+            supabase_db.client.table("gallery_images")\
+                .update({"display_order": item.order})\
+                .eq("id", item.id)\
+                .eq("gallery_id", gallery_id)\
+                .execute()
+        
+        logger.info(f"[Images API] Sort order updated successfully")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"[Images API] Error updating sort order: {e}")
+        return {"success": False, "error": str(e)}
+
 @router.delete("/{image_id}", response_model=DeleteImageResponse)
 async def delete_image(image_id: str):
     """
@@ -337,3 +404,43 @@ async def mark_image_as_processed(image_id: str):
     except Exception as e:
         logger.error(f"[Images API] Error marking image as processed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{image_id}/people", response_model=VerifiedPeopleResponse)
+async def get_image_verified_people(image_id: str):
+    """
+    Получает список верифицированных людей на фото.
+    Возвращает массив объектов с id и name.
+    """
+    try:
+        logger.info(f"[Images API] Getting verified people for image: {image_id}")
+        
+        # Получаем верифицированные лица с информацией о людях
+        result = supabase_db.client.table("photo_faces")\
+            .select("person_id, people!inner(id, real_name, telegram_name)")\
+            .eq("photo_id", image_id)\
+            .eq("verified", True)\
+            .execute()
+        
+        # Форматируем данные
+        people = []
+        for item in (result.data or []):
+            person_data = item.get("people", {})
+            people.append({
+                "id": person_data.get("id"),
+                "name": person_data.get("real_name") or person_data.get("telegram_name") or "Unknown"
+            })
+        
+        logger.info(f"[Images API] Found {len(people)} verified people on image")
+        
+        return VerifiedPeopleResponse(
+            success=True,
+            data=people
+        )
+        
+    except Exception as e:
+        logger.error(f"[Images API] Error getting verified people: {e}", exc_info=True)
+        return VerifiedPeopleResponse(
+            success=False,
+            data=[],
+            error=str(e)
+        )

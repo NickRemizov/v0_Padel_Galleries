@@ -39,6 +39,9 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
     try {
       console.log(`[apiClient] Request ${requestId} (attempt ${attemptNumber}): ${fetchOptions.method || "GET"} ${url}`)
+      if (fetchOptions.body) {
+        console.log(`[apiClient] Request ${requestId} body:`, fetchOptions.body)
+      }
 
       const response = await fetch(url, {
         ...fetchOptions,
@@ -60,7 +63,20 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         if (contentType?.includes("application/json")) {
           try {
             const errorData = await response.json()
-            errorMessage = errorData.message || errorData.detail || errorMessage
+
+            // Handle FastAPI validation errors (detail is array of error objects)
+            if (Array.isArray(errorData.detail)) {
+              const validationErrors = errorData.detail
+                .map((err: any) => {
+                  const field = Array.isArray(err.loc) ? err.loc.join(".") : "unknown"
+                  return `${field}: ${err.msg || err.message || "validation error"}`
+                })
+                .join("; ")
+              errorMessage = validationErrors || errorMessage
+            } else {
+              errorMessage = errorData.message || errorData.detail || errorMessage
+            }
+
             errorCode = errorData.code
           } catch {
             errorMessage = response.statusText || errorMessage
@@ -87,7 +103,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       const contentType = response.headers.get("content-type")
       if (contentType?.includes("application/json")) {
         const data = await response.json()
-        console.log(`[apiClient] Request ${requestId} succeeded`)
+        console.log(`[apiClient] Request ${requestId} succeeded - Response:`, JSON.stringify(data, null, 2))
         return data
       }
 

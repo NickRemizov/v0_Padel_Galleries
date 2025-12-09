@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Wrench, ChevronDown, ChevronRight } from "lucide-react"
-import { checkDatabaseIntegrityAction, fixIntegrityIssueAction } from "@/app/admin/actions"
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Wrench, ChevronDown, ChevronRight, Info } from "lucide-react"
+import { checkDatabaseIntegrityAction, fixIntegrityIssueAction } from "@/app/admin/actions/integrity"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 interface IntegrityReport {
@@ -60,7 +60,12 @@ export function DatabaseIntegrityChecker() {
   }
 
   const handleFix = async (issueType: string) => {
-    if (!confirm(`Исправить проблему "${issueType}"? Это действие необратимо.`)) {
+    const dangerousFixes = ["cleanupUnverifiedFaces"]
+    const confirmMessage = dangerousFixes.includes(issueType)
+      ? `⚠️ ВНИМАНИЕ! Это опасная операция - она удалит все неопознанные лица.\n\nВы уверены, что хотите продолжить?`
+      : `Исправить проблему "${issueType}"?\n\nЭто действие необратимо, но безопасно.`
+
+    if (!confirm(confirmMessage)) {
       return
     }
 
@@ -68,8 +73,8 @@ export function DatabaseIntegrityChecker() {
     try {
       const result = await fixIntegrityIssueAction(issueType)
       if (result.success) {
-        alert(`Исправлено: ${result.data?.fixed} записей`)
-        // Перезапустить проверку
+        const message = result.data?.message || `Исправлено: ${result.data?.fixed || 0} записей`
+        alert(message)
         await handleCheck()
       } else {
         alert(`Ошибка исправления: ${result.error}`)
@@ -104,12 +109,16 @@ export function DatabaseIntegrityChecker() {
     issueType,
     description,
     severity = "medium",
+    canFix = true,
+    infoOnly = false,
   }: {
     title: string
     count: number
     issueType: string
     description: string
     severity?: "critical" | "high" | "medium" | "low"
+    canFix?: boolean
+    infoOnly?: boolean
   }) => {
     if (count === 0) return null
 
@@ -129,6 +138,7 @@ export function DatabaseIntegrityChecker() {
         <div className="flex items-center justify-between py-2">
           <div className="flex-1">
             <div className="flex items-center gap-2">
+              {infoOnly && <Info className="h-4 w-4 text-muted-foreground" />}
               <span className="font-medium">{title}</span>
               <Badge variant={severityVariant[severity]}>{count}</Badge>
             </div>
@@ -150,24 +160,31 @@ export function DatabaseIntegrityChecker() {
                 ) : (
                   <>
                     {isExpanded ? <ChevronDown className="mr-2 h-4 w-4" /> : <ChevronRight className="mr-2 h-4 w-4" />}
-                    Проверить
+                    Детали
                   </>
                 )}
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => handleFix(issueType)} disabled={fixingIssue !== null}>
-              {fixingIssue === issueType ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Исправление...
-                </>
-              ) : (
-                <>
-                  <Wrench className="mr-2 h-4 w-4" />
-                  Исправить
-                </>
-              )}
-            </Button>
+            {canFix && !infoOnly && (
+              <Button variant="outline" size="sm" onClick={() => handleFix(issueType)} disabled={fixingIssue !== null}>
+                {fixingIssue === issueType ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Исправление...
+                  </>
+                ) : (
+                  <>
+                    <Wrench className="mr-2 h-4 w-4" />
+                    Исправить
+                  </>
+                )}
+              </Button>
+            )}
+            {infoOnly && (
+              <Badge variant="outline" className="text-muted-foreground">
+                Только информация
+              </Badge>
+            )}
           </div>
         </div>
         {isExpanded && hasDetails && (
@@ -266,50 +283,59 @@ export function DatabaseIntegrityChecker() {
                     title="Верифицированные лица без игрока"
                     count={report.photoFaces.verifiedWithoutPerson}
                     issueType="verifiedWithoutPerson"
-                    description="Лица с verified=true, но person_id=null (игрок удален)"
+                    description="Лица с verified=true, но person_id=null → Автофикс: снимает verified"
                     severity="critical"
+                    canFix={true}
                   />
                   <IssueRow
                     title="Верифицированные лица с неправильным confidence"
                     count={report.photoFaces.verifiedWithWrongConfidence}
                     issueType="verifiedWithWrongConfidence"
-                    description="Лица с verified=true, но recognition_confidence != 1.0"
+                    description="Лица с verified=true, но confidence ≠ 1.0 → Автофикс: устанавливает confidence=1.0"
                     severity="high"
+                    canFix={true}
                   />
                   <IssueRow
                     title="Лица с игроком без confidence"
                     count={report.photoFaces.personWithoutConfidence}
                     issueType="personWithoutConfidence"
-                    description="Лица с person_id, но recognition_confidence = null или 0"
+                    description="Лица с person_id, но confidence = null → Автофикс: устанавливает confidence=0.5"
                     severity="high"
+                    canFix={true}
                   />
                   <IssueRow
                     title="Лица с несуществующим игроком"
                     count={report.photoFaces.nonExistentPerson}
                     issueType="nonExistentPersonFaces"
-                    description="person_id ссылается на удаленного игрока"
+                    description="person_id ссылается на удаленного игрока → Автофикс: обнуляет person_id"
                     severity="critical"
+                    canFix={true}
                   />
                   <IssueRow
                     title="Лица с несуществующим фото"
                     count={report.photoFaces.nonExistentPhoto}
                     issueType="nonExistentPhotoFaces"
-                    description="photo_id ссылается на удаленное фото"
+                    description="photo_id ссылается на удаленное фото → Автофикс: удаляет запись"
                     severity="critical"
+                    canFix={true}
                   />
                   <IssueRow
                     title="Лица без дескрипторов"
                     count={report.photoFaces.withoutDescriptors}
                     issueType="facesWithoutDescriptors"
-                    description="Лица без записей в face_descriptors"
+                    description="Лица без записей в face_descriptors (ошибка обработки)"
                     severity="medium"
+                    canFix={false}
+                    infoOnly={true}
                   />
                   <IssueRow
                     title="Несогласованность person_id"
                     count={report.photoFaces.inconsistentPersonId}
                     issueType="inconsistentPersonIds"
-                    description="person_id в photo_faces != person_id в face_descriptors"
+                    description="person_id в photo_faces ≠ person_id в face_descriptors"
                     severity="high"
+                    canFix={false}
+                    infoOnly={true}
                   />
                 </div>
               </CardContent>
@@ -336,39 +362,45 @@ export function DatabaseIntegrityChecker() {
               <CardContent>
                 <div className="space-y-2">
                   <IssueRow
-                    title="Потерянные дескрипторы"
+                    title="🎯 Потерянные дескрипторы (ваша проблема!)"
                     count={report.faceDescriptors.orphaned}
                     issueType="orphanedDescriptors"
-                    description="source_image_id ссылается на несуществующее лицо"
+                    description="source_image_id не существует в photo_faces → Автофикс: удаляет мусор"
                     severity="critical"
+                    canFix={true}
                   />
                   <IssueRow
                     title="Дескрипторы с несуществующим игроком"
                     count={report.faceDescriptors.nonExistentPerson}
                     issueType="nonExistentPersonDescriptors"
-                    description="person_id ссылается на удаленного игрока"
+                    description="person_id ссылается на удаленного игрока → Автофикс: обнуляет person_id"
                     severity="critical"
+                    canFix={true}
                   />
                   <IssueRow
                     title="Дескрипторы без игрока"
                     count={report.faceDescriptors.withoutPerson}
                     issueType="descriptorsWithoutPerson"
-                    description="person_id = null (информационное)"
+                    description="person_id = null (это нормально для неопознанных лиц)"
                     severity="low"
+                    canFix={false}
+                    infoOnly={true}
                   />
                   <IssueRow
                     title="Дескрипторы без embedding"
                     count={report.faceDescriptors.withoutEmbedding}
                     issueType="descriptorsWithoutEmbedding"
-                    description="descriptor = null (ошибка создания)"
+                    description="descriptor = null → Автофикс: удаляет битые дескрипторы (требует подтверждения)"
                     severity="medium"
+                    canFix={true}
                   />
                   <IssueRow
                     title="Дубликаты дескрипторов"
                     count={report.faceDescriptors.duplicates}
                     issueType="duplicateDescriptors"
-                    description="Несколько дескрипторов для одного лица"
+                    description="Несколько дескрипторов для одного лица → Автофикс: оставляет новейший (требует подтверждения)"
                     severity="medium"
+                    canFix={true}
                   />
                 </div>
               </CardContent>
@@ -380,9 +412,9 @@ export function DatabaseIntegrityChecker() {
             report.people.duplicateNames > 0) && (
             <Card>
               <CardHeader>
-                <CardTitle>Проблемы с игроками (People)</CardTitle>
+                <CardTitle>Информация об игроках (People)</CardTitle>
                 <CardDescription>
-                  Всего проблем:{" "}
+                  Всего записей:{" "}
                   {report.people.withoutDescriptors + report.people.withoutFaces + report.people.duplicateNames}
                 </CardDescription>
               </CardHeader>
@@ -392,22 +424,28 @@ export function DatabaseIntegrityChecker() {
                     title="Игроки без дескрипторов"
                     count={report.people.withoutDescriptors}
                     issueType="peopleWithoutDescriptors"
-                    description="Игроки без записей в face_descriptors (информационное)"
+                    description="Новые игроки, которым еще не назначено ни одного фото (это нормально)"
                     severity="low"
+                    canFix={false}
+                    infoOnly={true}
                   />
                   <IssueRow
                     title="Игроки без фото"
                     count={report.people.withoutFaces}
                     issueType="peopleWithoutFaces"
-                    description="Игроки без лиц в photo_faces (информационное)"
+                    description="Игроки без отметок на фото (это нормально, могут быть новыми)"
                     severity="low"
+                    canFix={false}
+                    infoOnly={true}
                   />
                   <IssueRow
                     title="Дубликаты имен"
                     count={report.people.duplicateNames}
                     issueType="duplicateNames"
-                    description="Несколько игроков с одинаковым именем"
+                    description="Несколько игроков с одинаковым именем (разные люди, требует ручного разбора)"
                     severity="medium"
+                    canFix={false}
+                    infoOnly={true}
                   />
                 </div>
               </CardContent>

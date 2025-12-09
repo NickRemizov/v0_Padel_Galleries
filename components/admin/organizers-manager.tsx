@@ -1,23 +1,16 @@
-import { createClient } from "@/lib/supabase/server"
+import { getOrganizersAction } from "@/app/admin/actions/entities"
 import { AddOrganizerDialog } from "@/components/admin/add-organizer-dialog"
 import { OrganizerList } from "@/components/admin/organizer-list"
 
 export async function OrganizersManager() {
-  const supabase = await createClient()
-
-  const { data: organizers } = await supabase.from("organizers").select("*").order("name")
-
+  const result = await getOrganizersAction()
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Управление организаторами</h2>
-          <p className="text-sm text-muted-foreground">Добавляйте, редактируйте и удаляйте организаторов</p>
-        </div>
+        <h2 className="text-2xl font-bold">Организаторы</h2>
         <AddOrganizerDialog />
       </div>
-
-      <OrganizerList organizers={organizers || []} />
+      <OrganizerList organizers={result.success ? result.data : []} />
     </div>
   )
 }
