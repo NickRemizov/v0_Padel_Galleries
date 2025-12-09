@@ -37,12 +37,18 @@ export async function processPhotoAction(
       }),
     })
 
+    console.log("[processPhotoAction] Backend response:", JSON.stringify(result, null, 2))
+
     if (result.success) {
       return {
         success: true,
         faces: result.data || [],
       }
     } else {
+      console.error("[processPhotoAction] Backend error object:", result.error)
+      console.error("[processPhotoAction] Backend error type:", typeof result.error)
+      console.error("[processPhotoAction] Backend error is array:", Array.isArray(result.error))
+
       let errorMessage = "Failed to process photo"
 
       if (typeof result.error === "string") {
@@ -53,7 +59,7 @@ export async function processPhotoAction(
         errorMessage = JSON.stringify(result.error)
       }
 
-      console.error("[processPhotoAction] Backend error:", errorMessage)
+      console.error("[processPhotoAction] Final error message:", errorMessage)
 
       return {
         success: false,
