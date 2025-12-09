@@ -461,10 +461,10 @@ async def cluster_unknown_faces(
         
         # Format clusters and sort by size (largest first)
         clusters = []
-        for cluster_id, face_indices in clusters_dict.items():
+        for cluster_id, cluster_faces in clusters_dict.items():
             normalized_faces = []
-            for idx in face_indices:
-                face = faces[idx].copy()
+            for face in cluster_faces:
+                face = face.copy()
                 
                 img_width = face.get("width")
                 img_height = face.get("height")
@@ -508,7 +508,7 @@ async def cluster_unknown_faces(
         
         clusters.sort(key=lambda x: x["size"], reverse=True)
         
-        logger.info(f"Returning {len(clusters)} clusters with {len(ungrouped)} ungrouped faces")
+        logger.info(f"✓ Returning {len(clusters)} clusters, {len(ungrouped)} ungrouped")
         
         return {
             "clusters": clusters,
