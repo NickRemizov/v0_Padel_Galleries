@@ -863,12 +863,19 @@ async def process_photo(
                 "min_blur_score": request.min_blur_score
             }
             logger.info(f"[v2.4.1] Quality filters: det={face_service.quality_filters['min_detection_score']}, size={face_service.quality_filters['min_face_size']}, blur={face_service.quality_filters['min_blur_score']}")
+        else:
+            logger.info(f"[v2.4.1] Quality filters DISABLED - all faces will be detected")
         
         logger.info("=" * 80)
         logger.info("[v2.3] ===== PROCESS PHOTO REQUEST START =====")
         logger.info(f"[v2.3] Photo ID: {request.photo_id}")
         logger.info(f"[v2.3] Force redetect: {request.force_redetect}")
         logger.info(f"[v2.3] Apply quality filters: {request.apply_quality_filters}")
+        logger.info(f"[v2.3] Quality params received:")
+        logger.info(f"[v2.3]   - confidence_threshold: {request.confidence_threshold}")
+        logger.info(f"[v2.3]   - min_detection_score: {request.min_detection_score}")
+        logger.info(f"[v2.3]   - min_face_size: {request.min_face_size}")
+        logger.info(f"[v2.3]   - min_blur_score: {request.min_blur_score}")
         
         if request.force_redetect:
             logger.info("[v2.3] Force redetect requested - deleting existing faces")
@@ -1024,9 +1031,22 @@ async def process_photo(
     except Exception as e:
         logger.error("=" * 80)
         logger.error(f"[v2.3] ❌ ERROR in process_photo")
-        logger.error(f"[v2.3] Error: {str(e)}", exc_info=True)
+        logger.error(f"[v2.3] Photo ID: {request.photo_id}")
+        logger.error(f"[v2.3] Apply quality filters: {request.apply_quality_filters}")
+        logger.error(f"[v2.3] Error type: {type(e).__name__}")
+        logger.error(f"[v2.3] Error message: {str(e)}")
+        logger.error(f"[v2.3] Full traceback:", exc_info=True)
         logger.error("=" * 80)
-        return {"success": False, "data": None, "error": str(e)}
+        
+        # Сериализация ошибки для frontend
+        error_message = str(e)
+        if hasattr(e, '__dict__'):
+            try:
+                error_message = f"{type(e).__name__}: {str(e)}"
+            except:
+                pass
+        
+        return {"success": False, "data": None, "error": error_message}
 
 def calculate_iou(box1: dict, box2: dict) -> float:
     """Calculate Intersection over Union"""
