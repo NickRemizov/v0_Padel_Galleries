@@ -51,7 +51,24 @@ export async function processPhotoAction(
 
       let errorMessage = "Failed to process photo"
 
-      if (typeof result.error === "string") {
+      // Handle FastAPI validation errors: {detail: [{loc: [], msg: "", type: ""}]}
+      if (result.error && typeof result.error === "object" && "detail" in result.error) {
+        const detail = (result.error as any).detail
+        if (Array.isArray(detail)) {
+          errorMessage = detail
+            .map((err: any) => {
+              if (typeof err === "object" && "msg" in err) {
+                return `${err.loc?.join(".") || "field"}: ${err.msg}`
+              }
+              return JSON.stringify(err)
+            })
+            .join("; ")
+        } else if (typeof detail === "string") {
+          errorMessage = detail
+        } else {
+          errorMessage = JSON.stringify(detail)
+        }
+      } else if (typeof result.error === "string") {
         errorMessage = result.error
       } else if (Array.isArray(result.error)) {
         errorMessage = result.error.map((e) => (typeof e === "string" ? e : JSON.stringify(e))).join(", ")
