@@ -12,7 +12,7 @@ import { processPhotoAction } from "@/app/admin/actions/faces"
 import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v4.6-SimplifiedErrorHandling" // Updated version for deployment tracking
+const VERSION = "v4.7-DebugErrorObject" // Updated version for deployment tracking
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -45,6 +45,17 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     const result = await processPhotoAction(photoId, false, applyQualityFilters)
 
     console.log(`[${VERSION}] processPhotoAction result:`, result)
+    console.log(`[${VERSION}] result.error type:`, typeof result.error)
+    console.log(`[${VERSION}] result.error value:`, result.error)
+    if (typeof result.error === "string") {
+      console.log(`[${VERSION}] Error is string, trying to parse as JSON...`)
+      try {
+        const parsed = JSON.parse(result.error)
+        console.log(`[${VERSION}] Parsed error:`, parsed)
+      } catch (e) {
+        console.log(`[${VERSION}] Cannot parse error as JSON`)
+      }
+    }
 
     if (!result.success) {
       console.error(`[${VERSION}] processPhotoAction failed:`, result.error)
