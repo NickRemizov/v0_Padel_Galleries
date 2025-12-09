@@ -493,69 +493,54 @@ class SupabaseClient:
         Получить неизвестные лица из галереи (person_id = NULL).
         
         Returns:
-            List of dicts with face data including insightface_descriptor
+            List of dicts with face data including insightface_descriptor, width, height
         """
         try:
-            print(f"[SupabaseClient] Getting unknown faces from gallery {gallery_id}")
-            
             # Сначала получаем все photo_ids из этой галереи
             gallery_photos_response = self.client.table("gallery_images").select(
                 "id"
             ).eq("gallery_id", gallery_id).execute()
             
             if not gallery_photos_response.data:
-                print(f"[SupabaseClient] No photos found in gallery {gallery_id}")
                 return []
             
             photo_ids = [photo["id"] for photo in gallery_photos_response.data]
-            print(f"[SupabaseClient] Found {len(photo_ids)} photos in gallery")
             
-            # Теперь получаем ВСЕ лица из этих фото где person_id = NULL (независимо от наличия дескриптора)
+            # Теперь получаем ВСЕ лица из этих фото где person_id = NULL
             response = self.client.table("photo_faces").select(
                 "id, photo_id, insightface_descriptor, insightface_bbox, insightface_confidence, "
-                "gallery_images(id, image_url, gallery_id)"
+                "gallery_images(id, image_url, width, height, gallery_id)"
             ).in_("photo_id", photo_ids).is_("person_id", "null").execute()
             
-            print(f"[SupabaseClient] Query returned {len(response.data) if response.data else 0} faces with person_id=NULL")
-            
             if not response.data:
-                print(f"[SupabaseClient] No unknown faces found")
                 return []
             
             # Формируем результат, фильтруем только те, у которых есть дескриптор И bbox
             filtered_faces = []
-            faces_without_descriptor = 0
-            faces_without_bbox = 0
             for face in response.data:
                 photo = face.get("gallery_images")
                 if not photo:
-                    print(f"[SupabaseClient] Face {face['id']} has no photo data, skipping")
                     continue
                 
                 # Проверяем наличие дескриптора
                 if not face.get("insightface_descriptor"):
-                    faces_without_descriptor += 1
                     continue
                 
                 # Проверяем наличие bbox
                 if not face.get("insightface_bbox"):
-                    faces_without_bbox += 1
-                    print(f"[SupabaseClient] Face {face['id']} has no bbox (legacy data?), skipping")
                     continue
                 
                 filtered_faces.append({
                     "id": face["id"],
                     "photo_id": face["photo_id"],
                     "photo_url": photo["image_url"],
+                    "width": photo.get("width"),
+                    "height": photo.get("height"),
                     "insightface_descriptor": face["insightface_descriptor"],
                     "insightface_bbox": face["insightface_bbox"],
                     "insightface_confidence": face["insightface_confidence"]
                 })
             
-            print(f"[SupabaseClient] Found {len(filtered_faces)} unknown faces with descriptors and bbox")
-            print(f"[SupabaseClient] Skipped {faces_without_descriptor} faces without descriptors")
-            print(f"[SupabaseClient] Skipped {faces_without_bbox} faces without bbox (legacy data)")
-            print(f"[SupabaseClient] Total unknown faces in gallery: {len(response.data)}")
             return filtered_faces
             
         except Exception as e:

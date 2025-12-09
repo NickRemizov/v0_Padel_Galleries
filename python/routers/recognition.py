@@ -461,42 +461,39 @@ async def cluster_unknown_faces(
         
         # Format clusters and sort by size (largest first)
         clusters = []
-        for cluster_id, faces in clusters_dict.items():
+        for cluster_id, face_indices in clusters_dict.items():
             normalized_faces = []
-            for face in faces:
-                # Get image dimensions from gallery_images
-                photo_response = supabase_client_instance.client.table("gallery_images").select(
-                    "width, height, image_url"
-                ).eq("id", face["photo_id"]).execute()
+            for idx in face_indices:
+                face = faces[idx].copy()
                 
-                if photo_response.data and len(photo_response.data) > 0:
-                    img_width = photo_response.data[0].get("width")
-                    img_height = photo_response.data[0].get("height")
-                    photo_url = photo_response.data[0].get("image_url")
+                img_width = face.get("width")
+                img_height = face.get("height")
+                photo_url = face.get("photo_url")
+                
+                if img_width and img_height and photo_url and face.get("insightface_bbox"):
+                    bbox = face["insightface_bbox"]
+                    normalized_bbox = {
+                        "x": bbox["x"] / img_width,
+                        "y": bbox["y"] / img_height,
+                        "width": bbox["width"] / img_width,
+                        "height": bbox["height"] / img_height,
+                    }
+                    face["bbox"] = normalized_bbox
                     
-                    # Normalize bbox if image dimensions are available
-                    if img_width and img_height and face.get("insightface_bbox"):
-                        bbox = face["insightface_bbox"]
-                        normalized_bbox = {
-                            "x": bbox["x"] / img_width,
-                            "y": bbox["y"] / img_height,
-                            "width": bbox["width"] / img_width,
-                            "height": bbox["height"] / img_height,
-                        }
-                        face["bbox"] = normalized_bbox
-                        
-                        face["photo_url"] = generate_face_crop_url(
-                            photo_url,
-                            bbox,  # Use original bbox in pixels
-                            img_width,
-                            img_height
-                        )
-                    else:
-                        # Fallback: use original bbox (might be in pixels)
-                        face["bbox"] = face.get("insightface_bbox")
-                        face["photo_url"] = face.get("photo_url", None) # Use existing photo_url if available
+                    face["photo_url"] = generate_face_crop_url(
+                        photo_url,
+                        bbox,  # Use original bbox in pixels
+                        img_width,
+                        img_height
+                    )
+                else:
+                    # Fallback: use original bbox (might be in pixels)
+                    face["bbox"] = face.get("insightface_bbox")
+                    face["photo_url"] = face.get("photo_url", None)
                 
                 face.pop("insightface_descriptor", None) # Remove descriptor from response
+                face.pop("width", None) # Remove width from response
+                face.pop("height", None) # Remove height from response
                 
                 if "photo_url" in face:
                     face["image_url"] = face.pop("photo_url")
@@ -1045,5 +1042,8 @@ def calculate_iou(box1: dict, box2: dict) -> float:
     area1 = box1["width"] * box1["height"]
     area2 = box2["width"] * box2["height"]
     union = area1 + area2 - intersection
+    
+    return intersection / union if union > 0 else 0.0
+ = area1 + area2 - intersection
     
     return intersection / union if union > 0 else 0.0

@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os
+import logging  # Added logging import
 
 load_dotenv()
 
@@ -55,6 +56,9 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=3600,
 )
+
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Disable httpx INFO logs
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)  # Reduce uvicorn access logs
 
 print("[Main] ✓ CORS middleware configured with allow_origins=['*']")
 
