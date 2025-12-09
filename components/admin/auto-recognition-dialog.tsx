@@ -12,7 +12,7 @@ import { processPhotoAction } from "@/app/admin/actions/faces"
 import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v4.9-FixedValidationErrors" // Updated version for deployment tracking
+const VERSION = "v5.0-FixedForceRedetect" // Updated version for deployment tracking
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -42,7 +42,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     console.log(`[${VERSION}] Quality params:`, qualityParams)
 
     // Pass only 3 params when applyQualityFilters=false, let qualityParams be undefined
-    const result = await processPhotoAction(photoId, false, applyQualityFilters)
+    const result = await processPhotoAction(photoId, !applyQualityFilters, applyQualityFilters)
 
     console.log(`[${VERSION}] processPhotoAction result:`, result)
     console.log(`[${VERSION}] result.error type:`, typeof result.error)
