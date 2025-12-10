@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { CleanupDuplicateDescriptorsButton } from "@/components/admin/cleanup-duplicate-descriptors-button"
 import { CleanupDuplicatesButton } from "@/components/admin/cleanup-duplicates-button"
 import { CleanupFacesButton } from "@/components/admin/cleanup-faces-button"
 import { SyncVerifiedButton } from "@/components/admin/sync-verified-button"
@@ -48,13 +47,8 @@ export function ServiceManager() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Очистка дублирующихся дескрипторов</div>
-                <div className="text-sm text-muted-foreground">Удалить дубликаты в таблице face_descriptors</div>
-              </div>
-              <CleanupDuplicateDescriptorsButton />
-            </div>
+            {/* Removed "Очистка дублирующихся дескрипторов" button */}
+            {/* This was for LEGACY face_descriptors table which is no longer used */}
 
             <Separator />
 

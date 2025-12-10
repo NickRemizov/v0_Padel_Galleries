@@ -317,39 +317,6 @@ class SupabaseDatabase:
             print(f"[v3.23] ERROR getting unknown faces: {str(e)}")
             return []
 
-    async def save_face_descriptor(
-        self,
-        person_id: str,
-        descriptor: List[float],
-        source_image_id: str
-    ) -> bool:
-        """
-        Save a face descriptor to the face_descriptors table
-        
-        Args:
-            person_id: ID of the person
-            descriptor: 512-dim embedding as list
-            source_image_id: Photo ID where face was found
-        
-        Returns:
-            True if successful
-        """
-        print(f"[v3.26] Saving descriptor for person {person_id} from image {source_image_id}")
-        
-        try:
-            self.client.table("face_descriptors").insert({
-                "person_id": person_id,
-                "descriptor": descriptor,
-                "source_image_id": source_image_id
-            }).execute()
-            
-            print(f"[v3.26] ✓ Descriptor saved successfully")
-            return True
-            
-        except Exception as e:
-            print(f"[v3.26] ERROR saving descriptor: {str(e)}")
-            return False
-
     def get_person_info(self, person_id: str) -> Optional[dict]:
         """Get person information by ID"""
         try:

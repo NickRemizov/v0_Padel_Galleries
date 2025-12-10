@@ -153,9 +153,6 @@ async def update_visibility(person_id: str, data: VisibilityUpdate):
 async def delete_person(person_id: str):
     """Delete a person and cleanup related data."""
     try:
-        # Delete face descriptors
-        supabase_db_instance.client.table("face_descriptors").delete().eq("person_id", person_id).execute()
-        
         # Unlink photo_faces
         supabase_db_instance.client.table("photo_faces").update(
             {"person_id": None, "verified": False}

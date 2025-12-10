@@ -18,15 +18,6 @@ export interface IntegrityReport {
     personWithoutConfidence: number
     nonExistentPerson: number
     nonExistentPhoto: number
-    inconsistentPersonId: number
-  }
-  faceDescriptors: {
-    orphanedDescriptors: number
-    nonExistentPerson: number
-    withoutPerson: number
-    withoutEmbedding: number
-    duplicates: number
-    inconsistentPersonId: number
   }
   people: {
     withoutDescriptors: number
@@ -57,15 +48,6 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       personWithoutConfidence: 0,
       nonExistentPerson: 0,
       nonExistentPhoto: 0,
-      inconsistentPersonId: 0,
-    }
-    const faceDescriptors = {
-      orphanedDescriptors: 0,
-      nonExistentPerson: 0,
-      withoutPerson: 0,
-      withoutEmbedding: 0,
-      duplicates: 0,
-      inconsistentPersonId: 0,
     }
     const people = {
       withoutDescriptors: 0,
@@ -167,122 +149,9 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
     }
 
-    // ========== FACE_DESCRIPTORS CHECKS ==========
-
-    // 6. Orphaned descriptors (source_image_id не существует в photo_faces)
-    const { data: allDescriptors } = await supabase.from("face_descriptors").select("id, source_image_id, person_id")
-
-    if (allDescriptors) {
-      const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
-      const { data: existingPhotoFaces } = await supabase.from("photo_faces").select("id").in("id", sourceImageIds)
-
-      const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
-      const orphanedDescriptors = allDescriptors.filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
-
-      faceDescriptors.orphanedDescriptors = orphanedDescriptors.length
-      console.log("[v0] orphanedDescriptors count:", faceDescriptors.orphanedDescriptors)
-
-      if (orphanedDescriptors.length > 0) {
-        const orphanedIds = orphanedDescriptors.slice(0, 100).map((d) => d.source_image_id)
-        const { data: photoData } = await supabase
-          .from("photo_faces")
-          .select(`
-            id, photo_id, bbox,
-            gallery_images!inner(url, gallery_id, galleries(title)),
-            people(real_name, telegram_username)
-          `)
-          .in("id", orphanedIds)
-
-        details.orphanedDescriptors = orphanedDescriptors.slice(0, 100).map((fd) => {
-          const photoFace = photoData?.find((pf) => pf.id === fd.source_image_id)
-          return {
-            id: fd.id,
-            source_image_id: fd.source_image_id,
-            person_id: fd.person_id,
-            image_url: photoFace?.gallery_images?.url,
-            bbox: photoFace?.bbox,
-            gallery_title: photoFace?.gallery_images?.galleries?.title,
-            person_name: photoFace?.people?.real_name,
-            telegram_username: photoFace?.people?.telegram_username,
-          }
-        })
-      }
-    }
-
-    // 7. Descriptors с несуществующим person_id
-    if (allDescriptors) {
-      const descriptorPersonIds = [...new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id!))]
-      const { data: existingPeopleForDescriptors } = await supabase
-        .from("people")
-        .select("id")
-        .in("id", descriptorPersonIds)
-
-      const existingPeopleIds = new Set(existingPeopleForDescriptors?.map((p) => p.id) || [])
-      const descriptorsWithNonExistentPerson = allDescriptors.filter(
-        (d) => d.person_id && !existingPeopleIds.has(d.person_id),
-      )
-
-      faceDescriptors.nonExistentPerson = descriptorsWithNonExistentPerson.length
-      console.log("[v0] descriptorsWithNonExistentPerson count:", faceDescriptors.nonExistentPerson)
-      if (descriptorsWithNonExistentPerson.length > 0) {
-        details.nonExistentPersonDescriptors = descriptorsWithNonExistentPerson.slice(0, 10)
-      }
-    }
-
-    // 8. Descriptors без person_id
-    const { data: descriptorsWithoutPerson, error: e8 } = await supabase
-      .from("face_descriptors")
-      .select("id, source_image_id")
-      .is("person_id", null)
-
-    faceDescriptors.withoutPerson = descriptorsWithoutPerson?.length || 0
-    console.log("[v0] descriptorsWithoutPerson count:", faceDescriptors.withoutPerson)
-    if (descriptorsWithoutPerson && descriptorsWithoutPerson.length > 0) {
-      details.descriptorsWithoutPerson = descriptorsWithoutPerson.slice(0, 10)
-    }
-
-    // 9. Descriptors без embedding
-    const { data: descriptorsWithoutEmbedding, error: e9 } = await supabase
-      .from("face_descriptors")
-      .select("id, source_image_id, person_id")
-      .is("embedding", null)
-
-    faceDescriptors.withoutEmbedding = descriptorsWithoutEmbedding?.length || 0
-    console.log("[v0] descriptorsWithoutEmbedding count:", faceDescriptors.withoutEmbedding)
-    if (descriptorsWithoutEmbedding && descriptorsWithoutEmbedding.length > 0) {
-      details.descriptorsWithoutEmbedding = descriptorsWithoutEmbedding.slice(0, 10)
-    }
-
-    // 10. Duplicate descriptors (одинаковые person_id + source_image_id)
-    if (allDescriptors) {
-      const groupedDescriptors = new Map<string, any[]>()
-      for (const descriptor of allDescriptors) {
-        const key = `${descriptor.person_id}_${descriptor.source_image_id}`
-        if (!groupedDescriptors.has(key)) {
-          groupedDescriptors.set(key, [])
-        }
-        groupedDescriptors.get(key)!.push(descriptor)
-      }
-
-      const duplicateGroups = Array.from(groupedDescriptors.entries()).filter(
-        ([_, descriptors]) => descriptors.length > 1,
-      )
-      const totalDuplicates = duplicateGroups.reduce((sum, [_, descriptors]) => sum + (descriptors.length - 1), 0)
-
-      faceDescriptors.duplicates = totalDuplicates
-      console.log("[v0] duplicates count:", faceDescriptors.duplicates)
-      if (duplicateGroups.length > 0) {
-        details.duplicateDescriptors = duplicateGroups.slice(0, 10).map(([key, descriptors]) => ({
-          key,
-          count: descriptors.length,
-          ids: descriptors.map((d) => d.id),
-        }))
-      }
-    }
-
     // ========== PEOPLE CHECKS ==========
 
-    // 11. People без descriptors (информационное)
+    // 11. People без descriptors в photo_faces.insightface_descriptor
     const { data: allPeople } = await supabase.from("people").select(`
       id, 
       real_name, 
@@ -290,13 +159,13 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     `)
 
     if (allPeople) {
-      // Get actual descriptor counts from database
-      const { data: descriptorCounts } = await supabase
-        .from("face_descriptors")
+      const { data: facesWithDescriptors } = await supabase
+        .from("photo_faces")
         .select("person_id")
         .not("person_id", "is", null)
+        .not("insightface_descriptor", "is", null)
 
-      const peopleWithDescriptorIds = new Set(descriptorCounts?.map((d) => d.person_id) || [])
+      const peopleWithDescriptorIds = new Set(facesWithDescriptors?.map((f) => f.person_id) || [])
       const peopleWithoutDescriptors = allPeople.filter((p) => !peopleWithDescriptorIds.has(p.id))
 
       people.withoutDescriptors = peopleWithoutDescriptors.length
@@ -358,15 +227,12 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.personWithoutConfidence +
       photoFaces.nonExistentPerson +
       photoFaces.nonExistentPhoto +
-      faceDescriptors.orphanedDescriptors +
-      faceDescriptors.nonExistentPerson +
-      faceDescriptors.withoutPerson +
-      faceDescriptors.withoutEmbedding +
-      faceDescriptors.duplicates
+      people.withoutDescriptors +
+      people.withoutFaces +
+      people.duplicateNames
 
     const report: IntegrityReport = {
       photoFaces,
-      faceDescriptors,
       people,
       totalIssues,
       details,
@@ -400,30 +266,6 @@ export async function fixIntegrityIssuesAction(
 
     switch (issueType) {
       // БЕЗОПАСНЫЕ АВТОФИКСЫ
-
-      case "orphanedDescriptors": {
-        // Удалить дескрипторы без photo_faces
-        const { data: allDescriptors } = await supabase.from("face_descriptors").select("id, source_image_id")
-
-        if (allDescriptors) {
-          const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
-          const { data: existingPhotoFaces } = await supabase.from("photo_faces").select("id").in("id", sourceImageIds)
-
-          const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
-          const orphanedIds = allDescriptors
-            .filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
-            .map((fd) => fd.id)
-
-          if (orphanedIds.length > 0) {
-            const { error: deleteError } = await supabase.from("face_descriptors").delete().in("id", orphanedIds)
-
-            if (deleteError) throw deleteError
-            fixed = orphanedIds.length
-            details.deletedIds = orphanedIds
-          }
-        }
-        break
-      }
 
       case "verifiedWithoutPerson": {
         // Снять verified у лиц без person_id
@@ -505,56 +347,6 @@ export async function fixIntegrityIssuesAction(
         break
       }
 
-      case "duplicateDescriptors": {
-        // Удалить дубликаты дескрипторов (оставить самый новый)
-        const { data: allDescriptors } = await supabase
-          .from("face_descriptors")
-          .select("id, source_image_id, person_id, created_at")
-          .order("created_at", { ascending: false })
-
-        if (allDescriptors) {
-          const groupedDescriptors = new Map<string, any[]>()
-          for (const descriptor of allDescriptors) {
-            const key = `${descriptor.person_id}_${descriptor.source_image_id}`
-            if (!groupedDescriptors.has(key)) {
-              groupedDescriptors.set(key, [])
-            }
-            groupedDescriptors.get(key)!.push(descriptor)
-          }
-
-          const idsToDelete: string[] = []
-          for (const [_, descriptors] of groupedDescriptors.entries()) {
-            if (descriptors.length > 1) {
-              // Оставить первый (самый новый), удалить остальные
-              idsToDelete.push(...descriptors.slice(1).map((d) => d.id))
-            }
-          }
-
-          if (idsToDelete.length > 0) {
-            const { error: deleteError } = await supabase.from("face_descriptors").delete().in("id", idsToDelete)
-
-            if (deleteError) throw deleteError
-            fixed = idsToDelete.length
-            details.deletedIds = idsToDelete
-          }
-        }
-        break
-      }
-
-      case "descriptorsWithoutEmbedding": {
-        // Удалить дескрипторы без embedding
-        const { data: deleted, error } = await supabase
-          .from("face_descriptors")
-          .delete()
-          .is("embedding", null)
-          .select("id")
-
-        if (error) throw error
-        fixed = deleted?.length || 0
-        details.deletedIds = deleted?.map((d) => d.id)
-        break
-      }
-
       default:
         return { success: false, error: `Unknown or unsupported issue type: ${issueType}` }
     }
@@ -585,31 +377,69 @@ export async function getIssueDetailsAction(
     let details: any[] = []
 
     switch (issueType) {
-      case "orphanedDescriptors": {
-        const { data: allDescriptors } = await supabase
-          .from("face_descriptors")
-          .select("id, source_image_id, person_id, created_at")
+      case "verifiedWithoutPerson": {
+        const { data: verifiedWithoutPerson } = await supabase
+          .from("photo_faces")
+          .select(`
+            id, photo_id, bbox,
+            gallery_images!inner(url, gallery_id, galleries(title))
+          `)
+          .eq("verified", true)
+          .is("person_id", null)
           .limit(1000)
 
-        if (allDescriptors) {
-          const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
-          const { data: existingPhotoFaces } = await supabase
-            .from("photo_faces")
-            .select(`
-              id, photo_id, bbox,
-              gallery_images!inner(url, gallery_id, galleries(title))
-            `)
-            .in("id", sourceImageIds)
+        if (verifiedWithoutPerson) {
+          details = verifiedWithoutPerson.slice(0, limit)
+        }
+        break
+      }
 
-          const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
-          // Enrich orphaned descriptors with photo data
-          details = allDescriptors
-            .filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
-            .map((fd) => {
-              const photoFace = existingPhotoFaces?.find((pf) => pf.id === fd.source_image_id)
-              return { ...fd, photoFace }
-            })
-            .slice(0, limit)
+      case "verifiedWithWrongConfidence": {
+        const { data: verifiedWithWrongConfidence } = await supabase
+          .from("photo_faces")
+          .select(`
+            id, photo_id, confidence, bbox,
+            gallery_images!inner(id, url, gallery_id, galleries(title))
+          `)
+          .eq("verified", true)
+          .neq("confidence", 1.0)
+          .limit(1000)
+
+        if (verifiedWithWrongConfidence) {
+          details = verifiedWithWrongConfidence.slice(0, limit)
+        }
+        break
+      }
+
+      case "nonExistentPerson": {
+        const { data: allPhotoFaces } = await supabase
+          .from("photo_faces")
+          .select("id, person_id")
+          .not("person_id", "is", null)
+
+        if (allPhotoFaces) {
+          const personIds = [...new Set(allPhotoFaces.map((pf) => pf.person_id!))]
+          const { data: existingPeople } = await supabase.from("people").select("id").in("id", personIds)
+
+          const existingIds = new Set(existingPeople?.map((p) => p.id) || [])
+          const invalidIds = allPhotoFaces.filter((pf) => !existingIds.has(pf.person_id!)).map((pf) => pf.id)
+
+          details = invalidIds.slice(0, limit)
+        }
+        break
+      }
+
+      case "nonExistentPhoto": {
+        const { data: allPhotoFaces } = await supabase.from("photo_faces").select("id, photo_id").limit(1000)
+
+        if (allPhotoFaces) {
+          const photoIds = [...new Set(allPhotoFaces.map((pf) => pf.photo_id))]
+          const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", photoIds)
+
+          const existingPhotoIds = new Set(existingPhotos?.map((p) => p.id) || [])
+          const invalidIds = allPhotoFaces.filter((pf) => !existingPhotoIds.has(pf.photo_id)).map((pf) => pf.id)
+
+          details = invalidIds.slice(0, limit)
         }
         break
       }
@@ -617,24 +447,14 @@ export async function getIssueDetailsAction(
       case "peopleWithoutDescriptors": {
         const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
 
-        const { data: allDescriptors } = await supabase.from("face_descriptors").select("person_id")
-
-        if (allPeople && allDescriptors) {
-          const peopleWithDescriptorIds = new Set(allDescriptors.filter((d) => d.person_id).map((d) => d.person_id))
-          details = allPeople.filter((p) => !peopleWithDescriptorIds.has(p.id)).slice(0, limit)
-        }
+        details = allPeople.slice(0, limit)
         break
       }
 
       case "peopleWithoutFaces": {
         const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
 
-        const { data: allPhotoFaces } = await supabase.from("photo_faces").select("person_id")
-
-        if (allPeople && allPhotoFaces) {
-          const peopleWithFaces = new Set(allPhotoFaces.filter((pf) => pf.person_id).map((pf) => pf.person_id))
-          details = allPeople.filter((p) => !peopleWithFaces.has(p.id)).slice(0, limit)
-        }
+        details = allPeople.slice(0, limit)
         break
       }
 

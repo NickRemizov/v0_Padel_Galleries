@@ -17,15 +17,6 @@ interface IntegrityReport {
     personWithoutConfidence: number
     nonExistentPerson: number
     nonExistentPhoto: number
-    inconsistentPersonId: number
-  }
-  faceDescriptors: {
-    orphanedDescriptors: number // changed from "orphaned"
-    nonExistentPerson: number
-    withoutPerson: number
-    withoutEmbedding: number
-    duplicates: number
-    inconsistentPersonId: number
   }
   people: {
     withoutDescriptors: number
@@ -298,8 +289,7 @@ export function DatabaseIntegrityChecker() {
                   report.photoFaces.verifiedWithWrongConfidence +
                   report.photoFaces.personWithoutConfidence +
                   report.photoFaces.nonExistentPerson +
-                  report.photoFaces.nonExistentPhoto +
-                  report.photoFaces.inconsistentPersonId}
+                  report.photoFaces.nonExistentPhoto}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -342,74 +332,6 @@ export function DatabaseIntegrityChecker() {
                   issueType="nonExistentPhotoFaces"
                   description="photo_id ссылается на удаленное фото → Автофикс: удаляет запись"
                   severity="critical"
-                  canFix={true}
-                />
-                <IssueRow
-                  title="Несогласованность person_id"
-                  count={report.photoFaces.inconsistentPersonId}
-                  issueType="inconsistentPersonIds"
-                  description="person_id в photo_faces ≠ person_id в face_descriptors"
-                  severity="high"
-                  canFix={false}
-                  infoOnly={true}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Проблемы с дескрипторами (Face Descriptors)</CardTitle>
-              <CardDescription>
-                Всего проблем:{" "}
-                {report.faceDescriptors.orphanedDescriptors +
-                  report.faceDescriptors.nonExistentPerson +
-                  report.faceDescriptors.withoutPerson +
-                  report.faceDescriptors.withoutEmbedding +
-                  report.faceDescriptors.duplicates}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <IssueRow
-                  title="Потерянные дескрипторы (LEGACY таблица)"
-                  count={report.faceDescriptors.orphanedDescriptors}
-                  issueType="orphanedDescriptors"
-                  description="source_image_id не существует в photo_faces → Автофикс: удаляет мусор из face_descriptors (legacy)"
-                  severity="critical"
-                  canFix={true}
-                />
-                <IssueRow
-                  title="Дескрипторы с несуществующим игроком"
-                  count={report.faceDescriptors.nonExistentPerson}
-                  issueType="nonExistentPersonDescriptors"
-                  description="person_id ссылается на удаленного игрока → Автофикс: обнуляет person_id"
-                  severity="critical"
-                  canFix={true}
-                />
-                <IssueRow
-                  title="Дескрипторы без игрока"
-                  count={report.faceDescriptors.withoutPerson}
-                  issueType="descriptorsWithoutPerson"
-                  description="person_id = null (это нормально для неопознанных лиц)"
-                  severity="low"
-                  canFix={false}
-                  infoOnly={true}
-                />
-                <IssueRow
-                  title="Дескрипторы без embedding"
-                  count={report.faceDescriptors.withoutEmbedding}
-                  issueType="descriptorsWithoutEmbedding"
-                  description="descriptor = null → Автофикс: удаляет битые дескрипторы (требует подтверждения)"
-                  severity="medium"
-                  canFix={true}
-                />
-                <IssueRow
-                  title="Дубликаты дескрипторов"
-                  count={report.faceDescriptors.duplicates}
-                  issueType="duplicateDescriptors"
-                  description="Несколько дескрипторов для одного лица → Автофикс: оставляет новейший (требует подтверждения)"
-                  severity="medium"
                   canFix={true}
                 />
               </div>
