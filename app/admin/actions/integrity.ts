@@ -174,27 +174,38 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     if (allDescriptors) {
       const sourceImageIds = [...new Set(allDescriptors.map((fd) => fd.source_image_id))]
-      const { data: existingPhotoFaces } = await supabase
-        .from("photo_faces")
-        .select(`
-          id, photo_id, bbox,
-          gallery_images!inner(url, gallery_id, galleries(title))
-        `)
-        .in("id", sourceImageIds)
+      const { data: existingPhotoFaces } = await supabase.from("photo_faces").select("id").in("id", sourceImageIds)
 
       const existingPhotoFaceIds = new Set(existingPhotoFaces?.map((pf) => pf.id) || [])
-      // Enrich orphaned descriptors with photo data
-      const orphanedDescriptors = allDescriptors
-        .filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
-        .map((fd) => {
-          const photoFace = existingPhotoFaces?.find((pf) => pf.id === fd.source_image_id)
-          return { ...fd, photoFace }
-        })
+      const orphanedDescriptors = allDescriptors.filter((fd) => !existingPhotoFaceIds.has(fd.source_image_id))
 
       faceDescriptors.orphanedDescriptors = orphanedDescriptors.length
       console.log("[v0] orphanedDescriptors count:", faceDescriptors.orphanedDescriptors)
+
       if (orphanedDescriptors.length > 0) {
-        details.orphanedDescriptors = orphanedDescriptors.slice(0, 10)
+        const orphanedIds = orphanedDescriptors.slice(0, 100).map((d) => d.source_image_id)
+        const { data: photoData } = await supabase
+          .from("photo_faces")
+          .select(`
+            id, photo_id, bbox,
+            gallery_images!inner(url, gallery_id, galleries(title)),
+            people(real_name, telegram_username)
+          `)
+          .in("id", orphanedIds)
+
+        details.orphanedDescriptors = orphanedDescriptors.slice(0, 100).map((fd) => {
+          const photoFace = photoData?.find((pf) => pf.id === fd.source_image_id)
+          return {
+            id: fd.id,
+            source_image_id: fd.source_image_id,
+            person_id: fd.person_id,
+            image_url: photoFace?.gallery_images?.url,
+            bbox: photoFace?.bbox,
+            gallery_title: photoFace?.gallery_images?.galleries?.title,
+            person_name: photoFace?.people?.real_name,
+            telegram_username: photoFace?.people?.telegram_username,
+          }
+        })
       }
     }
 
