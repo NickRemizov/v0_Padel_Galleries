@@ -674,6 +674,182 @@ async def rebuild_index(face_service: FaceRecognitionService = Depends(lambda: f
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/missing-descriptors-count")
+async def get_missing_descriptors_count():
+    """Get count of faces with person_id but no insightface_descriptor"""
+    try:
+        result = supabase_client_instance.client.table("photo_faces").select(
+            "id", count="exact"
+        ).not_.is_("person_id", "null").is_("insightface_descriptor", "null").execute()
+        
+        count = result.count or 0
+        logger.info(f"[RegenerateDescriptors] Found {count} faces missing descriptors")
+        
+        return {"success": True, "count": count}
+    except Exception as e:
+        logger.error(f"[RegenerateDescriptors] Error getting count: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/regenerate-missing-descriptors")
+async def regenerate_missing_descriptors(
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+):
+    """
+    Regenerate insightface_descriptor for faces that were manually assigned to people.
+    Uses IoU matching to find the corresponding detected face.
+    """
+    try:
+        logger.info("[RegenerateDescriptors] ===== START =====")
+        
+        # 1. Get faces with person_id but no descriptor
+        missing_result = supabase_client_instance.client.table("photo_faces").select(
+            "id, photo_id, person_id, insightface_bbox, people(real_name), gallery_images(image_url)"
+        ).not_.is_("person_id", "null").is_("insightface_descriptor", "null").execute()
+        
+        missing_faces = missing_result.data or []
+        logger.info(f"[RegenerateDescriptors] Found {len(missing_faces)} faces to regenerate")
+        
+        if not missing_faces:
+            return {
+                "success": True,
+                "total_faces": 0,
+                "regenerated": 0,
+                "failed": 0,
+                "details": []
+            }
+        
+        regenerated = 0
+        failed = 0
+        details = []
+        
+        # 2. Group by photo_id for efficient processing
+        faces_by_photo = {}
+        for face in missing_faces:
+            photo_id = face["photo_id"]
+            if photo_id not in faces_by_photo:
+                faces_by_photo[photo_id] = []
+            faces_by_photo[photo_id].append(face)
+        
+        logger.info(f"[RegenerateDescriptors] Processing {len(faces_by_photo)} unique photos")
+        
+        # 3. Process each photo
+        for photo_id, photo_faces in faces_by_photo.items():
+            try:
+                image_url = photo_faces[0].get("gallery_images", {}).get("image_url")
+                if not image_url:
+                    logger.warning(f"[RegenerateDescriptors] No image URL for photo {photo_id}")
+                    for face in photo_faces:
+                        failed += 1
+                        details.append({
+                            "face_id": face["id"],
+                            "person_name": face.get("people", {}).get("real_name", "Unknown"),
+                            "status": "error",
+                            "error": "No image URL"
+                        })
+                    continue
+                
+                # Detect faces on this photo
+                detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=False)
+                
+                logger.info(f"[RegenerateDescriptors] Photo {photo_id}: detected {len(detected_faces)} faces")
+                
+                # 4. Match each missing face to detected face via IoU
+                for missing_face in photo_faces:
+                    try:
+                        manual_bbox = missing_face.get("insightface_bbox")
+                        if not manual_bbox:
+                            failed += 1
+                            details.append({
+                                "face_id": missing_face["id"],
+                                "person_name": missing_face.get("people", {}).get("real_name", "Unknown"),
+                                "status": "error",
+                                "error": "No bbox"
+                            })
+                            continue
+                        
+                        # Find best matching detected face
+                        best_match = None
+                        best_iou = 0.0
+                        
+                        for detected_face in detected_faces:
+                            detected_bbox = {
+                                "x": float(detected_face["bbox"][0]),
+                                "y": float(detected_face["bbox"][1]),
+                                "width": float(detected_face["bbox"][2] - detected_face["bbox"][0]),
+                                "height": float(detected_face["bbox"][3] - detected_face["bbox"][1]),
+                            }
+                            
+                            iou = calculate_iou(manual_bbox, detected_bbox)
+                            
+                            if iou > best_iou:
+                                best_iou = iou
+                                best_match = detected_face
+                        
+                        # If IoU > 0.5, update descriptor
+                        if best_match and best_iou > 0.5:
+                            embedding = best_match["embedding"].tolist()
+                            
+                            supabase_client_instance.client.table("photo_faces").update({
+                                "insightface_descriptor": embedding,
+                                "insightface_confidence": float(best_match["det_score"]),
+                            }).eq("id", missing_face["id"]).execute()
+                            
+                            regenerated += 1
+                            details.append({
+                                "face_id": missing_face["id"],
+                                "person_name": missing_face.get("people", {}).get("real_name", "Unknown"),
+                                "status": "success",
+                                "iou": round(best_iou, 3)
+                            })
+                            
+                            logger.info(f"[RegenerateDescriptors] ✓ Regenerated {missing_face['id']} (IoU: {best_iou:.3f})")
+                        else:
+                            failed += 1
+                            details.append({
+                                "face_id": missing_face["id"],
+                                "person_name": missing_face.get("people", {}).get("real_name", "Unknown"),
+                                "status": "error",
+                                "error": f"No match (best IoU: {best_iou:.3f})"
+                            })
+                            logger.warning(f"[RegenerateDescriptors] ✗ No match for {missing_face['id']} (best IoU: {best_iou:.3f})")
+                    
+                    except Exception as face_error:
+                        failed += 1
+                        details.append({
+                            "face_id": missing_face["id"],
+                            "person_name": missing_face.get("people", {}).get("real_name", "Unknown"),
+                            "status": "error",
+                            "error": str(face_error)
+                        })
+                        logger.error(f"[RegenerateDescriptors] Error processing face {missing_face['id']}: {str(face_error)}")
+            
+            except Exception as photo_error:
+                logger.error(f"[RegenerateDescriptors] Error processing photo {photo_id}: {str(photo_error)}")
+                for face in photo_faces:
+                    failed += 1
+                    details.append({
+                        "face_id": face["id"],
+                        "person_name": face.get("people", {}).get("real_name", "Unknown"),
+                        "status": "error",
+                        "error": str(photo_error)
+                    })
+        
+        logger.info(f"[RegenerateDescriptors] ===== END ===== Total: {len(missing_faces)}, Success: {regenerated}, Failed: {failed}")
+        
+        return {
+            "success": True,
+            "total_faces": len(missing_faces),
+            "regenerated": regenerated,
+            "failed": failed,
+            "details": details
+        }
+    
+    except Exception as e:
+        logger.error(f"[RegenerateDescriptors] Fatal error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/regenerate-unknown-descriptors")
 async def regenerate_unknown_descriptors(gallery_id: str = Query(...), face_service: FaceRecognitionService = Depends(lambda: face_service_instance)):
     """
@@ -1051,5 +1227,8 @@ def calculate_iou(box1: dict, box2: dict) -> float:
     area1 = box1["width"] * box1["height"]
     area2 = box2["width"] * box2["height"]
     union = area1 + area2 - intersection
+    
+    return intersection / union if union > 0 else 0.0
+ - intersection
     
     return intersection / union if union > 0 else 0.0

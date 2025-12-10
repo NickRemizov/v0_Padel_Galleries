@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { CleanupDuplicateDescriptorsButton } from "@/components/admin/cleanup-duplicate-descriptors-button"
@@ -8,10 +9,13 @@ import { CleanupFacesButton } from "@/components/admin/cleanup-faces-button"
 import { SyncVerifiedButton } from "@/components/admin/sync-verified-button"
 import { DebugPersonPhotos } from "@/components/admin/debug-person-photos"
 import { DatabaseIntegrityChecker } from "@/components/admin/database-integrity-checker"
+import { RegenerateDescriptorsDialog } from "@/components/admin/regenerate-descriptors-dialog"
 import { Button } from "@/components/ui/button"
-import { Database, Bug, Wrench, Shield } from "lucide-react"
+import { Database, Bug, Wrench, Shield, RefreshCw } from "lucide-react"
 
 export function ServiceManager() {
+  const [showRegenerateDescriptors, setShowRegenerateDescriptors] = useState(false)
+
   const handleComingSoon = (feature: string) => {
     alert(`${feature} - в разработке`)
   }
@@ -87,6 +91,35 @@ export function ServiceManager() {
               </div>
               <SyncVerifiedButton />
             </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Перегенерация дескрипторов</div>
+                <div className="text-sm text-muted-foreground">
+                  Перегенерировать дескрипторы для всех лиц в базе данных
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowRegenerateDescriptors(true)}>
+                Перегенерировать
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Восстановить дескрипторы</div>
+                <div className="text-sm text-muted-foreground">
+                  Регенерация дескрипторов для лиц, назначенных вручную
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowRegenerateDescriptors(true)}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Восстановить
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -160,6 +193,11 @@ export function ServiceManager() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Regenerate Descriptors Dialog */}
+      {showRegenerateDescriptors && (
+        <RegenerateDescriptorsDialog open={showRegenerateDescriptors} onOpenChange={setShowRegenerateDescriptors} />
+      )}
     </div>
   )
 }
