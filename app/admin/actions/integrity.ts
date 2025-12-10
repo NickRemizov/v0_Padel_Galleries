@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache"
  * Database Integrity Checker
  *
  * Полная проверка целостности базы данных системы распознавания лиц
- * 8 проверок + безопасные автофиксы (без LEGACY face_descriptors)
+ * Исправлены имена полей + добавлена проверка orphanedLinks
  */
 
 export interface IntegrityReport {
@@ -75,7 +75,13 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     photoFaces.verifiedWithoutPerson = verifiedWithoutPerson?.length || 0
     console.log("[v0] verifiedWithoutPerson count:", photoFaces.verifiedWithoutPerson)
     if (verifiedWithoutPerson && verifiedWithoutPerson.length > 0) {
-      details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 20)
+      details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 10).map((item: any) => ({
+        ...item,
+        confidence: item.recognition_confidence,
+        bbox: item.insightface_bbox,
+        image_url: item.gallery_images?.image_url,
+        gallery_title: item.gallery_images?.galleries?.title,
+      }))
     }
 
     // 2. Verified с неправильным confidence
@@ -91,7 +97,13 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     photoFaces.verifiedWithWrongConfidence = verifiedWithWrongConfidence?.length || 0
     console.log("[v0] verifiedWithWrongConfidence count:", photoFaces.verifiedWithWrongConfidence)
     if (verifiedWithWrongConfidence && verifiedWithWrongConfidence.length > 0) {
-      details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 20)
+      details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 10).map((item: any) => ({
+        ...item,
+        confidence: item.recognition_confidence,
+        bbox: item.insightface_bbox,
+        image_url: item.gallery_images?.image_url,
+        gallery_title: item.gallery_images?.galleries?.title,
+      }))
     }
 
     // 3. Person_id есть, но confidence=null
@@ -108,7 +120,13 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     photoFaces.personWithoutConfidence = personWithoutConfidence?.length || 0
     console.log("[v0] personWithoutConfidence count:", photoFaces.personWithoutConfidence)
     if (personWithoutConfidence && personWithoutConfidence.length > 0) {
-      details.personWithoutConfidence = personWithoutConfidence.slice(0, 20)
+      details.personWithoutConfidence = personWithoutConfidence.slice(0, 10).map((item: any) => ({
+        ...item,
+        bbox: item.insightface_bbox,
+        image_url: item.gallery_images?.image_url,
+        gallery_title: item.gallery_images?.galleries?.title,
+        person_name: item.people?.real_name,
+      }))
     }
 
     // 4. Person_id не существует в people
@@ -130,7 +148,12 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.nonExistentPerson = nonExistentPersonFaces.length
       console.log("[v0] nonExistentPerson count:", photoFaces.nonExistentPerson)
       if (nonExistentPersonFaces.length > 0) {
-        details.nonExistentPersonFaces = nonExistentPersonFaces.slice(0, 20)
+        details.nonExistentPersonFaces = nonExistentPersonFaces.slice(0, 10).map((item: any) => ({
+          ...item,
+          bbox: item.insightface_bbox,
+          image_url: item.gallery_images?.image_url,
+          gallery_title: item.gallery_images?.galleries?.title,
+        }))
       }
     }
 
@@ -149,7 +172,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.nonExistentPhoto = nonExistentPhotoFaces.length
       console.log("[v0] nonExistentPhoto count:", photoFaces.nonExistentPhoto)
       if (nonExistentPhotoFaces.length > 0) {
-        details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 20)
+        details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 10).map((item: any) => ({
+          ...item,
+          bbox: item.insightface_bbox,
+        }))
       }
     }
 
@@ -189,7 +215,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     // ========== PEOPLE CHECKS ==========
 
-    // 11. People без descriptors в photo_faces.insightface_descriptor
+    // 7. People без descriptors в photo_faces.insightface_descriptor
     const { data: allPeople } = await supabase.from("people").select(`
       id, 
       real_name, 
@@ -209,11 +235,11 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       people.withoutDescriptors = peopleWithoutDescriptors.length
       console.log("[v0] peopleWithoutDescriptors count:", people.withoutDescriptors)
       if (peopleWithoutDescriptors.length > 0) {
-        details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 20)
+        details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 10)
       }
     }
 
-    // 12. People без faces (информационное)
+    // 8. People без faces (информационное)
     if (allPeople && allPhotoFaces) {
       const peopleWithFaces = new Set(allPhotoFaces.filter((pf) => pf.person_id).map((pf) => pf.person_id))
       const peopleWithoutFaces = allPeople.filter((p) => !peopleWithFaces.has(p.id))
@@ -221,17 +247,15 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       people.withoutFaces = peopleWithoutFaces.length
       console.log("[v0] peopleWithoutFaces count:", people.withoutFaces)
       if (peopleWithoutFaces.length > 0) {
-        details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 20)
+        details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 10)
       }
     }
 
-    // 13. Duplicate names (информационное)
+    // 9. Duplicate names (информационное)
     if (allPeople) {
-      // Group by real_name AND telegram_username (if both are same - true duplicate)
       const nameGroups = new Map<string, any[]>()
       for (const person of allPeople) {
         if (!person.real_name) continue
-        // Key includes both name and telegram to distinguish different people
         const key = `${person.real_name.toLowerCase()}_${person.telegram_username || "notelegram"}`
         if (!nameGroups.has(key)) {
           nameGroups.set(key, [])
@@ -239,10 +263,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         nameGroups.get(key)!.push(person)
       }
 
-      // Only count REAL duplicates (same name AND same telegram)
       const duplicateNames = Array.from(nameGroups.entries()).filter(([_, people]) => people.length > 1)
 
-      // Count total number of duplicate records
       people.duplicateNames = duplicateNames.length
       console.log("[v0] duplicateNames groups:", people.duplicateNames)
 
@@ -265,10 +287,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.personWithoutConfidence +
       photoFaces.nonExistentPerson +
       photoFaces.nonExistentPhoto +
-      photoFaces.orphanedLinks +
-      people.withoutDescriptors +
-      people.withoutFaces +
-      people.duplicateNames
+      photoFaces.orphanedLinks
 
     const report: IntegrityReport = {
       photoFaces,
@@ -304,10 +323,7 @@ export async function fixIntegrityIssuesAction(
     const details: any = {}
 
     switch (issueType) {
-      // БЕЗОПАСНЫЕ АВТОФИКСЫ
-
       case "verifiedWithoutPerson": {
-        // Снять verified у лиц без person_id
         const { data: updated, error } = await supabase
           .from("photo_faces")
           .update({ verified: false, recognition_confidence: null })
@@ -322,7 +338,6 @@ export async function fixIntegrityIssuesAction(
       }
 
       case "verifiedWithWrongConfidence": {
-        // Исправить confidence для verified=true
         const { data: updated, error } = await supabase
           .from("photo_faces")
           .update({ recognition_confidence: 1.0 })
@@ -336,8 +351,21 @@ export async function fixIntegrityIssuesAction(
         break
       }
 
-      case "nonExistentPerson": {
-        // Убрать person_id для удаленных людей
+      case "personWithoutConfidence": {
+        const { data: updated, error } = await supabase
+          .from("photo_faces")
+          .update({ recognition_confidence: 0.5 })
+          .not("person_id", "is", null)
+          .is("recognition_confidence", null)
+          .select("id")
+
+        if (error) throw error
+        fixed = updated?.length || 0
+        details.updatedIds = updated?.map((u) => u.id)
+        break
+      }
+
+      case "nonExistentPersonFaces": {
         const { data: allPhotoFaces } = await supabase
           .from("photo_faces")
           .select("id, person_id")
@@ -364,8 +392,7 @@ export async function fixIntegrityIssuesAction(
         break
       }
 
-      case "nonExistentPhoto": {
-        // Удалить лица с несуществующих фото
+      case "nonExistentPhotoFaces": {
         const { data: allPhotoFaces } = await supabase.from("photo_faces").select("id, photo_id")
 
         if (allPhotoFaces) {
@@ -444,7 +471,7 @@ export async function getIssueDetailsAction(
 
     switch (issueType) {
       case "verifiedWithoutPerson": {
-        const { data: verifiedWithoutPerson } = await supabase
+        const { data } = await supabase
           .from("photo_faces")
           .select(`
             id, photo_id, insightface_bbox,
@@ -452,103 +479,45 @@ export async function getIssueDetailsAction(
           `)
           .eq("verified", true)
           .is("person_id", null)
-          .limit(1000)
+          .limit(limit)
 
-        if (verifiedWithoutPerson) {
-          details = verifiedWithoutPerson.slice(0, limit)
-        }
+        details = (data || []).map((item: any) => ({
+          ...item,
+          bbox: item.insightface_bbox,
+          image_url: item.gallery_images?.image_url,
+          gallery_title: item.gallery_images?.galleries?.title,
+        }))
         break
       }
 
-      case "verifiedWithWrongConfidence": {
-        const { data: verifiedWithWrongConfidence } = await supabase
+      case "orphanedLinks": {
+        const confidenceThreshold = 0.6
+        const { data } = await supabase
           .from("photo_faces")
           .select(`
-            id, photo_id, recognition_confidence, insightface_bbox,
-            gallery_images!inner(id, image_url, gallery_id, galleries(title))
+            id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
+            gallery_images!inner(image_url, galleries(title)),
+            people(real_name)
           `)
-          .eq("verified", true)
-          .neq("recognition_confidence", 1.0)
-          .limit(1000)
-
-        if (verifiedWithWrongConfidence) {
-          details = verifiedWithWrongConfidence.slice(0, limit)
-        }
-        break
-      }
-
-      case "nonExistentPerson": {
-        const { data: allPhotoFaces } = await supabase
-          .from("photo_faces")
-          .select("id, person_id")
           .not("person_id", "is", null)
+          .not("insightface_descriptor", "is", null)
+          .eq("verified", false)
+          .limit(200)
 
-        if (allPhotoFaces) {
-          const personIds = [...new Set(allPhotoFaces.map((pf) => pf.person_id!))]
-          const { data: existingPeople } = await supabase.from("people").select("id").in("id", personIds)
-
-          const existingIds = new Set(existingPeople?.map((p) => p.id) || [])
-          const invalidIds = allPhotoFaces.filter((pf) => !existingIds.has(pf.person_id!)).map((pf) => pf.id)
-
-          details = invalidIds.slice(0, limit)
-        }
-        break
-      }
-
-      case "nonExistentPhoto": {
-        const { data: allPhotoFaces } = await supabase.from("photo_faces").select("id, photo_id").limit(1000)
-
-        if (allPhotoFaces) {
-          const photoIds = [...new Set(allPhotoFaces.map((pf) => pf.photo_id))]
-          const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", photoIds)
-
-          const existingPhotoIds = new Set(existingPhotos?.map((p) => p.id) || [])
-          const invalidIds = allPhotoFaces.filter((pf) => !existingPhotoIds.has(pf.photo_id)).map((pf) => pf.id)
-
-          details = invalidIds.slice(0, limit)
-        }
-        break
-      }
-
-      case "peopleWithoutDescriptors": {
-        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
-
-        details = allPeople.slice(0, limit)
-        break
-      }
-
-      case "peopleWithoutFaces": {
-        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
-
-        details = allPeople.slice(0, limit)
-        break
-      }
-
-      case "duplicateNames": {
-        const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
-
-        if (allPeople) {
-          const nameGroups = new Map<string, any[]>()
-          for (const person of allPeople) {
-            if (!person.real_name) continue
-            const key = `${person.real_name.toLowerCase()}_${person.telegram_username || "notelegram"}`
-            if (!nameGroups.has(key)) {
-              nameGroups.set(key, [])
-            }
-            nameGroups.get(key)!.push(person)
-          }
-
-          details = Array.from(nameGroups.entries())
-            .filter(([_, people]) => people.length > 1)
-            .slice(0, limit)
-            .flatMap(([key, people]) =>
-              people.map((p: any) => ({
-                ...p,
-                duplicate_key: key,
-                duplicate_count: people.length,
-              })),
-            )
-        }
+        details = (data || [])
+          .filter((f) => (f.recognition_confidence || 0) < confidenceThreshold)
+          .slice(0, limit)
+          .map((item: any) => ({
+            id: item.id,
+            photo_id: item.photo_id,
+            person_id: item.person_id,
+            person_name: item.people?.real_name || "Unknown",
+            confidence: item.recognition_confidence,
+            verified: item.verified,
+            bbox: item.insightface_bbox,
+            image_url: item.gallery_images?.image_url,
+            gallery_title: item.gallery_images?.galleries?.title,
+          }))
         break
       }
 
@@ -559,7 +528,6 @@ export async function getIssueDetailsAction(
     return { success: true, data: details }
   } catch (error: any) {
     logger.error("actions/integrity", "Error getting issue details", error)
-    console.error("[v0] Error getting issue details:", error)
     return { success: false, error: error.message || "Failed to get issue details" }
   }
 }
