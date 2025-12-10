@@ -691,6 +691,39 @@ async def get_missing_descriptors_count():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/missing-descriptors-list")
+async def get_missing_descriptors_list():
+    """Get list of faces with person_id but no insightface_descriptor"""
+    try:
+        result = supabase_client_instance.client.table("photo_faces").select(
+            "id, photo_id, person_id, insightface_bbox, "
+            "people(real_name), "
+            "gallery_images(image_url, original_filename, galleries(title))"
+        ).not_.is_("person_id", "null").is_("insightface_descriptor", "null").execute()
+        
+        faces = result.data or []
+        logger.info(f"[RegenerateDescriptors] Found {len(faces)} faces missing descriptors")
+        
+        # Format for frontend
+        formatted = []
+        for face in faces:
+            formatted.append({
+                "face_id": face["id"],
+                "photo_id": face["photo_id"],
+                "person_id": face["person_id"],
+                "person_name": face.get("people", {}).get("real_name", "Unknown") if face.get("people") else "Unknown",
+                "filename": face.get("gallery_images", {}).get("original_filename", "Unknown") if face.get("gallery_images") else "Unknown",
+                "gallery_name": face.get("gallery_images", {}).get("galleries", {}).get("title", "") if face.get("gallery_images") and face.get("gallery_images", {}).get("galleries") else "",
+                "image_url": face.get("gallery_images", {}).get("image_url", "") if face.get("gallery_images") else "",
+                "bbox": face.get("insightface_bbox")
+            })
+        
+        return {"success": True, "faces": formatted, "count": len(formatted)}
+    except Exception as e:
+        logger.error(f"[RegenerateDescriptors] Error getting list: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/regenerate-missing-descriptors")
 async def regenerate_missing_descriptors(
     face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
@@ -848,6 +881,81 @@ async def regenerate_missing_descriptors(
     except Exception as e:
         logger.error(f"[RegenerateDescriptors] Fatal error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/regenerate-single-descriptor")
+async def regenerate_single_descriptor(
+    face_id: str = Query(...),
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance)
+):
+    """Regenerate descriptor for a single face"""
+    try:
+        # Get face data
+        face_result = supabase_client_instance.client.table("photo_faces").select(
+            "id, photo_id, person_id, insightface_bbox, "
+            "people(real_name), "
+            "gallery_images(image_url)"
+        ).eq("id", face_id).execute()
+        
+        if not face_result.data:
+            return {"success": False, "error": "Face not found"}
+        
+        face = face_result.data[0]
+        image_url = face.get("gallery_images", {}).get("image_url") if face.get("gallery_images") else None
+        
+        if not image_url:
+            return {"success": False, "error": "No image URL"}
+        
+        bbox = face.get("insightface_bbox")
+        if not bbox:
+            return {"success": False, "error": "No bbox stored"}
+        
+        # Detect faces on image
+        detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=False)
+        
+        if not detected_faces:
+            return {"success": False, "error": "No faces detected on image"}
+        
+        # Find best match by IoU
+        best_match = None
+        best_iou = 0.0
+        
+        for detected_face in detected_faces:
+            detected_bbox = {
+                "x": float(detected_face["bbox"][0]),
+                "y": float(detected_face["bbox"][1]),
+                "width": float(detected_face["bbox"][2] - detected_face["bbox"][0]),
+                "height": float(detected_face["bbox"][3] - detected_face["bbox"][1]),
+            }
+            
+            iou = calculate_iou(bbox, detected_bbox)
+            
+            if iou > best_iou:
+                best_iou = iou
+                best_match = detected_face
+        
+        if not best_match or best_iou < 0.3:
+            return {"success": False, "error": f"No matching face (best IoU: {best_iou:.2f})"}
+        
+        # Save descriptor
+        embedding = best_match["embedding"].tolist()
+        
+        supabase_client_instance.client.table("photo_faces").update({
+            "insightface_descriptor": embedding,
+            "insightface_confidence": float(best_match["det_score"]),
+        }).eq("id", face_id).execute()
+        
+        logger.info(f"[RegenerateDescriptors] ✓ Regenerated {face_id} (IoU: {best_iou:.2f})")
+        
+        return {
+            "success": True,
+            "iou": round(best_iou, 2),
+            "det_score": round(float(best_match["det_score"]), 2)
+        }
+        
+    except Exception as e:
+        logger.error(f"[RegenerateDescriptors] Error: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
 
 
 @router.post("/regenerate-unknown-descriptors")

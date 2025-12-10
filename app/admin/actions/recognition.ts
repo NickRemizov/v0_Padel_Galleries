@@ -120,3 +120,54 @@ export async function regenerateMissingDescriptorsAction(): Promise<{
     }
   }
 }
+
+export async function getMissingDescriptorsListAction(): Promise<{
+  success: boolean
+  faces: Array<{
+    face_id: string
+    photo_id: string
+    person_id: string
+    person_name: string
+    filename: string
+    gallery_name: string
+    image_url: string
+    bbox: any
+  }>
+  count: number
+  error?: string
+}> {
+  logger.debug("actions/recognition", "[getMissingDescriptorsListAction] Getting list")
+
+  try {
+    const result = await apiFetch("/api/recognition/missing-descriptors-list", {
+      method: "GET",
+    })
+
+    if (!result.success) {
+      return { success: false, faces: [], count: 0, error: result.error || "Failed to get list" }
+    }
+
+    return { success: true, faces: result.faces || [], count: result.count || 0 }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error getting missing descriptors list", error)
+    return { success: false, faces: [], count: 0, error: error.message || String(error) }
+  }
+}
+
+export async function regenerateSingleDescriptorAction(faceId: string): Promise<{
+  success: boolean
+  iou?: number
+  det_score?: number
+  error?: string
+}> {
+  try {
+    const result = await apiFetch(`/api/recognition/regenerate-single-descriptor?face_id=${faceId}`, {
+      method: "POST",
+    })
+
+    return result
+  } catch (error: any) {
+    logger.error("actions/recognition", `Error regenerating descriptor for ${faceId}`, error)
+    return { success: false, error: error.message || String(error) }
+  }
+}
