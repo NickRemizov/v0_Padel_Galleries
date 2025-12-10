@@ -8,7 +8,7 @@ import { Slider } from "@/components/ui/slider"
 import { Loader2, ImageIcon, ZoomIn } from "lucide-react"
 import Cropper from "react-easy-crop"
 import type { Area } from "react-easy-crop"
-import { getPersonPhotosAction, updatePersonAvatarAction } from "@/app/admin/actions" // Import actions here
+import { getPersonPhotosAction, updatePersonAvatarAction } from "@/app/admin/actions"
 
 interface AvatarSelectorProps {
   personId: string
@@ -19,6 +19,11 @@ interface AvatarSelectorProps {
   onOpenChange?: (open: boolean) => void
   onAvatarSelected?: () => void
   preselectedPhotoId?: string | null
+}
+
+// Helper to extract image URL from photo object
+function getImageUrl(photo: any): string {
+  return photo?.gallery_images?.image_url || photo?.image_url || "/placeholder.svg"
 }
 
 export function AvatarSelector({
@@ -54,7 +59,10 @@ export function AvatarSelector({
 
   useEffect(() => {
     if (preselectedPhotoId && photos.length > 0) {
-      const photo = photos.find((p) => p.id === preselectedPhotoId)
+      // ИСПРАВЛЕНО: ищем по photo_id или gallery_images.id, не по id
+      const photo = photos.find(
+        (p) => p.photo_id === preselectedPhotoId || p.gallery_images?.id === preselectedPhotoId
+      )
       if (photo) {
         handlePhotoSelect(photo)
       }
@@ -100,7 +108,6 @@ export function AvatarSelector({
         canvas.width = 420
         canvas.height = 560
 
-        // Draw cropped and resized image
         ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, 420, 560)
 
         canvas.toBlob(
@@ -126,21 +133,23 @@ export function AvatarSelector({
 
   async function handleCropComplete() {
     if (!selectedPhoto || !croppedAreaPixels) {
-      console.error("[v0] Missing selected photo or crop data")
+      console.error("[AvatarSelector] Missing selected photo or crop data")
       return
     }
 
     try {
       setLoading(true)
-      console.log("[v0] Creating cropped image...")
+      console.log("[AvatarSelector] Creating cropped image...")
 
-      const blob = await getCroppedImg(selectedPhoto.image_url, croppedAreaPixels)
+      // ИСПРАВЛЕНО: используем helper для получения URL
+      const imageUrl = getImageUrl(selectedPhoto)
+      const blob = await getCroppedImg(imageUrl, croppedAreaPixels)
 
       if (!blob) {
         throw new Error("Failed to create cropped image")
       }
 
-      console.log("[v0] Blob created, uploading...")
+      console.log("[AvatarSelector] Blob created, uploading...")
 
       const formData = new FormData()
       const filename = `avatar-${personId}-${Date.now()}.jpg`
@@ -157,9 +166,8 @@ export function AvatarSelector({
       }
 
       const result = await response.json()
-      console.log("[v0] Upload successful:", result.url)
+      console.log("[AvatarSelector] Upload successful:", result.url)
 
-      // Update person avatar
       await updatePersonAvatarAction(personId, result.url)
 
       setCropping(false)
@@ -174,7 +182,7 @@ export function AvatarSelector({
       onAvatarSelected?.()
       setOpen(false)
     } catch (error) {
-      console.error("[v0] Error uploading avatar:", error)
+      console.error("[AvatarSelector] Error uploading avatar:", error)
       alert("Ошибка при загрузке аватара. Попробуйте еще раз.")
     } finally {
       setLoading(false)
@@ -189,6 +197,9 @@ export function AvatarSelector({
       </Button>
     ) : null
 
+  // Если есть preselectedPhotoId — не показываем галерею, только crop (или loading)
+  const showGallery = !cropping && !preselectedPhotoId
+
   return (
     <>
       {triggerButton}
@@ -201,7 +212,7 @@ export function AvatarSelector({
 
           {!cropping ? (
             <div className="py-4">
-              {loading ? (
+              {loading || preselectedPhotoId ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
@@ -219,7 +230,7 @@ export function AvatarSelector({
                       className="group relative aspect-square overflow-hidden rounded-lg border-2 border-transparent transition-all hover:border-primary"
                     >
                       <img
-                        src={photo.image_url || "/placeholder.svg"}
+                        src={getImageUrl(photo)}
                         alt=""
                         className="h-full w-full object-cover transition-transform group-hover:scale-105"
                       />
@@ -238,7 +249,7 @@ export function AvatarSelector({
 
               <div className="relative mx-auto h-[500px] w-full max-w-2xl bg-muted">
                 <Cropper
-                  image={selectedPhoto.image_url || "/placeholder.svg"}
+                  image={getImageUrl(selectedPhoto)}
                   crop={crop}
                   zoom={zoom}
                   aspect={3 / 4}
@@ -271,10 +282,14 @@ export function AvatarSelector({
                     setCrop({ x: 0, y: 0 })
                     setZoom(1)
                     setCroppedAreaPixels(null)
+                    // Если был preselected — закрываем диалог
+                    if (preselectedPhotoId) {
+                      setOpen(false)
+                    }
                   }}
                   disabled={loading}
                 >
-                  Назад
+                  {preselectedPhotoId ? "Отмена" : "Назад"}
                 </Button>
                 <Button onClick={handleCropComplete} disabled={loading || !croppedAreaPixels}>
                   {loading ? (
