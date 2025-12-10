@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache"
  * Database Integrity Checker
  *
  * Полная проверка целостности базы данных системы распознавания лиц
- * 15 проверок + безопасные автофиксы
+ * 8 проверок + безопасные автофиксы (без LEGACY face_descriptors)
  */
 
 export interface IntegrityReport {
@@ -18,6 +18,7 @@ export interface IntegrityReport {
     personWithoutConfidence: number
     nonExistentPerson: number
     nonExistentPhoto: number
+    orphanedLinks: number
   }
   people: {
     withoutDescriptors: number
@@ -48,6 +49,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       personWithoutConfidence: 0,
       nonExistentPerson: 0,
       nonExistentPhoto: 0,
+      orphanedLinks: 0,
     }
     const people = {
       withoutDescriptors: 0,
@@ -63,8 +65,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     const { data: verifiedWithoutPerson, error: e1 } = await supabase
       .from("photo_faces")
       .select(`
-        id, photo_id, person_id, verified, confidence, bbox,
-        gallery_images!inner(id, url, gallery_id, galleries(title)),
+        id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
+        gallery_images!inner(id, image_url, gallery_id, galleries(title)),
         people(real_name)
       `)
       .eq("verified", true)
@@ -73,48 +75,48 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     photoFaces.verifiedWithoutPerson = verifiedWithoutPerson?.length || 0
     console.log("[v0] verifiedWithoutPerson count:", photoFaces.verifiedWithoutPerson)
     if (verifiedWithoutPerson && verifiedWithoutPerson.length > 0) {
-      details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 10)
+      details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 20)
     }
 
     // 2. Verified с неправильным confidence
     const { data: verifiedWithWrongConfidence, error: e2 } = await supabase
       .from("photo_faces")
       .select(`
-        id, photo_id, confidence, bbox,
-        gallery_images!inner(id, url, gallery_id, galleries(title))
+        id, photo_id, recognition_confidence, insightface_bbox,
+        gallery_images!inner(id, image_url, gallery_id, galleries(title))
       `)
       .eq("verified", true)
-      .neq("confidence", 1.0)
+      .neq("recognition_confidence", 1.0)
 
     photoFaces.verifiedWithWrongConfidence = verifiedWithWrongConfidence?.length || 0
     console.log("[v0] verifiedWithWrongConfidence count:", photoFaces.verifiedWithWrongConfidence)
     if (verifiedWithWrongConfidence && verifiedWithWrongConfidence.length > 0) {
-      details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 10)
+      details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 20)
     }
 
     // 3. Person_id есть, но confidence=null
     const { data: personWithoutConfidence, error: e3 } = await supabase
       .from("photo_faces")
       .select(`
-        id, photo_id, person_id, bbox,
+        id, photo_id, person_id, insightface_bbox,
         people(real_name),
-        gallery_images!inner(id, url, gallery_id, galleries(title))
+        gallery_images!inner(id, image_url, gallery_id, galleries(title))
       `)
       .not("person_id", "is", null)
-      .is("confidence", null)
+      .is("recognition_confidence", null)
 
     photoFaces.personWithoutConfidence = personWithoutConfidence?.length || 0
     console.log("[v0] personWithoutConfidence count:", photoFaces.personWithoutConfidence)
     if (personWithoutConfidence && personWithoutConfidence.length > 0) {
-      details.personWithoutConfidence = personWithoutConfidence.slice(0, 10)
+      details.personWithoutConfidence = personWithoutConfidence.slice(0, 20)
     }
 
     // 4. Person_id не существует в people
     const { data: allPhotoFaces } = await supabase
       .from("photo_faces")
       .select(`
-        id, photo_id, person_id, bbox,
-        gallery_images!inner(id, url, gallery_id, galleries(title))
+        id, photo_id, person_id, insightface_bbox,
+        gallery_images!inner(id, image_url, gallery_id, galleries(title))
       `)
       .not("person_id", "is", null)
 
@@ -128,12 +130,14 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.nonExistentPerson = nonExistentPersonFaces.length
       console.log("[v0] nonExistentPerson count:", photoFaces.nonExistentPerson)
       if (nonExistentPersonFaces.length > 0) {
-        details.nonExistentPersonFaces = nonExistentPersonFaces.slice(0, 10)
+        details.nonExistentPersonFaces = nonExistentPersonFaces.slice(0, 20)
       }
     }
 
     // 5. Photo_id не существует в gallery_images
-    const { data: allPhotoFacesWithPhotos } = await supabase.from("photo_faces").select("id, photo_id, bbox")
+    const { data: allPhotoFacesWithPhotos } = await supabase
+      .from("photo_faces")
+      .select("id, photo_id, insightface_bbox")
 
     if (allPhotoFacesWithPhotos) {
       const photoIds = [...new Set(allPhotoFacesWithPhotos.map((pf) => pf.photo_id))]
@@ -145,8 +149,42 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.nonExistentPhoto = nonExistentPhotoFaces.length
       console.log("[v0] nonExistentPhoto count:", photoFaces.nonExistentPhoto)
       if (nonExistentPhotoFaces.length > 0) {
-        details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 10)
+        details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 20)
       }
+    }
+
+    // 6. Orphaned links - faces with person_id but not visible (below threshold and not verified)
+    const confidenceThreshold = 0.6 // Default high_data threshold
+    const { data: allFacesForOrphaned } = await supabase
+      .from("photo_faces")
+      .select(`
+        id, photo_id, person_id, verified, recognition_confidence, insightface_bbox, insightface_descriptor,
+        gallery_images!inner(id, image_url, gallery_id, galleries(title)),
+        people(real_name)
+      `)
+      .not("person_id", "is", null)
+      .not("insightface_descriptor", "is", null)
+      .eq("verified", false)
+
+    // Filter by confidence < threshold (these are "lost" - have person but not visible)
+    const orphanedLinks = (allFacesForOrphaned || []).filter(
+      (face) => (face.recognition_confidence || 0) < confidenceThreshold,
+    )
+
+    photoFaces.orphanedLinks = orphanedLinks.length
+    console.log("[v0] orphanedLinks count:", photoFaces.orphanedLinks)
+    if (orphanedLinks.length > 0) {
+      details.orphanedLinks = orphanedLinks.slice(0, 20).map((face: any) => ({
+        id: face.id,
+        photo_id: face.photo_id,
+        person_id: face.person_id,
+        person_name: face.people?.real_name || "Unknown",
+        confidence: face.recognition_confidence,
+        verified: face.verified,
+        image_url: face.gallery_images?.image_url,
+        bbox: face.insightface_bbox,
+        gallery_title: face.gallery_images?.galleries?.title,
+      }))
     }
 
     // ========== PEOPLE CHECKS ==========
@@ -171,7 +209,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       people.withoutDescriptors = peopleWithoutDescriptors.length
       console.log("[v0] peopleWithoutDescriptors count:", people.withoutDescriptors)
       if (peopleWithoutDescriptors.length > 0) {
-        details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 10)
+        details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 20)
       }
     }
 
@@ -183,7 +221,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       people.withoutFaces = peopleWithoutFaces.length
       console.log("[v0] peopleWithoutFaces count:", people.withoutFaces)
       if (peopleWithoutFaces.length > 0) {
-        details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 10)
+        details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 20)
       }
     }
 
@@ -227,6 +265,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.personWithoutConfidence +
       photoFaces.nonExistentPerson +
       photoFaces.nonExistentPhoto +
+      photoFaces.orphanedLinks +
       people.withoutDescriptors +
       people.withoutFaces +
       people.duplicateNames
@@ -271,7 +310,7 @@ export async function fixIntegrityIssuesAction(
         // Снять verified у лиц без person_id
         const { data: updated, error } = await supabase
           .from("photo_faces")
-          .update({ verified: false, confidence: null })
+          .update({ verified: false, recognition_confidence: null })
           .eq("verified", true)
           .is("person_id", null)
           .select("id")
@@ -286,9 +325,9 @@ export async function fixIntegrityIssuesAction(
         // Исправить confidence для verified=true
         const { data: updated, error } = await supabase
           .from("photo_faces")
-          .update({ confidence: 1.0 })
+          .update({ recognition_confidence: 1.0 })
           .eq("verified", true)
-          .neq("confidence", 1.0)
+          .neq("recognition_confidence", 1.0)
           .select("id")
 
         if (error) throw error
@@ -314,7 +353,7 @@ export async function fixIntegrityIssuesAction(
           if (invalidIds.length > 0) {
             const { error: updateError } = await supabase
               .from("photo_faces")
-              .update({ person_id: null, verified: false, confidence: null })
+              .update({ person_id: null, verified: false, recognition_confidence: null })
               .in("id", invalidIds)
 
             if (updateError) throw updateError
@@ -343,6 +382,33 @@ export async function fixIntegrityIssuesAction(
             fixed = invalidIds.length
             details.deletedIds = invalidIds
           }
+        }
+        break
+      }
+
+      case "orphanedLinks": {
+        // Elevate confidence to threshold to make faces visible
+        const confidenceThreshold = 0.6
+
+        const { data: allFaces } = await supabase
+          .from("photo_faces")
+          .select("id, recognition_confidence")
+          .not("person_id", "is", null)
+          .not("insightface_descriptor", "is", null)
+          .eq("verified", false)
+
+        const toFix = (allFaces || []).filter((f) => (f.recognition_confidence || 0) < confidenceThreshold)
+
+        if (toFix.length > 0) {
+          const idsToFix = toFix.map((f) => f.id)
+          const { error } = await supabase
+            .from("photo_faces")
+            .update({ recognition_confidence: confidenceThreshold })
+            .in("id", idsToFix)
+
+          if (error) throw error
+          fixed = idsToFix.length
+          details.updatedIds = idsToFix
         }
         break
       }
@@ -381,8 +447,8 @@ export async function getIssueDetailsAction(
         const { data: verifiedWithoutPerson } = await supabase
           .from("photo_faces")
           .select(`
-            id, photo_id, bbox,
-            gallery_images!inner(url, gallery_id, galleries(title))
+            id, photo_id, insightface_bbox,
+            gallery_images!inner(image_url, gallery_id, galleries(title))
           `)
           .eq("verified", true)
           .is("person_id", null)
@@ -398,11 +464,11 @@ export async function getIssueDetailsAction(
         const { data: verifiedWithWrongConfidence } = await supabase
           .from("photo_faces")
           .select(`
-            id, photo_id, confidence, bbox,
-            gallery_images!inner(id, url, gallery_id, galleries(title))
+            id, photo_id, recognition_confidence, insightface_bbox,
+            gallery_images!inner(id, image_url, gallery_id, galleries(title))
           `)
           .eq("verified", true)
-          .neq("confidence", 1.0)
+          .neq("recognition_confidence", 1.0)
           .limit(1000)
 
         if (verifiedWithWrongConfidence) {
@@ -465,7 +531,6 @@ export async function getIssueDetailsAction(
           const nameGroups = new Map<string, any[]>()
           for (const person of allPeople) {
             if (!person.real_name) continue
-            // Key includes both name and telegram to distinguish different people
             const key = `${person.real_name.toLowerCase()}_${person.telegram_username || "notelegram"}`
             if (!nameGroups.has(key)) {
               nameGroups.set(key, [])
