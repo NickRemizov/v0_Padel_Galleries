@@ -194,32 +194,38 @@ export function DatabaseIntegrityChecker() {
             <div className="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto">
               {details.slice(0, 10).map((item: any, index: number) => (
                 <div key={index} className="bg-background p-3 rounded border space-y-2">
-                  {item.gallery_images?.url && item.bbox && (
+                  {item.bbox && (item.image_url || item.url) && (
                     <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
-                      <FaceCropPreview imageUrl={item.gallery_images.url} bbox={item.bbox} size={200} />
+                      <FaceCropPreview imageUrl={item.image_url || item.url} bbox={item.bbox} size={200} />
                     </div>
                   )}
                   <div className="text-xs space-y-1">
                     {item.real_name && <div className="font-medium">Игрок: {item.real_name}</div>}
-                    {item.people?.real_name && <div className="font-medium">Игрок: {item.people.real_name}</div>}
+                    {item.person_name && <div className="font-medium">Игрок: {item.person_name}</div>}
+                    {item.name && <div className="font-medium">Игрок: {item.name}</div>}
                     {item.telegram_username && (
                       <div className="text-muted-foreground">Telegram: @{item.telegram_username}</div>
                     )}
-                    {item.duplicate_key && (
-                      <div className="font-medium">Дубли: {item.duplicate_count} записей с одинаковым именем и ТГ</div>
-                    )}
-                    {item.gallery_images?.galleries?.title && (
-                      <div className="text-muted-foreground">Галерея: {item.gallery_images.galleries.title}</div>
-                    )}
+                    {item.gallery_title && <div className="text-muted-foreground">Галерея: {item.gallery_title}</div>}
                     {item.confidence !== undefined && item.confidence !== null && (
                       <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>
                     )}
-                    {item.verified !== undefined && <div>Verified: {item.verified ? "Да" : "Нет"}</div>}
-                    {item.key && <div className="text-muted-foreground">Ключ: {item.key}</div>}
-                    {item.count && <div>Дублей: {item.count}</div>}
-                    {item.ids && <div className="text-muted-foreground">IDs: {item.ids.slice(0, 3).join(", ")}...</div>}
+                    {item.verified !== undefined && <div>Верифицирован: {item.verified ? "Да" : "Нет"}</div>}
+                    {item.count && <div className="font-medium text-orange-600">Дублей: {item.count} записей</div>}
+                    {item.ids && item.ids.length > 0 && (
+                      <div className="text-muted-foreground text-[10px]">
+                        IDs:{" "}
+                        {item.ids
+                          .slice(0, 3)
+                          .map((id: string) => id.slice(0, 8))
+                          .join(", ")}
+                        {item.ids.length > 3 && "..."}
+                      </div>
+                    )}
                     <div className="font-mono text-[10px] text-muted-foreground pt-1 border-t">
                       {item.id ? `ID: ${item.id.slice(0, 8)}...` : ""}
+                      {item.photo_id && ` • Фото: ${item.photo_id.slice(0, 8)}...`}
+                      {item.person_id && ` • Персона: ${item.person_id.slice(0, 8)}...`}
                     </div>
                   </div>
                 </div>
