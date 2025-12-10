@@ -6,9 +6,7 @@ import { revalidatePath } from "next/cache"
 
 /**
  * Database Integrity Checker
- *
- * Полная проверка целостности базы данных системы распознавания лиц
- * Исправлены имена полей + добавлена проверка orphanedLinks
+ * Исправлены имена полей + orphanedLinks + actions для карточек
  */
 
 export interface IntegrityReport {
@@ -529,6 +527,108 @@ export async function getIssueDetailsAction(
   } catch (error: any) {
     logger.error("actions/integrity", "Error getting issue details", error)
     return { success: false, error: error.message || "Failed to get issue details" }
+  }
+}
+
+/**
+ * Подтвердить лицо (верифицировать или установить confidence)
+ */
+export async function confirmFaceAction(
+  faceId: string,
+  actionType: "verify" | "elevate",
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+
+  try {
+    if (actionType === "verify") {
+      // Получаем embedding
+      const { data: face } = await supabase
+        .from("photo_faces")
+        .select("id, insightface_descriptor")
+        .eq("id", faceId)
+        .single()
+
+      if (!face?.insightface_descriptor) {
+        return { success: false, error: "No descriptor found" }
+      }
+
+      // Вызываем Python API для распознавания
+      const apiUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000"
+      const response = await fetch(`${apiUrl}/api/recognition/recognize-face`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          embedding: face.insightface_descriptor,
+          confidence_threshold: 0.0,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.person_id) {
+        const { error } = await supabase
+          .from("photo_faces")
+          .update({
+            person_id: result.person_id,
+            verified: true,
+            recognition_confidence: 1.0,
+          })
+          .eq("id", faceId)
+
+        if (error) throw error
+        return { success: true }
+      } else {
+        return { success: false, error: "No match found in index" }
+      }
+    } else {
+      // elevate - установить confidence = 0.6
+      const { error } = await supabase.from("photo_faces").update({ recognition_confidence: 0.6 }).eq("id", faceId)
+
+      if (error) throw error
+      return { success: true }
+    }
+  } catch (error: any) {
+    console.error("[confirmFaceAction] Error:", error)
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Отклонить лицо (снять верификацию или удалить person_id)
+ */
+export async function rejectFaceAction(
+  faceId: string,
+  actionType: "unverify" | "unlink",
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+
+  try {
+    if (actionType === "unverify") {
+      const { error } = await supabase
+        .from("photo_faces")
+        .update({
+          verified: false,
+          recognition_confidence: null,
+        })
+        .eq("id", faceId)
+
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from("photo_faces")
+        .update({
+          person_id: null,
+          recognition_confidence: null,
+        })
+        .eq("id", faceId)
+
+      if (error) throw error
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("[rejectFaceAction] Error:", error)
+    return { success: false, error: error.message }
   }
 }
 

@@ -5,8 +5,24 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Wrench, ChevronDown, ChevronRight, Info } from "lucide-react"
-import { checkDatabaseIntegrityAction, fixIntegrityIssueAction } from "@/app/admin/actions/integrity"
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  RefreshCw,
+  Wrench,
+  ChevronDown,
+  ChevronRight,
+  Info,
+  Check,
+  Trash2,
+} from "lucide-react"
+import {
+  checkDatabaseIntegrityAction,
+  fixIntegrityIssueAction,
+  confirmFaceAction,
+  rejectFaceAction,
+} from "@/app/admin/actions/integrity"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import FaceCropPreview from "@/components/FaceCropPreview"
 
@@ -33,10 +49,12 @@ export function DatabaseIntegrityChecker() {
   const [report, setReport] = useState<IntegrityReport | null>(null)
   const [fixingIssue, setFixingIssue] = useState<string | null>(null)
   const [expandedIssues, setExpandedIssues] = useState<Set<string>>(new Set())
-  const [checkingIssue, setCheckingIssue] = useState<string | null>(null)
+  const [processingFaces, setProcessingFaces] = useState<Set<string>>(new Set())
+  const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
 
   const handleCheck = async () => {
     setIsChecking(true)
+    setRemovedFaces(new Set())
     try {
       const result = await checkDatabaseIntegrityAction()
       if (result.success && result.data) {
@@ -79,7 +97,7 @@ export function DatabaseIntegrityChecker() {
   }
 
   const handleCheckIssue = async (issueType: string) => {
-    setCheckingIssue(issueType)
+    setProcessingFaces((prev) => new Set(prev).add(issueType))
     try {
       setExpandedIssues((prev) => {
         const newSet = new Set(prev)
@@ -91,8 +109,114 @@ export function DatabaseIntegrityChecker() {
         return newSet
       })
     } finally {
-      setCheckingIssue(null)
+      setProcessingFaces((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(issueType)
+        return newSet
+      })
     }
+  }
+
+  const handleConfirmFace = async (faceId: string, actionType: "verify" | "elevate") => {
+    setProcessingFaces((prev) => new Set(prev).add(faceId))
+    try {
+      const result = await confirmFaceAction(faceId, actionType)
+      if (result.success) {
+        setRemovedFaces((prev) => new Set(prev).add(faceId))
+      } else {
+        alert(`Ошибка: ${result.error}`)
+      }
+    } catch (error: any) {
+      alert(`Ошибка: ${error.message}`)
+    } finally {
+      setProcessingFaces((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(faceId)
+        return newSet
+      })
+    }
+  }
+
+  const handleRejectFace = async (faceId: string, actionType: "unverify" | "unlink") => {
+    setProcessingFaces((prev) => new Set(prev).add(faceId))
+    try {
+      const result = await rejectFaceAction(faceId, actionType)
+      if (result.success) {
+        setRemovedFaces((prev) => new Set(prev).add(faceId))
+      } else {
+        alert(`Ошибка: ${result.error}`)
+      }
+    } catch (error: any) {
+      alert(`Ошибка: ${error.message}`)
+    } finally {
+      setProcessingFaces((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(faceId)
+        return newSet
+      })
+    }
+  }
+
+  const FaceCard = ({
+    item,
+    issueType,
+    showConfidence = false,
+    showVerified = false,
+    hasActions = false,
+  }: {
+    item: any
+    issueType: string
+    showConfidence?: boolean
+    showVerified?: boolean
+    hasActions?: boolean
+  }) => {
+    if (removedFaces.has(item.id)) return null
+
+    const isProcessing = processingFaces.has(item.id)
+    const confirmAction = issueType === "verifiedWithoutPerson" ? "verify" : "elevate"
+    const rejectAction = issueType === "verifiedWithoutPerson" ? "unverify" : "unlink"
+
+    return (
+      <div className="bg-background p-1.5 rounded border space-y-1 relative">
+        <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
+          {item.bbox && item.image_url && <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={100} />}
+          {hasActions && !isProcessing && (
+            <>
+              <button
+                onClick={() => handleConfirmFace(item.id, confirmAction)}
+                className="absolute top-1 left-1 w-6 h-6 bg-green-500 hover:bg-green-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
+                title={confirmAction === "verify" ? "Верифицировать" : "Установить confidence 60%"}
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => handleRejectFace(item.id, rejectAction)}
+                className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
+                title={rejectAction === "unverify" ? "Снять верификацию" : "Удалить привязку"}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+          {isProcessing && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <Loader2 className="w-5 h-5 animate-spin text-white" />
+            </div>
+          )}
+        </div>
+        <div className="text-[10px] space-y-0.5 leading-tight">
+          {(item.person_name || item.real_name) && (
+            <div className="font-medium truncate">Игрок: {item.person_name || item.real_name}</div>
+          )}
+          {item.gallery_title && <div className="text-muted-foreground truncate">Галерея: {item.gallery_title}</div>}
+          {item.filename && <div className="text-muted-foreground truncate">Фото: {item.filename}</div>}
+          {showConfidence && item.confidence !== undefined && item.confidence !== null && (
+            <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>
+          )}
+          {showVerified && item.verified !== undefined && <div>Верифицирован: {item.verified ? "Да" : "Нет"}</div>}
+        </div>
+      </div>
+    )
   }
 
   const IssueRow = ({
@@ -103,6 +227,11 @@ export function DatabaseIntegrityChecker() {
     severity = "medium",
     canFix = true,
     infoOnly = false,
+    showConfidence = false,
+    showVerified = false,
+    hasActions = false,
+    maxItems = 40,
+    simpleCards = false,
   }: {
     title: string
     count: number
@@ -111,6 +240,11 @@ export function DatabaseIntegrityChecker() {
     severity?: "critical" | "high" | "medium" | "low"
     canFix?: boolean
     infoOnly?: boolean
+    showConfidence?: boolean
+    showVerified?: boolean
+    hasActions?: boolean
+    maxItems?: number
+    simpleCards?: boolean
   }) => {
     if (count === 0) return null
 
@@ -142,9 +276,9 @@ export function DatabaseIntegrityChecker() {
                 variant="outline"
                 size="sm"
                 onClick={() => handleCheckIssue(issueType)}
-                disabled={checkingIssue !== null}
+                disabled={processingFaces.has(issueType)}
               >
-                {checkingIssue === issueType ? (
+                {processingFaces.has(issueType) ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Проверка...
@@ -180,51 +314,68 @@ export function DatabaseIntegrityChecker() {
           </div>
         </div>
         {isExpanded && hasDetails && (
-          <div className="ml-4 p-4 bg-muted rounded-lg space-y-2">
-            <div className="text-sm font-medium">Найдено записей: {details.length}</div>
-            <div className="text-xs text-muted-foreground">Показаны первые {Math.min(10, details.length)} записей:</div>
-            <div className="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto">
-              {details.slice(0, 10).map((item: any, index: number) => (
-                <div key={index} className="bg-background p-3 rounded border space-y-2">
-                  {item.bbox && item.image_url && (
-                    <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
-                      <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={200} />
-                    </div>
-                  )}
-                  <div className="text-xs space-y-1">
-                    {item.real_name && <div className="font-medium">Игрок: {item.real_name}</div>}
-                    {item.person_name && <div className="font-medium">Игрок: {item.person_name}</div>}
-                    {item.name && <div className="font-medium">Игрок: {item.name}</div>}
-                    {item.telegram_username && (
-                      <div className="text-muted-foreground">Telegram: @{item.telegram_username}</div>
-                    )}
-                    {item.gallery_title && <div className="text-muted-foreground">Галерея: {item.gallery_title}</div>}
-                    {item.confidence !== undefined && item.confidence !== null && (
-                      <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>
-                    )}
-                    {item.verified !== undefined && <div>Верифицирован: {item.verified ? "Да" : "Нет"}</div>}
-                    {item.count && <div className="font-medium text-orange-600">Дублей: {item.count} записей</div>}
-                    {item.ids && item.ids.length > 0 && (
-                      <div className="text-muted-foreground text-[10px]">
-                        IDs:{" "}
-                        {item.ids
-                          .slice(0, 3)
-                          .map((id: string) => id.slice(0, 8))
-                          .join(", ")}
-                        {item.ids.length > 3 && "..."}
+          <div className="ml-4 p-3 bg-muted rounded-lg space-y-2">
+            <div className="text-sm font-medium">
+              Найдено записей: {details.length}
+              {hasActions && " (✓ подтвердить, 🗑 отклонить)"}
+            </div>
+            {simpleCards ? (
+              <div className="grid grid-cols-4 gap-2 max-h-[400px] overflow-y-auto">
+                {details.slice(0, maxItems).map((item: any, index: number) => (
+                  <div key={item.id || index} className="bg-background p-3 rounded border space-y-2">
+                    {item.bbox && item.image_url && (
+                      <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
+                        <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={200} />
                       </div>
                     )}
-                    <div className="font-mono text-[10px] text-muted-foreground pt-1 border-t">
-                      {item.id ? `ID: ${item.id.slice(0, 8)}...` : ""}
-                      {item.photo_id && ` • Фото: ${item.photo_id.slice(0, 8)}...`}
-                      {item.person_id && ` • Персона: ${item.person_id.slice(0, 8)}...`}
+                    <div className="text-xs space-y-1">
+                      {item.real_name && <div className="font-medium">Игрок: {item.real_name}</div>}
+                      {item.person_name && <div className="font-medium">Игрок: {item.person_name}</div>}
+                      {item.name && <div className="font-medium">Игрок: {item.name}</div>}
+                      {item.telegram_username && (
+                        <div className="text-muted-foreground">Telegram: @{item.telegram_username}</div>
+                      )}
+                      {item.gallery_title && <div className="text-muted-foreground">Галерея: {item.gallery_title}</div>}
+                      {item.confidence !== undefined && item.confidence !== null && (
+                        <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>
+                      )}
+                      {item.verified !== undefined && <div>Верифицирован: {item.verified ? "Да" : "Нет"}</div>}
+                      {item.count && <div className="font-medium text-orange-600">Дублей: {item.count} записей</div>}
+                      {item.ids && item.ids.length > 0 && (
+                        <div className="text-muted-foreground text-[10px]">
+                          IDs:{" "}
+                          {item.ids
+                            .slice(0, 3)
+                            .map((id: string) => id.slice(0, 8))
+                            .join(", ")}
+                          {item.ids.length > 3 && "..."}
+                        </div>
+                      )}
+                      <div className="font-mono text-[10px] text-muted-foreground pt-1 border-t">
+                        {item.id ? `ID: ${item.id.slice(0, 8)}...` : ""}
+                        {item.photo_id && ` • Фото: ${item.photo_id.slice(0, 8)}...`}
+                        {item.person_id && ` • Персона: ${item.person_id.slice(0, 8)}...`}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            {details.length > 10 && (
-              <div className="text-xs text-muted-foreground">... и еще {details.length - 10} записей</div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-2 max-h-[600px] overflow-y-auto">
+                {details.slice(0, maxItems).map((item: any, index: number) => (
+                  <FaceCard
+                    key={item.id || index}
+                    item={item}
+                    issueType={issueType}
+                    showConfidence={showConfidence}
+                    showVerified={showVerified}
+                    hasActions={hasActions}
+                  />
+                ))}
+              </div>
+            )}
+            {details.length > maxItems && (
+              <div className="text-xs text-muted-foreground">... и еще {details.length - maxItems} записей</div>
             )}
           </div>
         )}
@@ -256,7 +407,6 @@ export function DatabaseIntegrityChecker() {
               </>
             )}
           </Button>
-
           {report && (
             <Alert variant={report.totalIssues > 0 ? "destructive" : "default"}>
               {report.totalIssues > 0 ? (
@@ -278,7 +428,6 @@ export function DatabaseIntegrityChecker() {
           )}
         </CardContent>
       </Card>
-
       {report && report.totalIssues > 0 && (
         <>
           <Card>
@@ -300,17 +449,21 @@ export function DatabaseIntegrityChecker() {
                   title="Верифицированные лица без игрока"
                   count={report.photoFaces.verifiedWithoutPerson}
                   issueType="verifiedWithoutPerson"
-                  description="Лица с verified=true, но person_id=null → Автофикс: снимает verified"
+                  description="verified=true, но person_id=null → ✓ распознать и верифицировать, 🗑 снять verified"
                   severity="critical"
                   canFix={true}
+                  hasActions={true}
                 />
                 <IssueRow
-                  title="Верифицированные лица с неправильным confidence"
-                  count={report.photoFaces.verifiedWithWrongConfidence}
-                  issueType="verifiedWithWrongConfidence"
-                  description="Лица с verified=true, но confidence ≠ 1.0 → Автофикс: устанавливает confidence=1.0"
+                  title="Потерянные связи (не видны в галерее игрока)"
+                  count={report.photoFaces.orphanedLinks || 0}
+                  issueType="orphanedLinks"
+                  description="Привязаны к игроку, но confidence < 60% → ✓ установить 60%, 🗑 удалить привязку"
                   severity="high"
                   canFix={true}
+                  showConfidence={true}
+                  showVerified={true}
+                  hasActions={true}
                 />
                 <IssueRow
                   title="Лица с игроком без confidence"
@@ -318,14 +471,6 @@ export function DatabaseIntegrityChecker() {
                   issueType="personWithoutConfidence"
                   description="Лица с person_id, но confidence = null → Автофикс: устанавливает confidence=0.5"
                   severity="medium"
-                  canFix={true}
-                />
-                <IssueRow
-                  title="Потерянные связи (не видны в галерее игрока)"
-                  count={report.photoFaces.orphanedLinks || 0}
-                  issueType="orphanedLinks"
-                  description="Лица привязаны к игроку, но confidence < 60% → Автофикс: повышает confidence до 60%"
-                  severity="high"
                   canFix={true}
                 />
                 <IssueRow
@@ -347,7 +492,6 @@ export function DatabaseIntegrityChecker() {
               </div>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader>
               <CardTitle>Информация об игроках (People)</CardTitle>
