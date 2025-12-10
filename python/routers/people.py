@@ -343,7 +343,7 @@ async def _calculate_people_stats(people: list) -> list:
         page_size = 1000
         while True:
             faces_result = supabase_db_instance.client.table("photo_faces").select(
-                "person_id, photo_id, verified, recognition_confidence"
+                "person_id, photo_id, verified, recognition_confidence, insightface_descriptor"
             ).range(offset, offset + page_size - 1).execute()
             
             batch = faces_result.data or []
@@ -355,28 +355,16 @@ async def _calculate_people_stats(people: list) -> list:
         
         logger.info(f"[People API] Loaded {len(all_faces)} total photo_faces for stats")
         
-        all_descriptors = []
-        offset = 0
-        while True:
-            descriptors_result = supabase_db_instance.client.table("face_descriptors").select(
-                "person_id"
-            ).range(offset, offset + page_size - 1).execute()
-            
-            batch = descriptors_result.data or []
-            all_descriptors.extend(batch)
-            
-            if len(batch) < page_size:
-                break
-            offset += page_size
+        # Descriptors are now in photo_faces.insightface_descriptor
         
-        logger.info(f"[People API] Loaded {len(all_descriptors)} total descriptors for stats")
-        
-        # Считаем дескрипторы по person_id
         descriptor_counts = {}
-        for d in all_descriptors:
-            pid = d.get("person_id")
-            if pid:
+        for face in all_faces:
+            pid = face.get("person_id")
+            # Only count if verified and has descriptor (used in HNSWLIB index)
+            if pid and face.get("verified") and face.get("insightface_descriptor"):
                 descriptor_counts[pid] = descriptor_counts.get(pid, 0) + 1
+        
+        logger.info(f"[People API] Counted descriptors from photo_faces.insightface_descriptor")
         
         # Считаем статистику для каждого человека
         result = []
