@@ -360,8 +360,8 @@ async def _calculate_people_stats(people: list) -> list:
         descriptor_counts = {}
         for face in all_faces:
             pid = face.get("person_id")
-            # Only count if verified and has descriptor (used in HNSWLIB index)
-            if pid and face.get("verified") and face.get("insightface_descriptor"):
+            # Count ALL faces with person_id and descriptor (both verified and high confidence)
+            if pid and face.get("insightface_descriptor"):
                 descriptor_counts[pid] = descriptor_counts.get(pid, 0) + 1
         
         logger.info(f"[People API] Counted descriptors from photo_faces.insightface_descriptor")
