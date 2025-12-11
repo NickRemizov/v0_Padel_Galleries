@@ -176,14 +176,6 @@ export function DatabaseIntegrityChecker() {
     const confirmAction = issueType === "verifiedWithoutPerson" ? "verify" : "elevate"
     const rejectAction = issueType === "verifiedWithoutPerson" ? "unverify" : "unlink"
 
-    const formatGalleryDate = (dateString: string | null | undefined) => {
-      if (!dateString) return ""
-      const date = new Date(dateString)
-      const day = String(date.getDate()).padStart(2, "0")
-      const month = String(date.getMonth() + 1).padStart(2, "0")
-      return ` ${day}.${month}`
-    }
-
     return (
       <div className="bg-background p-1.5 rounded border space-y-1 relative">
         <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
@@ -212,17 +204,12 @@ export function DatabaseIntegrityChecker() {
             </div>
           )}
         </div>
-        <div className="text-xs text-foreground space-y-0.5 leading-tight">
+        <div className="text-[10px] space-y-0.5 leading-tight">
           {(item.person_name || item.real_name) && (
             <div className="font-medium truncate">Игрок: {item.person_name || item.real_name}</div>
           )}
-          {item.gallery_title && (
-            <div className="truncate">
-              Галерея: {item.gallery_title}
-              {formatGalleryDate(item.gallery_date)}
-            </div>
-          )}
-          {item.filename && <div className="truncate">Фото: {item.filename}</div>}
+          {item.gallery_title && <div className="text-muted-foreground truncate">Галерея: {item.gallery_title}</div>}
+          {item.filename && <div className="text-muted-foreground truncate">Фото: {item.filename}</div>}
           {showConfidence && item.confidence !== undefined && item.confidence !== null && (
             <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>
           )}
@@ -374,7 +361,7 @@ export function DatabaseIntegrityChecker() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-6 gap-2 max-h-[600px] overflow-y-auto">
+              <div className="grid grid-cols-4 gap-2 max-h-[600px] overflow-y-auto">
                 {details.slice(0, maxItems).map((item: any, index: number) => (
                   <FaceCard
                     key={item.id || index}
@@ -466,7 +453,6 @@ export function DatabaseIntegrityChecker() {
                   severity="critical"
                   canFix={true}
                   hasActions={true}
-                  maxItems={30}
                 />
                 <IssueRow
                   title="Потерянные связи (не видны в галерее игрока)"
@@ -478,7 +464,6 @@ export function DatabaseIntegrityChecker() {
                   showConfidence={true}
                   showVerified={true}
                   hasActions={true}
-                  maxItems={30}
                 />
                 <IssueRow
                   title="Лица с игроком без confidence"
