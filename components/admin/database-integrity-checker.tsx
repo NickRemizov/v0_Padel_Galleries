@@ -543,7 +543,7 @@ export function DatabaseIntegrityChecker() {
                   title="Потерянные связи (не видны в галерее игрока)"
                   count={report.photoFaces.orphanedLinks || 0}
                   issueType="orphanedLinks"
-                  description={`Привязаны к игроку, но confidence < ${Math.round(confidenceThreshold * 100)}% → ✓ установить ${Math.round(confidenceThreshold * 100)}%, 🗑 удалить привязку`}
+                  description={`Привязаны к игроку, но confidence < ${Math.round(confidenceThreshold * 100)}% ("Минимальная уверенность" в настройках) → ✓ установить ${Math.round(confidenceThreshold * 100)}%, 🗑 удалить привязку`}
                   severity="high"
                   canFix={true}
                   showConfidence={true}
