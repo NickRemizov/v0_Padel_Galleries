@@ -26,6 +26,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import FaceCropPreview from "@/components/FaceCropPreview"
 import { createClient } from "@/lib/supabase/client"
+import { FaceTaggingDialog } from "@/components/admin/face-tagging-dialog"
 
 interface IntegrityReport {
   photoFaces: {
@@ -53,6 +54,13 @@ export function DatabaseIntegrityChecker() {
   const [processingFaces, setProcessingFaces] = useState<Set<string>>(new Set())
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(0.6)
+  const [taggingDialogOpen, setTaggingDialogOpen] = useState(false)
+  const [selectedPhotoForTagging, setSelectedPhotoForTagging] = useState<{
+    imageId: string
+    imageUrl: string
+  } | null>(null)
+  const [isFaceTaggingDialogOpen, setIsFaceTaggingDialogOpen] = useState(false)
+  const [selectedFaceId, setSelectedFaceId] = useState<string | null>(null)
 
   const supabaseClient = createClient()
 
@@ -144,7 +152,18 @@ export function DatabaseIntegrityChecker() {
     }
   }
 
-  const handleConfirmFace = async (faceId: string, actionType: "verify" | "elevate") => {
+  const handleConfirmFace = async (faceId: string, actionType: "verify" | "elevate", item?: any) => {
+    // Для verifiedWithoutPerson - открываем FaceTaggingDialog
+    if (actionType === "verify" && item?.photo_id && item?.image_url) {
+      setSelectedPhotoForTagging({
+        imageId: item.photo_id,
+        imageUrl: item.image_url,
+      })
+      setTaggingDialogOpen(true)
+      return
+    }
+
+    // Для остальных случаев (elevate) - стандартная обработка
     setProcessingFaces((prev) => new Set(prev).add(faceId))
     try {
       const result = await confirmFaceAction(faceId, actionType, confidenceThreshold)
@@ -182,6 +201,25 @@ export function DatabaseIntegrityChecker() {
         return newSet
       })
     }
+  }
+
+  const handleOpenFaceTaggingDialog = (faceId: string) => {
+    setSelectedFaceId(faceId)
+    setIsFaceTaggingDialogOpen(true)
+  }
+
+  const handleCloseFaceTaggingDialog = () => {
+    setSelectedFaceId(null)
+    setIsFaceTaggingDialogOpen(false)
+  }
+
+  const handleTaggingDialogClose = () => {
+    setTaggingDialogOpen(false)
+    setSelectedPhotoForTagging(null)
+  }
+
+  const handleTaggingSave = () => {
+    handleCheck()
   }
 
   const formatShortDate = (dateStr: string | null | undefined): string => {
@@ -234,9 +272,13 @@ export function DatabaseIntegrityChecker() {
           {hasActions && !isProcessing && (
             <>
               <button
-                onClick={() => handleConfirmFace(item.id, confirmAction)}
+                onClick={() => handleConfirmFace(item.id, confirmAction, item)}
                 className="absolute top-1 left-1 w-5 h-5 bg-green-500 hover:bg-green-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
-                title={confirmAction === "verify" ? "Верифицировать" : "Установить confidence 60%"}
+                title={
+                  confirmAction === "verify"
+                    ? "Тегировать лицо"
+                    : `Установить confidence ${Math.round(confidenceThreshold * 100)}%`
+                }
               >
                 <Check className="w-3 h-3" />
               </button>
@@ -246,6 +288,13 @@ export function DatabaseIntegrityChecker() {
                 title={rejectAction === "unverify" ? "Снять верификацию" : "Удалить привязку"}
               >
                 <Trash2 className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => handleOpenFaceTaggingDialog(item.id)}
+                className="absolute bottom-1 right-1 w-5 h-5 bg-blue-500 hover:bg-blue-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
+                title="Отметить лицо"
+              >
+                <Info className="w-3 h-3" />
               </button>
             </>
           )}
@@ -511,7 +560,7 @@ export function DatabaseIntegrityChecker() {
                   title="Верифицированные лица без игрока"
                   count={report.photoFaces.verifiedWithoutPerson}
                   issueType="verifiedWithoutPerson"
-                  description="verified=true, но person_id=null → ✓ распознать и верифицировать, 🗑 снять verified"
+                  description="verified=true, но person_id=null → ✓ открыть тегирование, 🗑 снять verified"
                   severity="critical"
                   canFix={true}
                   hasActions={true}
@@ -597,6 +646,15 @@ export function DatabaseIntegrityChecker() {
             </CardContent>
           </Card>
         </>
+      )}
+      {selectedPhotoForTagging && (
+        <FaceTaggingDialog
+          imageId={selectedPhotoForTagging.imageId}
+          imageUrl={selectedPhotoForTagging.imageUrl}
+          open={taggingDialogOpen}
+          onOpenChange={handleTaggingDialogClose}
+          onSave={handleTaggingSave}
+        />
       )}
     </div>
   )

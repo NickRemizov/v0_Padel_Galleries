@@ -619,15 +619,9 @@ export async function confirmFaceAction(
 
   try {
     if (actionType === "verify") {
-      // verify - установить verified=true и confidence=1.0
-      const { error } = await supabase
-        .from("photo_faces")
-        .update({ verified: true, recognition_confidence: 1.0 })
-        .eq("id", faceId)
-
-      if (error) throw error
+      // Этот код оставлен для обратной совместимости, но не должен вызываться
+      return { success: false, error: "Use FaceTaggingDialog for verification" }
     } else {
-      // elevate - установить confidence до порога
       const confidenceValue = threshold || (await getConfidenceThreshold())
       const { error } = await supabase
         .from("photo_faces")
