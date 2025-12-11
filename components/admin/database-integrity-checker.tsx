@@ -401,7 +401,7 @@ export function DatabaseIntegrityChecker() {
           <div className="ml-4 p-3 bg-muted rounded-lg space-y-2">
             <div className="text-sm font-medium">
               Найдено записей: {details.length}
-              {hasActions && " (✓ Открыть окно тегирования, 🗑 Удалить параметр Verified)"}
+              {hasActions && " (✓ → Принять/Исправить, 🗑 → Отклонить)"}
             </div>
             {simpleCards ? (
               <div className="grid grid-cols-4 gap-2 max-h-[400px] overflow-y-auto">
@@ -533,7 +533,7 @@ export function DatabaseIntegrityChecker() {
                   title="Верифицированные лица без игрока"
                   count={report.photoFaces.verifiedWithoutPerson}
                   issueType="verifiedWithoutPerson"
-                  description="Verified=True, но person_id=null. Испроавить → на всех лицах удалить Verified"
+                  description="Verified=True, но person_id=null. Исправить → на всех лицах удалить Verified"
                   severity="critical"
                   canFix={true}
                   hasActions={true}
@@ -543,7 +543,7 @@ export function DatabaseIntegrityChecker() {
                   title="Потерянные связи (не видны в галерее игрока)"
                   count={report.photoFaces.orphanedLinks || 0}
                   issueType="orphanedLinks"
-                  description={`Привязаны к игроку, но confidence < ${Math.round(confidenceThreshold * 100)}% ("Минимальная уверенность" в настройках). Исправить → удалить привязку на всех лицах`}
+                  description={`Привязаны к игроку, но confidence < ${Math.round(confidenceThreshold * 100)}% ("Минимальная уверенность" в настройках). Исправить → на всех лицах удалить привязку`}
                   severity="high"
                   canFix={true}
                   showConfidence={true}
