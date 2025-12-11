@@ -88,7 +88,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, recognition_confidence, insightface_bbox,
-        gallery_images!inner(id, image_url, gallery_id, galleries(title))
+        gallery_images!inner(id, image_url, gallery_id, galleries(title, event_date))
       `)
       .eq("verified", true)
       .neq("recognition_confidence", 1.0)
@@ -187,7 +187,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, verified, recognition_confidence, insightface_bbox, insightface_descriptor,
-        gallery_images!inner(id, image_url, galleries(title)),
+        gallery_images!inner(id, image_url, galleries(title, event_date)),
         people(real_name)
       `)
       .not("person_id", "is", null)
