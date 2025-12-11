@@ -391,21 +391,70 @@ export async function fixIntegrityIssuesAction(
       }
 
       case "nonExistentPhotoFaces": {
-        const { data: allPhotoFaces } = await supabase.from("photo_faces").select("id, photo_id")
+        // Получаем ВСЕ photo_faces с пагинацией (Supabase лимит 1000)
+        let allPhotoFaces: { id: string; photo_id: string }[] = []
+        let offset = 0
+        const pageSize = 1000
 
-        if (allPhotoFaces) {
+        while (true) {
+          const { data: batch } = await supabase
+            .from("photo_faces")
+            .select("id, photo_id")
+            .range(offset, offset + pageSize - 1)
+
+          if (!batch || batch.length === 0) break
+          allPhotoFaces = allPhotoFaces.concat(batch)
+          if (batch.length < pageSize) break
+          offset += pageSize
+        }
+
+        console.log(`[v0] Total photo_faces loaded: ${allPhotoFaces.length}`)
+
+        if (allPhotoFaces.length > 0) {
+          // Получаем уникальные photo_id
           const photoIds = [...new Set(allPhotoFaces.map((pf) => pf.photo_id))]
-          const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", photoIds)
+          console.log(`[v0] Unique photo_ids: ${photoIds.length}`)
 
-          const existingPhotoIds = new Set(existingPhotos?.map((p) => p.id) || [])
+          // Проверяем существующие фото батчами
+          const existingPhotoIds = new Set<string>()
+          for (let i = 0; i < photoIds.length; i += 500) {
+            const batch = photoIds.slice(i, i + 500)
+            const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", batch)
+
+            existingPhotos?.forEach((p) => existingPhotoIds.add(p.id))
+          }
+
+          console.log(`[v0] Existing photos found: ${existingPhotoIds.size}`)
+
+          // Находим ID записей с несуществующими фото
           const invalidIds = allPhotoFaces.filter((pf) => !existingPhotoIds.has(pf.photo_id)).map((pf) => pf.id)
 
-          if (invalidIds.length > 0) {
-            const { error: deleteError } = await supabase.from("photo_faces").delete().in("id", invalidIds)
+          console.log(`[v0] Invalid photo_faces to delete: ${invalidIds.length}`)
 
-            if (deleteError) throw deleteError
-            fixed = invalidIds.length
-            details.deletedIds = invalidIds
+          if (invalidIds.length > 0) {
+            // Удаляем батчами по 50 записей
+            const batchSize = 50
+            let deleted = 0
+
+            for (let i = 0; i < invalidIds.length; i += batchSize) {
+              const batch = invalidIds.slice(i, i + batchSize)
+              const { error: deleteError } = await supabase.from("photo_faces").delete().in("id", batch)
+
+              if (deleteError) {
+                console.error(`[v0] Error deleting batch ${i}-${i + batch.length}:`, deleteError)
+                // Продолжаем удаление остальных батчей
+              } else {
+                deleted += batch.length
+              }
+
+              // Небольшая пауза между батчами
+              if (i + batchSize < invalidIds.length) {
+                await new Promise((resolve) => setTimeout(resolve, 100))
+              }
+            }
+
+            fixed = deleted
+            console.log(`[v0] Successfully deleted: ${deleted} records`)
           }
         }
         break
