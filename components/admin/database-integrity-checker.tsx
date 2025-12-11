@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Info,
   Check,
-  Trash2,
 } from "lucide-react"
 import {
   checkDatabaseIntegrityAction,
@@ -59,8 +58,6 @@ export function DatabaseIntegrityChecker() {
     imageId: string
     imageUrl: string
   } | null>(null)
-  const [isFaceTaggingDialogOpen, setIsFaceTaggingDialogOpen] = useState(false)
-  const [selectedFaceId, setSelectedFaceId] = useState<string | null>(null)
 
   const supabaseClient = createClient()
 
@@ -203,16 +200,6 @@ export function DatabaseIntegrityChecker() {
     }
   }
 
-  const handleOpenFaceTaggingDialog = (faceId: string) => {
-    setSelectedFaceId(faceId)
-    setIsFaceTaggingDialogOpen(true)
-  }
-
-  const handleCloseFaceTaggingDialog = () => {
-    setSelectedFaceId(null)
-    setIsFaceTaggingDialogOpen(false)
-  }
-
   const handleTaggingDialogClose = () => {
     setTaggingDialogOpen(false)
     setSelectedPhotoForTagging(null)
@@ -281,20 +268,6 @@ export function DatabaseIntegrityChecker() {
                 }
               >
                 <Check className="w-3 h-3" />
-              </button>
-              <button
-                onClick={() => handleRejectFace(item.id, rejectAction)}
-                className="absolute top-1 right-1 w-5 h-5 bg-red-500 hover:bg-red-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
-                title={rejectAction === "unverify" ? "Снять верификацию" : "Удалить привязку"}
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-              <button
-                onClick={() => handleOpenFaceTaggingDialog(item.id)}
-                className="absolute bottom-1 right-1 w-5 h-5 bg-blue-500 hover:bg-blue-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
-                title="Отметить лицо"
-              >
-                <Info className="w-3 h-3" />
               </button>
             </>
           )}
