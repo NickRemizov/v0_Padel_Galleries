@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, UserPlus, Users, X } from "lucide-react"
+import { Loader2, UserPlus, Users, X, Trash2 } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -47,13 +46,19 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
   const [showSelectPerson, setShowSelectPerson] = useState(false)
   const [selectedPersonId, setSelectedPersonId] = useState<string>("")
   const [processing, setProcessing] = useState(false)
+  const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (open) {
       loadClusters()
       loadPeople()
+      setRemovedFaces(new Set())
     }
   }, [open, galleryId])
+
+  useEffect(() => {
+    setRemovedFaces(new Set())
+  }, [currentClusterIndex])
 
   async function loadClusters() {
     setLoading(true)
@@ -106,7 +111,7 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
     if (clusters.length === 0 || currentClusterIndex >= clusters.length) return
 
     const currentCluster = clusters[currentClusterIndex]
-    const faceIds = currentCluster.faces.map((f) => f.id)
+    const faceIds = currentCluster.faces.filter((f) => !removedFaces.has(f.id)).map((f) => f.id)
 
     setProcessing(true)
     try {
@@ -126,12 +131,17 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
   }
 
   function moveToNextCluster() {
+    setRemovedFaces(new Set())
     if (currentClusterIndex + 1 >= clusters.length) {
       onOpenChange(false)
       onComplete?.()
     } else {
       setCurrentClusterIndex(currentClusterIndex + 1)
     }
+  }
+
+  function handleRemoveFace(faceId: string) {
+    setRemovedFaces((prev) => new Set(prev).add(faceId))
   }
 
   const currentCluster = clusters[currentClusterIndex]
@@ -163,14 +173,21 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
           ) : currentCluster ? (
             <div className="space-y-4">
               <div className="grid grid-cols-4 gap-4">
-                {currentCluster.faces.map((face, index) => (
-                  <div key={face.id} className="relative aspect-square">
-                    <FaceCropPreview imageUrl={face.image_url || "/placeholder.svg"} bbox={face.bbox} />
-                    <Badge variant="secondary" className="absolute top-2 right-2">
-                      {index + 1}
-                    </Badge>
-                  </div>
-                ))}
+                {currentCluster.faces
+                  .filter((face) => !removedFaces.has(face.id))
+                  .map((face, index) => (
+                    <div key={face.id} className="relative aspect-square">
+                      <FaceCropPreview imageUrl={face.image_url || "/placeholder.svg"} bbox={face.bbox} />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2 h-8 w-8"
+                        onClick={() => handleRemoveFace(face.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
               </div>
 
               <div className="flex gap-2 justify-end">
@@ -201,6 +218,7 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
                               }}
                             >
                               {person.real_name}
+                              {person.telegram_name && ` (${person.telegram_name})`}
                             </CommandItem>
                           ))}
                         </CommandGroup>
