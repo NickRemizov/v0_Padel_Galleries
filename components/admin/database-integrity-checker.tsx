@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +25,7 @@ import {
 } from "@/app/admin/actions/integrity"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import FaceCropPreview from "@/components/FaceCropPreview"
+import { createClient } from "@/lib/supabase/client"
 
 interface IntegrityReport {
   photoFaces: {
@@ -51,6 +52,32 @@ export function DatabaseIntegrityChecker() {
   const [expandedIssues, setExpandedIssues] = useState<Set<string>>(new Set())
   const [processingFaces, setProcessingFaces] = useState<Set<string>>(new Set())
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
+  const [confidenceThreshold, setConfidenceThreshold] = useState<number>(0.6)
+
+  const supabaseClient = createClient()
+
+  useEffect(() => {
+    // Initial check on component mount
+    handleCheck()
+    // Загружаем порог confidence из face_recognition_config
+    const loadSettings = async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from("face_recognition_config")
+          .select("value")
+          .eq("key", "recognition_settings")
+          .single()
+
+        if (data?.value?.confidence_thresholds?.high_data) {
+          setConfidenceThreshold(data.value.confidence_thresholds.high_data)
+        }
+      } catch (error) {
+        console.error("[IntegrityChecker] Failed to load settings:", error)
+      }
+    }
+    loadSettings()
+  }, [])
 
   const handleCheck = async () => {
     setIsChecking(true)
@@ -120,7 +147,7 @@ export function DatabaseIntegrityChecker() {
   const handleConfirmFace = async (faceId: string, actionType: "verify" | "elevate") => {
     setProcessingFaces((prev) => new Set(prev).add(faceId))
     try {
-      const result = await confirmFaceAction(faceId, actionType)
+      const result = await confirmFaceAction(faceId, actionType, confidenceThreshold)
       if (result.success) {
         setRemovedFaces((prev) => new Set(prev).add(faceId))
       } else {
@@ -189,14 +216,21 @@ export function DatabaseIntegrityChecker() {
     const confirmAction = issueType === "verifiedWithoutPerson" ? "verify" : "elevate"
     const rejectAction = issueType === "verifiedWithoutPerson" ? "unverify" : "unlink"
 
+    const shortDate = formatShortDate(item.shoot_date)
     const galleryWithDate = item.gallery_title
-      ? `${formatShortDate(item.shoot_date)} ${item.gallery_title}`.trim()
+      ? shortDate
+        ? `${item.gallery_title} ${shortDate}`
+        : item.gallery_title
       : null
 
     return (
       <div className="bg-background p-1.5 rounded border space-y-1 relative">
         <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
-          {item.bbox && item.image_url && <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={80} />}
+          {item.bbox && item.image_url && (
+            <div className="w-full h-full">
+              <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={200} />
+            </div>
+          )}
           {hasActions && !isProcessing && (
             <>
               <button
@@ -487,7 +521,7 @@ export function DatabaseIntegrityChecker() {
                   title="Потерянные связи (не видны в галерее игрока)"
                   count={report.photoFaces.orphanedLinks || 0}
                   issueType="orphanedLinks"
-                  description="Привязаны к игроку, но confidence < 60% → ✓ установить 60%, 🗑 удалить привязку"
+                  description={`Привязаны к игроку, но confidence < ${Math.round(confidenceThreshold * 100)}% → ✓ установить ${Math.round(confidenceThreshold * 100)}%, 🗑 удалить привязку`}
                   severity="high"
                   canFix={true}
                   showConfidence={true}

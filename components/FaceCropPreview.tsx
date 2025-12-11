@@ -27,6 +27,9 @@ export default function FaceCropPreview({ imageUrl, bbox, size = 200 }: FaceCrop
     img.crossOrigin = "anonymous"
 
     img.onload = () => {
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = "high"
+
       // 50% padding on each side
       const padding = 0.5
       const paddedWidth = bbox.width * (1 + padding * 2)

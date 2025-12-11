@@ -28,6 +28,27 @@ export interface IntegrityReport {
 }
 
 /**
+ * Получить порог confidence из настроек
+ */
+async function getConfidenceThreshold(): Promise<number> {
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from("face_recognition_config")
+      .select("value")
+      .eq("key", "recognition_settings")
+      .single()
+
+    if (data?.value?.confidence_thresholds?.high_data) {
+      return data.value.confidence_thresholds.high_data
+    }
+  } catch (error) {
+    console.error("[integrity] Failed to get config:", error)
+  }
+  return 0.6 // fallback
+}
+
+/**
  * Полная проверка целостности базы данных
  */
 export async function checkDatabaseIntegrityFullAction(): Promise<{
@@ -182,7 +203,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     }
 
     // 6. Orphaned links - faces with person_id but not visible (below threshold and not verified)
-    const confidenceThreshold = 0.6 // Default high_data threshold
+    const confidenceThreshold = await getConfidenceThreshold() // Updated to use getConfidenceThreshold
+    console.log(`[v0] Using confidence threshold: ${confidenceThreshold}`)
     const { data: allFacesForOrphaned } = await supabase
       .from("photo_faces")
       .select(`
@@ -468,7 +490,7 @@ export async function fixIntegrityIssuesAction(
 
       case "orphanedLinks": {
         // Elevate confidence to threshold to make faces visible
-        const confidenceThreshold = 0.6
+        const confidenceThreshold = await getConfidenceThreshold() // Updated to use getConfidenceThreshold
 
         const { data: allFaces } = await supabase
           .from("photo_faces")
@@ -544,7 +566,7 @@ export async function getIssueDetailsAction(
       }
 
       case "orphanedLinks": {
-        const confidenceThreshold = 0.6
+        const confidenceThreshold = await getConfidenceThreshold() // Updated to use getConfidenceThreshold
         const { data } = await supabase
           .from("photo_faces")
           .select(`
@@ -591,57 +613,31 @@ export async function getIssueDetailsAction(
 export async function confirmFaceAction(
   faceId: string,
   actionType: "verify" | "elevate",
+  threshold?: number,
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient()
 
   try {
     if (actionType === "verify") {
-      // Получаем embedding
-      const { data: face } = await supabase
+      // verify - установить verified=true и confidence=1.0
+      const { error } = await supabase
         .from("photo_faces")
-        .select("id, insightface_descriptor")
+        .update({ verified: true, recognition_confidence: 1.0 })
         .eq("id", faceId)
-        .single()
-
-      if (!face?.insightface_descriptor) {
-        return { success: false, error: "No descriptor found" }
-      }
-
-      // Вызываем Python API для распознавания
-      const apiUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://localhost:8000"
-      const response = await fetch(`${apiUrl}/api/recognition/recognize-face`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          embedding: face.insightface_descriptor,
-          confidence_threshold: 0.0,
-        }),
-      })
-
-      const result = await response.json()
-
-      if (result.person_id) {
-        const { error } = await supabase
-          .from("photo_faces")
-          .update({
-            person_id: result.person_id,
-            verified: true,
-            recognition_confidence: 1.0,
-          })
-          .eq("id", faceId)
-
-        if (error) throw error
-        return { success: true }
-      } else {
-        return { success: false, error: "No match found in index" }
-      }
-    } else {
-      // elevate - установить confidence = 0.6
-      const { error } = await supabase.from("photo_faces").update({ recognition_confidence: 0.6 }).eq("id", faceId)
 
       if (error) throw error
-      return { success: true }
+    } else {
+      // elevate - установить confidence до порога
+      const confidenceValue = threshold || (await getConfidenceThreshold())
+      const { error } = await supabase
+        .from("photo_faces")
+        .update({ recognition_confidence: confidenceValue })
+        .eq("id", faceId)
+
+      if (error) throw error
     }
+
+    return { success: true }
   } catch (error: any) {
     console.error("[confirmFaceAction] Error:", error)
     return { success: false, error: error.message }
