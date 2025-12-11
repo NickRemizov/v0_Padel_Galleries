@@ -64,7 +64,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
-        gallery_images!inner(id, image_url, gallery_id, galleries(title)),
+        gallery_images!inner(id, image_url, original_filename, gallery_id, galleries(title, shoot_date)),
         people(real_name)
       `)
       .eq("verified", true)
@@ -73,12 +73,16 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     photoFaces.verifiedWithoutPerson = verifiedWithoutPerson?.length || 0
     console.log("[v0] verifiedWithoutPerson count:", photoFaces.verifiedWithoutPerson)
     if (verifiedWithoutPerson && verifiedWithoutPerson.length > 0) {
-      details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 10).map((item: any) => ({
-        ...item,
+      details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 50).map((item: any) => ({
+        id: item.id,
+        photo_id: item.photo_id,
+        person_id: item.person_id,
         confidence: item.recognition_confidence,
         bbox: item.insightface_bbox,
         image_url: item.gallery_images?.image_url,
         gallery_title: item.gallery_images?.galleries?.title,
+        shoot_date: item.gallery_images?.galleries?.shoot_date,
+        filename: item.gallery_images?.original_filename,
       }))
     }
 
@@ -183,7 +187,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, verified, recognition_confidence, insightface_bbox, insightface_descriptor,
-        gallery_images!inner(id, image_url, gallery_id, galleries(title)),
+        gallery_images!inner(id, image_url, original_filename, gallery_id, galleries(title, shoot_date)),
         people(real_name)
       `)
       .not("person_id", "is", null)
@@ -198,7 +202,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     photoFaces.orphanedLinks = orphanedLinks.length
     console.log("[v0] orphanedLinks count:", photoFaces.orphanedLinks)
     if (orphanedLinks.length > 0) {
-      details.orphanedLinks = orphanedLinks.slice(0, 20).map((face: any) => ({
+      details.orphanedLinks = orphanedLinks.slice(0, 50).map((face: any) => ({
         id: face.id,
         photo_id: face.photo_id,
         person_id: face.person_id,
@@ -208,6 +212,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         image_url: face.gallery_images?.image_url,
         bbox: face.insightface_bbox,
         gallery_title: face.gallery_images?.galleries?.title,
+        shoot_date: face.gallery_images?.galleries?.shoot_date,
+        filename: face.gallery_images?.original_filename,
       }))
     }
 
@@ -543,7 +549,7 @@ export async function getIssueDetailsAction(
           .from("photo_faces")
           .select(`
             id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
-            gallery_images!inner(image_url, galleries(title)),
+            gallery_images!inner(id, image_url, galleries(title)),
             people(real_name)
           `)
           .not("person_id", "is", null)

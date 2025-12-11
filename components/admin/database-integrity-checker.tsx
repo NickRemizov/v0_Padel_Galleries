@@ -157,6 +157,19 @@ export function DatabaseIntegrityChecker() {
     }
   }
 
+  const formatShortDate = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return ""
+    try {
+      const date = new Date(dateStr)
+      if (isNaN(date.getTime())) return ""
+      const day = date.getDate().toString().padStart(2, "0")
+      const month = (date.getMonth() + 1).toString().padStart(2, "0")
+      return `${day}.${month}`
+    } catch {
+      return ""
+    }
+  }
+
   const FaceCard = ({
     item,
     issueType,
@@ -176,40 +189,55 @@ export function DatabaseIntegrityChecker() {
     const confirmAction = issueType === "verifiedWithoutPerson" ? "verify" : "elevate"
     const rejectAction = issueType === "verifiedWithoutPerson" ? "unverify" : "unlink"
 
+    const galleryWithDate = item.gallery_title
+      ? `${formatShortDate(item.shoot_date)} ${item.gallery_title}`.trim()
+      : null
+
     return (
       <div className="bg-background p-1.5 rounded border space-y-1 relative">
         <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
-          {item.bbox && item.image_url && <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={100} />}
+          {item.bbox && item.image_url && <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={80} />}
           {hasActions && !isProcessing && (
             <>
               <button
                 onClick={() => handleConfirmFace(item.id, confirmAction)}
-                className="absolute top-1 left-1 w-6 h-6 bg-green-500 hover:bg-green-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
+                className="absolute top-1 left-1 w-5 h-5 bg-green-500 hover:bg-green-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
                 title={confirmAction === "verify" ? "Верифицировать" : "Установить confidence 60%"}
               >
-                <Check className="w-3.5 h-3.5" />
+                <Check className="w-3 h-3" />
               </button>
               <button
                 onClick={() => handleRejectFace(item.id, rejectAction)}
-                className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
+                className="absolute top-1 right-1 w-5 h-5 bg-red-500 hover:bg-red-600 rounded flex items-center justify-center text-white shadow-md transition-colors"
                 title={rejectAction === "unverify" ? "Снять верификацию" : "Удалить привязку"}
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-3 h-3" />
               </button>
             </>
           )}
           {isProcessing && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <Loader2 className="w-5 h-5 animate-spin text-white" />
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
             </div>
           )}
         </div>
-        <div className="text-[10px] space-y-0.5 leading-tight">
+        <div className="text-xs space-y-0.5 leading-tight">
           {(item.person_name || item.real_name) && (
-            <div className="font-medium truncate">Игрок: {item.person_name || item.real_name}</div>
+            <div className="truncate">
+              <span className="text-muted-foreground">Игрок:</span>{" "}
+              <span className="font-medium">{item.person_name || item.real_name}</span>
+            </div>
           )}
-          {item.gallery_title && <div className="text-muted-foreground truncate">Галерея: {item.gallery_title}</div>}
-          {item.filename && <div className="text-muted-foreground truncate">Фото: {item.filename}</div>}
+          {galleryWithDate && (
+            <div className="truncate">
+              <span className="text-muted-foreground">Галерея:</span> <span>{galleryWithDate}</span>
+            </div>
+          )}
+          {item.filename && (
+            <div className="truncate">
+              <span className="text-muted-foreground">Файл:</span> <span>{item.filename}</span>
+            </div>
+          )}
           {showConfidence && item.confidence !== undefined && item.confidence !== null && (
             <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>
           )}
@@ -361,7 +389,7 @@ export function DatabaseIntegrityChecker() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-4 gap-2 max-h-[600px] overflow-y-auto">
+              <div className={`grid gap-2 max-h-[500px] overflow-y-auto ${hasActions ? "grid-cols-6" : "grid-cols-4"}`}>
                 {details.slice(0, maxItems).map((item: any, index: number) => (
                   <FaceCard
                     key={item.id || index}
@@ -453,6 +481,7 @@ export function DatabaseIntegrityChecker() {
                   severity="critical"
                   canFix={true}
                   hasActions={true}
+                  maxItems={30}
                 />
                 <IssueRow
                   title="Потерянные связи (не видны в галерее игрока)"
@@ -464,6 +493,7 @@ export function DatabaseIntegrityChecker() {
                   showConfidence={true}
                   showVerified={true}
                   hasActions={true}
+                  maxItems={30}
                 />
                 <IssueRow
                   title="Лица с игроком без confidence"
