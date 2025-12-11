@@ -40,7 +40,18 @@ export function AddPersonDialog({
     const form = event.currentTarget
     const formData = new FormData(form)
     setLoading(true)
-    const result = await addPersonAction(formData)
+
+    const data = {
+      real_name: formData.get("real_name") as string,
+      telegram_name: formData.get("telegram_name") as string | undefined,
+      telegram_nickname: formData.get("telegram_nickname") as string | undefined,
+      telegram_profile_url: formData.get("telegram_profile_url") as string | undefined,
+      facebook_profile_url: formData.get("facebook_profile_url") as string | undefined,
+      instagram_profile_url: formData.get("instagram_profile_url") as string | undefined,
+      paddle_ranking: formData.get("paddle_ranking") ? Number(formData.get("paddle_ranking")) : undefined,
+    }
+
+    const result = await addPersonAction(data)
     setLoading(false)
 
     if (result.success) {
