@@ -64,7 +64,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
-        gallery_images!inner(id, image_url, gallery_id, galleries(title)),
+        gallery_images!inner(id, image_url, gallery_id, galleries(title, event_date)),
         people(real_name)
       `)
       .eq("verified", true)
@@ -79,6 +79,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         bbox: item.insightface_bbox,
         image_url: item.gallery_images?.image_url,
         gallery_title: item.gallery_images?.galleries?.title,
+        gallery_date: item.gallery_images?.galleries?.event_date,
       }))
     }
 
@@ -101,6 +102,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         bbox: item.insightface_bbox,
         image_url: item.gallery_images?.image_url,
         gallery_title: item.gallery_images?.galleries?.title,
+        gallery_date: item.gallery_images?.galleries?.event_date,
       }))
     }
 
@@ -109,8 +111,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, insightface_bbox,
-        people(real_name),
-        gallery_images!inner(id, image_url, gallery_id, galleries(title))
+        gallery_images!inner(id, image_url, gallery_id, galleries(title, event_date)),
+        people(real_name)
       `)
       .not("person_id", "is", null)
       .is("recognition_confidence", null)
@@ -120,9 +122,11 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     if (personWithoutConfidence && personWithoutConfidence.length > 0) {
       details.personWithoutConfidence = personWithoutConfidence.slice(0, 10).map((item: any) => ({
         ...item,
+        confidence: item.recognition_confidence,
         bbox: item.insightface_bbox,
         image_url: item.gallery_images?.image_url,
         gallery_title: item.gallery_images?.galleries?.title,
+        gallery_date: item.gallery_images?.galleries?.event_date,
         person_name: item.people?.real_name,
       }))
     }
@@ -183,7 +187,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, verified, recognition_confidence, insightface_bbox, insightface_descriptor,
-        gallery_images!inner(id, image_url, gallery_id, galleries(title)),
+        gallery_images!inner(id, image_url, galleries(title)),
         people(real_name)
       `)
       .not("person_id", "is", null)
@@ -206,8 +210,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         confidence: face.recognition_confidence,
         verified: face.verified,
         image_url: face.gallery_images?.image_url,
-        bbox: face.insightface_bbox,
         gallery_title: face.gallery_images?.galleries?.title,
+        gallery_date: face.gallery_images?.galleries?.event_date,
       }))
     }
 
@@ -522,7 +526,7 @@ export async function getIssueDetailsAction(
           .from("photo_faces")
           .select(`
             id, photo_id, insightface_bbox,
-            gallery_images!inner(image_url, gallery_id, galleries(title))
+            gallery_images!inner(image_url, gallery_id, galleries(title, event_date))
           `)
           .eq("verified", true)
           .is("person_id", null)
@@ -533,6 +537,7 @@ export async function getIssueDetailsAction(
           bbox: item.insightface_bbox,
           image_url: item.gallery_images?.image_url,
           gallery_title: item.gallery_images?.galleries?.title,
+          gallery_date: item.gallery_images?.galleries?.event_date,
         }))
         break
       }
@@ -543,7 +548,7 @@ export async function getIssueDetailsAction(
           .from("photo_faces")
           .select(`
             id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
-            gallery_images!inner(image_url, galleries(title)),
+            gallery_images!inner(id, image_url, galleries(title)),
             people(real_name)
           `)
           .not("person_id", "is", null)
@@ -585,7 +590,7 @@ export async function getIssueDetailsAction(
 export async function confirmFaceAction(
   faceId: string,
   actionType: "verify" | "elevate",
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; data?: any[]; error?: string }> {
   const supabase = await createClient()
 
   try {
@@ -614,7 +619,20 @@ export async function confirmFaceAction(
 
       const result = await response.json()
 
-      if (result.person_id) {
+      if (result.data && result.data.length > 0) {
+        return {
+          success: true,
+          data: result.data.slice(0, 10).map((item: any) => ({
+            ...item,
+            confidence: item.recognition_confidence,
+            bbox: item.insightface_bbox,
+            image_url: item.gallery_images?.image_url,
+            gallery_title: item.gallery_images?.galleries?.title,
+            gallery_date: item.gallery_images?.galleries?.event_date,
+            person_name: item.people?.real_name,
+          })),
+        }
+      } else if (result.person_id) {
         const { error } = await supabase
           .from("photo_faces")
           .update({
