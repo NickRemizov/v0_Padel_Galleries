@@ -3,8 +3,21 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Loader2, AlertCircle, Users, Camera, CheckCircle2 } from "lucide-react"
+import {
+  Loader2,
+  AlertCircle,
+  Users,
+  Camera,
+  CheckCircle2,
+  AlertTriangle,
+  Trophy,
+  Images,
+  Wrench,
+  UserX,
+  HelpCircle,
+} from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 
 interface Statistics {
   overall: {
@@ -27,6 +40,24 @@ interface Statistics {
     people_count: number
     total_faces: number
   }>
+  attention: {
+    people_with_few_photos: Array<{ id: string; name: string; count: number }>
+    people_without_avatar: Array<{ id: string; name: string }>
+    unknown_faces_count: number
+    faces_without_descriptors: number
+  }
+  top_people: Array<{ id: string; name: string; count: number }>
+  galleries: {
+    fully_verified: number
+    partially_verified: number
+    not_processed: number
+    total: number
+  }
+  integrity: {
+    inconsistent_verified_confidence: number
+    orphaned_descriptors: number
+    avg_unverified_confidence: number
+  }
 }
 
 export function TrainingStatsCard() {
@@ -93,6 +124,15 @@ export function TrainingStatsCard() {
   const peopleWithoutVerified = stats.overall.total_people - stats.overall.people_with_verified
   const unverifiedFaces = stats.overall.total_faces - stats.overall.total_verified_faces
 
+  const hasAttentionItems =
+    stats.attention.people_with_few_photos.length > 0 ||
+    stats.attention.people_without_avatar.length > 0 ||
+    stats.attention.unknown_faces_count > 0 ||
+    stats.attention.faces_without_descriptors > 0
+
+  const hasIntegrityIssues =
+    stats.integrity.inconsistent_verified_confidence > 0 || stats.integrity.orphaned_descriptors > 0
+
   return (
     <Card>
       <CardHeader>
@@ -100,7 +140,7 @@ export function TrainingStatsCard() {
         <CardDescription>Текущее состояние базы данных лиц</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Summary Stats - Two rows */}
+        {/* ========== ОБЩАЯ СТАТИСТИКА ========== */}
         <div className="space-y-4">
           {/* Игроки */}
           <div className="rounded-lg border p-4">
@@ -168,7 +208,163 @@ export function TrainingStatsCard() {
           </div>
         </div>
 
-        {/* Distribution */}
+        {/* ========== ТРЕБУЮТ ВНИМАНИЯ ========== */}
+        {hasAttentionItems && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              <h4 className="font-medium text-amber-800">Требуют внимания</h4>
+            </div>
+
+            {/* Игроки с <3 фото */}
+            {stats.attention.people_with_few_photos.length > 0 && (
+              <div>
+                <div className="text-sm text-amber-700 mb-1">
+                  Игроки с &lt;3 фото ({stats.attention.people_with_few_photos.length}):
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {stats.attention.people_with_few_photos.map((person) => (
+                    <Badge key={person.id} variant="outline" className="bg-white text-amber-800 border-amber-300">
+                      {person.name} ({person.count})
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Неизвестные лица */}
+            {stats.attention.unknown_faces_count > 0 && (
+              <div className="flex items-center gap-2 text-sm text-amber-700">
+                <HelpCircle className="h-4 w-4" />
+                <span>
+                  Неизвестные лица (person_id=NULL): <strong>{stats.attention.unknown_faces_count}</strong>
+                </span>
+              </div>
+            )}
+
+            {/* Лица без дескрипторов */}
+            {stats.attention.faces_without_descriptors > 0 && (
+              <div className="flex items-center gap-2 text-sm text-amber-700">
+                <AlertCircle className="h-4 w-4" />
+                <span>
+                  Лица без дескрипторов: <strong>{stats.attention.faces_without_descriptors}</strong>
+                  <span className="text-xs ml-1">(не будут распознаваться)</span>
+                </span>
+              </div>
+            )}
+
+            {/* Игроки без аватара */}
+            {stats.attention.people_without_avatar.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 text-sm text-amber-700 mb-1">
+                  <UserX className="h-4 w-4" />
+                  <span>Игроки без аватара ({stats.attention.people_without_avatar.length}):</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {stats.attention.people_without_avatar.slice(0, 5).map((person) => (
+                    <Badge key={person.id} variant="outline" className="bg-white text-amber-800 border-amber-300">
+                      {person.name}
+                    </Badge>
+                  ))}
+                  {stats.attention.people_without_avatar.length > 5 && (
+                    <Badge variant="outline" className="bg-white text-amber-800 border-amber-300">
+                      +{stats.attention.people_without_avatar.length - 5} ещё
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========== ТОП ИГРОКОВ ========== */}
+        {stats.top_people.length > 0 && (
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Trophy className="h-5 w-5 text-amber-500" />
+              <h4 className="font-medium">Топ игроков по фото</h4>
+            </div>
+            <div className="space-y-2">
+              {stats.top_people.map((person, index) => (
+                <div key={person.id} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-bold ${index === 0 ? "text-amber-500" : index === 1 ? "text-gray-400" : index === 2 ? "text-amber-700" : "text-muted-foreground"}`}
+                    >
+                      #{index + 1}
+                    </span>
+                    <span>{person.name}</span>
+                  </div>
+                  <Badge variant="secondary">{person.count} фото</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ========== СОСТОЯНИЕ ГАЛЕРЕЙ ========== */}
+        {stats.galleries.total > 0 && (
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Images className="h-5 w-5 text-muted-foreground" />
+              <h4 className="font-medium">Состояние галерей</h4>
+            </div>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-green-600">{stats.galleries.fully_verified}</div>
+                <div className="text-xs text-muted-foreground">Полностью верифицированы</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-amber-600">{stats.galleries.partially_verified}</div>
+                <div className="text-xs text-muted-foreground">Частично обработаны</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-muted-foreground">{stats.galleries.not_processed}</div>
+                <div className="text-xs text-muted-foreground">Не обработаны</div>
+              </div>
+            </div>
+            <div className="mt-3">
+              <Progress value={(stats.galleries.fully_verified / stats.galleries.total) * 100} className="h-2" />
+              <div className="text-xs text-muted-foreground text-center mt-1">
+                {Math.round((stats.galleries.fully_verified / stats.galleries.total) * 100)}% полностью готово
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========== ПРОБЛЕМЫ ЦЕЛОСТНОСТИ ========== */}
+        {hasIntegrityIssues && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Wrench className="h-5 w-5 text-red-600" />
+              <h4 className="font-medium text-red-800">Проблемы целостности</h4>
+            </div>
+
+            {stats.integrity.inconsistent_verified_confidence > 0 && (
+              <div className="text-sm text-red-700">
+                • verified=true, но confidence≠1: <strong>{stats.integrity.inconsistent_verified_confidence}</strong>
+                <span className="text-xs ml-1">(запустите синхронизацию)</span>
+              </div>
+            )}
+
+            {stats.integrity.orphaned_descriptors > 0 && (
+              <div className="text-sm text-red-700">
+                • Осиротевшие дескрипторы: <strong>{stats.integrity.orphaned_descriptors}</strong>
+                <span className="text-xs ml-1">(ссылаются на несуществующие фото)</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========== СРЕДНЯЯ CONFIDENCE ========== */}
+        {stats.integrity.avg_unverified_confidence > 0 && (
+          <div className="rounded-lg border p-3 text-center">
+            <div className="text-sm text-muted-foreground">Средняя confidence неверифицированных</div>
+            <div className="text-xl font-bold">{(stats.integrity.avg_unverified_confidence * 100).toFixed(1)}%</div>
+          </div>
+        )}
+
+        {/* ========== РАСПРЕДЕЛЕНИЕ ========== */}
         <div className="space-y-3">
           <h4 className="text-sm font-medium">Распределение по количеству лиц</h4>
           <p className="text-xs text-muted-foreground">Сколько игроков имеют N и более подтверждённых фото</p>
@@ -185,7 +381,7 @@ export function TrainingStatsCard() {
           ))}
         </div>
 
-        {/* Histogram */}
+        {/* ========== ГИСТОГРАММА ========== */}
         <div className="space-y-2">
           <h4 className="text-sm font-medium">Гистограмма распределения</h4>
           <p className="text-xs text-muted-foreground">
