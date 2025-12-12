@@ -21,7 +21,7 @@ import {
 import { Check, Trash2, User } from "lucide-react"
 import {
   getPersonPhotosWithDetailsAction,
-  unlinkPersonFromPhotoAction,
+  unlinkPersonFromPhotoAction, // Updated import to use renamed function
   verifyPersonOnPhotoAction,
 } from "@/app/admin/actions"
 import { FaceTaggingDialog } from "./face-tagging-dialog"
@@ -43,69 +43,11 @@ interface PersonPhoto {
   faceId: string
   confidence: number | null
   verified: boolean
-  boundingBox: { x1: number; y1: number; x2: number; y2: number } | null
+  boundingBox: any
   faceCount: number
   filename: string
   gallery_name?: string
   shootDate?: string
-}
-
-/**
- * Calculate image position to center on face with optional scaling.
- * If face size < 320px, scales up so face appears at 320px.
- * If face size >= 320px, no scaling applied.
- */
-function calculateFacePosition(
-  boundingBox: { x1: number; y1: number; x2: number; y2: number } | null,
-  imageWidth: number,
-  imageHeight: number,
-  containerSize: number = 250
-): { scale: number; offsetX: number; offsetY: number } {
-  // If no boundingBox - just fit image to cover container
-  if (!boundingBox || !imageWidth || !imageHeight) {
-    const scale = Math.max(containerSize / imageWidth, containerSize / imageHeight) || 1
-    return {
-      scale,
-      offsetX: (containerSize - imageWidth * scale) / 2,
-      offsetY: (containerSize - imageHeight * scale) / 2,
-    }
-  }
-
-  const { x1, y1, x2, y2 } = boundingBox
-  const faceCenterX = (x1 + x2) / 2
-  const faceCenterY = (y1 + y2) / 2
-  const faceWidth = x2 - x1
-  const faceHeight = y2 - y1
-  const faceSize = Math.max(faceWidth, faceHeight)
-
-  // Minimum face size in container pixels
-  const minFaceSize = 320
-
-  // Calculate scale: if face < 320px, scale up so it appears at 320px
-  let scale = 1
-  if (faceSize > 0 && faceSize < minFaceSize) {
-    scale = minFaceSize / faceSize
-  }
-
-  // Ensure image covers the container (no empty edges)
-  const minScaleToFit = Math.max(containerSize / imageWidth, containerSize / imageHeight)
-  scale = Math.max(scale, minScaleToFit)
-
-  // Calculate offset to center face in container
-  const containerCenter = containerSize / 2
-  let offsetX = containerCenter - faceCenterX * scale
-  let offsetY = containerCenter - faceCenterY * scale
-
-  // Constrain offset so image covers container (no empty edges)
-  const scaledWidth = imageWidth * scale
-  const scaledHeight = imageHeight * scale
-
-  // offsetX should be <= 0 (image starts at or before left edge)
-  // and >= containerSize - scaledWidth (image ends at or after right edge)
-  offsetX = Math.min(0, Math.max(containerSize - scaledWidth, offsetX))
-  offsetY = Math.min(0, Math.max(containerSize - scaledHeight, offsetY))
-
-  return { scale, offsetX, offsetY }
 }
 
 export function PersonGalleryDialog({ personId, personName, open, onOpenChange }: PersonGalleryDialogProps) {
@@ -342,31 +284,18 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {photos.map((photo) => {
                   const canVerify = photo.faceCount === 1 && !photo.verified
-                  const containerSize = 250
-                  const { scale, offsetX, offsetY } = calculateFacePosition(
-                    photo.boundingBox,
-                    photo.width,
-                    photo.height,
-                    containerSize
-                  )
 
                   return (
                     <div key={photo.id} className="group relative overflow-hidden rounded-lg border">
                       <div
-                        className="relative aspect-square cursor-pointer overflow-hidden"
+                        className="relative aspect-square cursor-pointer"
                         onClick={() => handleOpenTaggingDialog(photo.id, photo.image_url)}
                       >
                         <Image
                           src={photo.image_url || "/placeholder.svg"}
                           alt="Photo"
-                          width={photo.width || containerSize}
-                          height={photo.height || containerSize}
-                          style={{
-                            position: "absolute",
-                            transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
-                            transformOrigin: "top left",
-                            maxWidth: "none",
-                          }}
+                          fill
+                          className="object-cover"
                           sizes="250px"
                         />
 
