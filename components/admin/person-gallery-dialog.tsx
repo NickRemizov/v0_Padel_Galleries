@@ -43,7 +43,7 @@ interface PersonPhoto {
   faceId: string
   confidence: number | null
   verified: boolean
-  boundingBox: any
+  boundingBox: number[] | null
   faceCount: number
   filename: string
   gallery_name?: string
@@ -51,40 +51,56 @@ interface PersonPhoto {
 }
 
 /**
- * Calculate face position for centered crop using CSS transform
- *
- * @param bbox - Bounding box from InsightFace [x1, y1, x2, y2] in absolute pixels
- * @param imgWidth - Original image width in pixels
+ * ============================================================================
+ * CRITICAL: DO NOT MODIFY THIS FUNCTION WITHOUT TESTING
+ * ============================================================================
+ * 
+ * Calculate face position for centered crop using CSS transform.
+ * 
+ * @param bbox - Bounding box from InsightFace as array [x1, y1, x2, y2] or null
+ * @param imgWidth - Original image width in pixels  
  * @param imgHeight - Original image height in pixels
- * @returns CSS transform string and scale for positioning
- *
- * Logic:
- * 1. Calculate face center in absolute pixels
- * 2. Convert to percentage relative to image dimensions
- * 3. Apply transform to shift the center of the face to container center
- * 4. Scale image to ensure face is large enough (minimum 40% of container)
- *
- * Container is square (aspect-ratio: 1/1), so we need to handle both:
- * - Portrait images (height > width): scale based on width
- * - Landscape images (width > height): scale based on height
+ * @returns Object with transform string and scale, or null if bbox is invalid
+ * 
+ * IMPORTANT: bbox can be null/undefined from the API. This function MUST
+ * handle that case gracefully by returning null (which triggers fallback
+ * to standard object-fit: cover in the render code).
  */
 function calculateFacePosition(
-  bbox: [number, number, number, number],
+  bbox: number[] | null | undefined,
   imgWidth: number,
   imgHeight: number,
-): { transform: string; scale: number } {
-  const [x1, y1, x2, y2] = bbox
+): { transform: string; scale: number } | null {
+  // CRITICAL: Validate bbox before destructuring to prevent "e is not iterable" crash
+  if (!bbox || !Array.isArray(bbox) || bbox.length < 4) {
+    return null
+  }
+  
+  // Validate image dimensions
+  if (!imgWidth || !imgHeight || imgWidth <= 0 || imgHeight <= 0) {
+    return null
+  }
+
+  const x1 = Number(bbox[0])
+  const y1 = Number(bbox[1])
+  const x2 = Number(bbox[2])
+  const y2 = Number(bbox[3])
+  
+  // Validate parsed values
+  if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
+    return null
+  }
 
   // Face dimensions in pixels
   const faceWidth = x2 - x1
   const faceHeight = y2 - y1
+  
+  if (faceWidth <= 0 || faceHeight <= 0) {
+    return null
+  }
+  
   const faceCenterX = x1 + faceWidth / 2
   const faceCenterY = y1 + faceHeight / 2
-
-  console.log("[v0] calculateFacePosition: bbox", bbox)
-  console.log("[v0] calculateFacePosition: image dimensions", { imgWidth, imgHeight })
-  console.log("[v0] calculateFacePosition: face dimensions", { faceWidth, faceHeight })
-  console.log("[v0] calculateFacePosition: face center (px)", { faceCenterX, faceCenterY })
 
   // Container is square, calculate scale to fit image
   const containerAspect = 1 // square
@@ -100,8 +116,6 @@ function calculateFacePosition(
     baseScale = containerAspect / imageAspect
   }
 
-  console.log("[v0] calculateFacePosition: imageAspect", imageAspect, "baseScale", baseScale)
-
   // Calculate additional scale to make face prominent (at least 40% of container)
   const faceScale = Math.max(faceWidth, faceHeight) / Math.min(imgWidth, imgHeight)
   const targetFaceScale = 0.4 // Face should occupy ~40% of container
@@ -109,26 +123,13 @@ function calculateFacePosition(
 
   const totalScale = baseScale * additionalScale
 
-  console.log(
-    "[v0] calculateFacePosition: faceScale",
-    faceScale,
-    "additionalScale",
-    additionalScale,
-    "totalScale",
-    totalScale,
-  )
-
   // Calculate transform to center the face
-  // Transform moves the image, so we need to calculate offset from center
   const faceCenterXPercent = (faceCenterX / imgWidth) * 100
   const faceCenterYPercent = (faceCenterY / imgHeight) * 100
 
   // Offset to move face center to container center (50%, 50%)
   const offsetX = 50 - faceCenterXPercent
   const offsetY = 50 - faceCenterYPercent
-
-  console.log("[v0] calculateFacePosition: face center (%)", { faceCenterXPercent, faceCenterYPercent })
-  console.log("[v0] calculateFacePosition: offset (%)", { offsetX, offsetY })
 
   return {
     transform: `translate(${offsetX}%, ${offsetY}%) scale(${totalScale})`,
@@ -358,9 +359,8 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                 {photos.map((photo) => {
                   const canVerify = photo.faceCount === 1 && !photo.verified
 
-                  const facePosition = photo.boundingBox
-                    ? calculateFacePosition(photo.boundingBox, photo.width, photo.height)
-                    : null
+                  // Calculate face position - returns null if bbox is invalid
+                  const facePosition = calculateFacePosition(photo.boundingBox, photo.width, photo.height)
 
                   return (
                     <div key={photo.id} className="group relative overflow-hidden rounded-lg border">
@@ -371,8 +371,8 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                         <Image
                           src={photo.image_url || "/placeholder.svg"}
                           alt="Photo"
-                          width={photo.width}
-                          height={photo.height}
+                          width={photo.width || 250}
+                          height={photo.height || 250}
                           style={
                             facePosition
                               ? {
