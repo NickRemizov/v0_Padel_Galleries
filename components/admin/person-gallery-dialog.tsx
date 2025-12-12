@@ -58,18 +58,18 @@ interface PersonPhoto {
 }
 
 /**
- * Calculate face position for centered crop using CSS object-position.
+ * Calculate face styles for centered crop using CSS background properties.
  *
  * @param bbox - Bounding box as object {x, y, width, height}
  * @param imgWidth - Original image width in pixels
  * @param imgHeight - Original image height in pixels
- * @returns Object with objectPosition CSS value, or null if bbox is invalid
+ * @returns Object with backgroundSize and backgroundPosition CSS values, or null if bbox is invalid
  */
-function calculateFacePosition(
+function calculateFaceStyles(
   bbox: BoundingBox | null | undefined,
   imgWidth: number,
   imgHeight: number,
-): { objectPosition: string } | null {
+): { backgroundSize: string; backgroundPosition: string } | null {
   // Validate bbox - must be object with x, y, width, height
   if (!bbox || typeof bbox !== "object") {
     return null
@@ -88,14 +88,17 @@ function calculateFacePosition(
   }
 
   // Calculate face center as percentage of image dimensions
-  const faceCenterX = x + width / 2
-  const faceCenterY = y + height / 2
+  const faceCenterX = (x + width / 2) / imgWidth
+  const faceCenterY = (y + height / 2) / imgHeight
 
-  const faceCenterXPercent = (faceCenterX / imgWidth) * 100
-  const faceCenterYPercent = (faceCenterY / imgHeight) * 100
+  // Target: face should occupy ~35% of container height
+  const targetFaceHeightPercent = 0.35
+  const scale = targetFaceHeightPercent / (height / imgHeight)
+  const clampedScale = Math.min(scale, 5) // Max 5x zoom
 
   return {
-    objectPosition: `${faceCenterXPercent}% ${faceCenterYPercent}%`,
+    backgroundSize: `${clampedScale * 100}%`,
+    backgroundPosition: `${faceCenterX * 100}% ${faceCenterY * 100}%`,
   }
 }
 
@@ -325,8 +328,8 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                 {photos.map((photo) => {
                   const canVerify = photo.faceCount === 1 && !photo.verified
 
-                  // Calculate face position - returns null if bbox is invalid
-                  const facePosition = calculateFacePosition(photo.boundingBox, photo.width, photo.height)
+                  // Calculate face styles - returns null if bbox is invalid
+                  const faceStyles = calculateFaceStyles(photo.boundingBox, photo.width, photo.height)
 
                   return (
                     <div key={photo.id} className="group relative overflow-hidden rounded-lg border">
@@ -334,16 +337,25 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                         className="relative aspect-square cursor-pointer overflow-hidden"
                         onClick={() => handleOpenTaggingDialog(photo.id, photo.image_url)}
                       >
-                        <Image
-                          src={photo.image_url || "/placeholder.svg"}
-                          alt="Photo"
-                          fill
-                          style={{
-                            objectFit: "cover",
-                            objectPosition: facePosition?.objectPosition || "center",
-                          }}
-                          sizes="250px"
-                        />
+                        {faceStyles ? (
+                          <div
+                            className="w-full h-full"
+                            style={{
+                              backgroundImage: `url(${photo.image_url || "/placeholder.svg"})`,
+                              backgroundSize: faceStyles.backgroundSize,
+                              backgroundPosition: faceStyles.backgroundPosition,
+                              backgroundRepeat: "no-repeat",
+                            }}
+                          />
+                        ) : (
+                          <Image
+                            src={photo.image_url || "/placeholder.svg"}
+                            alt="Photo"
+                            fill
+                            style={{ objectFit: "cover" }}
+                            sizes="250px"
+                          />
+                        )}
 
                         <div
                           className="absolute left-2 top-2 z-20"
