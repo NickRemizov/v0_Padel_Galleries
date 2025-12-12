@@ -219,7 +219,9 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   async function handleVerify(photoId: string) {
     const result = await verifyPersonOnPhotoAction(photoId, personId)
     if (result.success) {
-      await loadPhotos()
+      setPhotos((prev) =>
+        prev.map((photo) => (photo.id === photoId ? { ...photo, verified: true, confidence: 1 } : photo)),
+      )
     }
   }
 
