@@ -58,83 +58,45 @@ interface PersonPhoto {
 }
 
 /**
- * Calculate face position for centered crop using CSS transform.
- * 
- * @param bbox - Bounding box as object {x, y, width, height} (same format as face-tagging-dialog)
- * @param imgWidth - Original image width in pixels  
+ * Calculate face position for centered crop using CSS object-position.
+ *
+ * @param bbox - Bounding box as object {x, y, width, height}
+ * @param imgWidth - Original image width in pixels
  * @param imgHeight - Original image height in pixels
- * @returns Object with transform string and scale, or null if bbox is invalid
+ * @returns Object with objectPosition CSS value, or null if bbox is invalid
  */
 function calculateFacePosition(
   bbox: BoundingBox | null | undefined,
   imgWidth: number,
   imgHeight: number,
-): { transform: string; scale: number } | null {
-  // DEBUG: Log input parameters
-  console.log("[FaceCentering] calculateFacePosition called:", { bbox, imgWidth, imgHeight })
-  
+): { objectPosition: string } | null {
   // Validate bbox - must be object with x, y, width, height
   if (!bbox || typeof bbox !== "object") {
-    console.log("[FaceCentering] REJECTED: bbox is null or not an object")
-    return null
-  }
-  
-  const { x, y, width, height } = bbox
-  
-  // Validate all required fields exist and are numbers
-  if (typeof x !== "number" || typeof y !== "number" || 
-      typeof width !== "number" || typeof height !== "number") {
-    console.log("[FaceCentering] REJECTED: bbox fields are not numbers", { x, y, width, height })
-    return null
-  }
-  
-  // Validate dimensions are positive
-  if (width <= 0 || height <= 0 || imgWidth <= 0 || imgHeight <= 0) {
-    console.log("[FaceCentering] REJECTED: dimensions are not positive", { width, height, imgWidth, imgHeight })
     return null
   }
 
-  // Face center coordinates
+  const { x, y, width, height } = bbox
+
+  // Validate all required fields exist and are numbers
+  if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number") {
+    return null
+  }
+
+  // Validate dimensions are positive
+  if (width <= 0 || height <= 0 || imgWidth <= 0 || imgHeight <= 0) {
+    return null
+  }
+
+  // Calculate face center as percentage of image dimensions
   const faceCenterX = x + width / 2
   const faceCenterY = y + height / 2
 
-  // Container is square, calculate scale to fit image
-  const containerAspect = 1 // square
-  const imageAspect = imgWidth / imgHeight
-
-  // Base scale to fill container (like object-cover)
-  let baseScale = 1
-  if (imageAspect > containerAspect) {
-    // Landscape: scale based on height
-    baseScale = 1
-  } else {
-    // Portrait: scale based on width
-    baseScale = containerAspect / imageAspect
-  }
-
-  // Calculate additional scale to make face prominent (at least 40% of container)
-  const faceSize = Math.max(width, height)
-  const faceScale = faceSize / Math.min(imgWidth, imgHeight)
-  const targetFaceScale = 0.4 // Face should occupy ~40% of container
-  const additionalScale = Math.max(1, targetFaceScale / faceScale)
-
-  const totalScale = baseScale * additionalScale
-
-  // Calculate transform to center the face
   const faceCenterXPercent = (faceCenterX / imgWidth) * 100
   const faceCenterYPercent = (faceCenterY / imgHeight) * 100
 
-  // Offset to move face center to container center (50%, 50%)
-  const offsetX = 50 - faceCenterXPercent
-  const offsetY = 50 - faceCenterYPercent
-
-  const result = {
-    transform: `translate(${offsetX}%, ${offsetY}%) scale(${totalScale})`,
-    scale: totalScale,
+  return {
+    objectPosition: `${faceCenterXPercent}% ${faceCenterYPercent}%`,
   }
-  
-  console.log("[FaceCentering] SUCCESS: returning transform", result)
-  return result
 }
 
 export function PersonGalleryDialog({ personId, personName, open, onOpenChange }: PersonGalleryDialogProps) {
@@ -166,7 +128,10 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   async function loadPhotos() {
     setLoading(true)
     const result = await getPersonPhotosWithDetailsAction(personId)
-    console.log("[FaceCentering] Loaded photos:", result.data?.map(p => ({ id: p.id, boundingBox: p.boundingBox, width: p.width, height: p.height })))
+    console.log(
+      "[FaceCentering] Loaded photos:",
+      result.data?.map((p) => ({ id: p.id, boundingBox: p.boundingBox, width: p.width, height: p.height })),
+    )
     if (result.success && result.data) {
       setPhotos(result.data)
     } else if (result.error) {
@@ -372,25 +337,11 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                         <Image
                           src={photo.image_url || "/placeholder.svg"}
                           alt="Photo"
-                          width={photo.width || 250}
-                          height={photo.height || 250}
-                          style={
-                            facePosition
-                              ? {
-                                  position: "absolute",
-                                  top: "50%",
-                                  left: "50%",
-                                  transform: facePosition.transform,
-                                  transformOrigin: "center",
-                                  maxWidth: "none",
-                                  maxHeight: "none",
-                                }
-                              : {
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                }
-                          }
+                          fill
+                          style={{
+                            objectFit: "cover",
+                            objectPosition: facePosition?.objectPosition || "center",
+                          }}
                           sizes="250px"
                         />
 
