@@ -34,6 +34,13 @@ interface PersonGalleryDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+interface BoundingBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 interface PersonPhoto {
   id: string
   image_url: string
@@ -43,7 +50,7 @@ interface PersonPhoto {
   faceId: string
   confidence: number | null
   verified: boolean
-  boundingBox: number[] | null
+  boundingBox: BoundingBox | null
   faceCount: number
   filename: string
   gallery_name?: string
@@ -51,56 +58,39 @@ interface PersonPhoto {
 }
 
 /**
- * ============================================================================
- * CRITICAL: DO NOT MODIFY THIS FUNCTION WITHOUT TESTING
- * ============================================================================
- * 
  * Calculate face position for centered crop using CSS transform.
  * 
- * @param bbox - Bounding box from InsightFace as array [x1, y1, x2, y2] or null
+ * @param bbox - Bounding box as object {x, y, width, height} (same format as face-tagging-dialog)
  * @param imgWidth - Original image width in pixels  
  * @param imgHeight - Original image height in pixels
  * @returns Object with transform string and scale, or null if bbox is invalid
- * 
- * IMPORTANT: bbox can be null/undefined from the API. This function MUST
- * handle that case gracefully by returning null (which triggers fallback
- * to standard object-fit: cover in the render code).
  */
 function calculateFacePosition(
-  bbox: number[] | null | undefined,
+  bbox: BoundingBox | null | undefined,
   imgWidth: number,
   imgHeight: number,
 ): { transform: string; scale: number } | null {
-  // CRITICAL: Validate bbox before destructuring to prevent "e is not iterable" crash
-  if (!bbox || !Array.isArray(bbox) || bbox.length < 4) {
+  // Validate bbox - must be object with x, y, width, height
+  if (!bbox || typeof bbox !== "object") {
     return null
   }
   
-  // Validate image dimensions
-  if (!imgWidth || !imgHeight || imgWidth <= 0 || imgHeight <= 0) {
+  const { x, y, width, height } = bbox
+  
+  // Validate all required fields exist and are numbers
+  if (typeof x !== "number" || typeof y !== "number" || 
+      typeof width !== "number" || typeof height !== "number") {
+    return null
+  }
+  
+  // Validate dimensions are positive
+  if (width <= 0 || height <= 0 || imgWidth <= 0 || imgHeight <= 0) {
     return null
   }
 
-  const x1 = Number(bbox[0])
-  const y1 = Number(bbox[1])
-  const x2 = Number(bbox[2])
-  const y2 = Number(bbox[3])
-  
-  // Validate parsed values
-  if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
-    return null
-  }
-
-  // Face dimensions in pixels
-  const faceWidth = x2 - x1
-  const faceHeight = y2 - y1
-  
-  if (faceWidth <= 0 || faceHeight <= 0) {
-    return null
-  }
-  
-  const faceCenterX = x1 + faceWidth / 2
-  const faceCenterY = y1 + faceHeight / 2
+  // Face center coordinates
+  const faceCenterX = x + width / 2
+  const faceCenterY = y + height / 2
 
   // Container is square, calculate scale to fit image
   const containerAspect = 1 // square
@@ -117,7 +107,8 @@ function calculateFacePosition(
   }
 
   // Calculate additional scale to make face prominent (at least 40% of container)
-  const faceScale = Math.max(faceWidth, faceHeight) / Math.min(imgWidth, imgHeight)
+  const faceSize = Math.max(width, height)
+  const faceScale = faceSize / Math.min(imgWidth, imgHeight)
   const targetFaceScale = 0.4 // Face should occupy ~40% of container
   const additionalScale = Math.max(1, targetFaceScale / faceScale)
 
