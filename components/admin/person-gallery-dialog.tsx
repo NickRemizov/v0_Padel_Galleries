@@ -59,6 +59,7 @@ interface PersonPhoto {
 
 /**
  * Calculate face styles for centered crop using CSS background properties.
+ * Version 3: Less aggressive zoom + upward focus shift to avoid cutting forehead
  *
  * @param bbox - Bounding box as object {x, y, width, height}
  * @param imgWidth - Original image width in pixels
@@ -87,18 +88,35 @@ function calculateFaceStyles(
     return null
   }
 
-  // Calculate face center as percentage of image dimensions
-  const faceCenterX = (x + width / 2) / imgWidth
-  const faceCenterY = (y + height / 2) / imgHeight
+  const focusX = x + width / 2
+  const focusY = y + height * 0.3 // Move focus point 20% up from center
 
-  // Target: face should occupy ~35% of container height
-  const targetFaceHeightPercent = 0.35
-  const scale = targetFaceHeightPercent / (height / imgHeight)
-  const clampedScale = Math.min(scale, 5) // Max 5x zoom
+  const targetFaceHeightPercent = 0.25
+  const faceHeightRatio = height / imgHeight
+
+  const containerAspect = 1 // Square container (aspect-square)
+  const imageAspect = imgWidth / imgHeight
+
+  let baseCoverScale: number
+  if (imageAspect > containerAspect) {
+    // Landscape: height fills, width overflows
+    baseCoverScale = 1
+  } else {
+    // Portrait or square: width fills, height overflows
+    baseCoverScale = imageAspect / containerAspect
+  }
+
+  // Scale to achieve target face size
+  const scale = (targetFaceHeightPercent / faceHeightRatio) * baseCoverScale
+  const clampedScale = Math.min(scale, 4)
+
+  // Calculate focus point as percentage
+  const focusCenterX = focusX / imgWidth
+  const focusCenterY = focusY / imgHeight
 
   return {
     backgroundSize: `${clampedScale * 100}%`,
-    backgroundPosition: `${faceCenterX * 100}% ${faceCenterY * 100}%`,
+    backgroundPosition: `${focusCenterX * 100}% ${focusCenterY * 100}%`,
   }
 }
 
