@@ -59,6 +59,7 @@ function formatFileSize(bytes: number | null): string {
 const GalleryImageCard = memo(function GalleryImageCard({
   image,
   photoFacesMap,
+  photoFacesLoaded,
   recognitionStats,
   onTag,
   onDelete,
@@ -67,6 +68,7 @@ const GalleryImageCard = memo(function GalleryImageCard({
 }: {
   image: GalleryImage
   photoFacesMap: Record<string, { verified: boolean; confidence: number; person_id: string | null }[]>
+  photoFacesLoaded: boolean
   recognitionStats: Record<string, { total: number; recognized: number; fullyRecognized: boolean }>
   onTag: (id: string, url: string) => void
   onDelete: (id: string) => void
@@ -147,7 +149,7 @@ const GalleryImageCard = memo(function GalleryImageCard({
             {image.download_count}
           </div>
         )}
-        {hasBeenProcessed && !hasDetected && (
+        {photoFacesLoaded && hasBeenProcessed && !hasDetected && (
           <div className="absolute left-2 bottom-2 bg-gray-500 text-white rounded px-2 py-1 text-xs font-semibold shadow-lg z-10">
             NFD
           </div>
@@ -200,6 +202,7 @@ export function GalleryImagesManager({
   const [photoFacesMap, setPhotoFacesMap] = useState<
     Record<string, { verified: boolean; confidence: number; person_id: string | null }[]>
   >({})
+  const [photoFacesLoaded, setPhotoFacesLoaded] = useState(false) // Add photoFacesLoaded state to track when data is ready
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set())
@@ -216,6 +219,7 @@ export function GalleryImagesManager({
 
   useEffect(() => {
     if (open) {
+      setPhotoFacesLoaded(false)
       loadImages()
       loadRecognitionStats()
     }
@@ -290,12 +294,14 @@ export function GalleryImagesManager({
       })
 
       setPhotoFacesMap(facesMap)
+      setPhotoFacesLoaded(true) // Set photoFacesLoaded to true when data is ready
     } else {
       console.log("[v0] [GalleryImagesManager] No faces data or error:", {
         success: result.success,
         error: result.error,
         hasData: !!result.data,
       })
+      setPhotoFacesLoaded(true) // Set photoFacesLoaded to true even on error/empty
     }
   }
 
@@ -748,6 +754,7 @@ export function GalleryImagesManager({
                       key={image.id}
                       image={image}
                       photoFacesMap={photoFacesMap}
+                      photoFacesLoaded={photoFacesLoaded}
                       recognitionStats={recognitionStats}
                       onTag={handleTagImage}
                       onDelete={handleDelete}
@@ -827,14 +834,17 @@ export function GalleryImagesManager({
           open={!!taggingImage}
           onOpenChange={async (open) => {
             if (!open) {
-              console.log("[v4.7] GalleryImagesManager: FaceTaggingDialog closed, keeping gallery open without reload")
+              console.log("[v4.8] GalleryImagesManager: FaceTaggingDialog closed")
               setTaggingImage(null)
+              // Всегда обновляем бейджи при закрытии
+              await loadRecognitionStats()
+              await loadPhotoFaces()
             }
           }}
           onSave={async () => {
-            console.log("[v4.7] GalleryImagesManager: FaceTaggingDialog onSave called")
-            await loadRecognitionStats()
-            await loadPhotoFaces()
+            console.log("[v4.8] GalleryImagesManager: FaceTaggingDialog onSave called")
+            // onSave теперь только для промежуточных сохранений
+            // Основное обновление в onOpenChange
           }}
         />
       )}
@@ -857,11 +867,18 @@ export function GalleryImagesManager({
       {showUnknownFaces && (
         <UnknownFacesReviewDialog
           open={showUnknownFaces}
-          onOpenChange={setShowUnknownFaces}
+          onOpenChange={(open) => {
+            setShowUnknownFaces(open)
+            if (!open) {
+              // Всегда обновляем при закрытии (в т.ч. досрочном)
+              loadRecognitionStats()
+              loadPhotoFaces()
+            }
+          }}
           galleryId={galleryId}
           onComplete={() => {
-            loadImages()
-            loadPhotoFaces()
+            // onComplete вызывается когда все кластеры обработаны
+            // Дополнительное обновление уже не нужно - сделано в onOpenChange
           }}
         />
       )}

@@ -114,12 +114,10 @@ export function RegenerateDescriptorsDialog({ open, onOpenChange, onComplete }: 
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : totalFaces === 0 && !processing ? (
-            <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-4">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="font-medium text-green-800">Все дескрипторы в порядке!</p>
-                <p className="text-sm text-green-600">Нет записей с привязанными игроками без дескрипторов.</p>
-              </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
+              <CheckCircle2 className="mx-auto h-8 w-8 text-blue-600 mb-2" />
+              <p className="font-medium text-blue-800">Все дескрипторы в порядке!</p>
+              <p className="text-sm text-blue-600">Нет записей с привязанными игроками без дескрипторов</p>
             </div>
           ) : !processing && processedFaces === 0 ? (
             <div className="space-y-4">
@@ -160,32 +158,41 @@ export function RegenerateDescriptorsDialog({ open, onOpenChange, onComplete }: 
 
               {/* Results summary */}
               {!processing && processedFaces > 0 && (
-                <div className="space-y-2 rounded-lg border p-4">
-                  <h3 className="font-semibold">Результаты обработки</h3>
+                <div className="space-y-4">
+                  {/* Main counters - same style as cleanup-duplicates */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="rounded bg-muted p-3 text-center">
-                      <div className="text-2xl font-bold">{totalFaces}</div>
-                      <div className="text-xs text-muted-foreground">Лиц обработано</div>
+                    <div className="rounded-lg border p-4 text-center">
+                      <div className="text-3xl font-bold">{totalFaces}</div>
+                      <div className="text-sm text-muted-foreground">Лиц обработано</div>
                     </div>
-                    <div className="rounded bg-muted p-3 text-center">
-                      <div className="text-2xl font-bold">{successCount}</div>
-                      <div className="text-xs text-muted-foreground">Дескрипторов создано</div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm mt-2">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <span>
-                        Успешно: <strong className="text-green-600">{successCount}</strong>
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <XCircle className="h-4 w-4 text-red-600" />
-                      <span>
-                        Ошибок: <strong className="text-red-600">{errorCount}</strong>
-                      </span>
+                    <div className="rounded-lg border p-4 text-center">
+                      <div className="text-3xl font-bold">{successCount}</div>
+                      <div className="text-sm text-muted-foreground">Дескрипторов создано</div>
                     </div>
                   </div>
+
+                  {/* Details in green box - same style */}
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-green-700">Успешно:</span>
+                        <span className="ml-2 font-bold text-green-800">{successCount}</span>
+                      </div>
+                      <div>
+                        <span className="text-green-700">Ошибок:</span>
+                        <span className="ml-2 font-bold text-green-800">{errorCount}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* All good message - same style */}
+                  {errorCount === 0 && successCount > 0 && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
+                      <CheckCircle2 className="mx-auto h-8 w-8 text-blue-600 mb-2" />
+                      <p className="font-medium text-blue-800">Все дескрипторы восстановлены!</p>
+                      <p className="text-sm text-blue-600">Игроки теперь могут распознаваться автоматически</p>
+                    </div>
+                  )}
                 </div>
               )}
 
