@@ -180,22 +180,43 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
     }
 
-    // 5. Photo_id не существует в gallery_images
-    const { data: allPhotoFacesWithPhotos } = await supabase
-      .from("photo_faces")
-      .select("id, photo_id, insightface_bbox")
+    // 5. Photo_id не существует в gallery_images (с пагинацией)
+    let allPhotoFacesWithPhotos: { id: string; photo_id: string; insightface_bbox: any }[] = []
+    let offset = 0
+    const pageSize = 1000
 
-    if (allPhotoFacesWithPhotos) {
+    while (true) {
+      const { data: batch } = await supabase
+        .from("photo_faces")
+        .select("id, photo_id, insightface_bbox")
+        .range(offset, offset + pageSize - 1)
+
+      if (!batch || batch.length === 0) break
+      allPhotoFacesWithPhotos = allPhotoFacesWithPhotos.concat(batch)
+      if (batch.length < pageSize) break
+      offset += pageSize
+    }
+
+    console.log(`[v0] Total photo_faces loaded for nonExistentPhoto check: ${allPhotoFacesWithPhotos.length}`)
+
+    if (allPhotoFacesWithPhotos.length > 0) {
+      // Получаем уникальные photo_id
       const photoIds = [...new Set(allPhotoFacesWithPhotos.map((pf) => pf.photo_id))]
-      const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", photoIds)
 
-      const existingPhotoIds = new Set(existingPhotos?.map((p) => p.id) || [])
+      // Проверяем существующие фото батчами по 500
+      const existingPhotoIds = new Set<string>()
+      for (let i = 0; i < photoIds.length; i += 500) {
+        const batch = photoIds.slice(i, i + 500)
+        const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", batch)
+        existingPhotos?.forEach((p) => existingPhotoIds.add(p.id))
+      }
+
       const nonExistentPhotoFaces = allPhotoFacesWithPhotos.filter((pf) => !existingPhotoIds.has(pf.photo_id))
 
       photoFaces.nonExistentPhoto = nonExistentPhotoFaces.length
       console.log("[v0] nonExistentPhoto count:", photoFaces.nonExistentPhoto)
       if (nonExistentPhotoFaces.length > 0) {
-        details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 10).map((item: any) => ({
+        details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 50).map((item: any) => ({
           ...item,
           bbox: item.insightface_bbox,
         }))

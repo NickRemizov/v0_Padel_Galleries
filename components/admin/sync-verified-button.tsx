@@ -48,7 +48,7 @@ export function SyncVerifiedButton() {
       ) : (
         <>
           <RefreshCw className="mr-2 h-4 w-4" />
-          Синхронизировать verified/confidence
+          Синхронизировать
         </>
       )}
     </Button>

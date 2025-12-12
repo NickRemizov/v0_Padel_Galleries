@@ -8,27 +8,37 @@ export async function syncVerifiedAndConfidenceAction() {
   const supabase = await createClient()
 
   try {
-    logger.debug("actions/cleanup", "Starting sync of verified and confidence fields...")
+    logger.debug("actions/cleanup", "Starting sync of verified and recognition_confidence fields...")
 
+    // 1. Установить recognition_confidence=1.0 где verified=true
     const { data: verifiedRecords, error: verifiedError } = await supabase
       .from("photo_faces")
-      .update({ confidence: 1.0 })
+      .update({ recognition_confidence: 1.0 })
       .eq("verified", true)
+      .neq("recognition_confidence", 1.0)
       .select("id")
 
     if (verifiedError) throw verifiedError
 
     const verifiedCount = verifiedRecords?.length || 0
-    logger.debug("actions/cleanup", `Updated ${verifiedCount} records: set confidence=1 where verified=true`)
+    logger.debug(
+      "actions/cleanup",
+      `Updated ${verifiedCount} records: set recognition_confidence=1 where verified=true`,
+    )
 
+    // 2. Установить verified=true где recognition_confidence=1.0
     const { data: confidenceRecords, error: confidenceError } = await supabase
       .from("photo_faces")
       .update({ verified: true })
-      .eq("confidence", 1.0)
+      .eq("recognition_confidence", 1.0)
+      .eq("verified", false)
       .select("id")
 
     if (confidenceError) throw confidenceError
 
+    const confidenceCount = confidenceRecords?.length || 0
+
+    // 3. Статистика
     const { count: totalVerified } = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
@@ -37,14 +47,17 @@ export async function syncVerifiedAndConfidenceAction() {
     const { count: totalConfidence1 } = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
-      .eq("confidence", 1.0)
+      .eq("recognition_confidence", 1.0)
 
-    logger.debug("actions/cleanup", `Final stats: ${totalVerified} verified, ${totalConfidence1} confidence=1`)
+    logger.debug(
+      "actions/cleanup",
+      `Final stats: ${totalVerified} verified, ${totalConfidence1} recognition_confidence=1`,
+    )
 
     revalidatePath("/admin")
-    logger.info("actions/cleanup", "Sync verified and confidence completed", {
+    logger.info("actions/cleanup", "Sync verified and recognition_confidence completed", {
       verifiedCount,
-      confidenceCount: totalConfidence1 || 0,
+      confidenceCount,
       totalVerified,
       totalConfidence1,
     })
@@ -53,14 +66,14 @@ export async function syncVerifiedAndConfidenceAction() {
       success: true,
       data: {
         updatedVerified: verifiedCount,
-        updatedConfidence: totalConfidence1 || 0,
+        updatedConfidence: confidenceCount,
         totalVerified: totalVerified || 0,
         totalConfidence1: totalConfidence1 || 0,
       },
     }
   } catch (error: any) {
-    logger.error("actions/cleanup", "Error syncing verified and confidence", error)
-    return { error: error.message || "Failed to sync verified and confidence" }
+    logger.error("actions/cleanup", "Error syncing verified and recognition_confidence", error)
+    return { error: error.message || "Failed to sync verified and recognition_confidence" }
   }
 }
 
@@ -81,17 +94,17 @@ export async function cleanupUnverifiedFacesAction() {
     const { data: inconsistentRecords, error: inconsistentError } = await supabase
       .from("photo_faces")
       .select(
-        "id, photo_id, person_id, verified, confidence, people(real_name, telegram_name), gallery_images(original_filename)",
+        "id, photo_id, person_id, verified, recognition_confidence, people(real_name, telegram_name), gallery_images(original_filename)",
       )
       .eq("verified", true)
-      .neq("confidence", 1.0)
+      .neq("recognition_confidence", 1.0)
 
     if (inconsistentError) throw inconsistentError
 
     if (inconsistentRecords && inconsistentRecords.length > 0) {
       logger.warn(
         "actions/cleanup",
-        `Found ${inconsistentRecords.length} records with verified=true but confidence != 1`,
+        `Found ${inconsistentRecords.length} records with verified=true but recognition_confidence != 1`,
       )
     }
 
@@ -126,7 +139,7 @@ export async function cleanupUnverifiedFacesAction() {
           inconsistentRecords?.map((record) => ({
             photoFilename: record.gallery_images?.original_filename || "Unknown",
             personName: record.people?.real_name || record.people?.telegram_name || "Unknown",
-            confidence: record.confidence,
+            recognition_confidence: record.recognition_confidence,
           })) || [],
       },
     }
@@ -152,7 +165,7 @@ export async function cleanupDuplicateFacesAction() {
     while (hasMore) {
       const { data: batch, error: batchError } = await supabase
         .from("photo_faces")
-        .select("id, photo_id, person_id, verified, confidence, created_at")
+        .select("id, photo_id, person_id, verified, recognition_confidence, created_at")
         .order("created_at", { ascending: true })
         .range(offset, offset + pageSize - 1)
 
@@ -187,7 +200,8 @@ export async function cleanupDuplicateFacesAction() {
     for (const [key, records] of duplicateGroups) {
       records.sort((a, b) => {
         if (a.verified !== b.verified) return b.verified ? 1 : -1
-        if (a.confidence !== b.confidence) return (b.confidence || 0) - (a.confidence || 0)
+        if (a.recognition_confidence !== b.recognition_confidence)
+          return (b.recognition_confidence || 0) - (a.recognition_confidence || 0)
         return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       })
 

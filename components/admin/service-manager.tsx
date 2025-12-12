@@ -90,23 +90,10 @@ export function ServiceManager() {
 
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium">Перегенерация дескрипторов</div>
-                <div className="text-sm text-muted-foreground">
-                  Перегенерировать дескрипторы для всех лиц в базе данных
-                </div>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setShowRegenerateDescriptors(true)}>
-                Перегенерировать
-              </Button>
-            </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <div>
                 <div className="font-medium">Восстановить дескрипторы</div>
                 <div className="text-sm text-muted-foreground">
-                  Регенерация дескрипторов для лиц, назначенных вручную
+                  Регенерация дескрипторов для лиц с привязанным игроком, но без дескриптора (назначены вручную без
+                  детекции)
                 </div>
               </div>
               <Button variant="outline" size="sm" onClick={() => setShowRegenerateDescriptors(true)}>
