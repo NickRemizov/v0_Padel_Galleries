@@ -88,7 +88,6 @@ export async function batchVerifyFacesAction(
       return {
         success: true,
         verified: result.verified,
-        index_updated: result.index_updated,
       }
     } else {
       return {
@@ -352,7 +351,6 @@ export async function updatePhotoFaceAction(
       return {
         success: true,
         data: result.data,
-        index_updated: result.index_updated,
       }
     } else {
       return {
@@ -391,9 +389,10 @@ export async function markPhotoAsProcessedAction(photoId: string) {
 }
 
 /**
- * Cluster unknown faces in a gallery using HDBSCAN
+ * Batch verify faces: update person_ids + delete removed faces
  *
- * @param galleryId - Gallery ID
+ * @param photoId - Photo ID
+ * @param keptFaces - Array of faces to keep [{id, person_id}]
  */
 export async function clusterUnknownFacesAction(galleryId: string) {
   try {
@@ -432,51 +431,21 @@ export async function clusterUnknownFacesAction(galleryId: string) {
   }
 }
 
-/**
- * Assign multiple faces to a person using batch-update endpoint.
- * This is more efficient than updating faces one by one as the index
- * is rebuilt only once at the end.
- *
- * CRITICAL: Uses /api/faces/batch-update to rebuild HNSWLIB index once
- * instead of N times. DO NOT change back to loop with updatePhotoFaceAction!
- *
- * @param faceIds - Array of face IDs to assign
- * @param personId - Person ID to assign to
- */
 export async function assignFacesToPersonAction(faceIds: string[], personId: string) {
   try {
     console.log("[assignFacesToPersonAction] Assigning", faceIds.length, "faces to person:", personId)
 
-    // Use batch-update endpoint to update all faces at once and rebuild index only once
-    const result = await apiFetch("/api/faces/batch-update", {
-      method: "POST",
-      body: JSON.stringify({
-        face_ids: faceIds,
+    // Update each face with the person_id
+    for (const faceId of faceIds) {
+      await updatePhotoFaceAction(faceId, {
         person_id: personId,
         verified: true,
         recognition_confidence: 1.0,
-      }),
-    })
-
-    if (result.success) {
-      console.log(
-        "[assignFacesToPersonAction] ✓ Updated",
-        result.updated_count,
-        "faces, index_updated:",
-        result.index_updated,
-      )
-      revalidatePath("/admin")
-      return {
-        success: true,
-        updated_count: result.updated_count,
-        index_updated: result.index_updated,
-      }
-    } else {
-      return {
-        success: false,
-        error: result.error || "Failed to assign faces",
-      }
+      })
     }
+
+    revalidatePath("/admin")
+    return { success: true }
   } catch (error) {
     console.error("[assignFacesToPersonAction] Error:", error)
     return {
