@@ -70,8 +70,12 @@ function calculateFacePosition(
   imgWidth: number,
   imgHeight: number,
 ): { transform: string; scale: number } | null {
+  // DEBUG: Log input parameters
+  console.log("[FaceCentering] calculateFacePosition called:", { bbox, imgWidth, imgHeight })
+  
   // Validate bbox - must be object with x, y, width, height
   if (!bbox || typeof bbox !== "object") {
+    console.log("[FaceCentering] REJECTED: bbox is null or not an object")
     return null
   }
   
@@ -80,11 +84,13 @@ function calculateFacePosition(
   // Validate all required fields exist and are numbers
   if (typeof x !== "number" || typeof y !== "number" || 
       typeof width !== "number" || typeof height !== "number") {
+    console.log("[FaceCentering] REJECTED: bbox fields are not numbers", { x, y, width, height })
     return null
   }
   
   // Validate dimensions are positive
   if (width <= 0 || height <= 0 || imgWidth <= 0 || imgHeight <= 0) {
+    console.log("[FaceCentering] REJECTED: dimensions are not positive", { width, height, imgWidth, imgHeight })
     return null
   }
 
@@ -122,10 +128,13 @@ function calculateFacePosition(
   const offsetX = 50 - faceCenterXPercent
   const offsetY = 50 - faceCenterYPercent
 
-  return {
+  const result = {
     transform: `translate(${offsetX}%, ${offsetY}%) scale(${totalScale})`,
     scale: totalScale,
   }
+  
+  console.log("[FaceCentering] SUCCESS: returning transform", result)
+  return result
 }
 
 export function PersonGalleryDialog({ personId, personName, open, onOpenChange }: PersonGalleryDialogProps) {
@@ -157,6 +166,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   async function loadPhotos() {
     setLoading(true)
     const result = await getPersonPhotosWithDetailsAction(personId)
+    console.log("[FaceCentering] Loaded photos:", result.data?.map(p => ({ id: p.id, boundingBox: p.boundingBox, width: p.width, height: p.height })))
     if (result.success && result.data) {
       setPhotos(result.data)
     } else if (result.error) {
@@ -472,7 +482,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
 
       <AlertDialog
         open={singleDeleteDialog.open}
-        onOpenChange={(next) => setSingleDeleteDialog((s) => ({ ...s, open: next }))}
+        onOpenChange={(next) => setSingleDeleteDialog((s) => ({ ...s, open: next })))}
       >
         <AlertDialogContent
           onPointerDownOutside={(e) => e.preventDefault()}
