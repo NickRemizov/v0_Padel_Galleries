@@ -59,11 +59,6 @@ interface PersonPhoto {
 
 /**
  * Calculate face position for centered crop using CSS transform.
- * 
- * @param bbox - Bounding box as object {x, y, width, height} (same format as face-tagging-dialog)
- * @param imgWidth - Original image width in pixels  
- * @param imgHeight - Original image height in pixels
- * @returns Object with transform string and scale, or null if bbox is invalid
  */
 function calculateFacePosition(
   bbox: BoundingBox | null | undefined,
@@ -105,17 +100,15 @@ function calculateFacePosition(
   // Base scale to fill container (like object-cover)
   let baseScale = 1
   if (imageAspect > containerAspect) {
-    // Landscape: scale based on height
     baseScale = 1
   } else {
-    // Portrait: scale based on width
     baseScale = containerAspect / imageAspect
   }
 
   // Calculate additional scale to make face prominent (at least 40% of container)
   const faceSize = Math.max(width, height)
   const faceScale = faceSize / Math.min(imgWidth, imgHeight)
-  const targetFaceScale = 0.4 // Face should occupy ~40% of container
+  const targetFaceScale = 0.4
   const additionalScale = Math.max(1, targetFaceScale / faceScale)
 
   const totalScale = baseScale * additionalScale
@@ -359,8 +352,6 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {photos.map((photo) => {
                   const canVerify = photo.faceCount === 1 && !photo.verified
-
-                  // Calculate face position - returns null if bbox is invalid
                   const facePosition = calculateFacePosition(photo.boundingBox, photo.width, photo.height)
 
                   return (
@@ -482,7 +473,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
 
       <AlertDialog
         open={singleDeleteDialog.open}
-        onOpenChange={(next) => setSingleDeleteDialog((s) => ({ ...s, open: next })))}
+        onOpenChange={(next) => setSingleDeleteDialog((s) => ({ ...s, open: next }))}
       >
         <AlertDialogContent
           onPointerDownOutside={(e) => e.preventDefault()}
