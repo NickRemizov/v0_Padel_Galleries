@@ -210,6 +210,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       for (let i = 0; i < photoIds.length; i += 500) {
         const batch = photoIds.slice(i, i + 500)
         const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", batch)
+
         existingPhotos?.forEach((p) => existingPhotoIds.add(p.id))
       }
 
@@ -221,13 +222,40 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 50).map((item: any) => ({
           ...item,
           bbox: item.insightface_bbox,
+          image_url: item.gallery_images?.image_url,
+          gallery_title: item.gallery_images?.galleries?.title,
+        }))
+      }
+
+      // 7. Осиротевшие дескрипторы (фото удалено, но запись с дескриптором осталась)
+      const orphanedDescriptors = allPhotoFacesWithPhotos.filter((pf) => {
+        // Фото не существует И есть дескриптор (insightface_bbox как прокси)
+        return !existingPhotoIds.has(pf.photo_id) && pf.insightface_bbox
+      })
+
+      photoFaces.descriptorsWithoutPerson = orphanedDescriptors.length
+      console.log("[v0] orphanedDescriptors (photo deleted) count:", orphanedDescriptors.length)
+
+      if (orphanedDescriptors.length > 0) {
+        details.descriptorsWithoutPerson = orphanedDescriptors.slice(0, 50).map((item: any) => ({
+          id: item.id,
+          photo_id: item.photo_id,
+          verified: false,
+          confidence: null,
+          bbox: item.insightface_bbox,
+          image_url: null,
+          gallery_title: null,
+          shoot_date: null,
+          filename: null,
+          photo_exists: false,
         }))
       }
     }
 
     // 6. Orphaned links - faces with person_id but not visible (below threshold and not verified)
-    const confidenceThreshold = await getConfidenceThreshold() // Updated to use getConfidenceThreshold
+    const confidenceThreshold = await getConfidenceThreshold()
     console.log(`[v0] Using confidence threshold: ${confidenceThreshold}`)
+
     const { data: allFacesForOrphaned } = await supabase
       .from("photo_faces")
       .select(`
@@ -259,22 +287,6 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         gallery_title: face.gallery_images?.galleries?.title,
         shoot_date: face.gallery_images?.galleries?.shoot_date,
         filename: face.gallery_images?.original_filename,
-      }))
-    }
-
-    // Дескрипторы без игрока
-    const { data: descriptorsWithoutPerson } = await supabase
-      .from("photo_faces")
-      .select("id, insightface_descriptor")
-      .is("person_id", null)
-      .not("insightface_descriptor", "is", null)
-
-    photoFaces.descriptorsWithoutPerson = descriptorsWithoutPerson?.length || 0
-    console.log("[v0] descriptorsWithoutPerson count:", photoFaces.descriptorsWithoutPerson)
-    if (descriptorsWithoutPerson && descriptorsWithoutPerson.length > 0) {
-      details.descriptorsWithoutPerson = descriptorsWithoutPerson.slice(0, 50).map((item: any) => ({
-        ...item,
-        descriptor: item.insightface_descriptor,
       }))
     }
 
@@ -556,47 +568,15 @@ export async function fixIntegrityIssuesAction(
       }
 
       case "descriptorsWithoutPerson": {
-        // Удаление дескрипторов без игрока
-        let allToDelete: string[] = []
-        let delOffset = 0
-        const delPageSize = 1000
-
-        while (true) {
-          const { data: batch } = await supabase
-            .from("photo_faces")
-            .select("id")
-            .not("insightface_descriptor", "is", null)
-            .is("person_id", null)
-            .range(delOffset, delOffset + delPageSize - 1)
-
-          if (!batch || batch.length === 0) break
-          allToDelete = allToDelete.concat(batch.map((b) => b.id))
-          if (batch.length < delPageSize) break
-          delOffset += delPageSize
+        // Записи где фото удалено уже удаляются через nonExistentPhotoFaces
+        return {
+          success: true,
+          data: {
+            fixed: 0,
+            issueType,
+            message: "Используйте 'Лица с несуществующим фото' для удаления этих записей",
+          },
         }
-
-        console.log(`[v0] Found ${allToDelete.length} descriptors without person to delete`)
-
-        if (allToDelete.length > 0) {
-          // Удаляем батчами по 100
-          const batchSize = 100
-          let deleted = 0
-
-          for (let i = 0; i < allToDelete.length; i += batchSize) {
-            const batch = allToDelete.slice(i, i + batchSize)
-            const { error: deleteError } = await supabase.from("photo_faces").delete().in("id", batch)
-
-            if (deleteError) {
-              console.error(`[v0] Error deleting batch:`, deleteError)
-            } else {
-              deleted += batch.length
-            }
-          }
-
-          fixed = deleted
-          console.log(`[v0] Deleted ${deleted} orphaned descriptors`)
-        }
-        break
       }
 
       default:

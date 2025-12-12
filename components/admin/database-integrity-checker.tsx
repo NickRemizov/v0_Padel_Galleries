@@ -253,9 +253,13 @@ export function DatabaseIntegrityChecker() {
     return (
       <div className="bg-background p-1.5 rounded border space-y-1 relative">
         <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
-          {item.bbox && item.image_url && (
+          {item.bbox && item.image_url ? (
             <div className="w-full h-full">
               <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={200} />
+            </div>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs text-center p-2">
+              {item.photo_exists === false ? "Фото удалено" : "Нет превью"}
             </div>
           )}
           {hasActions && !isProcessing && (
@@ -307,6 +311,10 @@ export function DatabaseIntegrityChecker() {
             <div>Уверенность: {(item.confidence * 100).toFixed(0)}%</div>
           )}
           {showVerified && item.verified !== undefined && <div>Верифицирован: {item.verified ? "Да" : "Нет"}</div>}
+          {item.photo_exists === false && <div className="text-orange-600 font-medium">⚠️ Фото удалено</div>}
+          <div className="font-mono text-[10px] text-muted-foreground pt-1 border-t mt-1">
+            ID: {item.id?.slice(0, 8)}...
+          </div>
         </div>
       </div>
     )
@@ -416,9 +424,13 @@ export function DatabaseIntegrityChecker() {
               <div className="grid grid-cols-4 gap-2 max-h-[400px] overflow-y-auto">
                 {details.slice(0, maxItems).map((item: any, index: number) => (
                   <div key={item.id || index} className="bg-background p-3 rounded border space-y-2">
-                    {item.bbox && item.image_url && (
+                    {item.bbox && item.image_url ? (
                       <div className="relative w-full aspect-square bg-muted rounded overflow-hidden">
                         <FaceCropPreview imageUrl={item.image_url} bbox={item.bbox} size={200} />
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs text-center p-2">
+                        {item.photo_exists === false ? "Фото удалено" : "Нет превью"}
                       </div>
                     )}
                     <div className="text-xs space-y-1">
@@ -592,6 +604,16 @@ export function DatabaseIntegrityChecker() {
                   description="Записи с дескриптором, но без person_id — участвуют в распознавании и возвращают мусор. Автофикс: удаляет записи"
                   severity="critical"
                   canFix={true}
+                  showVerified={true}
+                />
+                <IssueRow
+                  title="Осиротевшие дескрипторы"
+                  count={report.photoFaces.descriptorsWithoutPerson || 0}
+                  issueType="descriptorsWithoutPerson"
+                  description="Записи photo_faces с дескриптором, но фото уже удалено. Дубликат проверки 'Лица с несуществующим фото' — исправляйте там"
+                  severity="medium"
+                  canFix={false}
+                  infoOnly={true}
                   showVerified={true}
                 />
               </div>
