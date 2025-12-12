@@ -52,39 +52,70 @@ interface PersonPhoto {
 
 /**
  * Calculate face position for centered crop using CSS transform
- *
- * @param bbox - Bounding box from InsightFace [x1, y1, x2, y2] in absolute pixels
- * @param imgWidth - Original image width in pixels
- * @param imgHeight - Original image height in pixels
- * @returns CSS transform string and scale for positioning
- *
- * Logic:
- * 1. Calculate face center in absolute pixels
- * 2. Convert to percentage relative to image dimensions
- * 3. Apply transform to shift the center of the face to container center
- * 4. Scale image to ensure face is large enough (minimum 40% of container)
- *
- * Container is square (aspect-ratio: 1/1), so we need to handle both:
- * - Portrait images (height > width): scale based on width
- * - Landscape images (width > height): scale based on height
+ * 
+ * Handles multiple boundingBox formats:
+ * - Array [x1, y1, x2, y2] from InsightFace
+ * - Object {x1, y1, x2, y2}
+ * - Object {x, y, width, height}
+ * 
+ * Returns null if boundingBox is invalid
  */
 function calculateFacePosition(
-  bbox: [number, number, number, number],
+  bbox: any,
   imgWidth: number,
   imgHeight: number,
-): { transform: string; scale: number } {
-  const [x1, y1, x2, y2] = bbox
+): { transform: string; scale: number } | null {
+  // Validate inputs
+  if (!bbox || !imgWidth || !imgHeight) {
+    return null
+  }
+
+  let x1: number, y1: number, x2: number, y2: number
+
+  // Parse different bbox formats
+  if (Array.isArray(bbox) && bbox.length >= 4) {
+    // InsightFace format: [x1, y1, x2, y2]
+    x1 = Number(bbox[0])
+    y1 = Number(bbox[1])
+    x2 = Number(bbox[2])
+    y2 = Number(bbox[3])
+  } else if (typeof bbox === "object") {
+    if ("x1" in bbox && "y1" in bbox && "x2" in bbox && "y2" in bbox) {
+      // Object format: {x1, y1, x2, y2}
+      x1 = Number(bbox.x1)
+      y1 = Number(bbox.y1)
+      x2 = Number(bbox.x2)
+      y2 = Number(bbox.y2)
+    } else if ("x" in bbox && "y" in bbox && "width" in bbox && "height" in bbox) {
+      // Alternative format: {x, y, width, height}
+      x1 = Number(bbox.x)
+      y1 = Number(bbox.y)
+      x2 = x1 + Number(bbox.width)
+      y2 = y1 + Number(bbox.height)
+    } else {
+      // Unknown object format
+      return null
+    }
+  } else {
+    // Unknown format
+    return null
+  }
+
+  // Validate parsed values
+  if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
+    return null
+  }
 
   // Face dimensions in pixels
   const faceWidth = x2 - x1
   const faceHeight = y2 - y1
+  
+  if (faceWidth <= 0 || faceHeight <= 0) {
+    return null
+  }
+
   const faceCenterX = x1 + faceWidth / 2
   const faceCenterY = y1 + faceHeight / 2
-
-  console.log("[v0] calculateFacePosition: bbox", bbox)
-  console.log("[v0] calculateFacePosition: image dimensions", { imgWidth, imgHeight })
-  console.log("[v0] calculateFacePosition: face dimensions", { faceWidth, faceHeight })
-  console.log("[v0] calculateFacePosition: face center (px)", { faceCenterX, faceCenterY })
 
   // Container is square, calculate scale to fit image
   const containerAspect = 1 // square
@@ -100,8 +131,6 @@ function calculateFacePosition(
     baseScale = containerAspect / imageAspect
   }
 
-  console.log("[v0] calculateFacePosition: imageAspect", imageAspect, "baseScale", baseScale)
-
   // Calculate additional scale to make face prominent (at least 40% of container)
   const faceScale = Math.max(faceWidth, faceHeight) / Math.min(imgWidth, imgHeight)
   const targetFaceScale = 0.4 // Face should occupy ~40% of container
@@ -109,26 +138,13 @@ function calculateFacePosition(
 
   const totalScale = baseScale * additionalScale
 
-  console.log(
-    "[v0] calculateFacePosition: faceScale",
-    faceScale,
-    "additionalScale",
-    additionalScale,
-    "totalScale",
-    totalScale,
-  )
-
   // Calculate transform to center the face
-  // Transform moves the image, so we need to calculate offset from center
   const faceCenterXPercent = (faceCenterX / imgWidth) * 100
   const faceCenterYPercent = (faceCenterY / imgHeight) * 100
 
   // Offset to move face center to container center (50%, 50%)
   const offsetX = 50 - faceCenterXPercent
   const offsetY = 50 - faceCenterYPercent
-
-  console.log("[v0] calculateFacePosition: face center (%)", { faceCenterXPercent, faceCenterYPercent })
-  console.log("[v0] calculateFacePosition: offset (%)", { offsetX, offsetY })
 
   return {
     transform: `translate(${offsetX}%, ${offsetY}%) scale(${totalScale})`,
@@ -158,29 +174,19 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
 
   useEffect(() => {
     if (open) {
-      console.log("[v0] PersonGalleryDialog: useEffect triggered, loading photos")
       loadPhotos()
     }
   }, [open, personId])
 
   async function loadPhotos() {
-    console.log("[v0] PersonGalleryDialog: loadPhotos() called for person:", personId)
     setLoading(true)
     const result = await getPersonPhotosWithDetailsAction(personId)
     if (result.success && result.data) {
       setPhotos(result.data)
-      console.log("[v0] PersonGalleryDialog: Loaded photos:", result.data.length)
-      result.data.forEach((photo) => {
-        const shouldShowButton = photo.faceCount === 1 && !photo.verified
-        console.log(
-          `[v0] PersonGalleryDialog: Photo ${photo.filename}: verified=${photo.verified}, confidence=${photo.confidence}, faceCount=${photo.faceCount}, showVerifyButton=${shouldShowButton}`,
-        )
-      })
     } else if (result.error) {
-      console.error("[v0] PersonGalleryDialog: Error loading photos:", result.error)
+      console.error("[PersonGalleryDialog] Error loading photos:", result.error)
     }
     setLoading(false)
-    console.log("[v0] PersonGalleryDialog: loadPhotos() completed")
   }
 
   async function handleDeleteDescriptors(photoId: string) {
@@ -208,15 +214,12 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   }
 
   function handleTaggingDialogClose(open: boolean) {
-    console.log("[v0] PersonGalleryDialog: handleTaggingDialogClose called, open=", open)
     if (!open) {
-      console.log("[v0] PersonGalleryDialog: FaceTaggingDialog closed, keeping gallery open without reload")
       setTaggingImage(null)
     }
   }
 
   function handleOpenTaggingDialog(imageId: string, imageUrl: string) {
-    console.log("[v0] PersonGalleryDialog: Opening FaceTaggingDialog for image:", imageId)
     setTaggingImage({ id: imageId, url: imageUrl })
   }
 
@@ -371,15 +374,11 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                 {photos.map((photo) => {
                   const canVerify = photo.faceCount === 1 && !photo.verified
 
-                  const facePosition = photo.boundingBox
-                    ? calculateFacePosition(photo.boundingBox, photo.width, photo.height)
-                    : null
-
-                  console.log(
-                    "[v0] PersonGalleryDialog: Rendering photo",
-                    photo.filename,
-                    "facePosition:",
-                    facePosition,
+                  // Calculate face position - returns null if bbox is invalid
+                  const facePosition = calculateFacePosition(
+                    photo.boundingBox,
+                    photo.width,
+                    photo.height
                   )
 
                   return (
@@ -391,8 +390,8 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                         <Image
                           src={photo.image_url || "/placeholder.svg"}
                           alt="Photo"
-                          width={photo.width}
-                          height={photo.height}
+                          width={photo.width || 250}
+                          height={photo.height || 250}
                           style={
                             facePosition
                               ? {
@@ -559,14 +558,12 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
           personId={personId}
           open={avatarSelectorOpen}
           onOpenChange={(open) => {
-            console.log("[v0] PersonGalleryDialog: AvatarSelector onOpenChange called, open=", open)
             setAvatarSelectorOpen(open)
             if (!open) {
               setSelectedPhotoForAvatar(null)
             }
           }}
           onAvatarSelected={async () => {
-            console.log("[v0] PersonGalleryDialog: Avatar selected, closing dialogs")
             setAvatarSelectorOpen(false)
             setSelectedPhotoForAvatar(null)
             router.refresh()
