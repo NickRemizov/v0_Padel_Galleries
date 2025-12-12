@@ -47,6 +47,13 @@ class UpdateFaceRequest(BaseModel):
     recognition_confidence: Optional[float]
 
 
+class BatchUpdateFaceRequest(BaseModel):
+    face_ids: List[str]
+    person_id: Optional[str]
+    verified: Optional[bool]
+    recognition_confidence: Optional[float]
+
+
 class DeleteFaceRequest(BaseModel):
     face_id: str
 
@@ -233,9 +240,13 @@ async def update_face(
     face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
     supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
 ):
-    """Update an existing face record"""
+    """Update an existing face record and rebuild index if verified with person_id"""
     try:
-        logger.info(f"[Faces API] Updating face {request.face_id}")
+        logger.info("=" * 80)
+        logger.info("[Faces API] ===== UPDATE FACE REQUEST START =====")
+        logger.info(f"[Faces API] Face ID: {request.face_id}")
+        logger.info(f"[Faces API] Person ID: {request.person_id}")
+        logger.info(f"[Faces API] Verified: {request.verified}")
         
         update_data = {}
         if request.person_id is not None:
@@ -250,15 +261,123 @@ async def update_face(
         ).eq("id", request.face_id).execute()
         
         if not response.data:
-            return {"success": False, "error": "Face not found"}
+            return {"success": False, "error": "Face not found", "index_updated": False}
         
         logger.info(f"[Faces API] ✓ Face updated: {request.face_id}")
         
-        return {"success": True, "data": response.data[0]}
+        # Rebuild index if face becomes verified with person_id
+        index_updated = False
+        if request.verified and request.person_id:
+            # Check if face has descriptor
+            face_check = supabase_db.client.table("photo_faces").select(
+                "insightface_descriptor"
+            ).eq("id", request.face_id).execute()
+            
+            has_descriptor = (
+                face_check.data 
+                and len(face_check.data) > 0 
+                and face_check.data[0].get("insightface_descriptor")
+            )
+            
+            if has_descriptor:
+                logger.info("[Faces API] Verified face with descriptor - rebuilding recognition index...")
+                
+                try:
+                    rebuild_result = await face_service.rebuild_players_index()
+                    
+                    if rebuild_result.get("success"):
+                        index_updated = True
+                        logger.info(f"[Faces API] ✓ Index rebuilt: {rebuild_result.get('old_descriptor_count')} -> {rebuild_result.get('new_descriptor_count')} descriptors")
+                    else:
+                        logger.error(f"[Faces API] Index rebuild failed: {rebuild_result.get('error')}")
+                except Exception as index_error:
+                    logger.error(f"[Faces API] Error rebuilding index: {str(index_error)}", exc_info=True)
+        
+        logger.info("[Faces API] ===== UPDATE FACE REQUEST END =====")
+        logger.info("=" * 80)
+        
+        return {"success": True, "data": response.data[0], "index_updated": index_updated}
         
     except Exception as e:
-        logger.error(f"[Faces API] Error updating face: {str(e)}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        logger.error("=" * 80)
+        logger.error(f"[Faces API] ❌ ERROR in update_face: {str(e)}", exc_info=True)
+        logger.error("=" * 80)
+        return {"success": False, "error": str(e), "index_updated": False}
+
+
+@router.post("/batch-update")
+async def batch_update_faces(
+    request: BatchUpdateFaceRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Batch update multiple faces with same data and rebuild index once.
+    Used for cluster assignment to avoid multiple index rebuilds.
+    """
+    try:
+        logger.info("=" * 80)
+        logger.info("[Faces API] ===== BATCH UPDATE FACES REQUEST START =====")
+        logger.info(f"[Faces API] Face IDs count: {len(request.face_ids)}")
+        logger.info(f"[Faces API] Person ID: {request.person_id}")
+        logger.info(f"[Faces API] Verified: {request.verified}")
+        
+        update_data = {}
+        if request.person_id is not None:
+            update_data["person_id"] = request.person_id
+        if request.verified is not None:
+            update_data["verified"] = request.verified
+        if request.recognition_confidence is not None:
+            update_data["recognition_confidence"] = request.recognition_confidence
+        
+        if not update_data:
+            return {"success": False, "error": "No update data provided", "updated_count": 0, "index_updated": False}
+        
+        # Update all faces
+        updated_count = 0
+        for face_id in request.face_ids:
+            response = supabase_db.client.table("photo_faces").update(
+                update_data
+            ).eq("id", face_id).execute()
+            
+            if response.data:
+                updated_count += 1
+                logger.info(f"[Faces API] ✓ Updated face: {face_id}")
+            else:
+                logger.warning(f"[Faces API] Face not found: {face_id}")
+        
+        logger.info(f"[Faces API] ✓ Updated {updated_count}/{len(request.face_ids)} faces")
+        
+        # Rebuild index ONCE if any faces became verified with person_id
+        index_updated = False
+        if request.verified and request.person_id and updated_count > 0:
+            logger.info("[Faces API] Verified faces with person_id - rebuilding recognition index...")
+            
+            try:
+                rebuild_result = await face_service.rebuild_players_index()
+                
+                if rebuild_result.get("success"):
+                    index_updated = True
+                    logger.info(f"[Faces API] ✓ Index rebuilt: {rebuild_result.get('old_descriptor_count')} -> {rebuild_result.get('new_descriptor_count')} descriptors")
+                else:
+                    logger.error(f"[Faces API] Index rebuild failed: {rebuild_result.get('error')}")
+            except Exception as index_error:
+                logger.error(f"[Faces API] Error rebuilding index: {str(index_error)}", exc_info=True)
+        
+        logger.info("[Faces API] ===== BATCH UPDATE FACES REQUEST END =====")
+        logger.info("=" * 80)
+        
+        return {
+            "success": True,
+            "updated_count": updated_count,
+            "index_updated": index_updated
+        }
+        
+    except Exception as e:
+        logger.error("=" * 80)
+        logger.error(f"[Faces API] ❌ ERROR in batch_update_faces: {str(e)}", exc_info=True)
+        logger.error("=" * 80)
+        return {"success": False, "error": str(e), "updated_count": 0, "index_updated": False}
 
 
 @router.post("/delete")
