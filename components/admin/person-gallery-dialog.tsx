@@ -58,65 +58,108 @@ interface PersonPhoto {
 }
 
 /**
- * Calculate face styles for centered crop using CSS background properties.
- * Version 3: Less aggressive zoom + upward focus shift to avoid cutting forehead
+ * Calculate background styles for face-centered thumbnails.
  *
- * @param bbox - Bounding box as object {x, y, width, height}
- * @param imgWidth - Original image width in pixels
- * @param imgHeight - Original image height in pixels
- * @returns Object with backgroundSize and backgroundPosition CSS values, or null if bbox is invalid
+ * Algorithm:
+ * 1. Scale: face height should be ~25% of container. Max zoom 3.5x, min 1x (never shrink)
+ * 2. Horizontal: center face, but don't go beyond image edges
+ * 3. Vertical: face center at 1/4 from top, but don't go beyond image edges
  */
 function calculateFaceStyles(
   bbox: BoundingBox | null | undefined,
   imgWidth: number,
   imgHeight: number,
 ): { backgroundSize: string; backgroundPosition: string } | null {
-  // Validate bbox - must be object with x, y, width, height
-  if (!bbox || typeof bbox !== "object") {
-    return null
-  }
+  // Validate bbox
+  if (!bbox || typeof bbox !== "object") return null
 
   const { x, y, width, height } = bbox
 
-  // Validate all required fields exist and are numbers
-  if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number") {
+  if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number")
     return null
-  }
 
-  // Validate dimensions are positive
-  if (width <= 0 || height <= 0 || imgWidth <= 0 || imgHeight <= 0) {
-    return null
-  }
+  if (width <= 0 || height <= 0 || imgWidth <= 0 || imgHeight <= 0) return null
 
-  const focusX = x + width / 2
-  const focusY = y + height * 0.3 // Move focus point 20% up from center
+  const imageAspect = imgWidth / imgHeight
+  const isLandscape = imageAspect >= 1
 
-  const targetFaceHeightPercent = 0.25
+  // === STEP 1: Calculate scale ===
+  // Target: face height = 25% of container height
+  const targetFaceHeight = 0.25
   const faceHeightRatio = height / imgHeight
 
-  const containerAspect = 1 // Square container (aspect-square)
-  const imageAspect = imgWidth / imgHeight
-
-  let baseCoverScale: number
-  if (imageAspect > containerAspect) {
-    // Landscape: height fills, width overflows
-    baseCoverScale = 1
+  let scale: number
+  if (isLandscape) {
+    // Landscape: container height = image height at scale 1
+    scale = targetFaceHeight / faceHeightRatio
   } else {
-    // Portrait or square: width fills, height overflows
-    baseCoverScale = imageAspect / containerAspect
+    // Portrait: container height shows more of image height
+    // At scale 1, visible height = imgHeight * (imgWidth/imgHeight) = imgWidth equivalent
+    scale = (targetFaceHeight * imageAspect) / faceHeightRatio
   }
 
-  // Scale to achieve target face size
-  const scale = (targetFaceHeightPercent / faceHeightRatio) * baseCoverScale
-  const clampedScale = Math.min(scale, 4)
+  // Clamp scale: never shrink (min 1), max zoom 3.5x
+  scale = Math.max(1, Math.min(scale, 3.5))
 
-  // Calculate focus point as percentage
-  const focusCenterX = focusX / imgWidth
-  const focusCenterY = focusY / imgHeight
+  // === STEP 2: Calculate scaled dimensions relative to container ===
+  let scaledWidth: number
+  let scaledHeight: number
+  let backgroundSize: string
+
+  if (isLandscape) {
+    // Landscape: height fits container, width overflows
+    scaledHeight = scale
+    scaledWidth = scale * imageAspect
+    backgroundSize = `auto ${scale * 100}%`
+  } else {
+    // Portrait: width fits container, height overflows
+    scaledWidth = scale
+    scaledHeight = scale / imageAspect
+    backgroundSize = `${scale * 100}% auto`
+  }
+
+  // === STEP 3: Calculate position ===
+  // Face center in normalized image coordinates (0-1)
+  const faceCenterX = (x + width / 2) / imgWidth
+  const faceCenterY = (y + height / 2) / imgHeight
+
+  // Target position in container (0-1)
+  const targetX = 0.5 // center horizontally
+  const targetY = 0.25 // 1/4 from top
+
+  // Calculate required offset to place face center at target position
+  // offset = where face is in scaled image - where we want it in container
+  let offsetX = faceCenterX * scaledWidth - targetX
+  let offsetY = faceCenterY * scaledHeight - targetY
+
+  // Clamp offsets so we don't show beyond image edges
+  // Offset range: 0 to (scaledSize - 1)
+  const maxOffsetX = Math.max(0, scaledWidth - 1)
+  const maxOffsetY = Math.max(0, scaledHeight - 1)
+
+  offsetX = Math.max(0, Math.min(offsetX, maxOffsetX))
+  offsetY = Math.max(0, Math.min(offsetY, maxOffsetY))
+
+  // Convert to background-position percentage
+  // background-position: X% Y% means X% of overflow is hidden on left, Y% on top
+  let bgPosX: number
+  let bgPosY: number
+
+  if (maxOffsetX > 0) {
+    bgPosX = (offsetX / maxOffsetX) * 100
+  } else {
+    bgPosX = 50 // centered, no overflow
+  }
+
+  if (maxOffsetY > 0) {
+    bgPosY = (offsetY / maxOffsetY) * 100
+  } else {
+    bgPosY = 50 // centered, no overflow
+  }
 
   return {
-    backgroundSize: `${clampedScale * 100}%`,
-    backgroundPosition: `${focusCenterX * 100}% ${focusCenterY * 100}%`,
+    backgroundSize,
+    backgroundPosition: `${bgPosX}% ${bgPosY}%`,
   }
 }
 
