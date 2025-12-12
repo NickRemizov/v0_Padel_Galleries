@@ -29,6 +29,15 @@ import { createClient } from "@/lib/supabase/client"
 import { FaceTaggingDialog } from "@/components/admin/face-tagging-dialog"
 
 interface IntegrityReport {
+  stats: {
+    totalGalleries: number
+    totalPhotos: number
+    totalPhotoFaces: number
+    totalPeople: number
+    totalConfigs: number
+    totalEventPlayers: number
+    totalTelegramBots: number
+  }
   photoFaces: {
     verifiedWithoutPerson: number
     verifiedWithWrongConfidence: number
@@ -36,7 +45,7 @@ interface IntegrityReport {
     nonExistentPerson: number
     nonExistentPhoto: number
     orphanedLinks: number
-    descriptorsWithoutPerson: number // Добавлено поле для дескрипторов без игрока
+    unrecognizedFaces: number // Renamed from descriptorsWithoutPerson
   }
   people: {
     withoutDescriptors: number
@@ -44,6 +53,7 @@ interface IntegrityReport {
     duplicateNames: number
   }
   totalIssues: number
+  checksPerformed: number
   details: Record<string, any[]>
 }
 
@@ -328,6 +338,7 @@ export function DatabaseIntegrityChecker() {
     severity = "medium",
     canFix = true,
     infoOnly = false,
+    checked = false, // New parameter - true if check passed (count=0)
     showConfidence = false,
     showVerified = false,
     hasActions = false,
@@ -341,14 +352,13 @@ export function DatabaseIntegrityChecker() {
     severity?: "critical" | "high" | "medium" | "low"
     canFix?: boolean
     infoOnly?: boolean
+    checked?: boolean // New parameter for showing OK checks
     showConfidence?: boolean
     showVerified?: boolean
     hasActions?: boolean
     maxItems?: number
     simpleCards?: boolean
   }) => {
-    if (count === 0) return null
-
     const isExpanded = expandedIssues.has(issueType)
     const details = report?.details?.[issueType] || []
     const hasDetails = details.length > 0
@@ -367,12 +377,19 @@ export function DatabaseIntegrityChecker() {
             <div className="flex items-center gap-2">
               {infoOnly && <Info className="h-4 w-4 text-muted-foreground" />}
               <span className="font-medium">{title}</span>
-              <Badge variant={severityVariant[severity]}>{count}</Badge>
+              {checked ? (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  OK
+                </Badge>
+              ) : (
+                <Badge variant={severityVariant[severity]}>{count}</Badge>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">{description}</p>
           </div>
           <div className="flex items-center gap-2">
-            {hasDetails && (
+            {!checked && hasDetails && (
               <Button
                 variant="outline"
                 size="sm"
@@ -392,7 +409,7 @@ export function DatabaseIntegrityChecker() {
                 )}
               </Button>
             )}
-            {canFix && !infoOnly && (
+            {!checked && canFix && !infoOnly && (
               <Button variant="outline" size="sm" onClick={() => handleFix(issueType)} disabled={fixingIssue !== null}>
                 {fixingIssue === issueType ? (
                   <>
@@ -407,7 +424,7 @@ export function DatabaseIntegrityChecker() {
                 )}
               </Button>
             )}
-            {infoOnly && (
+            {infoOnly && !checked && (
               <Badge variant="outline" className="text-muted-foreground">
                 Только информация
               </Badge>
@@ -533,8 +550,51 @@ export function DatabaseIntegrityChecker() {
           )}
         </CardContent>
       </Card>
-      {report && report.totalIssues > 0 && (
+      {report && (
         <>
+          <Card>
+            <CardHeader>
+              <CardTitle>📊 Статистика базы данных</CardTitle>
+              <CardDescription>Общая информация о количестве записей в базе</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Галереи</div>
+                  <div className="text-2xl font-bold">{report.stats.totalGalleries}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Фото</div>
+                  <div className="text-2xl font-bold">{report.stats.totalPhotos}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Лица на фото</div>
+                  <div className="text-2xl font-bold">{report.stats.totalPhotoFaces}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Игроки</div>
+                  <div className="text-2xl font-bold">{report.stats.totalPeople}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Настройки</div>
+                  <div className="text-2xl font-bold">{report.stats.totalConfigs}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Игроки событий</div>
+                  <div className="text-2xl font-bold">{report.stats.totalEventPlayers}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Telegram боты</div>
+                  <div className="text-2xl font-bold">{report.stats.totalTelegramBots}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Проверок</div>
+                  <div className="text-2xl font-bold">{report.checksPerformed}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Проблемы с лицами на фото (Photo Faces)</CardTitle>
@@ -545,8 +605,7 @@ export function DatabaseIntegrityChecker() {
                   report.photoFaces.personWithoutConfidence +
                   report.photoFaces.nonExistentPerson +
                   report.photoFaces.nonExistentPhoto +
-                  (report.photoFaces.orphanedLinks || 0) +
-                  (report.photoFaces.descriptorsWithoutPerson || 0)}
+                  (report.photoFaces.orphanedLinks || 0)}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -558,6 +617,7 @@ export function DatabaseIntegrityChecker() {
                   description="Verified=True, но person_id=null. Исправить → на всех лицах удалить Verified"
                   severity="critical"
                   canFix={true}
+                  checked={report.photoFaces.verifiedWithoutPerson === 0}
                   hasActions={true}
                   maxItems={30}
                 />
@@ -565,9 +625,10 @@ export function DatabaseIntegrityChecker() {
                   title="Потерянные связи (не видны в галерее игрока)"
                   count={report.photoFaces.orphanedLinks || 0}
                   issueType="orphanedLinks"
-                  description={`Привязаны к игроку, но confidence < ${Math.round(confidenceThreshold * 100)}% ("Минимальная уверенность" в настройках). Исправить → на всех лицах удалить привязку`}
+                  description={`Привязаны к игроку, но confidence < ${Math.round(confidenceThreshold * 100)}%`}
                   severity="high"
                   canFix={true}
+                  checked={(report.photoFaces.orphanedLinks || 0) === 0}
                   showConfidence={true}
                   showVerified={true}
                   hasActions={true}
@@ -580,6 +641,7 @@ export function DatabaseIntegrityChecker() {
                   description="Лица с person_id, но confidence = null → Автофикс: устанавливает confidence=0.5"
                   severity="medium"
                   canFix={true}
+                  checked={report.photoFaces.personWithoutConfidence === 0}
                 />
                 <IssueRow
                   title="Лица с несуществующим игроком"
@@ -588,6 +650,7 @@ export function DatabaseIntegrityChecker() {
                   description="person_id ссылается на удаленного игрока → Автофикс: обнуляет person_id"
                   severity="critical"
                   canFix={true}
+                  checked={report.photoFaces.nonExistentPerson === 0}
                 />
                 <IssueRow
                   title="Лица с несуществующим фото"
@@ -596,25 +659,16 @@ export function DatabaseIntegrityChecker() {
                   description="photo_id ссылается на удаленное фото → Автофикс: удаляет запись"
                   severity="critical"
                   canFix={true}
+                  checked={report.photoFaces.nonExistentPhoto === 0}
                 />
                 <IssueRow
-                  title="Дескрипторы без игрока"
-                  count={report.photoFaces.descriptorsWithoutPerson || 0}
-                  issueType="descriptorsWithoutPerson"
-                  description="Записи с дескриптором, но без person_id — участвуют в распознавании и возвращают мусор. Автофикс: удаляет записи"
-                  severity="critical"
-                  canFix={true}
-                  showVerified={true}
-                />
-                <IssueRow
-                  title="Осиротевшие дескрипторы"
-                  count={report.photoFaces.descriptorsWithoutPerson || 0}
-                  issueType="descriptorsWithoutPerson"
-                  description="Записи photo_faces с дескриптором, но фото уже удалено. Дубликат проверки 'Лица с несуществующим фото' — исправляйте там"
-                  severity="medium"
+                  title="Нераспознанные лица"
+                  count={report.photoFaces.unrecognizedFaces || 0}
+                  issueType="unrecognizedFaces"
+                  description="Лица с дескриптором, но без привязки к игроку. Это нормально — ожидают распознавания или ручного тегирования"
+                  severity="low"
                   canFix={false}
                   infoOnly={true}
-                  showVerified={true}
                 />
               </div>
             </CardContent>
@@ -623,7 +677,7 @@ export function DatabaseIntegrityChecker() {
             <CardHeader>
               <CardTitle>Информация об игроках (People)</CardTitle>
               <CardDescription>
-                Всего записей:{" "}
+                Проверок выполнено: {report.checksPerformed}. Записей об игроках:{" "}
                 {report.people.withoutDescriptors + report.people.withoutFaces + report.people.duplicateNames}
               </CardDescription>
             </CardHeader>
@@ -637,6 +691,7 @@ export function DatabaseIntegrityChecker() {
                   severity="low"
                   canFix={false}
                   infoOnly={true}
+                  checked={report.people.withoutDescriptors === 0}
                 />
                 <IssueRow
                   title="Игроки без фото"
@@ -646,15 +701,17 @@ export function DatabaseIntegrityChecker() {
                   severity="low"
                   canFix={false}
                   infoOnly={true}
+                  checked={report.people.withoutFaces === 0}
                 />
                 <IssueRow
                   title="Дубликаты имен"
                   count={report.people.duplicateNames}
                   issueType="duplicateNames"
-                  description="Несколько игроков с ОДИНАКОВЫМИ именем И telegram (разные ТГ = разные люди, не ошибка)"
+                  description="Несколько игроков с ОДИНАКОВЫМИ именем И telegram"
                   severity="medium"
                   canFix={false}
                   infoOnly={true}
+                  checked={report.people.duplicateNames === 0}
                 />
               </div>
             </CardContent>

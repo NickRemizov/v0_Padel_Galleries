@@ -10,6 +10,15 @@ import { revalidatePath } from "next/cache"
  */
 
 export interface IntegrityReport {
+  stats: {
+    totalGalleries: number
+    totalPhotos: number
+    totalPhotoFaces: number
+    totalPeople: number
+    totalConfigs: number
+    totalEventPlayers: number
+    totalTelegramBots: number
+  }
   photoFaces: {
     verifiedWithoutPerson: number
     verifiedWithWrongConfidence: number
@@ -17,7 +26,7 @@ export interface IntegrityReport {
     nonExistentPerson: number
     nonExistentPhoto: number
     orphanedLinks: number
-    descriptorsWithoutPerson: number // Добавлено поле для дескрипторов без игрока
+    unrecognizedFaces: number // Renamed from descriptorsWithoutPerson - informational metric
   }
   people: {
     withoutDescriptors: number
@@ -25,6 +34,7 @@ export interface IntegrityReport {
     duplicateNames: number
   }
   totalIssues: number
+  checksPerformed: number
   details: Record<string, any[]>
 }
 
@@ -63,6 +73,34 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
   try {
     logger.debug("actions/integrity", "Starting FULL database integrity check...")
 
+    const [
+      { count: totalGalleries },
+      { count: totalPhotos },
+      { count: totalPhotoFaces },
+      { count: totalPeople },
+      { count: totalConfigs },
+      { count: totalEventPlayers },
+      { count: totalTelegramBots },
+    ] = await Promise.all([
+      supabase.from("galleries").select("*", { count: "exact", head: true }),
+      supabase.from("gallery_images").select("*", { count: "exact", head: true }),
+      supabase.from("photo_faces").select("*", { count: "exact", head: true }),
+      supabase.from("people").select("*", { count: "exact", head: true }),
+      supabase.from("face_recognition_config").select("*", { count: "exact", head: true }),
+      supabase.from("event_players").select("*", { count: "exact", head: true }),
+      supabase.from("telegram_bots").select("*", { count: "exact", head: true }),
+    ])
+
+    const stats = {
+      totalGalleries: totalGalleries || 0,
+      totalPhotos: totalPhotos || 0,
+      totalPhotoFaces: totalPhotoFaces || 0,
+      totalPeople: totalPeople || 0,
+      totalConfigs: totalConfigs || 0,
+      totalEventPlayers: totalEventPlayers || 0,
+      totalTelegramBots: totalTelegramBots || 0,
+    }
+
     const photoFaces = {
       verifiedWithoutPerson: 0,
       verifiedWithWrongConfidence: 0,
@@ -70,7 +108,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       nonExistentPerson: 0,
       nonExistentPhoto: 0,
       orphanedLinks: 0,
-      descriptorsWithoutPerson: 0, // Инициализация нового поля
+      unrecognizedFaces: 0, // Renamed from descriptorsWithoutPerson - informational metric
     }
     const people = {
       withoutDescriptors: 0,
@@ -226,30 +264,6 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
           gallery_title: item.gallery_images?.galleries?.title,
         }))
       }
-
-      // 7. Осиротевшие дескрипторы (фото удалено, но запись с дескриптором осталась)
-      const orphanedDescriptors = allPhotoFacesWithPhotos.filter((pf) => {
-        // Фото не существует И есть дескриптор (insightface_bbox как прокси)
-        return !existingPhotoIds.has(pf.photo_id) && pf.insightface_bbox
-      })
-
-      photoFaces.descriptorsWithoutPerson = orphanedDescriptors.length
-      console.log("[v0] orphanedDescriptors (photo deleted) count:", orphanedDescriptors.length)
-
-      if (orphanedDescriptors.length > 0) {
-        details.descriptorsWithoutPerson = orphanedDescriptors.slice(0, 50).map((item: any) => ({
-          id: item.id,
-          photo_id: item.photo_id,
-          verified: false,
-          confidence: null,
-          bbox: item.insightface_bbox,
-          image_url: null,
-          gallery_title: null,
-          shoot_date: null,
-          filename: null,
-          photo_exists: false,
-        }))
-      }
     }
 
     // 6. Orphaned links - faces with person_id but not visible (below threshold and not verified)
@@ -290,9 +304,19 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }))
     }
 
+    // 7. Осиротевшие дескрипторы (фото удалено, но запись с дескриптором осталась)
+    const unrecognizedCount = await supabase
+      .from("photo_faces")
+      .select("*", { count: "exact", head: true })
+      .is("person_id", null)
+      .not("insightface_descriptor", "is", null)
+
+    photoFaces.unrecognizedFaces = unrecognizedCount.count || 0
+    console.log("[v0] unrecognizedFaces (info only) count:", photoFaces.unrecognizedFaces)
+
     // ========== PEOPLE CHECKS ==========
 
-    // 7. People без descriptors в photo_faces.insightface_descriptor
+    // 8. People без descriptors в photo_faces.insightface_descriptor
     const { data: allPeople } = await supabase.from("people").select(`
       id, 
       real_name, 
@@ -316,7 +340,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
     }
 
-    // 8. People без faces (информационное)
+    // 9. People без faces (информационное)
     if (allPeople && allPhotoFaces) {
       const peopleWithFaces = new Set(allPhotoFaces.filter((pf) => pf.person_id).map((pf) => pf.person_id))
       const peopleWithoutFaces = allPeople.filter((p) => !peopleWithFaces.has(p.id))
@@ -328,7 +352,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
     }
 
-    // 9. Duplicate names (информационное)
+    // 10. Duplicate names (информационное)
     if (allPeople) {
       const nameGroups = new Map<string, any[]>()
       for (const person of allPeople) {
@@ -364,13 +388,14 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.personWithoutConfidence +
       photoFaces.nonExistentPerson +
       photoFaces.nonExistentPhoto +
-      photoFaces.orphanedLinks +
-      photoFaces.descriptorsWithoutPerson // Добавлено поле для дескрипторов без игрока
+      photoFaces.orphanedLinks
 
     const report: IntegrityReport = {
+      stats,
       photoFaces,
       people,
       totalIssues,
+      checksPerformed: 9, // Track number of checks performed for transparency
       details,
     }
 
@@ -567,7 +592,7 @@ export async function fixIntegrityIssuesAction(
         break
       }
 
-      case "descriptorsWithoutPerson": {
+      case "unrecognizedFaces": {
         // Записи где фото удалено уже удаляются через nonExistentPhotoFaces
         return {
           success: true,
@@ -660,7 +685,7 @@ export async function getIssueDetailsAction(
         break
       }
 
-      case "descriptorsWithoutPerson": {
+      case "unrecognizedFaces": {
         const { data } = await supabase
           .from("photo_faces")
           .select("id, insightface_descriptor")
