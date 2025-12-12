@@ -36,6 +36,7 @@ interface IntegrityReport {
     nonExistentPerson: number
     nonExistentPhoto: number
     orphanedLinks: number
+    descriptorsWithoutPerson: number // Добавлено поле для дескрипторов без игрока
   }
   people: {
     withoutDescriptors: number
@@ -532,7 +533,8 @@ export function DatabaseIntegrityChecker() {
                   report.photoFaces.personWithoutConfidence +
                   report.photoFaces.nonExistentPerson +
                   report.photoFaces.nonExistentPhoto +
-                  (report.photoFaces.orphanedLinks || 0)}
+                  (report.photoFaces.orphanedLinks || 0) +
+                  (report.photoFaces.descriptorsWithoutPerson || 0)}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -582,6 +584,15 @@ export function DatabaseIntegrityChecker() {
                   description="photo_id ссылается на удаленное фото → Автофикс: удаляет запись"
                   severity="critical"
                   canFix={true}
+                />
+                <IssueRow
+                  title="Дескрипторы без игрока"
+                  count={report.photoFaces.descriptorsWithoutPerson || 0}
+                  issueType="descriptorsWithoutPerson"
+                  description="Записи с дескриптором, но без person_id — участвуют в распознавании и возвращают мусор. Автофикс: удаляет записи"
+                  severity="critical"
+                  canFix={true}
+                  showVerified={true}
                 />
               </div>
             </CardContent>

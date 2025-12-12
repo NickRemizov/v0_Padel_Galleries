@@ -17,6 +17,7 @@ export interface IntegrityReport {
     nonExistentPerson: number
     nonExistentPhoto: number
     orphanedLinks: number
+    descriptorsWithoutPerson: number // Добавлено поле для дескрипторов без игрока
   }
   people: {
     withoutDescriptors: number
@@ -69,6 +70,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       nonExistentPerson: 0,
       nonExistentPhoto: 0,
       orphanedLinks: 0,
+      descriptorsWithoutPerson: 0, // Инициализация нового поля
     }
     const people = {
       withoutDescriptors: 0,
@@ -80,12 +82,12 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     // ========== PHOTO_FACES CHECKS ==========
 
-    // 1. Verified без person_id
+    // 1. Verified без person_id (включая записи без существующего фото)
     const { data: verifiedWithoutPerson, error: e1 } = await supabase
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
-        gallery_images!inner(id, image_url, original_filename, gallery_id, galleries(title, shoot_date)),
+        gallery_images(id, image_url, original_filename, gallery_id, galleries(title, shoot_date)),
         people(real_name)
       `)
       .eq("verified", true)
@@ -112,7 +114,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, recognition_confidence, insightface_bbox,
-        gallery_images!inner(id, image_url, gallery_id, galleries(title))
+        gallery_images(id, image_url, gallery_id, galleries(title))
       `)
       .eq("verified", true)
       .neq("recognition_confidence", 1.0)
@@ -135,7 +137,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .select(`
         id, photo_id, person_id, insightface_bbox,
         people(real_name),
-        gallery_images!inner(id, image_url, gallery_id, galleries(title))
+        gallery_images(id, image_url, gallery_id, galleries(title))
       `)
       .not("person_id", "is", null)
       .is("recognition_confidence", null)
@@ -157,7 +159,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, insightface_bbox,
-        gallery_images!inner(id, image_url, gallery_id, galleries(title))
+        gallery_images(id, image_url, gallery_id, galleries(title))
       `)
       .not("person_id", "is", null)
 
@@ -230,7 +232,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, verified, recognition_confidence, insightface_bbox, insightface_descriptor,
-        gallery_images!inner(id, image_url, original_filename, gallery_id, galleries(title, shoot_date)),
+        gallery_images(id, image_url, original_filename, gallery_id, galleries(title, shoot_date)),
         people(real_name)
       `)
       .not("person_id", "is", null)
@@ -257,6 +259,22 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         gallery_title: face.gallery_images?.galleries?.title,
         shoot_date: face.gallery_images?.galleries?.shoot_date,
         filename: face.gallery_images?.original_filename,
+      }))
+    }
+
+    // Дескрипторы без игрока
+    const { data: descriptorsWithoutPerson } = await supabase
+      .from("photo_faces")
+      .select("id, insightface_descriptor")
+      .is("person_id", null)
+      .not("insightface_descriptor", "is", null)
+
+    photoFaces.descriptorsWithoutPerson = descriptorsWithoutPerson?.length || 0
+    console.log("[v0] descriptorsWithoutPerson count:", photoFaces.descriptorsWithoutPerson)
+    if (descriptorsWithoutPerson && descriptorsWithoutPerson.length > 0) {
+      details.descriptorsWithoutPerson = descriptorsWithoutPerson.slice(0, 50).map((item: any) => ({
+        ...item,
+        descriptor: item.insightface_descriptor,
       }))
     }
 
@@ -334,7 +352,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.personWithoutConfidence +
       photoFaces.nonExistentPerson +
       photoFaces.nonExistentPhoto +
-      photoFaces.orphanedLinks
+      photoFaces.orphanedLinks +
+      photoFaces.descriptorsWithoutPerson // Добавлено поле для дескрипторов без игрока
 
     const report: IntegrityReport = {
       photoFaces,
@@ -536,6 +555,50 @@ export async function fixIntegrityIssuesAction(
         break
       }
 
+      case "descriptorsWithoutPerson": {
+        // Удаление дескрипторов без игрока
+        let allToDelete: string[] = []
+        let delOffset = 0
+        const delPageSize = 1000
+
+        while (true) {
+          const { data: batch } = await supabase
+            .from("photo_faces")
+            .select("id")
+            .not("insightface_descriptor", "is", null)
+            .is("person_id", null)
+            .range(delOffset, delOffset + delPageSize - 1)
+
+          if (!batch || batch.length === 0) break
+          allToDelete = allToDelete.concat(batch.map((b) => b.id))
+          if (batch.length < delPageSize) break
+          delOffset += delPageSize
+        }
+
+        console.log(`[v0] Found ${allToDelete.length} descriptors without person to delete`)
+
+        if (allToDelete.length > 0) {
+          // Удаляем батчами по 100
+          const batchSize = 100
+          let deleted = 0
+
+          for (let i = 0; i < allToDelete.length; i += batchSize) {
+            const batch = allToDelete.slice(i, i + batchSize)
+            const { error: deleteError } = await supabase.from("photo_faces").delete().in("id", batch)
+
+            if (deleteError) {
+              console.error(`[v0] Error deleting batch:`, deleteError)
+            } else {
+              deleted += batch.length
+            }
+          }
+
+          fixed = deleted
+          console.log(`[v0] Deleted ${deleted} orphaned descriptors`)
+        }
+        break
+      }
+
       default:
         return { success: false, error: `Unknown or unsupported issue type: ${issueType}` }
     }
@@ -571,7 +634,7 @@ export async function getIssueDetailsAction(
           .from("photo_faces")
           .select(`
             id, photo_id, insightface_bbox,
-            gallery_images!inner(image_url, gallery_id, galleries(title))
+            gallery_images(id, image_url, gallery_id, galleries(title))
           `)
           .eq("verified", true)
           .is("person_id", null)
@@ -592,7 +655,7 @@ export async function getIssueDetailsAction(
           .from("photo_faces")
           .select(`
             id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
-            gallery_images!inner(id, image_url, galleries(title)),
+            gallery_images(id, image_url, galleries(title)),
             people(real_name)
           `)
           .not("person_id", "is", null)
@@ -614,6 +677,21 @@ export async function getIssueDetailsAction(
             image_url: item.gallery_images?.image_url,
             gallery_title: item.gallery_images?.galleries?.title,
           }))
+        break
+      }
+
+      case "descriptorsWithoutPerson": {
+        const { data } = await supabase
+          .from("photo_faces")
+          .select("id, insightface_descriptor")
+          .is("person_id", null)
+          .not("insightface_descriptor", "is", null)
+          .limit(limit)
+
+        details = (data || []).map((item: any) => ({
+          ...item,
+          descriptor: item.insightface_descriptor,
+        }))
         break
       }
 
