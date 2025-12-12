@@ -161,19 +161,29 @@ export function RegenerateDescriptorsDialog({ open, onOpenChange, onComplete }: 
               {/* Results summary */}
               {!processing && processedFaces > 0 && (
                 <div className="space-y-2 rounded-lg border p-4">
-                  <h3 className="font-semibold">Результаты</h3>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Всего:</span>
-                      <span className="ml-2 font-medium">{totalFaces}</span>
+                  <h3 className="font-semibold">Результаты обработки</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded bg-muted p-3 text-center">
+                      <div className="text-2xl font-bold">{totalFaces}</div>
+                      <div className="text-xs text-muted-foreground">Лиц обработано</div>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">Успешно:</span>
-                      <span className="ml-2 font-medium text-green-600">{successCount}</span>
+                    <div className="rounded bg-muted p-3 text-center">
+                      <div className="text-2xl font-bold">{successCount}</div>
+                      <div className="text-xs text-muted-foreground">Дескрипторов создано</div>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">Ошибок:</span>
-                      <span className="ml-2 font-medium text-red-600">{errorCount}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm mt-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span>
+                        Успешно: <strong className="text-green-600">{successCount}</strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      <span>
+                        Ошибок: <strong className="text-red-600">{errorCount}</strong>
+                      </span>
                     </div>
                   </div>
                 </div>
