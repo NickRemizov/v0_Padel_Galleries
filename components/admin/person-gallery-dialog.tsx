@@ -254,14 +254,14 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     if (selectedPhotos.size === 0) return false
     return Array.from(selectedPhotos).some((photoId) => {
       const photo = photos.find((p) => p.id === photoId)
-      return photo && photo.faceCount === 1 && !photo.verified
+      return photo && !photo.verified
     })
   }
 
   function handleBatchVerify() {
     const verifiablePhotos = Array.from(selectedPhotos).filter((photoId) => {
       const photo = photos.find((p) => p.id === photoId)
-      return photo && photo.faceCount === 1 && !photo.verified
+      return photo && !photo.verified
     })
     setConfirmDialog({ open: true, action: "verify", count: verifiablePhotos.length })
   }
@@ -274,7 +274,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     if (confirmDialog.action === "verify") {
       const verifiablePhotos = Array.from(selectedPhotos).filter((photoId) => {
         const photo = photos.find((p) => p.id === photoId)
-        return photo && photo.faceCount === 1 && !photo.verified
+        return photo && !photo.verified
       })
       for (const photoId of verifiablePhotos) {
         await verifyPersonOnPhotoAction(photoId, personId)
@@ -387,7 +387,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {photos.map((photo) => {
-                  const canVerify = photo.faceCount === 1 && !photo.verified
+                  const canVerify = !photo.verified
 
                   // Calculate face styles - returns null if bbox is invalid
                   const faceStyles = calculateFaceStyles(photo.boundingBox, photo.width, photo.height)
