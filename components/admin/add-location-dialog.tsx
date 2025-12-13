@@ -21,8 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Plus, MapPin, Globe, Link2 } from "lucide-react"
-import { addLocationAction } from "@/app/admin/actions/entities"
-import { createClient } from "@/lib/supabase/client"
+import { addLocationAction, getCitiesAction } from "@/app/admin/actions/entities"
 
 interface City {
   id: string
@@ -36,7 +35,7 @@ export function AddLocationDialog() {
   const [cities, setCities] = useState<City[]>([])
   const [formData, setFormData] = useState({
     name: "",
-    city_id: "",
+    city_id: "none",
     address: "",
     maps_url: "",
     website_url: "",
@@ -44,13 +43,10 @@ export function AddLocationDialog() {
 
   useEffect(() => {
     async function loadCities() {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from("cities")
-        .select("id, name, slug")
-        .eq("is_active", true)
-        .order("name")
-      if (data) setCities(data)
+      const result = await getCitiesAction(true) // active_only=true
+      if (result.success && result.data) {
+        setCities(result.data)
+      }
     }
     if (open) loadCities()
   }, [open])
@@ -61,7 +57,7 @@ export function AddLocationDialog() {
     
     const result = await addLocationAction({
       name: formData.name,
-      city_id: formData.city_id || undefined,
+      city_id: formData.city_id === "none" ? undefined : formData.city_id,
       address: formData.address || undefined,
       maps_url: formData.maps_url || undefined,
       website_url: formData.website_url || undefined,
@@ -71,7 +67,7 @@ export function AddLocationDialog() {
 
     if (result.success) {
       setOpen(false)
-      setFormData({ name: "", city_id: "", address: "", maps_url: "", website_url: "" })
+      setFormData({ name: "", city_id: "none", address: "", maps_url: "", website_url: "" })
     }
   }
 
@@ -112,6 +108,7 @@ export function AddLocationDialog() {
                   <SelectValue placeholder="Выберите город" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Не указан</SelectItem>
                   {cities.map((city) => (
                     <SelectItem key={city.id} value={city.id}>
                       {city.name}
