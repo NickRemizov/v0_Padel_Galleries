@@ -1,146 +1,196 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 
-interface PersonWithStats {
-  id: string
-  real_name: string
-  telegram_name?: string
-  avatar_url?: string
-  verified_photos_count?: number
-  high_confidence_photos_count?: number
-  descriptor_count?: number
+function formatShortDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return ""
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return ""
+    const day = date.getDate().toString().padStart(2, "0")
+    const month = (date.getMonth() + 1).toString().padStart(2, "0")
+    return `${day}.${month}`
+  } catch {
+    return ""
+  }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient()
+  const searchParams = request.nextUrl.searchParams
+  const topCount = Number.parseInt(searchParams.get("top") || "15", 10)
 
   try {
-    let peopleWithStats: PersonWithStats[] = []
-    try {
-      const fastapiUrl = process.env.FASTAPI_URL || "http://localhost:8000"
-      const response = await fetch(`${fastapiUrl}/api/people?with_stats=true`, {
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-      })
-      if (response.ok) {
-        const result = await response.json()
-        peopleWithStats = result.data || []
-      }
-    } catch (e) {
-      console.error("[v0] Error fetching people stats from FastAPI:", e)
-    }
-
+    // === Базовые подсчёты ===
     const [
       { count: totalPeopleCount },
       { count: totalPhotoFacesCount },
       { count: verifiedFacesCount },
-      { data: peopleWithVerifiedFaces },
       { count: unknownFacesCount },
-      { data: galleries },
-      { count: inconsistentCount },
-      { data: facesWithoutDescriptors },
+      { count: totalImagesCount },
+      { count: processedImagesCount },
     ] = await Promise.all([
       supabase.from("people").select("*", { count: "exact", head: true }),
       supabase.from("photo_faces").select("*", { count: "exact", head: true }),
       supabase.from("photo_faces").select("*", { count: "exact", head: true }).eq("verified", true),
-      supabase.from("photo_faces").select("person_id").eq("verified", true).not("person_id", "is", null),
       supabase.from("photo_faces").select("*", { count: "exact", head: true }).is("person_id", null),
-      supabase.from("galleries").select("id, title"),
-      supabase
-        .from("photo_faces")
-        .select("*", { count: "exact", head: true })
-        .eq("verified", true)
-        .neq("recognition_confidence", 1),
-      supabase
-        .from("photo_faces")
-        .select("id", { count: "exact", head: true })
-        .not("person_id", "is", null)
-        .is("insightface_descriptor", null),
+      supabase.from("gallery_images").select("*", { count: "exact", head: true }),
+      supabase.from("gallery_images").select("*", { count: "exact", head: true }).eq("has_been_processed", true),
     ])
+
+    // === Игроки с/без verified фото ===
+    const { data: peopleWithVerifiedFaces } = await supabase
+      .from("photo_faces")
+      .select("person_id")
+      .eq("verified", true)
+      .not("person_id", "is", null)
+
+    const uniquePeopleWithVerified = new Set(peopleWithVerifiedFaces?.map((f) => f.person_id) || [])
+    const peopleWithVerifiedCount = uniquePeopleWithVerified.size
+    const peopleWithoutVerifiedCount = (totalPeopleCount || 0) - peopleWithVerifiedCount
+
+    // Список людей без verified фото
+    const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_name").order("real_name")
+
+    const peopleWithoutVerifiedList = (allPeople || [])
+      .filter((p) => !uniquePeopleWithVerified.has(p.id))
+      .slice(0, 50)
+      .map((p) => ({
+        id: p.id,
+        name: p.real_name || p.telegram_name || "Без имени",
+      }))
+
+    // === Подсчёт фото с N людьми ===
+    const { data: facesPerPhoto } = await supabase.from("photo_faces").select("photo_id")
+
+    const photoFaceCounts: Record<string, number> = {}
+    for (const face of facesPerPhoto || []) {
+      photoFaceCounts[face.photo_id] = (photoFaceCounts[face.photo_id] || 0) + 1
+    }
+
+    let with1Person = 0
+    let with2_3Persons = 0
+    let with4PlusPersons = 0
+
+    for (const count of Object.values(photoFaceCounts)) {
+      if (count === 1) with1Person++
+      else if (count >= 2 && count <= 3) with2_3Persons++
+      else if (count >= 4) with4PlusPersons++
+    }
+
+    // === Статистика фото на игрока ===
+    const { data: verifiedFacesPerPerson } = await supabase
+      .from("photo_faces")
+      .select("person_id")
+      .eq("verified", true)
+      .not("person_id", "is", null)
+
+    const personFaceCounts: Record<string, number> = {}
+    for (const face of verifiedFacesPerPerson || []) {
+      if (face.person_id) {
+        personFaceCounts[face.person_id] = (personFaceCounts[face.person_id] || 0) + 1
+      }
+    }
+
+    const faceCounts = Object.values(personFaceCounts)
+    const playerStatsAvg =
+      faceCounts.length > 0 ? (faceCounts.reduce((a, b) => a + b, 0) / faceCounts.length).toFixed(1) : "0"
+    const playerStatsMin = faceCounts.length > 0 ? Math.min(...faceCounts) : 0
+    const playerStatsMax = faceCounts.length > 0 ? Math.max(...faceCounts) : 0
+
+    // === Статистика фото в галерее ===
+    const { data: galleries } = await supabase.from("galleries").select(`
+        id, 
+        title, 
+        shoot_date,
+        gallery_images!inner (
+          id,
+          has_been_processed
+        )
+      `)
+
+    const galleryPhotoCounts = (galleries || []).map((g) => (g.gallery_images as any[])?.length || 0)
+    const galleryStatsAvg =
+      galleryPhotoCounts.length > 0
+        ? Math.round(galleryPhotoCounts.reduce((a, b) => a + b, 0) / galleryPhotoCounts.length)
+        : 0
+    const galleryStatsMin = galleryPhotoCounts.length > 0 ? Math.min(...galleryPhotoCounts) : 0
+    const galleryStatsMax = galleryPhotoCounts.length > 0 ? Math.max(...galleryPhotoCounts) : 0
+
+    // === Требуют внимания: игроки с 1-2 фото ===
+    const fewPhotosList = Object.entries(personFaceCounts)
+      .filter(([, count]) => count >= 1 && count <= 2)
+      .map(([personId, count]) => {
+        const person = allPeople?.find((p) => p.id === personId)
+        return {
+          id: personId,
+          name: person?.real_name || person?.telegram_name || "Без имени",
+          count,
+        }
+      })
+      .sort((a, b) => a.count - b.count)
+
+    // === Требуют внимания: без аватара ===
+    const { data: peopleWithoutAvatar } = await supabase
+      .from("people")
+      .select("id, real_name, telegram_name")
+      .is("avatar_url", null)
+      .limit(50)
+
+    const noAvatarList = (peopleWithoutAvatar || []).map((p) => ({
+      id: p.id,
+      name: p.real_name || p.telegram_name || "Без имени",
+    }))
+
+    // === Топ игроков ===
+    const topPlayers = Object.entries(personFaceCounts)
+      .map(([personId, count]) => {
+        const person = allPeople?.find((p) => p.id === personId)
+        return {
+          id: personId,
+          name: person?.real_name || person?.telegram_name || "Без имени",
+          count,
+        }
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, topCount)
+
+    // === Состояние галерей ===
+    const fullyVerifiedList: Array<{ id: string; title: string; date: string; photos: number }> = []
+    const partiallyVerifiedList: Array<{ id: string; title: string; date: string; processed: number; total: number }> =
+      []
+    const notProcessedList: Array<{ id: string; title: string; date: string; photos: number }> = []
+
+    for (const gallery of galleries || []) {
+      const images = (gallery.gallery_images as any[]) || []
+      const total = images.length
+      const processed = images.filter((img: any) => img.has_been_processed).length
+      const date = formatShortDate(gallery.shoot_date)
+
+      if (total === 0) {
+        notProcessedList.push({ id: gallery.id, title: gallery.title, date, photos: 0 })
+      } else if (processed === 0) {
+        notProcessedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
+      } else if (processed === total) {
+        fullyVerifiedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
+      } else {
+        partiallyVerifiedList.push({ id: gallery.id, title: gallery.title, date, processed, total })
+      }
+    }
+
+    // === Целостность ===
+    const { count: inconsistentCount } = await supabase
+      .from("photo_faces")
+      .select("*", { count: "exact", head: true })
+      .eq("verified", true)
+      .neq("recognition_confidence", 1)
 
     let orphanedDescriptorsCount = 0
     try {
       const { count } = await supabase.rpc("count_orphaned_descriptors")
       orphanedDescriptorsCount = count || 0
-    } catch (e) {
-      const { data: orphaned } = await supabase.from("photo_faces").select("id, photo_id")
-      if (orphaned) {
-        const { data: existingPhotos } = await supabase.from("gallery_images").select("id")
-        const existingIds = new Set(existingPhotos?.map((p) => p.id) || [])
-        orphanedDescriptorsCount = orphaned.filter((f) => !existingIds.has(f.photo_id)).length
-      }
-    }
-
-    const totalPeople = totalPeopleCount || 0
-    const totalFaces = totalPhotoFacesCount || 0
-    const verifiedFaces = verifiedFacesCount || 0
-    const unknownFaces = unknownFacesCount || 0
-
-    const uniquePeopleWithVerified = new Set(peopleWithVerifiedFaces?.map((f) => f.person_id) || [])
-    const peopleWithVerifiedCount = uniquePeopleWithVerified.size
-
-    const peopleWithFewPhotos = peopleWithStats
-      .filter((p) => (p.verified_photos_count || 0) > 0 && (p.verified_photos_count || 0) < 3)
-      .map((p) => ({
-        id: p.id,
-        name: p.real_name || p.telegram_name || "Без имени",
-        count: p.verified_photos_count || 0,
-      }))
-      .sort((a, b) => a.count - b.count)
-
-    const peopleWithoutAvatar = peopleWithStats
-      .filter((p) => !p.avatar_url)
-      .map((p) => ({
-        id: p.id,
-        name: p.real_name || p.telegram_name || "Без имени",
-      }))
-
-    const top5People = peopleWithStats
-      .filter((p) => (p.verified_photos_count || 0) > 0)
-      .map((p) => ({
-        id: p.id,
-        name: p.real_name || p.telegram_name || "Без имени",
-        count: p.verified_photos_count || 0,
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5)
-
-    const faceCounts = peopleWithStats
-      .filter((p) => (p.verified_photos_count || 0) > 0)
-      .map((p) => p.verified_photos_count || 0)
-
-    const peopleWithFaces = faceCounts.length
-
-    let galleriesFullyVerified = 0
-    let galleriesPartiallyVerified = 0
-    let galleriesNotProcessed = 0
-
-    if (galleries && galleries.length > 0) {
-      const { data: galleryStats } = await supabase.from("galleries").select(`
-          id,
-          gallery_images!inner (
-            id,
-            has_been_processed
-          )
-        `)
-
-      for (const gallery of galleryStats || []) {
-        const images = (gallery.gallery_images as any[]) || []
-        if (images.length === 0) {
-          galleriesNotProcessed++
-          continue
-        }
-
-        const processedCount = images.filter((img: any) => img.has_been_processed).length
-
-        if (processedCount === 0) {
-          galleriesNotProcessed++
-        } else if (processedCount === images.length) {
-          galleriesFullyVerified++
-        } else {
-          galleriesPartiallyVerified++
-        }
-      }
+    } catch {
+      // Fallback если RPC не существует
     }
 
     const { data: unverifiedConfidences } = await supabase
@@ -157,108 +207,87 @@ export async function GET() {
       avgUnverifiedConfidence = sum / unverifiedConfidences.length
     }
 
-    if (peopleWithFaces === 0) {
-      return NextResponse.json({
-        overall: {
-          total_people: totalPeople,
-          people_with_verified: 0,
-          total_faces: totalFaces,
-          total_verified_faces: 0,
-          avg_faces_per_person: "0.00",
-          min_faces: 0,
-          max_faces: 0,
-        },
-        distribution: [],
-        histogram: [
-          { face_range: "1-2 лица", people_count: 0, total_faces: 0 },
-          { face_range: "3-4 лица", people_count: 0, total_faces: 0 },
-          { face_range: "5-9 лиц", people_count: 0, total_faces: 0 },
-          { face_range: "10-19 лиц", people_count: 0, total_faces: 0 },
-          { face_range: "20+ лиц", people_count: 0, total_faces: 0 },
-        ],
-        attention: {
-          people_with_few_photos: [],
-          people_without_avatar: [],
-          unknown_faces_count: unknownFaces,
-          faces_without_descriptors: 0,
-        },
-        top_people: [],
-        galleries: {
-          fully_verified: 0,
-          partially_verified: 0,
-          not_processed: 0,
-          total: galleries?.length || 0,
-        },
-        integrity: {
-          inconsistent_verified_confidence: 0,
-          orphaned_descriptors: 0,
-          avg_unverified_confidence: 0,
-        },
-      })
-    }
-
-    const avgFaces = verifiedFaces / peopleWithFaces
-
-    const thresholds = [1, 3, 5, 10, 15, 20]
+    // === Распределение (кумулятивное) ===
+    const thresholds = [1, 3, 5, 10, 20, 40]
     const distribution = thresholds.map((threshold) => {
-      const peopleCount = faceCounts.filter((count) => count >= threshold).length
-      const totalFacesForThreshold = faceCounts
-        .filter((count) => count >= threshold)
-        .reduce((sum, count) => sum + count, 0)
+      const count = faceCounts.filter((c) => c >= threshold).length
+      const percentage = faceCounts.length > 0 ? Math.round((count / faceCounts.length) * 100) : 0
+      return { threshold, count, percentage }
+    })
 
+    // === Гистограмма ===
+    const histogramBuckets = [
+      { range: "1-2", min: 1, max: 2 },
+      { range: "3-4", min: 3, max: 4 },
+      { range: "5-9", min: 5, max: 9 },
+      { range: "10-19", min: 10, max: 19 },
+      { range: "20-39", min: 20, max: 39 },
+      { range: "40+", min: 40, max: 9999 },
+    ]
+
+    const histogram = histogramBuckets.map((bucket) => {
+      const peopleInBucket = faceCounts.filter((c) => c >= bucket.min && c <= bucket.max)
       return {
-        threshold: `≥ ${threshold} фото`,
-        people_count: peopleCount,
-        total_faces: totalFacesForThreshold,
-        percentage: ((peopleCount / peopleWithFaces) * 100).toFixed(1),
+        range: bucket.range,
+        count: peopleInBucket.length,
+        total_faces: peopleInBucket.reduce((sum, c) => sum + c, 0),
       }
     })
 
-    const histogram = [
-      { range: "1-2 лица", min: 1, max: 2 },
-      { range: "3-4 лица", min: 3, max: 4 },
-      { range: "5-9 лиц", min: 5, max: 9 },
-      { range: "10-19 лиц", min: 10, max: 19 },
-      { range: "20+ лиц", min: 20, max: 9999 },
-    ].map((bucket) => {
-      const peopleInBucket = faceCounts.filter((count) => count >= bucket.min && count <= bucket.max)
-      return {
-        face_range: bucket.range,
-        people_count: peopleInBucket.length,
-        total_faces: peopleInBucket.reduce((sum, count) => sum + count, 0),
-      }
-    })
-
+    // === Формируем ответ ===
     return NextResponse.json({
-      overall: {
-        total_people: totalPeople,
-        people_with_verified: peopleWithVerifiedCount,
-        total_faces: totalFaces,
-        total_verified_faces: verifiedFaces,
-        avg_faces_per_person: avgFaces.toFixed(2),
-        min_faces: faceCounts.length > 0 ? Math.min(...faceCounts) : 0,
-        max_faces: faceCounts.length > 0 ? Math.max(...faceCounts) : 0,
+      players: {
+        total: totalPeopleCount || 0,
+        with_verified: peopleWithVerifiedCount,
+        without_verified: peopleWithoutVerifiedCount,
+        without_verified_list: peopleWithoutVerifiedList,
       },
-      distribution,
-      histogram,
+      faces: {
+        total: totalPhotoFacesCount || 0,
+        verified: verifiedFacesCount || 0,
+        unverified: (totalPhotoFacesCount || 0) - (verifiedFacesCount || 0),
+      },
+      images: {
+        total: totalImagesCount || 0,
+        recognized: processedImagesCount || 0,
+        with_1_person: with1Person,
+        with_2_3_persons: with2_3Persons,
+        with_4_plus_persons: with4PlusPersons,
+      },
+      player_stats: {
+        avg_photos: Number.parseFloat(playerStatsAvg),
+        min_photos: playerStatsMin,
+        max_photos: playerStatsMax,
+      },
+      gallery_stats: {
+        avg_photos: galleryStatsAvg,
+        min_photos: galleryStatsMin,
+        max_photos: galleryStatsMax,
+      },
       attention: {
-        people_with_few_photos: peopleWithFewPhotos.slice(0, 10),
-        people_without_avatar: peopleWithoutAvatar.slice(0, 10),
-        unknown_faces_count: unknownFaces,
-        faces_without_descriptors: Array.isArray(facesWithoutDescriptors) ? facesWithoutDescriptors.length : 0,
+        few_photos_count: fewPhotosList.length,
+        few_photos_list: fewPhotosList,
+        no_avatar_count: noAvatarList.length,
+        no_avatar_list: noAvatarList,
+        unknown_faces: unknownFacesCount || 0,
       },
-      top_people: top5People,
+      top_players: topPlayers,
       galleries: {
-        fully_verified: galleriesFullyVerified,
-        partially_verified: galleriesPartiallyVerified,
-        not_processed: galleriesNotProcessed,
-        total: galleries?.length || 0,
+        total: (galleries || []).length,
+        fully_verified: fullyVerifiedList.length,
+        fully_verified_list: fullyVerifiedList,
+        partially_verified: partiallyVerifiedList.length,
+        partially_verified_list: partiallyVerifiedList,
+        not_processed: notProcessedList.length,
+        not_processed_list: notProcessedList,
       },
       integrity: {
-        inconsistent_verified_confidence: inconsistentCount || 0,
+        inconsistent_verified: inconsistentCount || 0,
         orphaned_descriptors: orphanedDescriptorsCount,
         avg_unverified_confidence: avgUnverifiedConfidence,
       },
+      distribution,
+      histogram,
     })
   } catch (error) {
     console.error("[v0] Error fetching face statistics:", error)
