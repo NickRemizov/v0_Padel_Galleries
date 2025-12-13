@@ -159,11 +159,10 @@ export function RegenerateDescriptorsDialog({ open, onOpenChange, onComplete }: 
               {/* Results summary */}
               {!processing && processedFaces > 0 && (
                 <div className="space-y-4">
-                  {/* Main counters - same style as cleanup-duplicates */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="rounded-lg border p-4 text-center">
                       <div className="text-3xl font-bold">{totalFaces}</div>
-                      <div className="text-sm text-muted-foreground">Лиц обработано</div>
+                      <div className="text-sm text-muted-foreground">Лиц проверено</div>
                     </div>
                     <div className="rounded-lg border p-4 text-center">
                       <div className="text-3xl font-bold">{successCount}</div>
@@ -171,11 +170,22 @@ export function RegenerateDescriptorsDialog({ open, onOpenChange, onComplete }: 
                     </div>
                   </div>
 
-                  {/* Details in green box - same style */}
                   <div className="rounded-lg border border-green-200 bg-green-50 p-4">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-green-700">Успешно:</span>
+                        <span className="text-green-700">Фото обработано:</span>
+                        <span className="ml-2 font-bold text-green-800">
+                          {new Set(faces.map((f) => f.photo_id)).size}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-green-700">Игроков затронуто:</span>
+                        <span className="ml-2 font-bold text-green-800">
+                          {new Set(faces.map((f) => f.person_id)).size}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-green-700">Успешно восстановлено:</span>
                         <span className="ml-2 font-bold text-green-800">{successCount}</span>
                       </div>
                       <div>
