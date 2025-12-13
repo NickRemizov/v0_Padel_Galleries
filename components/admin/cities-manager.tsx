@@ -23,8 +23,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
+import {
+  getCitiesAction,
+  addCityAction,
+  updateCityAction,
+  toggleCityActiveAction,
+  deleteCityAction,
+} from "@/app/admin/actions/entities"
 
 interface City {
   id: string
@@ -55,18 +61,12 @@ export function CitiesManager() {
 
   async function loadCities() {
     setLoading(true)
-    const supabase = createClient()
-    
-    const { data, error } = await supabase
-      .from("cities")
-      .select("*")
-      .order("name")
-
-    if (error) {
-      console.error("Error loading cities:", error)
-      toast.error("Ошибка загрузки городов")
+    const result = await getCitiesAction()
+    if (result.success) {
+      setCities(result.data || [])
     } else {
-      setCities(data || [])
+      console.error("Error loading cities:", result.error)
+      toast.error("Ошибка загрузки городов")
     }
     setLoading(false)
   }
@@ -115,45 +115,39 @@ export function CitiesManager() {
     }
 
     setSaving(true)
-    const supabase = createClient()
 
     try {
+      let result
       if (editingCity) {
-        const { error } = await supabase
-          .from("cities")
-          .update({
-            name: formData.name,
-            slug: formData.slug,
-            country: formData.country,
-            is_active: formData.is_active,
-          })
-          .eq("id", editingCity.id)
-
-        if (error) throw error
-        toast.success("Город обновлён")
+        result = await updateCityAction(editingCity.id, {
+          name: formData.name,
+          slug: formData.slug,
+          country: formData.country,
+          is_active: formData.is_active,
+        })
       } else {
-        const { error } = await supabase
-          .from("cities")
-          .insert({
-            name: formData.name,
-            slug: formData.slug,
-            country: formData.country,
-            is_active: formData.is_active,
-          })
-
-        if (error) throw error
-        toast.success("Город добавлен")
+        result = await addCityAction({
+          name: formData.name,
+          slug: formData.slug,
+          country: formData.country,
+          is_active: formData.is_active,
+        })
       }
 
-      setDialogOpen(false)
-      loadCities()
-    } catch (error: any) {
+      if (result.success) {
+        toast.success(editingCity ? "Город обновлён" : "Город добавлен")
+        setDialogOpen(false)
+        loadCities()
+      } else {
+        if (result.code === "23505") {
+          toast.error("Город с таким slug уже существует")
+        } else {
+          toast.error(result.error || "Ошибка сохранения")
+        }
+      }
+    } catch (error) {
       console.error("Error saving city:", error)
-      if (error.code === "23505") {
-        toast.error("Город с таким slug уже существует")
-      } else {
-        toast.error("Ошибка сохранения")
-      }
+      toast.error("Ошибка сохранения")
     } finally {
       setSaving(false)
     }
@@ -162,39 +156,27 @@ export function CitiesManager() {
   async function handleDelete(city: City) {
     if (!confirm(`Удалить город "${city.name}"?`)) return
 
-    const supabase = createClient()
+    const result = await deleteCityAction(city.id)
     
-    const { error } = await supabase
-      .from("cities")
-      .delete()
-      .eq("id", city.id)
-
-    if (error) {
-      console.error("Error deleting city:", error)
-      if (error.code === "23503") {
-        toast.error("Невозможно удалить: есть связанные площадки")
-      } else {
-        toast.error("Ошибка удаления")
-      }
-    } else {
+    if (result.success) {
       toast.success("Город удалён")
       loadCities()
+    } else {
+      if (result.code === "23503") {
+        toast.error("Невозможно удалить: есть связанные площадки")
+      } else {
+        toast.error(result.error || "Ошибка удаления")
+      }
     }
   }
 
   async function toggleActive(city: City) {
-    const supabase = createClient()
+    const result = await toggleCityActiveAction(city.id)
     
-    const { error } = await supabase
-      .from("cities")
-      .update({ is_active: !city.is_active })
-      .eq("id", city.id)
-
-    if (error) {
-      console.error("Error toggling city:", error)
-      toast.error("Ошибка обновления")
-    } else {
+    if (result.success) {
       loadCities()
+    } else {
+      toast.error(result.error || "Ошибка обновления")
     }
   }
 
