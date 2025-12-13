@@ -1,0 +1,19 @@
+name: Deploy FastAPI Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'python/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Hetzner
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: /home/nickr/scripts/sync-and-restart.sh
