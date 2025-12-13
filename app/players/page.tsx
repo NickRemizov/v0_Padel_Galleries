@@ -8,6 +8,41 @@ import { apiFetch } from "@/lib/apiClient"
 
 export const revalidate = 300
 
+/**
+ * Helper: загрузить photo_faces для списка игроков с пагинацией
+ */
+async function loadPhotoFacesForPlayers(supabase: any, playerIds: string[]) {
+  if (playerIds.length === 0) return []
+
+  let allFaces: any[] = []
+  let offset = 0
+  const pageSize = 1000
+
+  while (true) {
+    const { data: batch } = await supabase
+      .from("photo_faces")
+      .select(
+        `
+        person_id,
+        gallery_images!inner (
+          galleries!inner (
+            shoot_date
+          )
+        )
+      `
+      )
+      .in("person_id", playerIds)
+      .range(offset, offset + pageSize - 1)
+
+    if (!batch || batch.length === 0) break
+    allFaces = allFaces.concat(batch)
+    if (batch.length < pageSize) break
+    offset += pageSize
+  }
+
+  return allFaces
+}
+
 export default async function PlayersPage() {
   let players: Person[] = []
 
@@ -31,26 +66,15 @@ export default async function PlayersPage() {
     // This is read-only metadata that doesn't affect business logic
     const supabase = await createClient()
 
-    const { data: photoFaces } = await supabase
-      .from("photo_faces")
-      .select(
-        `
-        person_id,
-        gallery_images!inner (
-          galleries!inner (
-            shoot_date
-          )
-        )
-      `,
-      )
-      .in(
-        "person_id",
-        filteredPlayers.map((p) => p.id),
-      )
+    // С ПАГИНАЦИЕЙ: загружаем photo_faces для всех игроков
+    const photoFaces = await loadPhotoFacesForPlayers(
+      supabase,
+      filteredPlayers.map((p) => p.id)
+    )
 
     // Add most recent gallery date to each player
     players = filteredPlayers.map((player: any) => {
-      const playerPhotoFaces = photoFaces?.filter((pf: any) => pf.person_id === player.id) || []
+      const playerPhotoFaces = photoFaces.filter((pf: any) => pf.person_id === player.id)
 
       let mostRecentDate: string | null = null
       if (playerPhotoFaces.length > 0) {
