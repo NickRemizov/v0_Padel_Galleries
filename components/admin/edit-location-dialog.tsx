@@ -43,7 +43,7 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
   const [cities, setCities] = useState<City[]>([])
   const [formData, setFormData] = useState({
     name: location.name,
-    city_id: location.city_id || "",
+    city_id: location.city_id || "none",
     address: location.address || "",
     maps_url: location.maps_url || "",
     website_url: location.website_url || "",
@@ -65,7 +65,7 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
   useEffect(() => {
     setFormData({
       name: location.name,
-      city_id: location.city_id || "",
+      city_id: location.city_id || "none",
       address: location.address || "",
       maps_url: location.maps_url || "",
       website_url: location.website_url || "",
@@ -78,7 +78,7 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
 
     const result = await updateLocationAction(location.id, {
       name: formData.name,
-      city_id: formData.city_id || null,
+      city_id: formData.city_id === "none" ? null : formData.city_id,
       address: formData.address || null,
       maps_url: formData.maps_url || null,
       website_url: formData.website_url || null,
@@ -122,7 +122,7 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
                   <SelectValue placeholder="Выберите город" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Не указан</SelectItem>
+                  <SelectItem value="none">Не указан</SelectItem>
                   {cities.map((city) => (
                     <SelectItem key={city.id} value={city.id}>
                       {city.name}
