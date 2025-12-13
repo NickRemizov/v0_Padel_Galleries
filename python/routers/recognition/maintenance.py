@@ -6,7 +6,7 @@ Maintenance endpoints for face recognition system.
 from fastapi import APIRouter, HTTPException, Depends
 import logging
 
-from .dependencies import face_service_instance
+from .dependencies import get_face_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.post("/rebuild-index")
 async def rebuild_index(
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """
     Rebuild the HNSWLIB index from database.

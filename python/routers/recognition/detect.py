@@ -14,12 +14,7 @@ from models.recognition_schemas import (
     ProcessPhotoRequest,
     ProcessPhotoResponse,
 )
-from .dependencies import (
-    get_face_service,
-    get_supabase_client,
-    face_service_instance,
-    supabase_client_instance,
-)
+from .dependencies import get_face_service, get_supabase_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,9 +23,10 @@ router = APIRouter()
 @router.post("/detect-faces", response_model=FaceDetectionResponse)
 async def detect_faces(
     request: DetectFacesRequest,
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """Detect faces on an image using InsightFace"""
+    supabase_client = get_supabase_client()
     try:
         logger.info("=" * 80)
         logger.info("[v3.1] ===== DETECT FACES REQUEST START =====")
@@ -87,7 +83,7 @@ async def detect_faces(
                             person_id_match = face_service.player_ids_map[int(label_idx)]
                             
                             # Get person name from database
-                            person_response = supabase_client_instance.client.table("people").select(
+                            person_response = supabase_client.client.table("people").select(
                                 "real_name"
                             ).eq("id", person_id_match).execute()
                             
@@ -140,8 +136,8 @@ async def detect_faces(
 @router.post("/process-photo", response_model=ProcessPhotoResponse)
 async def process_photo(
     request: ProcessPhotoRequest,
-    face_service=Depends(lambda: face_service_instance),
-    supabase_client=Depends(lambda: supabase_client_instance)
+    face_service=Depends(get_face_service),
+    supabase_client=Depends(get_supabase_client)
 ):
     """
     Process photo for face detection and recognition
