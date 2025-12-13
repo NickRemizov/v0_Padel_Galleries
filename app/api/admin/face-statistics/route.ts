@@ -103,11 +103,28 @@ export async function GET(request: NextRequest) {
         name: p.real_name || p.telegram_name || "Без имени",
       }))
 
-    const { data: facesPerPhoto } = await supabase.from("photo_faces").select("photo_id")
+    let allPhotoFaces: any[] = []
+    {
+      let offset = 0
+      const pageSize = 1000
+      while (true) {
+        const { data: batch } = await supabase
+          .from("photo_faces")
+          .select("photo_id, person_id, recognition_confidence")
+          .range(offset, offset + pageSize - 1)
+
+        if (!batch || batch.length === 0) break
+        allPhotoFaces = allPhotoFaces.concat(batch)
+        if (batch.length < pageSize) break
+        offset += pageSize
+      }
+    }
+
+    const facesPerPhoto = allPhotoFaces.map((face) => face.photo_id)
 
     const photoFaceCounts: Record<string, number> = {}
     for (const face of facesPerPhoto || []) {
-      photoFaceCounts[face.photo_id] = (photoFaceCounts[face.photo_id] || 0) + 1
+      photoFaceCounts[face] = (photoFaceCounts[face] || 0) + 1
     }
 
     let with1Person = 0
@@ -120,11 +137,7 @@ export async function GET(request: NextRequest) {
       else if (count >= 4) with4PlusPersons++
     }
 
-    const { data: verifiedFacesPerPerson } = await supabase
-      .from("photo_faces")
-      .select("person_id")
-      .eq("verified", true)
-      .not("person_id", "is", null)
+    const verifiedFacesPerPerson = allPhotoFaces.filter((face) => face.verified && face.person_id !== null)
 
     const personFaceCounts: Record<string, number> = {}
     for (const face of verifiedFacesPerPerson || []) {
@@ -149,10 +162,6 @@ export async function GET(request: NextRequest) {
           has_been_processed
         )
       `)
-
-    const { data: allPhotoFaces } = await supabase
-      .from("photo_faces")
-      .select("photo_id, person_id, recognition_confidence")
 
     const photoHasUnknownFaces: Record<string, boolean> = {}
     const photoHasUnverifiedFaces: Record<string, boolean> = {}
