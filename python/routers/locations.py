@@ -16,10 +16,18 @@ def set_services(supabase_db: SupabaseDatabase):
 
 class LocationCreate(BaseModel):
     name: str
+    city_id: Optional[str] = None
+    address: Optional[str] = None
+    maps_url: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 class LocationUpdate(BaseModel):
-    name: str
+    name: Optional[str] = None
+    city_id: Optional[str] = None
+    address: Optional[str] = None
+    maps_url: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 @router.get("")
@@ -52,7 +60,17 @@ async def get_location(location_id: str):
 async def create_location(data: LocationCreate):
     """Create a new location."""
     try:
-        result = supabase_db_instance.client.table("locations").insert({"name": data.name}).execute()
+        insert_data = {"name": data.name}
+        if data.city_id:
+            insert_data["city_id"] = data.city_id
+        if data.address:
+            insert_data["address"] = data.address
+        if data.maps_url:
+            insert_data["maps_url"] = data.maps_url
+        if data.website_url:
+            insert_data["website_url"] = data.website_url
+            
+        result = supabase_db_instance.client.table("locations").insert(insert_data).execute()
         if result.data:
             logger.info(f"[Locations API] Created location: {data.name}")
             return {"success": True, "data": result.data[0]}
@@ -66,9 +84,24 @@ async def create_location(data: LocationCreate):
 async def update_location(location_id: str, data: LocationUpdate):
     """Update a location."""
     try:
-        result = supabase_db_instance.client.table("locations").update({"name": data.name}).eq("id", location_id).execute()
+        update_data = {}
+        if data.name is not None:
+            update_data["name"] = data.name
+        if data.city_id is not None:
+            update_data["city_id"] = data.city_id if data.city_id else None
+        if data.address is not None:
+            update_data["address"] = data.address if data.address else None
+        if data.maps_url is not None:
+            update_data["maps_url"] = data.maps_url if data.maps_url else None
+        if data.website_url is not None:
+            update_data["website_url"] = data.website_url if data.website_url else None
+            
+        if not update_data:
+            return {"success": False, "error": "No fields to update"}
+            
+        result = supabase_db_instance.client.table("locations").update(update_data).eq("id", location_id).execute()
         if result.data:
-            logger.info(f"[Locations API] Updated location {location_id}: {data.name}")
+            logger.info(f"[Locations API] Updated location {location_id}")
             return {"success": True, "data": result.data[0]}
         return {"success": False, "error": "Update failed"}
     except Exception as e:
