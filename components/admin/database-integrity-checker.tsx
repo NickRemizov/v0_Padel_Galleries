@@ -164,6 +164,11 @@ export function DatabaseIntegrityChecker() {
   const handleConfirmFace = async (faceId: string, actionType: "verify" | "elevate", item?: any) => {
     // Для verifiedWithoutPerson - открываем FaceTaggingDialog
     if (actionType === "verify" && item?.photo_id && item?.image_url) {
+      try {
+        await rejectFaceAction(faceId, "unverify")
+      } catch (error) {
+        console.error("[IntegrityChecker] Failed to unverify before tagging:", error)
+      }
       setSelectedPhotoForTagging({
         imageId: item.photo_id,
         imageUrl: item.image_url,
@@ -322,9 +327,7 @@ export function DatabaseIntegrityChecker() {
           )}
           {showVerified && item.verified !== undefined && <div>Верифицирован: {item.verified ? "Да" : "Нет"}</div>}
           {item.photo_exists === false && <div className="text-orange-600 font-medium">⚠️ Фото удалено</div>}
-          <div className="font-mono text-[10px] text-muted-foreground pt-1 border-t mt-1">
-            ID: {item.id?.slice(0, 8)}...
-          </div>
+          {item.count && <div className="font-medium text-orange-600">Дублей: {item.count} записей</div>}
         </div>
       </div>
     )
@@ -463,21 +466,6 @@ export function DatabaseIntegrityChecker() {
                       )}
                       {item.verified !== undefined && <div>Верифицирован: {item.verified ? "Да" : "Нет"}</div>}
                       {item.count && <div className="font-medium text-orange-600">Дублей: {item.count} записей</div>}
-                      {item.ids && item.ids.length > 0 && (
-                        <div className="text-muted-foreground text-[10px]">
-                          IDs:{" "}
-                          {item.ids
-                            .slice(0, 3)
-                            .map((id: string) => id.slice(0, 8))
-                            .join(", ")}
-                          {item.ids.length > 3 && "..."}
-                        </div>
-                      )}
-                      <div className="font-mono text-[10px] text-muted-foreground pt-1 border-t">
-                        {item.id ? `ID: ${item.id.slice(0, 8)}...` : ""}
-                        {item.photo_id && ` • Фото: ${item.photo_id.slice(0, 8)}...`}
-                        {item.person_id && ` • Персона: ${item.person_id.slice(0, 8)}...`}
-                      </div>
                     </div>
                   </div>
                 ))}
