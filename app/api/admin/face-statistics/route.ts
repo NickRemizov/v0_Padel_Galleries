@@ -61,6 +61,39 @@ function countFacesForGallery(imageIds: string[], allPhotoFaces: any[]) {
   return { verified, unverified, unknown }
 }
 
+/**
+ * Helper: загрузить все записи из photo_faces с пагинацией
+ */
+async function loadAllPhotoFaces<T>(
+  supabase: any,
+  selectFields: string,
+  filters?: (query: any) => any
+): Promise<T[]> {
+  let allRecords: T[] = []
+  let offset = 0
+  const pageSize = 1000
+
+  while (true) {
+    let query = supabase
+      .from("photo_faces")
+      .select(selectFields)
+      .range(offset, offset + pageSize - 1)
+
+    if (filters) {
+      query = filters(query)
+    }
+
+    const { data: batch } = await query
+
+    if (!batch || batch.length === 0) break
+    allRecords = allRecords.concat(batch)
+    if (batch.length < pageSize) break
+    offset += pageSize
+  }
+
+  return allRecords
+}
+
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const searchParams = request.nextUrl.searchParams
@@ -83,13 +116,14 @@ export async function GET(request: NextRequest) {
       supabase.from("gallery_images").select("*", { count: "exact", head: true }).eq("has_been_processed", true),
     ])
 
-    const { data: peopleWithVerifiedFaces } = await supabase
-      .from("photo_faces")
-      .select("person_id")
-      .eq("verified", true)
-      .not("person_id", "is", null)
+    // С ПАГИНАЦИЕЙ: получаем все verified faces для подсчёта уникальных людей
+    const peopleWithVerifiedFaces = await loadAllPhotoFaces<{ person_id: string }>(
+      supabase,
+      "person_id",
+      (q) => q.eq("verified", true).not("person_id", "is", null)
+    )
 
-    const uniquePeopleWithVerified = new Set(peopleWithVerifiedFaces?.map((f) => f.person_id) || [])
+    const uniquePeopleWithVerified = new Set(peopleWithVerifiedFaces.map((f) => f.person_id))
     const peopleWithVerifiedCount = uniquePeopleWithVerified.size
     const peopleWithoutVerifiedCount = (totalPeopleCount || 0) - peopleWithVerifiedCount
 
@@ -103,22 +137,11 @@ export async function GET(request: NextRequest) {
         name: p.real_name || p.telegram_name || "Без имени",
       }))
 
-    let allPhotoFaces: any[] = []
-    {
-      let offset = 0
-      const pageSize = 1000
-      while (true) {
-        const { data: batch } = await supabase
-          .from("photo_faces")
-          .select("photo_id, person_id, recognition_confidence, verified")
-          .range(offset, offset + pageSize - 1)
-
-        if (!batch || batch.length === 0) break
-        allPhotoFaces = allPhotoFaces.concat(batch)
-        if (batch.length < pageSize) break
-        offset += pageSize
-      }
-    }
+    // С ПАГИНАЦИЕЙ: загружаем все photo_faces
+    const allPhotoFaces = await loadAllPhotoFaces<any>(
+      supabase,
+      "photo_id, person_id, recognition_confidence, verified"
+    )
 
     const facesPerPhoto = allPhotoFaces.map((face) => face.photo_id)
 
@@ -326,6 +349,7 @@ export async function GET(request: NextRequest) {
       // Fallback
     }
 
+    // Это намеренно с limit(1000) - семплирование для средней confidence
     const { data: unverifiedConfidences } = await supabase
       .from("photo_faces")
       .select("recognition_confidence")
