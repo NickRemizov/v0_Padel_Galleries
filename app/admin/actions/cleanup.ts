@@ -38,7 +38,49 @@ export async function syncVerifiedAndConfidenceAction() {
 
     const confidenceCount = confidenceRecords?.length || 0
 
-    // 3. Статистика
+    // 3. Проверить и исправить has_been_processed
+    // Если у фото есть записи в photo_faces, значит оно было обработано
+    const { data: photosWithFaces } = await supabase.from("photo_faces").select("photo_id")
+
+    const photoIdsWithFaces = [...new Set((photosWithFaces || []).map((f) => f.photo_id))]
+
+    // Находим фото которые имеют faces но has_been_processed=false
+    let processedFixCount = 0
+    const processedFixedList: Array<{ id: string; gallery_title: string; filename: string }> = []
+
+    if (photoIdsWithFaces.length > 0) {
+      // Сначала находим проблемные записи
+      for (let i = 0; i < photoIdsWithFaces.length; i += 500) {
+        const batch = photoIdsWithFaces.slice(i, i + 500)
+        const { data: problematic } = await supabase
+          .from("gallery_images")
+          .select("id, original_filename, galleries(title)")
+          .in("id", batch)
+          .eq("has_been_processed", false)
+
+        if (problematic) {
+          for (const img of problematic) {
+            processedFixedList.push({
+              id: img.id,
+              gallery_title: (img.galleries as any)?.title || "Unknown",
+              filename: img.original_filename || img.id,
+            })
+          }
+        }
+      }
+
+      // Теперь исправляем
+      if (processedFixedList.length > 0) {
+        const idsToFix = processedFixedList.map((f) => f.id)
+        for (let i = 0; i < idsToFix.length; i += 500) {
+          const batch = idsToFix.slice(i, i + 500)
+          await supabase.from("gallery_images").update({ has_been_processed: true }).in("id", batch)
+        }
+        processedFixCount = processedFixedList.length
+      }
+    }
+
+    // 4. Статистика
     const { count: totalVerified } = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
@@ -49,17 +91,27 @@ export async function syncVerifiedAndConfidenceAction() {
       .select("*", { count: "exact", head: true })
       .eq("recognition_confidence", 1.0)
 
+    const { count: totalProcessed } = await supabase
+      .from("gallery_images")
+      .select("*", { count: "exact", head: true })
+      .eq("has_been_processed", true)
+
+    const { count: totalImages } = await supabase.from("gallery_images").select("*", { count: "exact", head: true })
+
     logger.debug(
       "actions/cleanup",
-      `Final stats: ${totalVerified} verified, ${totalConfidence1} recognition_confidence=1`,
+      `Final stats: ${totalVerified} verified, ${totalConfidence1} recognition_confidence=1, ${totalProcessed} processed, ${totalImages} total images`,
     )
 
     revalidatePath("/admin")
     logger.info("actions/cleanup", "Sync verified and recognition_confidence completed", {
       verifiedCount,
       confidenceCount,
+      processedFixCount,
       totalVerified,
       totalConfidence1,
+      totalProcessed,
+      totalImages,
     })
 
     return {
@@ -67,8 +119,12 @@ export async function syncVerifiedAndConfidenceAction() {
       data: {
         updatedVerified: verifiedCount,
         updatedConfidence: confidenceCount,
+        updatedProcessed: processedFixCount,
+        processedFixedList: processedFixedList.slice(0, 100), // Лимит для UI
         totalVerified: totalVerified || 0,
         totalConfidence1: totalConfidence1 || 0,
+        totalProcessed: totalProcessed || 0,
+        totalImages: totalImages || 0,
       },
     }
   } catch (error: any) {
