@@ -4,7 +4,6 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { CleanupDuplicatesButton } from "@/components/admin/cleanup-duplicates-button"
-import { CleanupFacesButton } from "@/components/admin/cleanup-faces-button"
 import { SyncVerifiedButton } from "@/components/admin/sync-verified-button"
 import { DebugPersonPhotos } from "@/components/admin/debug-person-photos"
 import { DatabaseIntegrityChecker } from "@/components/admin/database-integrity-checker"
@@ -60,18 +59,6 @@ export function ServiceManager() {
                 </div>
               </div>
               <CleanupDuplicatesButton />
-            </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">Очистка неподтверждённых лиц</div>
-                <div className="text-sm text-muted-foreground">
-                  Удалить все записи с verified=false (опасная операция!)
-                </div>
-              </div>
-              <CleanupFacesButton />
             </div>
 
             <Separator />

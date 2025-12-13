@@ -78,85 +78,25 @@ export async function syncVerifiedAndConfidenceAction() {
 }
 
 export async function cleanupUnverifiedFacesAction() {
-  const supabase = await createClient()
-
-  try {
-    logger.debug("actions/cleanup", "Starting cleanup of unverified faces...")
-
-    const { count: totalBefore } = await supabase.from("photo_faces").select("*", { count: "exact", head: true })
-    const { count: verifiedBefore } = await supabase
-      .from("photo_faces")
-      .select("*", { count: "exact", head: true })
-      .eq("verified", true)
-
-    logger.debug("actions/cleanup", `Before cleanup: ${totalBefore} total, ${verifiedBefore} verified`)
-
-    const { data: inconsistentRecords, error: inconsistentError } = await supabase
-      .from("photo_faces")
-      .select(
-        "id, photo_id, person_id, verified, recognition_confidence, people(real_name, telegram_name), gallery_images(original_filename)",
-      )
-      .eq("verified", true)
-      .neq("recognition_confidence", 1.0)
-
-    if (inconsistentError) throw inconsistentError
-
-    if (inconsistentRecords && inconsistentRecords.length > 0) {
-      logger.warn(
-        "actions/cleanup",
-        `Found ${inconsistentRecords.length} records with verified=true but recognition_confidence != 1`,
-      )
-    }
-
-    const { data: deletedRecords, error: deleteError } = await supabase
-      .from("photo_faces")
-      .delete()
-      .eq("verified", false)
-      .select("id")
-
-    if (deleteError) throw deleteError
-
-    const deletedCount = deletedRecords?.length || 0
-    logger.debug("actions/cleanup", `Deleted ${deletedCount} unverified photo_faces records`)
-
-    const { count: totalAfter } = await supabase.from("photo_faces").select("*", { count: "exact", head: true })
-    const { count: verifiedAfter } = await supabase
-      .from("photo_faces")
-      .select("*", { count: "exact", head: true })
-      .eq("verified", true)
-
-    logger.debug("actions/cleanup", `After cleanup: ${totalAfter} total, ${verifiedAfter} verified`)
-    logger.info("actions/cleanup", `Cleanup complete! Deleted ${deletedCount} unverified records.`)
-
-    revalidatePath("/admin")
-    return {
-      success: true,
-      data: {
-        before: { total: totalBefore || 0, verified: verifiedBefore || 0 },
-        after: { total: totalAfter || 0, verified: verifiedAfter || 0 },
-        deleted: deletedCount,
-        inconsistentRecords:
-          inconsistentRecords?.map((record) => ({
-            photoFilename: record.gallery_images?.original_filename || "Unknown",
-            personName: record.people?.real_name || record.people?.telegram_name || "Unknown",
-            recognition_confidence: record.recognition_confidence,
-          })) || [],
-      },
-    }
-  } catch (error: any) {
-    logger.error("actions/cleanup", "Error cleaning up unverified faces", error)
-    return { error: error.message || "Failed to cleanup unverified faces" }
+  logger.warn(
+    "actions/cleanup",
+    "cleanupUnverifiedFacesAction is DEPRECATED and disabled - use Database Integrity Checker instead",
+  )
+  return {
+    success: false,
+    error: "Эта функция устарела и отключена. Используйте 'Проверка целостности базы данных' для безопасной очистки.",
   }
 }
 
-export async function cleanupDuplicateFacesAction() {
+export async function cleanupDuplicateFacesAction(dryRun = false) {
   const supabase = await createClient()
 
   try {
-    logger.debug("actions/cleanup", "Starting cleanup of duplicate faces...")
+    logger.debug("actions/cleanup", `Starting ${dryRun ? "preview" : "cleanup"} of duplicate faces...`)
 
     const { count: totalBefore } = await supabase.from("photo_faces").select("*", { count: "exact", head: true })
 
+    // Load all records for analysis
     let allRecords: any[] = []
     let hasMore = true
     let offset = 0
@@ -182,8 +122,12 @@ export async function cleanupDuplicateFacesAction() {
 
     logger.debug("actions/cleanup", `Loaded ${allRecords.length} records for analysis`)
 
+    // Group records by person_id + photo_id, but SKIP records with person_id=null
+    // (they are different unknown faces and should NOT be grouped!)
     const groupedRecords = new Map<string, any[]>()
     for (const record of allRecords) {
+      if (record.person_id === null) continue
+
       const key = `${record.person_id}_${record.photo_id}`
       if (!groupedRecords.has(key)) {
         groupedRecords.set(key, [])
@@ -194,10 +138,13 @@ export async function cleanupDuplicateFacesAction() {
     const duplicateGroups = Array.from(groupedRecords.entries()).filter(([_, records]) => records.length > 1)
     logger.debug("actions/cleanup", `Found ${duplicateGroups.length} groups with duplicates`)
 
+    // Prepare preview or deletion list
     let totalDeleted = 0
     const idsToDelete: string[] = []
+    const previewGroups: any[] = []
 
     for (const [key, records] of duplicateGroups) {
+      // Sort by priority: verified > confidence > oldest
       records.sort((a, b) => {
         if (a.verified !== b.verified) return b.verified ? 1 : -1
         if (a.recognition_confidence !== b.recognition_confidence)
@@ -205,11 +152,47 @@ export async function cleanupDuplicateFacesAction() {
         return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       })
 
+      const keeper = records[0]
       const toDelete = records.slice(1)
+
+      if (dryRun && previewGroups.length < 50) {
+        previewGroups.push({
+          key,
+          totalRecords: records.length,
+          keeper: {
+            id: keeper.id,
+            verified: keeper.verified,
+            confidence: keeper.recognition_confidence,
+            created_at: keeper.created_at,
+          },
+          toDelete: toDelete.map((r) => ({
+            id: r.id,
+            verified: r.verified,
+            confidence: r.recognition_confidence,
+            created_at: r.created_at,
+          })),
+        })
+      }
+
       idsToDelete.push(...toDelete.map((r) => r.id))
       totalDeleted += toDelete.length
     }
 
+    // If preview mode, return preview data
+    if (dryRun) {
+      return {
+        success: true,
+        data: {
+          preview: true,
+          totalRecords: allRecords.length,
+          duplicateGroups: duplicateGroups.length,
+          recordsToDelete: totalDeleted,
+          previewGroups,
+        },
+      }
+    }
+
+    // Execute deletion in batches
     const batchSize = 100
     if (idsToDelete.length > 0) {
       for (let i = 0; i < idsToDelete.length; i += batchSize) {
@@ -233,6 +216,7 @@ export async function cleanupDuplicateFacesAction() {
     return {
       success: true,
       data: {
+        preview: false,
         before: { total: totalBefore || 0 },
         after: { total: totalAfter || 0, verified: verifiedAfter || 0 },
         deleted: totalDeleted,
