@@ -8,7 +8,7 @@ interface FaceRecognitionDetailsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   faces: DetailedFace[]
-  imageUrl?: string // Added imageUrl to crop face previews
+  imageUrl?: string
 }
 
 export interface DetailedFace {
@@ -24,7 +24,7 @@ export interface DetailedFace {
     name: string
     similarity: number
   }>
-  person_name?: string // Added person_name for recognized faces
+  person_name?: string
 }
 
 export function FaceRecognitionDetailsDialog({
@@ -41,81 +41,78 @@ export function FaceRecognitionDetailsDialog({
         </DialogHeader>
 
         <div className="space-y-6">
-          {faces.map((face, index) => (
-            <Card key={index}>
-              <CardHeader>
-                <CardTitle>{face.person_name || `Лицо ${index + 1}`}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-6">
-                  <div className="flex-shrink-0">
-                    {imageUrl && <FacePreview imageUrl={imageUrl} boundingBox={face.boundingBox} />}
-                  </div>
+          {faces.map((face, index) => {
+            // Determine if this is a recognized face (exact match)
+            const isExactMatch = face.recognition_confidence !== undefined && face.recognition_confidence >= 0.999
+            const isRecognized = face.recognition_confidence !== undefined && face.recognition_confidence > 0 && face.person_name
+            
+            // Calculate distance (1 - confidence) for unrecognized faces
+            const distance = face.recognition_confidence !== undefined 
+              ? (1 - face.recognition_confidence).toFixed(3)
+              : face.distance_to_nearest?.toFixed(3)
 
-                  <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-3">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Размер лица</p>
-                      <p className="text-lg font-semibold">{face.size.toFixed(2)} px</p>
+            return (
+              <Card key={index}>
+                <CardHeader>
+                  <CardTitle className="text-2xl">{face.person_name || `Лицо ${index + 1}`}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-6">
+                    <div className="flex-shrink-0">
+                      {imageUrl && <FacePreview imageUrl={imageUrl} boundingBox={face.boundingBox} />}
                     </div>
 
-                    <div>
-                      <p className="text-sm text-muted-foreground">Blur score</p>
-                      <p className="text-lg font-semibold">
-                        {face.blur_score !== undefined ? face.blur_score.toFixed(1) : "N/A"}
-                      </p>
-                    </div>
+                    <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-3">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Face size</p>
+                        <p className="text-lg font-semibold">{face.size.toFixed(2)} px</p>
+                      </div>
 
-                    <div>
-                      <p className="text-sm text-muted-foreground">Detection score</p>
-                      <p className="text-lg font-semibold">{face.detection_score.toFixed(2)}</p>
-                    </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Blur score</p>
+                        <p className="text-lg font-semibold">
+                          {face.blur_score !== undefined && face.blur_score !== null 
+                            ? face.blur_score.toFixed(1) 
+                            : "N/A"}
+                        </p>
+                      </div>
 
-                    <div>
-                      <p className="text-sm text-muted-foreground">Recognition confidence</p>
-                      <p className="text-lg font-semibold">
-                        {face.recognition_confidence !== undefined && face.recognition_confidence > 0
-                          ? face.recognition_confidence >= 0.999
+                      <div>
+                        <p className="text-sm text-muted-foreground">Detection score</p>
+                        <p className="text-lg font-semibold">{face.detection_score.toFixed(2)}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          {isRecognized ? "Recognition confidence" : "Distance to closest"}
+                        </p>
+                        <p className={`text-lg font-semibold ${isExactMatch ? "text-green-600" : ""}`}>
+                          {isExactMatch
                             ? "Exact Match"
-                            : face.recognition_confidence.toFixed(2)
-                          : "Unknown face"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-muted-foreground">Качество эмбеддинга</p>
-                      <p className="text-lg font-semibold">
-                        {face.embedding_quality !== undefined ? face.embedding_quality.toFixed(2) : "N/A"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-muted-foreground">Расстояние до ближайшего</p>
-                      <p className="text-lg font-semibold">
-                        {face.distance_to_nearest !== undefined
-                          ? face.distance_to_nearest < 0.001
-                            ? "Exact Match"
-                            : face.distance_to_nearest.toFixed(2)
-                          : "N/A"}
-                      </p>
+                            : isRecognized
+                              ? face.recognition_confidence!.toFixed(3)
+                              : distance || "N/A"}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {face.top_matches && face.top_matches.length > 0 && (
-                  <div className="mt-4 pt-4 border-t">
-                    <p className="text-sm text-muted-foreground mb-2">Топ-3 похожих лиц:</p>
-                    <ol className="list-decimal list-inside space-y-1">
-                      {face.top_matches.map((match, i) => (
-                        <li key={i}>
-                          {match.name} (similarity: {match.similarity.toFixed(2)})
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  {face.top_matches && face.top_matches.length > 0 && (
+                    <div className="mt-4 pt-4 border-t">
+                      <p className="text-sm text-muted-foreground mb-2">Топ-3 похожих лиц:</p>
+                      <ol className="list-decimal list-inside space-y-1">
+                        {face.top_matches.map((match, i) => (
+                          <li key={i}>
+                            {match.name} (similarity: {match.similarity.toFixed(2)})
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       </DialogContent>
     </Dialog>
