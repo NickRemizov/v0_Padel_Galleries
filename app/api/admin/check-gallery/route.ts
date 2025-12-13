@@ -13,8 +13,8 @@ export async function GET(request: Request) {
     if (showAll) {
       const { data: allGalleries } = await supabase
         .from("galleries")
-        .select("id, title, date, created_at")
-        .order("date", { ascending: false })
+        .select("id, title, shoot_date, created_at")
+        .order("shoot_date", { ascending: false })
         .limit(50)
 
       console.log("[v0] Found galleries:", allGalleries?.length)
@@ -35,7 +35,11 @@ export async function GET(request: Request) {
 
     // Если передан ID - проверяем конкретную галерею
     if (galleryId) {
-      const { data: gallery } = await supabase.from("galleries").select("id, title, date").eq("id", galleryId).single()
+      const { data: gallery } = await supabase
+        .from("galleries")
+        .select("id, title, shoot_date")
+        .eq("id", galleryId)
+        .single()
 
       if (!gallery) {
         return NextResponse.json({ error: "Gallery not found" }, { status: 404 })
@@ -79,9 +83,9 @@ export async function GET(request: Request) {
     // Пробуем несколько вариантов поиска
     const { data: galleries, error } = await supabase
       .from("galleries")
-      .select("id, title, date, created_at")
+      .select("id, title, shoot_date, created_at")
       .or(`title.ilike.%${search}%,title.ilike.%Дружеск%,title.ilike.%дружеск%`)
-      .order("date", { ascending: false })
+      .order("shoot_date", { ascending: false })
       .limit(20)
 
     console.log("[v0] Search error:", error)
