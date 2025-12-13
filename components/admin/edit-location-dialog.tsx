@@ -22,8 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { MapPin, Globe, Link2 } from "lucide-react"
-import { updateLocationAction } from "@/app/admin/actions/entities"
-import { createClient } from "@/lib/supabase/client"
+import { updateLocationAction, getCitiesAction } from "@/app/admin/actions/entities"
 import type { Location } from "@/lib/types"
 
 interface City {
@@ -51,13 +50,10 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
 
   useEffect(() => {
     async function loadCities() {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from("cities")
-        .select("id, name, slug")
-        .eq("is_active", true)
-        .order("name")
-      if (data) setCities(data)
+      const result = await getCitiesAction(true) // active_only=true
+      if (result.success && result.data) {
+        setCities(result.data)
+      }
     }
     if (open) loadCities()
   }, [open])
