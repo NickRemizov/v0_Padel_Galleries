@@ -65,9 +65,9 @@ export function ServiceManager() {
 
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium">Синхронизация verified/confidence</div>
+                <div className="font-medium">Синхронизация verified/confidence/processed</div>
                 <div className="text-sm text-muted-foreground">
-                  Исправить несоответствия в полях verified и confidence
+                  Исправить несоответствия в полях verified, confidence и has_been_processed
                 </div>
               </div>
               <SyncVerifiedButton />

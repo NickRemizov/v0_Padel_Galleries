@@ -50,6 +50,17 @@ function generateDynamicHistogramBuckets(maxPhotos: number): Array<{ range: stri
   return buckets
 }
 
+// Helper function to count faces by category
+function countFacesForGallery(imageIds: string[], allPhotoFaces: any[]) {
+  const galleryFaces = allPhotoFaces.filter((f) => imageIds.includes(f.photo_id))
+  const verified = galleryFaces.filter((f) => f.person_id !== null && f.recognition_confidence === 1).length
+  const unverified = galleryFaces.filter(
+    (f) => f.person_id !== null && f.recognition_confidence !== null && f.recognition_confidence < 1,
+  ).length
+  const unknown = galleryFaces.filter((f) => f.person_id === null).length
+  return { verified, unverified, unknown }
+}
+
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const searchParams = request.nextUrl.searchParams
@@ -198,10 +209,35 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.count - a.count)
       .slice(0, topCount)
 
-    const fullyRecognizedList: Array<{ id: string; title: string; date: string; photos: number }> = []
-    const fullyVerifiedList: Array<{ id: string; title: string; date: string; photos: number }> = []
-    const partiallyVerifiedList: Array<{ id: string; title: string; date: string; processed: number; total: number }> =
+    const fullyRecognizedList: Array<{
+      id: string
+      title: string
+      date: string
+      photos: number
+      facesVerified: number
+      facesUnverified: number
+    }> = []
+    const fullyVerifiedList: Array<{ id: string; title: string; date: string; photos: number; facesVerified: number }> =
       []
+    const fullyProcessedList: Array<{
+      id: string
+      title: string
+      date: string
+      photos: number
+      facesVerified: number
+      facesUnverified: number
+      facesUnknown: number
+    }> = []
+    const partiallyVerifiedList: Array<{
+      id: string
+      title: string
+      date: string
+      processed: number
+      total: number
+      facesVerified: number
+      facesUnverified: number
+      facesUnknown: number
+    }> = []
     const notProcessedList: Array<{ id: string; title: string; date: string; photos: number }> = []
 
     for (const gallery of galleries || []) {
@@ -219,21 +255,51 @@ export async function GET(request: NextRequest) {
       } else if (processed === 0) {
         notProcessedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
       } else if (processed === total) {
-        // Полностью обработаны - теперь взаимоисключающая логика
-        if (!hasUnknownFaces) {
-          // Нет unknown faces - либо верифицированы, либо распознаны
-          if (!hasUnverifiedFaces) {
-            // Все confidence=1 → верифицированы
-            fullyVerifiedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
-          } else {
-            // Есть confidence<1 → распознаны
-            fullyRecognizedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
-          }
+        const faces = countFacesForGallery(imageIds, allPhotoFaces)
+
+        if (hasUnknownFaces) {
+          // Has unknown faces → fully processed
+          fullyProcessedList.push({
+            id: gallery.id,
+            title: gallery.title,
+            date,
+            photos: total,
+            facesVerified: faces.verified,
+            facesUnverified: faces.unverified,
+            facesUnknown: faces.unknown,
+          })
+        } else if (hasUnverifiedFaces) {
+          // No unknown, but has confidence<1 → fully recognized
+          fullyRecognizedList.push({
+            id: gallery.id,
+            title: gallery.title,
+            date,
+            photos: total,
+            facesVerified: faces.verified,
+            facesUnverified: faces.unverified,
+          })
+        } else {
+          // No unknown, all confidence=1 → fully verified
+          fullyVerifiedList.push({
+            id: gallery.id,
+            title: gallery.title,
+            date,
+            photos: total,
+            facesVerified: faces.verified,
+          })
         }
-        // Если есть unknown faces - галерея не попадает ни в верифицированные, ни в распознанные
-        // (остаётся только в общем счётчике processed === total)
       } else {
-        partiallyVerifiedList.push({ id: gallery.id, title: gallery.title, date, processed, total })
+        const faces = countFacesForGallery(imageIds, allPhotoFaces)
+        partiallyVerifiedList.push({
+          id: gallery.id,
+          title: gallery.title,
+          date,
+          processed,
+          total,
+          facesVerified: faces.verified,
+          facesUnverified: faces.unverified,
+          facesUnknown: faces.unknown,
+        })
       }
     }
 
@@ -321,10 +387,12 @@ export async function GET(request: NextRequest) {
       top_players: topPlayers,
       galleries: {
         total: (galleries || []).length,
-        fully_recognized: fullyRecognizedList.length,
-        fully_recognized_list: fullyRecognizedList,
         fully_verified: fullyVerifiedList.length,
         fully_verified_list: fullyVerifiedList,
+        fully_recognized: fullyRecognizedList.length,
+        fully_recognized_list: fullyRecognizedList,
+        fully_processed: fullyProcessedList.length,
+        fully_processed_list: fullyProcessedList,
         partially_verified: partiallyVerifiedList.length,
         partially_verified_list: partiallyVerifiedList,
         not_processed: notProcessedList.length,

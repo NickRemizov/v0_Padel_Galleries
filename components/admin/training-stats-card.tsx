@@ -58,12 +58,38 @@ interface Statistics {
   top_players: Array<{ id: string; name: string; count: number }>
   galleries: {
     total: number
-    fully_recognized: number
-    fully_recognized_list: Array<{ id: string; title: string; date: string; photos: number }>
     fully_verified: number
-    fully_verified_list: Array<{ id: string; title: string; date: string; photos: number }>
+    fully_verified_list: Array<{ id: string; title: string; date: string; photos: number; facesVerified: number }>
+    fully_recognized: number
+    fully_recognized_list: Array<{
+      id: string
+      title: string
+      date: string
+      photos: number
+      facesVerified: number
+      facesUnverified: number
+    }>
+    fully_processed: number
+    fully_processed_list: Array<{
+      id: string
+      title: string
+      date: string
+      photos: number
+      facesVerified: number
+      facesUnverified: number
+      facesUnknown: number
+    }>
     partially_verified: number
-    partially_verified_list: Array<{ id: string; title: string; date: string; processed: number; total: number }>
+    partially_verified_list: Array<{
+      id: string
+      title: string
+      date: string
+      processed: number
+      total: number
+      facesVerified: number
+      facesUnverified: number
+      facesUnknown: number
+    }>
     not_processed: number
     not_processed_list: Array<{ id: string; title: string; date: string; photos: number }>
   }
@@ -472,7 +498,7 @@ export function TrainingStatsCard() {
               <Images className="h-5 w-5 text-muted-foreground" />
               <h4 className="font-medium">Состояние галерей</h4>
             </div>
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
               {/* 1. Полностью верифицированы (зелёный) */}
               <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/20">
                 <div className="flex items-center gap-2 mb-2">
@@ -485,7 +511,9 @@ export function TrainingStatsCard() {
                       <span className="truncate">
                         {g.title} {g.date}
                       </span>
-                      <span className="text-muted-foreground ml-2 whitespace-nowrap">({g.photos} фото)</span>
+                      <span className="text-muted-foreground ml-2 whitespace-nowrap">
+                        {g.photos}ф / <span className="text-green-600">{g.facesVerified}✓</span>
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -503,17 +531,42 @@ export function TrainingStatsCard() {
                       <span className="truncate">
                         {g.title} {g.date}
                       </span>
-                      <span className="text-muted-foreground ml-2 whitespace-nowrap">({g.photos} фото)</span>
+                      <span className="text-muted-foreground ml-2 whitespace-nowrap">
+                        {g.photos}ф / <span className="text-green-600">{g.facesVerified}✓</span>+
+                        <span className="text-yellow-600">{g.facesUnverified}~</span>
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* 3. Частично обработаны (серый) */}
-              <div className="p-3 rounded-lg bg-muted/50">
+              {/* 3. Полностью обработаны (серый) */}
+              <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800/50">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl font-bold text-muted-foreground">{stats.galleries.partially_verified}</span>
-                  <span className="text-xs text-muted-foreground">Частично обработаны</span>
+                  <span className="text-2xl font-bold text-slate-600">{stats.galleries.fully_processed}</span>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">Полностью обработаны</span>
+                </div>
+                <div className="space-y-1.5">
+                  {stats.galleries.fully_processed_list?.map((g) => (
+                    <div key={g.id} className="text-xs flex justify-between items-center">
+                      <span className="truncate">
+                        {g.title} {g.date}
+                      </span>
+                      <span className="text-muted-foreground ml-2 whitespace-nowrap">
+                        {g.photos}ф / <span className="text-green-600">{g.facesVerified}✓</span>+
+                        <span className="text-yellow-600">{g.facesUnverified}~</span>+
+                        <span className="text-red-500">{g.facesUnknown}?</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4. Частично обработаны (жёлтый) */}
+              <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-950/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl font-bold text-yellow-600">{stats.galleries.partially_verified}</span>
+                  <span className="text-xs text-yellow-700 dark:text-yellow-300">Частично обработаны</span>
                 </div>
                 <div className="space-y-1.5">
                   {stats.galleries.partially_verified_list?.map((g) => (
@@ -522,14 +575,16 @@ export function TrainingStatsCard() {
                         {g.title} {g.date}
                       </span>
                       <span className="text-muted-foreground ml-2 whitespace-nowrap">
-                        ({g.processed} из {g.total} фото)
+                        {g.processed}/{g.total}ф / <span className="text-green-600">{g.facesVerified}✓</span>+
+                        <span className="text-yellow-600">{g.facesUnverified}~</span>+
+                        <span className="text-red-500">{g.facesUnknown}?</span>
                       </span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* 4. Не обработаны (оранжевый) */}
+              {/* 5. Не обработаны (оранжжый) */}
               <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-2xl font-bold text-amber-600">{stats.galleries.not_processed}</span>
