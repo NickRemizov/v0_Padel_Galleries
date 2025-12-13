@@ -46,6 +46,11 @@ async def detect_faces(
         
         logger.info(f"[v3.1] ✓ Detected {len(detected_faces)} faces")
         
+        # Debug: Check index status
+        has_index = hasattr(face_service, 'players_index') and face_service.players_index is not None
+        index_count = face_service.players_index.get_current_count() if has_index else 0
+        logger.info(f"[v3.1] Index status: has_index={has_index}, index_count={index_count}")
+        
         # Format response
         faces_data = []
         for idx, face in enumerate(detected_faces):
@@ -63,10 +68,13 @@ async def detect_faces(
             top_matches = []
             distance_to_nearest = None
             
-            if hasattr(face_service, 'players_index') and face_service.players_index is not None:
+            if has_index and index_count > 0:
                 try:
                     # Query index for top 3 matches
-                    labels, distances = face_service.players_index.knn_query(embedding.reshape(1, -1), k=3)
+                    k = min(3, index_count)  # Can't query more than index has
+                    labels, distances = face_service.players_index.knn_query(embedding.reshape(1, -1), k=k)
+                    
+                    logger.info(f"[v3.1]   - Raw KNN result: labels={labels}, distances={distances}")
                     
                     if len(distances) > 0 and len(distances[0]) > 0:
                         distance_to_nearest = float(distances[0][0])
@@ -102,6 +110,8 @@ async def detect_faces(
                         logger.info(f"[v3.1]   - Top matches: {len(top_matches)}")
                 except Exception as e:
                     logger.warning(f"[v3.1] Could not get top matches: {str(e)}")
+            else:
+                logger.warning(f"[v3.1] Skipping KNN query: has_index={has_index}, index_count={index_count}")
             
             face_data = {
                 "insightface_bbox": {
