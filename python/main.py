@@ -19,7 +19,7 @@ from services.face_recognition import FaceRecognitionService
 from services.training_service import TrainingService
 from services.supabase_database import SupabaseDatabase
 from services.supabase_client import SupabaseClient
-from routers import training, recognition, faces, config, images, photographers, people, galleries, locations, organizers
+from routers import training, recognition, faces, config, images, photographers, people, galleries, locations, organizers, cities
 
 from models.schemas import (
     RecognitionResponse,
@@ -32,7 +32,7 @@ from models.schemas import (
 app = FastAPI(
     title="Padel Tournament Face Recognition API",
     description="API для распознавания и группировки игроков на турнирах по паделу",
-    version="3.2.8"
+    version="3.3.0"
 )
 
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "*")
@@ -89,6 +89,7 @@ people.set_services(supabase_db, face_service)
 galleries.set_services(supabase_db)
 locations.set_services(supabase_db)
 organizers.set_services(supabase_db)
+cities.set_services(supabase_db)
 print("[Main] ✓ CRUD routers initialized")
 print("[Main] ✓ Service instances injected into all routers")
 
@@ -136,6 +137,7 @@ app.include_router(people.router, prefix="/api/people", tags=["people"])
 app.include_router(galleries.router, prefix="/api/galleries", tags=["galleries"])
 app.include_router(locations.router, prefix="/api/locations", tags=["locations"])
 app.include_router(organizers.router, prefix="/api/organizers", tags=["organizers"])
+app.include_router(cities.router, prefix="/api/cities", tags=["cities"])
 
 if __name__ == "__main__":
     host = os.getenv("SERVER_HOST", "0.0.0.0")
