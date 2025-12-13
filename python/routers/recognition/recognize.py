@@ -13,7 +13,7 @@ from models.recognition_schemas import (
     FaceRecognitionResponse,
     BatchRecognizeRequest,
 )
-from .dependencies import face_service_instance, supabase_client_instance
+from .dependencies import get_face_service, get_supabase_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -22,11 +22,12 @@ router = APIRouter()
 @router.post("/recognize-face", response_model=FaceRecognitionResponse)
 async def recognize_face(
     request: RecognizeFaceRequest,
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """Recognize a single face using the trained model"""
+    supabase_client = get_supabase_client()
     try:
-        config = await supabase_client_instance.get_recognition_config()
+        config = await supabase_client.get_recognition_config()
         threshold = request.confidence_threshold or config.get('recognition_threshold', 0.60)
         
         logger.info(f"[Recognition] Recognizing face, threshold: {threshold}")
@@ -53,11 +54,12 @@ async def recognize_face(
 @router.post("/batch-recognize")
 async def batch_recognize(
     request: BatchRecognizeRequest,
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """Batch recognize faces in galleries"""
+    supabase_client = get_supabase_client()
     try:
-        config = await supabase_client_instance.get_recognition_config()
+        config = await supabase_client.get_recognition_config()
         confidence_threshold = request.confidence_threshold or config.get('recognition_threshold', 0.60)
         
         logger.info(f"[v3.22] ===== BATCH RECOGNIZE REQUEST =====")
@@ -76,7 +78,7 @@ async def batch_recognize(
         logger.info(f"[v3.22]   min_blur_score: {min_blur_score}")
         
         # Get all images from galleries without verified faces
-        images = await supabase_client_instance.get_unverified_images(request.gallery_ids)
+        images = await supabase_client.get_unverified_images(request.gallery_ids)
         
         logger.info(f"[v3.22] Found {len(images)} images to process")
         
@@ -134,7 +136,7 @@ async def batch_recognize(
                             "height": float(face["bbox"][3] - face["bbox"][1]),
                         }
                         
-                        await supabase_client_instance.save_photo_face(
+                        await supabase_client.save_photo_face(
                             photo_id=image["id"],
                             person_id=person_id,
                             insightface_bbox=bbox,
@@ -153,7 +155,7 @@ async def batch_recognize(
                             "height": float(face["bbox"][3] - face["bbox"][1]),
                         }
                         
-                        await supabase_client_instance.save_photo_face(
+                        await supabase_client.save_photo_face(
                             photo_id=image["id"],
                             person_id=None,
                             insightface_bbox=bbox,

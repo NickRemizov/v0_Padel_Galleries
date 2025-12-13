@@ -11,7 +11,7 @@ import numpy as np
 import hdbscan
 import json
 
-from .dependencies import face_service_instance, supabase_client_instance
+from .dependencies import get_face_service, get_supabase_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,11 +25,12 @@ async def cluster_unknown_faces(
     """
     Кластеризация неизвестных лиц в галерее с HDBSCAN
     """
+    supabase_client = get_supabase_client()
     try:
         logger.info(f"Clustering unknown faces for gallery {gallery_id}")
         
         # Get unknown faces
-        faces = await supabase_client_instance.get_unknown_faces_from_gallery(gallery_id)
+        faces = await supabase_client.get_unknown_faces_from_gallery(gallery_id)
         
         if not faces or len(faces) < min_cluster_size:
             return {
@@ -127,11 +128,12 @@ async def reject_face_cluster(
     face_ids: List[str],
     rejected_by: str,
     reason: Optional[str] = None,
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """
     Reject a cluster of faces as not interesting
     """
+    supabase_client = get_supabase_client()
     try:
         logger.info(f"[v3.23] ===== REJECT FACE CLUSTER =====")
         logger.info(f"[v3.23] Gallery ID: {gallery_id}")
@@ -143,7 +145,7 @@ async def reject_face_cluster(
         photo_ids = []
         
         for face_id in face_ids:
-            response = supabase_client_instance.client.table("photo_faces").select(
+            response = supabase_client.client.table("photo_faces").select(
                 "photo_id, insightface_descriptor"
             ).eq("id", face_id).execute()
             
@@ -159,7 +161,7 @@ async def reject_face_cluster(
                 photo_ids.append(face["photo_id"])
         
         # Save to rejected_faces table
-        success = await supabase_client_instance.reject_face_cluster(
+        success = await supabase_client.reject_face_cluster(
             descriptors=descriptors,
             gallery_id=gallery_id,
             photo_ids=photo_ids,
@@ -170,7 +172,7 @@ async def reject_face_cluster(
         if success:
             # Delete the photo_faces records
             for face_id in face_ids:
-                supabase_client_instance.client.table("photo_faces").delete().eq("id", face_id).execute()
+                supabase_client.client.table("photo_faces").delete().eq("id", face_id).execute()
             
             logger.info(f"[v3.23] Successfully rejected and deleted {len(face_ids)} faces")
         
