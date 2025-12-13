@@ -109,19 +109,31 @@ export async function getLocationsAction() {
   return await apiFetch("/api/locations")
 }
 
-export async function addLocationAction(name: string) {
+export async function addLocationAction(data: {
+  name: string
+  city_id?: string
+  address?: string
+  maps_url?: string
+  website_url?: string
+}) {
   const result = await apiFetch("/api/locations", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(data),
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
-export async function updateLocationAction(locationId: string, name: string) {
+export async function updateLocationAction(locationId: string, data: {
+  name?: string
+  city_id?: string | null
+  address?: string | null
+  maps_url?: string | null
+  website_url?: string | null
+}) {
   const result = await apiFetch(`/api/locations/${locationId}`, {
     method: "PUT",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(data),
   })
   if (result.success) revalidatePath("/admin")
   return result
