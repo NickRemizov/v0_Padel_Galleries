@@ -9,7 +9,7 @@
 
 База данных поддерживает мультигородскую архитектуру с возможностью расширения на новые города и страны.
 
-```
+\`\`\`
 cities
   └── locations (площадки)
         └── galleries (галереи)
@@ -17,7 +17,7 @@ cities
                     └── photo_faces (лица на фото)
                           └── face_descriptors (векторы лиц)
                           └── people (игроки)
-```
+\`\`\`
 
 ---
 
@@ -89,12 +89,12 @@ cities
 - `organizer_id` → `organizers.id`
 
 **Получение города галереи:**
-```sql
+\`\`\`sql
 SELECT c.* FROM galleries g
 JOIN locations l ON l.id = g.location_id
 JOIN cities c ON c.id = l.city_id
 WHERE g.id = 'gallery_uuid';
-```
+\`\`\`
 
 ---
 
@@ -262,9 +262,9 @@ WHERE g.id = 'gallery_uuid';
 - `trg_photo_faces_update_cache` — обновляет кеш при назначении person_id
 
 **Цепочка определения города игрока:**
-```
+\`\`\`
 people → photo_faces → gallery_images → galleries → locations → cities
-```
+\`\`\`
 
 ---
 
@@ -273,14 +273,14 @@ people → photo_faces → gallery_images → galleries → locations → cities
 ### generate_unique_slug
 Генерирует уникальный URL-slug с автоматическим добавлением счётчика при дубликатах.
 
-```sql
+\`\`\`sql
 generate_unique_slug(
   base_text TEXT,           -- Исходный текст
   table_name TEXT,          -- Имя таблицы
   column_name TEXT,         -- Имя колонки (default: 'slug')
   exclude_id UUID           -- ID для исключения при обновлении
 ) RETURNS TEXT
-```
+\`\`\`
 
 **Логика:**
 1. Приводит к lowercase
@@ -293,7 +293,7 @@ generate_unique_slug(
 
 ## ER-диаграмма связей
 
-```
+\`\`\`
 ┌─────────────┐
 │   cities    │
 └──────┬──────┘
@@ -322,47 +322,47 @@ generate_unique_slug(
 ┌─────────────┐     ┌─────────────────┐                │
 │   people    │◄───►│person_city_cache│◄───────────────┘
 └─────────────┘     └─────────────────┘   (🔜 person_id)
-```
+\`\`\`
 
 ---
 
 ## Типичные запросы
 
 ### Получить всех игроков города
-```sql
+\`\`\`sql
 SELECT p.* FROM people p
 JOIN person_city_cache pcc ON pcc.person_id = p.id
 WHERE pcc.city_id = 'city_uuid'
 ORDER BY pcc.photos_count DESC;
-```
+\`\`\`
 
 ### Получить галереи города
-```sql
+\`\`\`sql
 SELECT g.* FROM galleries g
 JOIN locations l ON l.id = g.location_id
 WHERE l.city_id = 'city_uuid'
 ORDER BY g.shoot_date DESC;
-```
+\`\`\`
 
 ### Получить организаторов города
-```sql
+\`\`\`sql
 SELECT o.* FROM organizers o
 JOIN organizer_cities oc ON oc.organizer_id = o.id
 WHERE oc.city_id = 'city_uuid';
-```
+\`\`\`
 
 ### Найти галерею по slug
-```sql
+\`\`\`sql
 SELECT * FROM galleries WHERE slug = 'turnir-valencia-13-12';
-```
+\`\`\`
 
 ### Найти игрока по slug
-```sql
+\`\`\`sql
 SELECT * FROM people WHERE slug = 'ivan-petrov';
-```
+\`\`\`
 
 ### Пересчитать кеш person_city_cache
-```sql
+\`\`\`sql
 INSERT INTO person_city_cache (person_id, city_id, photos_count, first_photo_date, last_photo_date)
 SELECT 
   pf.person_id,
@@ -383,7 +383,7 @@ ON CONFLICT (person_id, city_id) DO UPDATE SET
   first_photo_date = EXCLUDED.first_photo_date,
   last_photo_date = EXCLUDED.last_photo_date,
   updated_at = NOW();
-```
+\`\`\`
 
 ---
 
@@ -401,35 +401,35 @@ ON CONFLICT (person_id, city_id) DO UPDATE SET
 4. Уникальные индексы
 
 ### 🔜 Связь организаторов/фотографов с игроками
-```sql
+\`\`\`sql
 ALTER TABLE organizers ADD COLUMN person_id UUID REFERENCES people(id);
 ALTER TABLE photographers ADD COLUMN person_id UUID REFERENCES people(id);
-```
+\`\`\`
 
 ---
 
 ## Миграции (выполненные)
 
 ### Добавление нового города
-```sql
+\`\`\`sql
 INSERT INTO cities (name, slug, country) 
 VALUES ('Madrid', 'madrid', 'Spain');
-```
+\`\`\`
 
 ### Привязка площадки к городу
-```sql
+\`\`\`sql
 UPDATE locations 
 SET city_id = (SELECT id FROM cities WHERE slug = 'madrid')
 WHERE name = 'Club Padel Madrid';
-```
+\`\`\`
 
 ### Привязка организатора к нескольким городам
-```sql
+\`\`\`sql
 INSERT INTO organizer_cities (organizer_id, city_id)
 VALUES 
   ('org_uuid', (SELECT id FROM cities WHERE slug = 'valencia')),
   ('org_uuid', (SELECT id FROM cities WHERE slug = 'madrid'));
-```
+\`\`\`
 
 ---
 
