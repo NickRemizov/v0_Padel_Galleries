@@ -40,9 +40,25 @@ export async function syncVerifiedAndConfidenceAction() {
 
     // 3. Проверить и исправить has_been_processed
     // Если у фото есть записи в photo_faces, значит оно было обработано
-    const { data: photosWithFaces } = await supabase.from("photo_faces").select("photo_id")
+    // Загружаем ВСЕ photo_id с пагинацией (Supabase лимит 1000)
+    let allPhotoIds: string[] = []
+    {
+      let offset = 0
+      const pageSize = 1000
+      while (true) {
+        const { data: batch } = await supabase
+          .from("photo_faces")
+          .select("photo_id")
+          .range(offset, offset + pageSize - 1)
 
-    const photoIdsWithFaces = [...new Set((photosWithFaces || []).map((f) => f.photo_id))]
+        if (!batch || batch.length === 0) break
+        allPhotoIds = allPhotoIds.concat(batch.map((f) => f.photo_id))
+        if (batch.length < pageSize) break
+        offset += pageSize
+      }
+    }
+
+    const photoIdsWithFaces = [...new Set(allPhotoIds)]
 
     // Находим фото которые имеют faces но has_been_processed=false
     let processedFixCount = 0
