@@ -139,12 +139,19 @@ export async function GET(request: NextRequest) {
         )
       `)
 
-    const { data: allPhotoFaces } = await supabase.from("photo_faces").select("photo_id, person_id")
+    const { data: allPhotoFaces } = await supabase
+      .from("photo_faces")
+      .select("photo_id, person_id, recognition_confidence")
 
     const photoHasUnknownFaces: Record<string, boolean> = {}
+    const photoHasUnverifiedFaces: Record<string, boolean> = {}
+
     for (const face of allPhotoFaces || []) {
       if (face.person_id === null) {
         photoHasUnknownFaces[face.photo_id] = true
+      }
+      if (face.recognition_confidence !== null && face.recognition_confidence < 1) {
+        photoHasUnverifiedFaces[face.photo_id] = true
       }
     }
 
@@ -205,6 +212,7 @@ export async function GET(request: NextRequest) {
 
       const imageIds = images.map((img: any) => img.id)
       const hasUnknownFaces = imageIds.some((id: string) => photoHasUnknownFaces[id])
+      const hasUnverifiedFaces = imageIds.some((id: string) => photoHasUnverifiedFaces[id])
 
       if (total === 0) {
         notProcessedList.push({ id: gallery.id, title: gallery.title, date, photos: 0 })
@@ -213,10 +221,17 @@ export async function GET(request: NextRequest) {
       } else if (processed === total) {
         // Полностью обработаны - теперь взаимоисключающая логика
         if (!hasUnknownFaces) {
-          fullyRecognizedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
-        } else {
-          fullyVerifiedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
+          // Нет unknown faces - либо верифицированы, либо распознаны
+          if (!hasUnverifiedFaces) {
+            // Все confidence=1 → верифицированы
+            fullyVerifiedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
+          } else {
+            // Есть confidence<1 → распознаны
+            fullyRecognizedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
+          }
         }
+        // Если есть unknown faces - галерея не попадает ни в верифицированные, ни в распознанные
+        // (остаётся только в общем счётчике processed === total)
       } else {
         partiallyVerifiedList.push({ id: gallery.id, title: gallery.title, date, processed, total })
       }

@@ -229,7 +229,7 @@ export function TrainingStatsCard() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <StatValue label="Всего" value={stats.images.total.toLocaleString()} />
-              <StatValue label="Распознанан" value={stats.images.recognized.toLocaleString()} color="text-green-600" />
+              <StatValue label="Распознан" value={stats.images.recognized.toLocaleString()} color="text-green-600" />
             </div>
           </div>
 
@@ -405,7 +405,7 @@ export function TrainingStatsCard() {
               </Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm">Осирототшие дескрипторы</span>
+              <span className="text-sm">Осиротевшие дескрипторы</span>
               <Badge
                 variant={stats.integrity.orphaned_descriptors === 0 ? "default" : "destructive"}
                 className={
