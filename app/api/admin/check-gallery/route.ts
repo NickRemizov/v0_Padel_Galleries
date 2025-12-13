@@ -4,10 +4,35 @@ import { NextResponse } from "next/server"
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const galleryId = searchParams.get("id")
+  const searchTerm = searchParams.get("search")
+  const showAll = searchParams.get("all") === "true"
 
   const supabase = await createClient()
 
   try {
+    if (showAll) {
+      const { data: allGalleries } = await supabase
+        .from("galleries")
+        .select("id, title, date, created_at")
+        .order("date", { ascending: false })
+        .limit(50)
+
+      console.log("[v0] Found galleries:", allGalleries?.length)
+
+      const galleriesWithCounts = await Promise.all(
+        (allGalleries || []).map(async (g) => {
+          const { count } = await supabase
+            .from("gallery_images")
+            .select("*", { count: "exact", head: true })
+            .eq("gallery_id", g.id)
+
+          return { ...g, photo_count: count || 0 }
+        }),
+      )
+
+      return NextResponse.json({ galleries: galleriesWithCounts, total: galleriesWithCounts.length })
+    }
+
     // Если передан ID - проверяем конкретную галерею
     if (galleryId) {
       const { data: gallery } = await supabase.from("galleries").select("id, title, date").eq("id", galleryId).single()
@@ -48,14 +73,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ gallery, stats })
     }
 
-    // Иначе ищем галереи по названию
-    const searchTerm = searchParams.get("search") || "дружеск"
-    const { data: galleries } = await supabase
+    const search = searchTerm || "дружеск"
+    console.log("[v0] Searching galleries with term:", search)
+
+    // Пробуем несколько вариантов поиска
+    const { data: galleries, error } = await supabase
       .from("galleries")
       .select("id, title, date, created_at")
-      .ilike("title", `%${searchTerm}%`)
+      .or(`title.ilike.%${search}%,title.ilike.%Дружеск%,title.ilike.%дружеск%`)
       .order("date", { ascending: false })
-      .limit(10)
+      .limit(20)
+
+    console.log("[v0] Search error:", error)
+    console.log("[v0] Found galleries:", galleries?.length)
+    console.log(
+      "[v0] Gallery titles:",
+      galleries?.map((g) => g.title),
+    )
 
     // Добавляем количество фото для каждой галереи
     const galleriesWithCounts = await Promise.all(
@@ -69,8 +103,13 @@ export async function GET(request: Request) {
       }),
     )
 
-    return NextResponse.json({ galleries: galleriesWithCounts })
+    return NextResponse.json({
+      galleries: galleriesWithCounts,
+      searchTerm: search,
+      found: galleriesWithCounts.length,
+    })
   } catch (error: any) {
+    console.error("[v0] Gallery check error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
