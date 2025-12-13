@@ -14,7 +14,7 @@ import numpy as np
 
 from models.recognition_schemas import GenerateDescriptorsRequest
 from utils.geometry import calculate_iou
-from .dependencies import face_service_instance, supabase_client_instance
+from .dependencies import get_face_service, get_supabase_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -23,12 +23,13 @@ router = APIRouter()
 @router.post("/generate-descriptors")
 async def generate_descriptors(
     request: GenerateDescriptorsRequest,
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """
     Generate descriptors for manually tagged faces
     Called when admin manually assigns people to faces
     """
+    supabase_client = get_supabase_client()
     try:
         logger.info(f"[v3.26] ===== GENERATE DESCRIPTORS FOR MANUAL TAGS =====")
         logger.info(f"[v3.26] Image URL: {request.image_url}")
@@ -74,7 +75,7 @@ async def generate_descriptors(
                 photo_id = tagged_face.get("photo_id")
                 
                 if photo_id:
-                    success = await supabase_client_instance.save_face_descriptor(
+                    success = await supabase_client.save_face_descriptor(
                         person_id=person_id,
                         descriptor=descriptor,
                         source_image_id=photo_id
@@ -105,8 +106,9 @@ async def generate_descriptors(
 @router.get("/missing-descriptors-count")
 async def get_missing_descriptors_count():
     """Get count of faces with person_id but no insightface_descriptor"""
+    supabase_client = get_supabase_client()
     try:
-        result = supabase_client_instance.client.table("photo_faces").select(
+        result = supabase_client.client.table("photo_faces").select(
             "id", count="exact"
         ).not_.is_("person_id", "null").is_("insightface_descriptor", "null").execute()
         
@@ -122,8 +124,9 @@ async def get_missing_descriptors_count():
 @router.get("/missing-descriptors-list")
 async def get_missing_descriptors_list():
     """Get list of faces with person_id but no insightface_descriptor"""
+    supabase_client = get_supabase_client()
     try:
-        result = supabase_client_instance.client.table("photo_faces").select(
+        result = supabase_client.client.table("photo_faces").select(
             "id, photo_id, person_id, insightface_bbox, "
             "people(real_name), "
             "gallery_images(image_url, original_filename, galleries(title))"
@@ -154,17 +157,18 @@ async def get_missing_descriptors_list():
 
 @router.post("/regenerate-missing-descriptors")
 async def regenerate_missing_descriptors(
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """
     Regenerate insightface_descriptor for faces that were manually assigned to people.
     Uses IoU matching to find the corresponding detected face.
     """
+    supabase_client = get_supabase_client()
     try:
         logger.info("[RegenerateDescriptors] ===== START =====")
         
         # 1. Get faces with person_id but no descriptor
-        missing_result = supabase_client_instance.client.table("photo_faces").select(
+        missing_result = supabase_client.client.table("photo_faces").select(
             "id, photo_id, person_id, insightface_bbox, people(real_name), gallery_images(image_url)"
         ).not_.is_("person_id", "null").is_("insightface_descriptor", "null").execute()
         
@@ -251,7 +255,7 @@ async def regenerate_missing_descriptors(
                         if best_match and best_iou > 0.5:
                             embedding = best_match["embedding"].tolist()
                             
-                            supabase_client_instance.client.table("photo_faces").update({
+                            supabase_client.client.table("photo_faces").update({
                                 "insightface_descriptor": embedding,
                                 "insightface_confidence": float(best_match["det_score"]),
                             }).eq("id", missing_face["id"]).execute()
@@ -314,12 +318,13 @@ async def regenerate_missing_descriptors(
 @router.post("/regenerate-single-descriptor")
 async def regenerate_single_descriptor(
     face_id: str = Query(...),
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """Regenerate descriptor for a single face"""
+    supabase_client = get_supabase_client()
     try:
         # Get face data
-        face_result = supabase_client_instance.client.table("photo_faces").select(
+        face_result = supabase_client.client.table("photo_faces").select(
             "id, photo_id, person_id, insightface_bbox, "
             "people(real_name), "
             "gallery_images(image_url)"
@@ -368,7 +373,7 @@ async def regenerate_single_descriptor(
         # Save descriptor
         embedding = best_match["embedding"].tolist()
         
-        supabase_client_instance.client.table("photo_faces").update({
+        supabase_client.client.table("photo_faces").update({
             "insightface_descriptor": embedding,
             "insightface_confidence": float(best_match["det_score"]),
         }).eq("id", face_id).execute()
@@ -389,7 +394,7 @@ async def regenerate_single_descriptor(
 @router.post("/regenerate-unknown-descriptors")
 async def regenerate_unknown_descriptors(
     gallery_id: str = Query(...),
-    face_service=Depends(lambda: face_service_instance)
+    face_service=Depends(get_face_service)
 ):
     """
     Regenerate insightface_descriptor for unknown faces that don't have one.
@@ -397,12 +402,13 @@ async def regenerate_unknown_descriptors(
     
     Returns statistics about regeneration process.
     """
+    supabase_client = get_supabase_client()
     try:
         logger.info(f"[v3.24] ===== REGENERATE UNKNOWN DESCRIPTORS =====")
         logger.info(f"[v3.24] Gallery ID: {gallery_id}")
         
         # Get all photo_ids from gallery
-        gallery_photos_response = supabase_client_instance.client.table("gallery_images").select(
+        gallery_photos_response = supabase_client.client.table("gallery_images").select(
             "id"
         ).eq("gallery_id", gallery_id).execute()
         
@@ -420,7 +426,7 @@ async def regenerate_unknown_descriptors(
         logger.info(f"[v3.24] Found {len(photo_ids)} photos in gallery")
         
         # Get faces without descriptors (person_id = NULL AND insightface_descriptor IS NULL)
-        faces_response = supabase_client_instance.client.table("photo_faces").select(
+        faces_response = supabase_client.client.table("photo_faces").select(
             "id, photo_id, insightface_bbox, insightface_descriptor, "
             "gallery_images(id, image_url, width, height)"
         ).in_("photo_id", photo_ids).is_("person_id", "null").execute()
@@ -505,7 +511,7 @@ async def regenerate_unknown_descriptors(
                     descriptor_str = f"[{','.join(map(str, descriptor))}]"
                     
                     # Update in database
-                    supabase_client_instance.client.table("photo_faces").update({
+                    supabase_client.client.table("photo_faces").update({
                         "insightface_descriptor": descriptor_str,
                         "insightface_confidence": float(best_match["det_score"])
                     }).eq("id", face_id).execute()
