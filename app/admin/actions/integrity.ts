@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache"
 /**
  * Database Integrity Checker
  * Исправлены имена полей + orphanedLinks + actions для карточек
+ * + пагинация для всех запросов к photo_faces
  */
 
 export interface IntegrityReport {
@@ -60,6 +61,39 @@ async function getConfidenceThreshold(): Promise<number> {
 }
 
 /**
+ * Helper: загрузить все записи из photo_faces с пагинацией
+ */
+async function loadAllPhotoFaces<T>(
+  supabase: any,
+  selectFields: string,
+  filters?: (query: any) => any
+): Promise<T[]> {
+  let allRecords: T[] = []
+  let offset = 0
+  const pageSize = 1000
+
+  while (true) {
+    let query = supabase
+      .from("photo_faces")
+      .select(selectFields)
+      .range(offset, offset + pageSize - 1)
+
+    if (filters) {
+      query = filters(query)
+    }
+
+    const { data: batch } = await query
+
+    if (!batch || batch.length === 0) break
+    allRecords = allRecords.concat(batch)
+    if (batch.length < pageSize) break
+    offset += pageSize
+  }
+
+  return allRecords
+}
+
+/**
  * Полная проверка целостности базы данных
  */
 export async function checkDatabaseIntegrityFullAction(): Promise<{
@@ -108,7 +142,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       nonExistentPerson: 0,
       nonExistentPhoto: 0,
       orphanedLinks: 0,
-      unrecognizedFaces: 0, // Renamed from descriptorsWithoutPerson - informational metric
+      unrecognizedFaces: 0,
     }
     const people = {
       withoutDescriptors: 0,
@@ -120,8 +154,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     // ========== PHOTO_FACES CHECKS ==========
 
-    // 1. Verified без person_id (включая записи без существующего фото)
-    const { data: verifiedWithoutPerson, error: e1 } = await supabase
+    // 1. Verified без person_id (обычно немного записей, пагинация не критична)
+    const { data: verifiedWithoutPerson } = await supabase
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
@@ -147,8 +181,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }))
     }
 
-    // 2. Verified с неправильным confidence
-    const { data: verifiedWithWrongConfidence, error: e2 } = await supabase
+    // 2. Verified с неправильным confidence (обычно немного записей)
+    const { data: verifiedWithWrongConfidence } = await supabase
       .from("photo_faces")
       .select(`
         id, photo_id, recognition_confidence, insightface_bbox,
@@ -169,8 +203,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }))
     }
 
-    // 3. Person_id есть, но confidence=null
-    const { data: personWithoutConfidence, error: e3 } = await supabase
+    // 3. Person_id есть, но confidence=null (обычно немного записей)
+    const { data: personWithoutConfidence } = await supabase
       .from("photo_faces")
       .select(`
         id, photo_id, person_id, insightface_bbox,
@@ -192,21 +226,26 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }))
     }
 
-    // 4. Person_id не существует в people
-    const { data: allPhotoFaces } = await supabase
-      .from("photo_faces")
-      .select(`
-        id, photo_id, person_id, insightface_bbox,
-        gallery_images(id, image_url, gallery_id, galleries(title))
-      `)
-      .not("person_id", "is", null)
+    // 4. Person_id не существует в people (С ПАГИНАЦИЕЙ)
+    const allPhotoFacesWithPerson = await loadAllPhotoFaces<any>(
+      supabase,
+      "id, photo_id, person_id, insightface_bbox",
+      (q) => q.not("person_id", "is", null)
+    )
+    console.log(`[v0] Total photo_faces with person_id loaded: ${allPhotoFacesWithPerson.length}`)
 
-    if (allPhotoFaces) {
-      const personIds = [...new Set(allPhotoFaces.map((pf) => pf.person_id))]
-      const { data: existingPeople } = await supabase.from("people").select("id").in("id", personIds)
+    if (allPhotoFacesWithPerson.length > 0) {
+      const personIds = [...new Set(allPhotoFacesWithPerson.map((pf) => pf.person_id))]
+      
+      // Проверяем существующих людей батчами
+      const existingIds = new Set<string>()
+      for (let i = 0; i < personIds.length; i += 500) {
+        const batch = personIds.slice(i, i + 500)
+        const { data: existingPeople } = await supabase.from("people").select("id").in("id", batch)
+        existingPeople?.forEach((p: any) => existingIds.add(p.id))
+      }
 
-      const existingIds = new Set(existingPeople?.map((p) => p.id) || [])
-      const nonExistentPersonFaces = allPhotoFaces.filter((pf) => !existingIds.has(pf.person_id!))
+      const nonExistentPersonFaces = allPhotoFacesWithPerson.filter((pf) => !existingIds.has(pf.person_id!))
 
       photoFaces.nonExistentPerson = nonExistentPersonFaces.length
       console.log("[v0] nonExistentPerson count:", photoFaces.nonExistentPerson)
@@ -214,42 +253,25 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         details.nonExistentPersonFaces = nonExistentPersonFaces.slice(0, 10).map((item: any) => ({
           ...item,
           bbox: item.insightface_bbox,
-          image_url: item.gallery_images?.image_url,
-          gallery_title: item.gallery_images?.galleries?.title,
         }))
       }
     }
 
-    // 5. Photo_id не существует в gallery_images (с пагинацией)
-    let allPhotoFacesWithPhotos: { id: string; photo_id: string; insightface_bbox: any }[] = []
-    let offset = 0
-    const pageSize = 1000
-
-    while (true) {
-      const { data: batch } = await supabase
-        .from("photo_faces")
-        .select("id, photo_id, insightface_bbox")
-        .range(offset, offset + pageSize - 1)
-
-      if (!batch || batch.length === 0) break
-      allPhotoFacesWithPhotos = allPhotoFacesWithPhotos.concat(batch)
-      if (batch.length < pageSize) break
-      offset += pageSize
-    }
-
+    // 5. Photo_id не существует в gallery_images (С ПАГИНАЦИЕЙ)
+    const allPhotoFacesWithPhotos = await loadAllPhotoFaces<{ id: string; photo_id: string; insightface_bbox: any }>(
+      supabase,
+      "id, photo_id, insightface_bbox"
+    )
     console.log(`[v0] Total photo_faces loaded for nonExistentPhoto check: ${allPhotoFacesWithPhotos.length}`)
 
     if (allPhotoFacesWithPhotos.length > 0) {
-      // Получаем уникальные photo_id
       const photoIds = [...new Set(allPhotoFacesWithPhotos.map((pf) => pf.photo_id))]
 
-      // Проверяем существующие фото батчами по 500
       const existingPhotoIds = new Set<string>()
       for (let i = 0; i < photoIds.length; i += 500) {
         const batch = photoIds.slice(i, i + 500)
         const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", batch)
-
-        existingPhotos?.forEach((p) => existingPhotoIds.add(p.id))
+        existingPhotos?.forEach((p: any) => existingPhotoIds.add(p.id))
       }
 
       const nonExistentPhotoFaces = allPhotoFacesWithPhotos.filter((pf) => !existingPhotoIds.has(pf.photo_id))
@@ -260,30 +282,25 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 50).map((item: any) => ({
           ...item,
           bbox: item.insightface_bbox,
-          image_url: item.gallery_images?.image_url,
-          gallery_title: item.gallery_images?.galleries?.title,
         }))
       }
     }
 
-    // 6. Orphaned links - faces with person_id but not visible (below threshold and not verified)
+    // 6. Orphaned links (С ПАГИНАЦИЕЙ)
     const confidenceThreshold = await getConfidenceThreshold()
     console.log(`[v0] Using confidence threshold: ${confidenceThreshold}`)
 
-    const { data: allFacesForOrphaned } = await supabase
-      .from("photo_faces")
-      .select(`
-        id, photo_id, person_id, verified, recognition_confidence, insightface_bbox, insightface_descriptor,
-        gallery_images(id, image_url, original_filename, gallery_id, galleries(title, shoot_date)),
-        people(real_name)
-      `)
-      .not("person_id", "is", null)
-      .not("insightface_descriptor", "is", null)
-      .eq("verified", false)
+    const allFacesForOrphaned = await loadAllPhotoFaces<any>(
+      supabase,
+      `id, photo_id, person_id, verified, recognition_confidence, insightface_bbox,
+       gallery_images(id, image_url, original_filename, gallery_id, galleries(title, shoot_date)),
+       people(real_name)`,
+      (q) => q.not("person_id", "is", null).not("insightface_descriptor", "is", null).eq("verified", false)
+    )
+    console.log(`[v0] Total faces for orphaned check loaded: ${allFacesForOrphaned.length}`)
 
-    // Filter by confidence < threshold (these are "lost" - have person but not visible)
-    const orphanedLinks = (allFacesForOrphaned || []).filter(
-      (face) => (face.recognition_confidence || 0) < confidenceThreshold,
+    const orphanedLinks = allFacesForOrphaned.filter(
+      (face) => (face.recognition_confidence || 0) < confidenceThreshold
     )
 
     photoFaces.orphanedLinks = orphanedLinks.length
@@ -304,7 +321,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }))
     }
 
-    // 7. Осиротевшие дескрипторы (фото удалено, но запись с дескриптором осталась)
+    // 7. Unrecognized faces (count only)
     const unrecognizedCount = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
@@ -316,21 +333,18 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     // ========== PEOPLE CHECKS ==========
 
-    // 8. People без descriptors в photo_faces.insightface_descriptor
-    const { data: allPeople } = await supabase.from("people").select(`
-      id, 
-      real_name, 
-      telegram_username
-    `)
+    // 8. People без descriptors (С ПАГИНАЦИЕЙ для facesWithDescriptors)
+    const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
 
     if (allPeople) {
-      const { data: facesWithDescriptors } = await supabase
-        .from("photo_faces")
-        .select("person_id")
-        .not("person_id", "is", null)
-        .not("insightface_descriptor", "is", null)
+      const facesWithDescriptors = await loadAllPhotoFaces<{ person_id: string }>(
+        supabase,
+        "person_id",
+        (q) => q.not("person_id", "is", null).not("insightface_descriptor", "is", null)
+      )
+      console.log(`[v0] Faces with descriptors loaded: ${facesWithDescriptors.length}`)
 
-      const peopleWithDescriptorIds = new Set(facesWithDescriptors?.map((f) => f.person_id) || [])
+      const peopleWithDescriptorIds = new Set(facesWithDescriptors.map((f) => f.person_id))
       const peopleWithoutDescriptors = allPeople.filter((p) => !peopleWithDescriptorIds.has(p.id))
 
       people.withoutDescriptors = peopleWithoutDescriptors.length
@@ -340,9 +354,9 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
     }
 
-    // 9. People без faces (информационное)
-    if (allPeople && allPhotoFaces) {
-      const peopleWithFaces = new Set(allPhotoFaces.filter((pf) => pf.person_id).map((pf) => pf.person_id))
+    // 9. People без faces (используем уже загруженные данные)
+    if (allPeople && allPhotoFacesWithPerson.length > 0) {
+      const peopleWithFaces = new Set(allPhotoFacesWithPerson.map((pf) => pf.person_id))
       const peopleWithoutFaces = allPeople.filter((p) => !peopleWithFaces.has(p.id))
 
       people.withoutFaces = peopleWithoutFaces.length
@@ -352,7 +366,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
     }
 
-    // 10. Duplicate names (информационное)
+    // 10. Duplicate names
     if (allPeople) {
       const nameGroups = new Map<string, any[]>()
       for (const person of allPeople) {
@@ -375,7 +389,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
             ...p,
             duplicate_key: key,
             duplicate_count: people.length,
-          })),
+          }))
         )
       }
     }
@@ -395,12 +409,11 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces,
       people,
       totalIssues,
-      checksPerformed: 9, // Track number of checks performed for transparency
+      checksPerformed: 9,
       details,
     }
 
     console.log("[v0] Integrity check complete. Total issues:", totalIssues)
-    console.log("[v0] Returning report:", JSON.stringify(report, null, 2))
 
     return { success: true, data: report }
   } catch (error: any) {
@@ -415,7 +428,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
  * Только БЕЗОПАСНЫЕ операции
  */
 export async function fixIntegrityIssuesAction(
-  issueType: string,
+  issueType: string
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   const supabase = await createClient()
 
@@ -436,7 +449,7 @@ export async function fixIntegrityIssuesAction(
 
         if (error) throw error
         fixed = updated?.length || 0
-        details.updatedIds = updated?.map((u) => u.id)
+        details.updatedIds = updated?.map((u: any) => u.id)
         break
       }
 
@@ -450,7 +463,7 @@ export async function fixIntegrityIssuesAction(
 
         if (error) throw error
         fixed = updated?.length || 0
-        details.updatedIds = updated?.map((u) => u.id)
+        details.updatedIds = updated?.map((u: any) => u.id)
         break
       }
 
@@ -464,80 +477,75 @@ export async function fixIntegrityIssuesAction(
 
         if (error) throw error
         fixed = updated?.length || 0
-        details.updatedIds = updated?.map((u) => u.id)
+        details.updatedIds = updated?.map((u: any) => u.id)
         break
       }
 
       case "nonExistentPersonFaces": {
-        const { data: allPhotoFaces } = await supabase
-          .from("photo_faces")
-          .select("id, person_id")
-          .not("person_id", "is", null)
+        // С ПАГИНАЦИЕЙ
+        const allPhotoFaces = await loadAllPhotoFaces<{ id: string; person_id: string }>(
+          supabase,
+          "id, person_id",
+          (q) => q.not("person_id", "is", null)
+        )
+        console.log(`[v0] Loaded ${allPhotoFaces.length} photo_faces for nonExistentPersonFaces fix`)
 
-        if (allPhotoFaces) {
+        if (allPhotoFaces.length > 0) {
           const personIds = [...new Set(allPhotoFaces.map((pf) => pf.person_id!))]
-          const { data: existingPeople } = await supabase.from("people").select("id").in("id", personIds)
+          
+          const existingIds = new Set<string>()
+          for (let i = 0; i < personIds.length; i += 500) {
+            const batch = personIds.slice(i, i + 500)
+            const { data: existingPeople } = await supabase.from("people").select("id").in("id", batch)
+            existingPeople?.forEach((p: any) => existingIds.add(p.id))
+          }
 
-          const existingIds = new Set(existingPeople?.map((p) => p.id) || [])
           const invalidIds = allPhotoFaces.filter((pf) => !existingIds.has(pf.person_id!)).map((pf) => pf.id)
 
           if (invalidIds.length > 0) {
-            const { error: updateError } = await supabase
-              .from("photo_faces")
-              .update({ person_id: null, verified: false, recognition_confidence: null })
-              .in("id", invalidIds)
+            // Update батчами
+            for (let i = 0; i < invalidIds.length; i += 500) {
+              const batch = invalidIds.slice(i, i + 500)
+              const { error: updateError } = await supabase
+                .from("photo_faces")
+                .update({ person_id: null, verified: false, recognition_confidence: null })
+                .in("id", batch)
 
-            if (updateError) throw updateError
+              if (updateError) throw updateError
+            }
             fixed = invalidIds.length
-            details.updatedIds = invalidIds
+            details.updatedIds = invalidIds.slice(0, 100)
           }
         }
         break
       }
 
       case "nonExistentPhotoFaces": {
-        // Получаем ВСЕ photo_faces с пагинацией (Supabase лимит 1000)
-        let allPhotoFaces: { id: string; photo_id: string }[] = []
-        let offset = 0
-        const pageSize = 1000
-
-        while (true) {
-          const { data: batch } = await supabase
-            .from("photo_faces")
-            .select("id, photo_id")
-            .range(offset, offset + pageSize - 1)
-
-          if (!batch || batch.length === 0) break
-          allPhotoFaces = allPhotoFaces.concat(batch)
-          if (batch.length < pageSize) break
-          offset += pageSize
-        }
-
+        // С ПАГИНАЦИЕЙ
+        const allPhotoFaces = await loadAllPhotoFaces<{ id: string; photo_id: string }>(
+          supabase,
+          "id, photo_id"
+        )
         console.log(`[v0] Total photo_faces loaded: ${allPhotoFaces.length}`)
 
         if (allPhotoFaces.length > 0) {
-          // Получаем уникальные photo_id
           const photoIds = [...new Set(allPhotoFaces.map((pf) => pf.photo_id))]
           console.log(`[v0] Unique photo_ids: ${photoIds.length}`)
 
-          // Проверяем существующие фото батчами
           const existingPhotoIds = new Set<string>()
           for (let i = 0; i < photoIds.length; i += 500) {
             const batch = photoIds.slice(i, i + 500)
             const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", batch)
-
-            existingPhotos?.forEach((p) => existingPhotoIds.add(p.id))
+            existingPhotos?.forEach((p: any) => existingPhotoIds.add(p.id))
           }
 
           console.log(`[v0] Existing photos found: ${existingPhotoIds.size}`)
 
-          // Находим ID записей с несуществующими фото
           const invalidIds = allPhotoFaces.filter((pf) => !existingPhotoIds.has(pf.photo_id)).map((pf) => pf.id)
 
           console.log(`[v0] Invalid photo_faces to delete: ${invalidIds.length}`)
 
           if (invalidIds.length > 0) {
-            // Удаляем батчами по 50 записей
             const batchSize = 50
             let deleted = 0
 
@@ -547,12 +555,10 @@ export async function fixIntegrityIssuesAction(
 
               if (deleteError) {
                 console.error(`[v0] Error deleting batch ${i}-${i + batch.length}:`, deleteError)
-                // Продолжаем удаление остальных батчей
               } else {
                 deleted += batch.length
               }
 
-              // Небольшая пауза между батчами
               if (i + batchSize < invalidIds.length) {
                 await new Promise((resolve) => setTimeout(resolve, 100))
               }
@@ -566,34 +572,39 @@ export async function fixIntegrityIssuesAction(
       }
 
       case "orphanedLinks": {
-        // Elevate confidence to threshold to make faces visible
-        const confidenceThreshold = await getConfidenceThreshold() // Updated to use getConfidenceThreshold
+        const confidenceThreshold = await getConfidenceThreshold()
 
-        const { data: allFaces } = await supabase
-          .from("photo_faces")
-          .select("id, recognition_confidence")
-          .not("person_id", "is", null)
-          .not("insightface_descriptor", "is", null)
-          .eq("verified", false)
+        // С ПАГИНАЦИЕЙ
+        const allFaces = await loadAllPhotoFaces<{ id: string; recognition_confidence: number }>(
+          supabase,
+          "id, recognition_confidence",
+          (q) => q.not("person_id", "is", null).not("insightface_descriptor", "is", null).eq("verified", false)
+        )
+        console.log(`[v0] Loaded ${allFaces.length} faces for orphanedLinks fix`)
 
-        const toFix = (allFaces || []).filter((f) => (f.recognition_confidence || 0) < confidenceThreshold)
+        const toFix = allFaces.filter((f) => (f.recognition_confidence || 0) < confidenceThreshold)
 
         if (toFix.length > 0) {
           const idsToFix = toFix.map((f) => f.id)
-          const { error } = await supabase
-            .from("photo_faces")
-            .update({ recognition_confidence: confidenceThreshold })
-            .in("id", idsToFix)
+          
+          // Update батчами
+          for (let i = 0; i < idsToFix.length; i += 500) {
+            const batch = idsToFix.slice(i, i + 500)
+            const { error } = await supabase
+              .from("photo_faces")
+              .update({ recognition_confidence: confidenceThreshold })
+              .in("id", batch)
 
-          if (error) throw error
+            if (error) throw error
+          }
+          
           fixed = idsToFix.length
-          details.updatedIds = idsToFix
+          details.updatedIds = idsToFix.slice(0, 100)
         }
         break
       }
 
       case "unrecognizedFaces": {
-        // Записи где фото удалено уже удаляются через nonExistentPhotoFaces
         return {
           success: true,
           data: {
@@ -626,7 +637,7 @@ export async function fixIntegrityIssuesAction(
  */
 export async function getIssueDetailsAction(
   issueType: string,
-  limit = 50,
+  limit = 50
 ): Promise<{ success: boolean; data?: any[]; error?: string }> {
   const supabase = await createClient()
 
@@ -655,7 +666,7 @@ export async function getIssueDetailsAction(
       }
 
       case "orphanedLinks": {
-        const confidenceThreshold = await getConfidenceThreshold() // Updated to use getConfidenceThreshold
+        const confidenceThreshold = await getConfidenceThreshold()
         const { data } = await supabase
           .from("photo_faces")
           .select(`
@@ -669,7 +680,7 @@ export async function getIssueDetailsAction(
           .limit(200)
 
         details = (data || [])
-          .filter((f) => (f.recognition_confidence || 0) < confidenceThreshold)
+          .filter((f: any) => (f.recognition_confidence || 0) < confidenceThreshold)
           .slice(0, limit)
           .map((item: any) => ({
             id: item.id,
@@ -717,13 +728,12 @@ export async function getIssueDetailsAction(
 export async function confirmFaceAction(
   faceId: string,
   actionType: "verify" | "elevate",
-  threshold?: number,
+  threshold?: number
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient()
 
   try {
     if (actionType === "verify") {
-      // Этот код оставлен для обратной совместимости, но не должен вызываться
       return { success: false, error: "Use FaceTaggingDialog for verification" }
     } else {
       const confidenceValue = threshold || (await getConfidenceThreshold())
@@ -747,7 +757,7 @@ export async function confirmFaceAction(
  */
 export async function rejectFaceAction(
   faceId: string,
-  actionType: "unverify" | "unlink",
+  actionType: "unverify" | "unlink"
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient()
 
