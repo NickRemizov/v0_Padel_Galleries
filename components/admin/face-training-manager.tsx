@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { RefreshCw, Loader2, CheckCircle2, AlertCircle, TrendingUp, AlertTriangle } from "lucide-react"
 import { TrainingHistoryList } from "./training-history-list"
-import { TrainingStatsCard } from "./training-stats-card"
 
 const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
 
@@ -351,8 +350,8 @@ export function FaceTrainingManager() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Обучение модели распознавания лиц</h2>
-        <p className="text-sm text-muted-foreground">Управление обучением InsightFace модели на verified faces</p>
+        <h2 className="text-2xl font-bold">Настройки распознавания</h2>
+        <p className="text-sm text-muted-foreground">Управление обучением InsightFace модели и параметрами распознавания</p>
       </div>
 
       {httpsRequired && (
@@ -504,7 +503,7 @@ export function FaceTrainingManager() {
       {/* Configuration Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Настройки распознавания</CardTitle>
+          <CardTitle>Параметры распознавания</CardTitle>
           <CardDescription>Настройте пороги confidence и вес контекста для распознавания лиц</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -702,9 +701,6 @@ export function FaceTrainingManager() {
           <TrainingHistoryList sessions={sessions} />
         </CardContent>
       </Card>
-
-      {/* Statistics */}
-      <TrainingStatsCard />
     </div>
   )
 }
