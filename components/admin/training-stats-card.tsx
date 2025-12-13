@@ -83,7 +83,6 @@ interface Statistics {
     total_faces: number
   }>
 }
-
 function StatValue({
   label,
   value,
@@ -230,15 +229,15 @@ export function TrainingStatsCard() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <StatValue label="Всего" value={stats.images.total.toLocaleString()} />
-              <StatValue label="Распознано" value={stats.images.recognized.toLocaleString()} color="text-green-600" />
+              <StatValue label="Распознанан" value={stats.images.recognized.toLocaleString()} color="text-green-600" />
             </div>
           </div>
 
-          {/* По кол-ву людей */}
+          {/* Распределение людей на фото */}
           <div className="rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-3">
               <UserCheck className="h-5 w-5 text-muted-foreground" />
-              <h4 className="font-medium">По кол-ву людей</h4>
+              <h4 className="font-medium text-sm">Распределение людей на фото</h4>
             </div>
             <div className="grid grid-cols-3 gap-2">
               <StatValue label="1 чел" value={stats.images.with_1_person} />
@@ -406,7 +405,7 @@ export function TrainingStatsCard() {
               </Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm">Осиротевшие дескрипторы</span>
+              <span className="text-sm">Осирототшие дескрипторы</span>
               <Badge
                 variant={stats.integrity.orphaned_descriptors === 0 ? "default" : "destructive"}
                 className={
@@ -474,25 +473,7 @@ export function TrainingStatsCard() {
               <h4 className="font-medium">Состояние галерей</h4>
             </div>
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-              {/* Полностью распознаны */}
-              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl font-bold text-blue-600">{stats.galleries.fully_recognized}</span>
-                  <span className="text-xs text-blue-700 dark:text-blue-300">Полностью распознаны</span>
-                </div>
-                <div className="space-y-1.5">
-                  {stats.galleries.fully_recognized_list?.map((g) => (
-                    <div key={g.id} className="text-xs flex justify-between items-center">
-                      <span className="truncate">
-                        {g.title} {g.date}
-                      </span>
-                      <span className="text-muted-foreground ml-2 whitespace-nowrap">({g.photos} фото)</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Полностью верифиц. */}
+              {/* 1. Полностью верифицированы (зелёный) */}
               <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/20">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-2xl font-bold text-green-600">{stats.galleries.fully_verified}</span>
@@ -510,11 +491,29 @@ export function TrainingStatsCard() {
                 </div>
               </div>
 
-              {/* Частично обработаны */}
-              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20">
+              {/* 2. Полностью распознаны (синий) */}
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl font-bold text-amber-600">{stats.galleries.partially_verified}</span>
-                  <span className="text-xs text-amber-700 dark:text-amber-300">Частично обработаны</span>
+                  <span className="text-2xl font-bold text-blue-600">{stats.galleries.fully_recognized}</span>
+                  <span className="text-xs text-blue-700 dark:text-blue-300">Полностью распознаны</span>
+                </div>
+                <div className="space-y-1.5">
+                  {stats.galleries.fully_recognized_list?.map((g) => (
+                    <div key={g.id} className="text-xs flex justify-between items-center">
+                      <span className="truncate">
+                        {g.title} {g.date}
+                      </span>
+                      <span className="text-muted-foreground ml-2 whitespace-nowrap">({g.photos} фото)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Частично обработаны (серый) */}
+              <div className="p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl font-bold text-muted-foreground">{stats.galleries.partially_verified}</span>
+                  <span className="text-xs text-muted-foreground">Частично обработаны</span>
                 </div>
                 <div className="space-y-1.5">
                   {stats.galleries.partially_verified_list?.map((g) => (
@@ -530,11 +529,11 @@ export function TrainingStatsCard() {
                 </div>
               </div>
 
-              {/* Не обработаны */}
-              <div className="p-3 rounded-lg bg-muted/50">
+              {/* 4. Не обработаны (оранжевый) */}
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl font-bold text-muted-foreground">{stats.galleries.not_processed}</span>
-                  <span className="text-xs text-muted-foreground">Не обработаны</span>
+                  <span className="text-2xl font-bold text-amber-600">{stats.galleries.not_processed}</span>
+                  <span className="text-xs text-amber-700 dark:text-amber-300">Не обработаны</span>
                 </div>
                 <div className="space-y-1.5">
                   {stats.galleries.not_processed_list?.map((g) => (

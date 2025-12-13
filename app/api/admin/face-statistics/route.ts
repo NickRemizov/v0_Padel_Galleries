@@ -17,11 +17,13 @@ function formatShortDate(dateStr: string | null | undefined): string {
 
 function generateDynamicThresholds(maxPhotos: number): number[] {
   const thresholds = [1, 3, 5, 10]
-  let threshold = 20
+
+  let threshold = 15
   while (threshold <= maxPhotos) {
     thresholds.push(threshold)
-    threshold += 10
+    threshold += 5
   }
+
   return thresholds
 }
 
@@ -30,19 +32,19 @@ function generateDynamicHistogramBuckets(maxPhotos: number): Array<{ range: stri
     { range: "1-2", min: 1, max: 2 },
     { range: "3-4", min: 3, max: 4 },
     { range: "5-9", min: 5, max: 9 },
-    { range: "10-19", min: 10, max: 19 },
+    { range: "10-14", min: 10, max: 14 },
   ]
 
-  let start = 20
+  let start = 15
   while (start <= maxPhotos) {
-    const end = start + 9
+    const end = start + 4
     if (end >= maxPhotos && start <= maxPhotos) {
       buckets.push({ range: `${start}+`, min: start, max: 9999 })
       break
     } else {
       buckets.push({ range: `${start}-${end}`, min: start, max: end })
     }
-    start += 10
+    start += 5
   }
 
   return buckets
@@ -209,10 +211,11 @@ export async function GET(request: NextRequest) {
       } else if (processed === 0) {
         notProcessedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
       } else if (processed === total) {
-        fullyVerifiedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
-
+        // Полностью обработаны - теперь взаимоисключающая логика
         if (!hasUnknownFaces) {
           fullyRecognizedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
+        } else {
+          fullyVerifiedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
         }
       } else {
         partiallyVerifiedList.push({ id: gallery.id, title: gallery.title, date, processed, total })

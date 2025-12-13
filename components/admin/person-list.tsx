@@ -111,6 +111,7 @@ export function PersonList({ people }: PersonListProps) {
 
           const totalPhotoCount = (person.verified_photos_count || 0) + (person.high_confidence_photos_count || 0)
           const descriptorCount = person.descriptor_count || 0
+          const descriptorDiff = descriptorCount - totalPhotoCount
 
           return (
             <Card key={person.id}>
@@ -166,7 +167,19 @@ export function PersonList({ people }: PersonListProps) {
                           <p>
                             Подтвержденные фото: {person.verified_photos_count || 0} • Высокая уверенность:{" "}
                             {person.high_confidence_photos_count || 0}
-                            {person.descriptor_count !== undefined && ` • Дескрипторов: ${person.descriptor_count}`}
+                            {person.descriptor_count !== undefined && (
+                              <>
+                                {" "}
+                                • Дескрипторов: {person.descriptor_count}
+                                {descriptorDiff !== 0 && (
+                                  <span className="text-red-500 font-medium">
+                                    {" "}
+                                    ({descriptorDiff > 0 ? "+" : ""}
+                                    {descriptorDiff})
+                                  </span>
+                                )}
+                              </>
+                            )}
                           </p>
                         )}
                         {person.tournament_results && person.tournament_results.length > 0 && (
