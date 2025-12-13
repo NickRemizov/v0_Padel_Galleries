@@ -174,3 +174,55 @@ export async function deleteOrganizerAction(organizerId: string) {
   if (result.success) revalidatePath("/admin")
   return result
 }
+
+// ===== CITIES =====
+
+export async function getCitiesAction(activeOnly = false) {
+  return await apiFetch(`/api/cities?active_only=${activeOnly}`)
+}
+
+export async function getCityAction(cityId: string) {
+  return await apiFetch(`/api/cities/${cityId}`)
+}
+
+export async function addCityAction(data: {
+  name: string
+  slug: string
+  country?: string
+  is_active?: boolean
+}) {
+  const result = await apiFetch("/api/cities", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
+}
+
+export async function updateCityAction(cityId: string, data: {
+  name?: string
+  slug?: string
+  country?: string
+  is_active?: boolean
+}) {
+  const result = await apiFetch(`/api/cities/${cityId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
+}
+
+export async function toggleCityActiveAction(cityId: string) {
+  const result = await apiFetch(`/api/cities/${cityId}/toggle`, {
+    method: "PATCH",
+  })
+  if (result.success) revalidatePath("/admin")
+  return result
+}
+
+export async function deleteCityAction(cityId: string) {
+  const result = await apiFetch(`/api/cities/${cityId}`, { method: "DELETE" })
+  if (result.success) revalidatePath("/admin")
+  return result
+}
