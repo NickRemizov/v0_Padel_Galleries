@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
       while (true) {
         const { data: batch } = await supabase
           .from("photo_faces")
-          .select("photo_id, person_id, recognition_confidence")
+          .select("photo_id, person_id, recognition_confidence, verified")
           .range(offset, offset + pageSize - 1)
 
         if (!batch || batch.length === 0) break
