@@ -14,10 +14,10 @@ import {
   Wrench,
   BarChart3,
   TrendingUp,
+  UserCheck,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
 
 interface Statistics {
   players: {
@@ -58,6 +58,8 @@ interface Statistics {
   top_players: Array<{ id: string; name: string; count: number }>
   galleries: {
     total: number
+    fully_recognized: number
+    fully_recognized_list: Array<{ id: string; title: string; date: string; photos: number }>
     fully_verified: number
     fully_verified_list: Array<{ id: string; title: string; date: string; photos: number }>
     partially_verified: number
@@ -82,44 +84,19 @@ interface Statistics {
   }>
 }
 
-// Компонент для кликабельного имени человека
-function PersonLink({ id, name, suffix = "" }: { id: string; name: string; suffix?: string }) {
-  return (
-    <Link href={`/person/${id}`} className="text-blue-600 hover:text-blue-800 hover:underline">
-      {name}
-      {suffix}
-    </Link>
-  )
-}
-
-// Компонент для кликабельной галереи
-function GalleryLink({ id, title, date, photoInfo }: { id: string; title: string; date: string; photoInfo: string }) {
-  return (
-    <div className="text-xs flex justify-between items-center">
-      <Link href={`/admin/galleries/${id}`} className="text-blue-600 hover:text-blue-800 hover:underline truncate">
-        {title} {date}
-      </Link>
-      <span className="text-muted-foreground ml-2 whitespace-nowrap">({photoInfo})</span>
-    </div>
-  )
-}
-
-// Компонент для значения статистики
 function StatValue({
   label,
   value,
   color = "text-foreground",
   small = false,
-  center = false,
 }: {
   label: string
   value: string | number
   color?: string
   small?: boolean
-  center?: boolean
 }) {
   return (
-    <div className={center ? "text-center" : ""}>
+    <div>
       <div className={`${small ? "text-lg" : "text-2xl"} font-bold ${color}`}>{value}</div>
       <div className="text-xs text-muted-foreground">{label}</div>
     </div>
@@ -187,7 +164,6 @@ export function TrainingStatsCard() {
     )
   }
 
-  // Разбиваем топ игроков на колонки для десктопа
   const getTopPlayersColumns = (players: typeof stats.top_players, numColumns: number) => {
     const perColumn = Math.ceil(players.length / numColumns)
     const columns: (typeof players)[] = []
@@ -215,7 +191,7 @@ export function TrainingStatsCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* === СЕКЦИЯ 1: Основные метрики === */}
-        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           {/* Игроки */}
           <div className="rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -252,15 +228,22 @@ export function TrainingStatsCard() {
               <Images className="h-5 w-5 text-muted-foreground" />
               <h4 className="font-medium">Изображения</h4>
             </div>
-            <div className="grid grid-cols-3 gap-2 mb-2">
+            <div className="grid grid-cols-2 gap-2">
               <StatValue label="Всего" value={stats.images.total.toLocaleString()} />
               <StatValue label="Распознано" value={stats.images.recognized.toLocaleString()} color="text-green-600" />
-              <div></div>
             </div>
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t">
-              <StatValue label="1 чел" value={stats.images.with_1_person} small />
-              <StatValue label="2-3 чел" value={stats.images.with_2_3_persons} small />
-              <StatValue label="4+ чел" value={stats.images.with_4_plus_persons} small />
+          </div>
+
+          {/* По кол-ву людей */}
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <UserCheck className="h-5 w-5 text-muted-foreground" />
+              <h4 className="font-medium">По кол-ву людей</h4>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <StatValue label="1 чел" value={stats.images.with_1_person} />
+              <StatValue label="2-3 чел" value={stats.images.with_2_3_persons} />
+              <StatValue label="4+ чел" value={stats.images.with_4_plus_persons} />
             </div>
           </div>
         </div>
@@ -334,7 +317,7 @@ export function TrainingStatsCard() {
                         key={p.id}
                         className="inline-block px-2 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200"
                       >
-                        <PersonLink id={p.id} name={p.name} />
+                        {p.name}
                       </span>
                     ))}
                     {stats.players.without_verified > 20 && (
@@ -358,7 +341,7 @@ export function TrainingStatsCard() {
                         key={p.id}
                         className="inline-block px-2 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200"
                       >
-                        <PersonLink id={p.id} name={p.name} suffix={` (${p.count})`} />
+                        {p.name} ({p.count})
                       </span>
                     ))}
                   </div>
@@ -377,7 +360,7 @@ export function TrainingStatsCard() {
                         key={p.id}
                         className="inline-block px-2 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200"
                       >
-                        <PersonLink id={p.id} name={p.name} />
+                        {p.name}
                       </span>
                     ))}
                   </div>
@@ -471,7 +454,7 @@ export function TrainingStatsCard() {
                           >
                             #{globalIndex + 1}
                           </span>
-                          <PersonLink id={player.id} name={player.name} />
+                          <span>{player.name}</span>
                         </div>
                         <Badge variant="secondary">{player.count}</Badge>
                       </div>
@@ -490,16 +473,39 @@ export function TrainingStatsCard() {
               <Images className="h-5 w-5 text-muted-foreground" />
               <h4 className="font-medium">Состояние галерей</h4>
             </div>
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
-              {/* Полностью обработаны */}
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              {/* Полностью распознаны */}
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl font-bold text-blue-600">{stats.galleries.fully_recognized}</span>
+                  <span className="text-xs text-blue-700 dark:text-blue-300">Полностью распознаны</span>
+                </div>
+                <div className="space-y-1.5">
+                  {stats.galleries.fully_recognized_list?.map((g) => (
+                    <div key={g.id} className="text-xs flex justify-between items-center">
+                      <span className="truncate">
+                        {g.title} {g.date}
+                      </span>
+                      <span className="text-muted-foreground ml-2 whitespace-nowrap">({g.photos} фото)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Полностью верифиц. */}
               <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/20">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-2xl font-bold text-green-600">{stats.galleries.fully_verified}</span>
-                  <span className="text-xs text-green-700 dark:text-green-300">Полностью обработаны</span>
+                  <span className="text-xs text-green-700 dark:text-green-300">Полностью верифиц.</span>
                 </div>
                 <div className="space-y-1.5">
                   {stats.galleries.fully_verified_list?.map((g) => (
-                    <GalleryLink key={g.id} id={g.id} title={g.title} date={g.date} photoInfo={`${g.photos} фото`} />
+                    <div key={g.id} className="text-xs flex justify-between items-center">
+                      <span className="truncate">
+                        {g.title} {g.date}
+                      </span>
+                      <span className="text-muted-foreground ml-2 whitespace-nowrap">({g.photos} фото)</span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -512,13 +518,14 @@ export function TrainingStatsCard() {
                 </div>
                 <div className="space-y-1.5">
                   {stats.galleries.partially_verified_list?.map((g) => (
-                    <GalleryLink
-                      key={g.id}
-                      id={g.id}
-                      title={g.title}
-                      date={g.date}
-                      photoInfo={`${g.processed} из ${g.total} фото`}
-                    />
+                    <div key={g.id} className="text-xs flex justify-between items-center">
+                      <span className="truncate">
+                        {g.title} {g.date}
+                      </span>
+                      <span className="text-muted-foreground ml-2 whitespace-nowrap">
+                        ({g.processed} из {g.total} фото)
+                      </span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -531,7 +538,12 @@ export function TrainingStatsCard() {
                 </div>
                 <div className="space-y-1.5">
                   {stats.galleries.not_processed_list?.map((g) => (
-                    <GalleryLink key={g.id} id={g.id} title={g.title} date={g.date} photoInfo={`${g.photos} фото`} />
+                    <div key={g.id} className="text-xs flex justify-between items-center">
+                      <span className="truncate">
+                        {g.title} {g.date}
+                      </span>
+                      <span className="text-muted-foreground ml-2 whitespace-nowrap">({g.photos} фото)</span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -557,7 +569,7 @@ export function TrainingStatsCard() {
                     </span>
                   </div>
                   <Progress
-                    value={(item.count / Math.max(...stats.histogram.map((h) => h.count))) * 100}
+                    value={(item.count / Math.max(...stats.histogram.map((h) => h.count), 1)) * 100}
                     className="h-2"
                   />
                 </div>

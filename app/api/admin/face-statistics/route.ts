@@ -15,13 +15,45 @@ function formatShortDate(dateStr: string | null | undefined): string {
   }
 }
 
+function generateDynamicThresholds(maxPhotos: number): number[] {
+  const thresholds = [1, 3, 5, 10]
+  let threshold = 20
+  while (threshold <= maxPhotos) {
+    thresholds.push(threshold)
+    threshold += 10
+  }
+  return thresholds
+}
+
+function generateDynamicHistogramBuckets(maxPhotos: number): Array<{ range: string; min: number; max: number }> {
+  const buckets: Array<{ range: string; min: number; max: number }> = [
+    { range: "1-2", min: 1, max: 2 },
+    { range: "3-4", min: 3, max: 4 },
+    { range: "5-9", min: 5, max: 9 },
+    { range: "10-19", min: 10, max: 19 },
+  ]
+
+  let start = 20
+  while (start <= maxPhotos) {
+    const end = start + 9
+    if (end >= maxPhotos && start <= maxPhotos) {
+      buckets.push({ range: `${start}+`, min: start, max: 9999 })
+      break
+    } else {
+      buckets.push({ range: `${start}-${end}`, min: start, max: end })
+    }
+    start += 10
+  }
+
+  return buckets
+}
+
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const searchParams = request.nextUrl.searchParams
   const topCount = Number.parseInt(searchParams.get("top") || "15", 10)
 
   try {
-    // === Базовые подсчёты ===
     const [
       { count: totalPeopleCount },
       { count: totalPhotoFacesCount },
@@ -38,7 +70,6 @@ export async function GET(request: NextRequest) {
       supabase.from("gallery_images").select("*", { count: "exact", head: true }).eq("has_been_processed", true),
     ])
 
-    // === Игроки с/без verified фото ===
     const { data: peopleWithVerifiedFaces } = await supabase
       .from("photo_faces")
       .select("person_id")
@@ -49,7 +80,6 @@ export async function GET(request: NextRequest) {
     const peopleWithVerifiedCount = uniquePeopleWithVerified.size
     const peopleWithoutVerifiedCount = (totalPeopleCount || 0) - peopleWithVerifiedCount
 
-    // Список людей без verified фото
     const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_name").order("real_name")
 
     const peopleWithoutVerifiedList = (allPeople || [])
@@ -60,7 +90,6 @@ export async function GET(request: NextRequest) {
         name: p.real_name || p.telegram_name || "Без имени",
       }))
 
-    // === Подсчёт фото с N людьми ===
     const { data: facesPerPhoto } = await supabase.from("photo_faces").select("photo_id")
 
     const photoFaceCounts: Record<string, number> = {}
@@ -78,7 +107,6 @@ export async function GET(request: NextRequest) {
       else if (count >= 4) with4PlusPersons++
     }
 
-    // === Статистика фото на игрока ===
     const { data: verifiedFacesPerPerson } = await supabase
       .from("photo_faces")
       .select("person_id")
@@ -93,31 +121,39 @@ export async function GET(request: NextRequest) {
     }
 
     const faceCounts = Object.values(personFaceCounts)
+    const maxPhotosPerPlayer = faceCounts.length > 0 ? Math.max(...faceCounts) : 0
     const playerStatsAvg =
       faceCounts.length > 0 ? (faceCounts.reduce((a, b) => a + b, 0) / faceCounts.length).toFixed(1) : "0"
     const playerStatsMin = faceCounts.length > 0 ? Math.min(...faceCounts) : 0
-    const playerStatsMax = faceCounts.length > 0 ? Math.max(...faceCounts) : 0
+    const playerStatsMax = maxPhotosPerPlayer
 
-    // === Статистика фото в галерее ===
     const { data: galleries } = await supabase.from("galleries").select(`
         id, 
         title, 
         shoot_date,
-        gallery_images!inner (
+        gallery_images (
           id,
           has_been_processed
         )
       `)
+
+    const { data: allPhotoFaces } = await supabase.from("photo_faces").select("photo_id, person_id")
+
+    const photoHasUnknownFaces: Record<string, boolean> = {}
+    for (const face of allPhotoFaces || []) {
+      if (face.person_id === null) {
+        photoHasUnknownFaces[face.photo_id] = true
+      }
+    }
 
     const galleryPhotoCounts = (galleries || []).map((g) => (g.gallery_images as any[])?.length || 0)
     const galleryStatsAvg =
       galleryPhotoCounts.length > 0
         ? Math.round(galleryPhotoCounts.reduce((a, b) => a + b, 0) / galleryPhotoCounts.length)
         : 0
-    const galleryStatsMin = galleryPhotoCounts.length > 0 ? Math.min(...galleryPhotoCounts) : 0
+    const galleryStatsMin = galleryPhotoCounts.length > 0 ? Math.min(...galleryPhotoCounts.filter((c) => c > 0)) : 0
     const galleryStatsMax = galleryPhotoCounts.length > 0 ? Math.max(...galleryPhotoCounts) : 0
 
-    // === Требуют внимания: игроки с 1-2 фото ===
     const fewPhotosList = Object.entries(personFaceCounts)
       .filter(([, count]) => count >= 1 && count <= 2)
       .map(([personId, count]) => {
@@ -130,7 +166,6 @@ export async function GET(request: NextRequest) {
       })
       .sort((a, b) => a.count - b.count)
 
-    // === Требуют внимания: без аватара ===
     const { data: peopleWithoutAvatar } = await supabase
       .from("people")
       .select("id, real_name, telegram_name")
@@ -142,7 +177,6 @@ export async function GET(request: NextRequest) {
       name: p.real_name || p.telegram_name || "Без имени",
     }))
 
-    // === Топ игроков ===
     const topPlayers = Object.entries(personFaceCounts)
       .map(([personId, count]) => {
         const person = allPeople?.find((p) => p.id === personId)
@@ -155,7 +189,7 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.count - a.count)
       .slice(0, topCount)
 
-    // === Состояние галерей ===
+    const fullyRecognizedList: Array<{ id: string; title: string; date: string; photos: number }> = []
     const fullyVerifiedList: Array<{ id: string; title: string; date: string; photos: number }> = []
     const partiallyVerifiedList: Array<{ id: string; title: string; date: string; processed: number; total: number }> =
       []
@@ -167,18 +201,24 @@ export async function GET(request: NextRequest) {
       const processed = images.filter((img: any) => img.has_been_processed).length
       const date = formatShortDate(gallery.shoot_date)
 
+      const imageIds = images.map((img: any) => img.id)
+      const hasUnknownFaces = imageIds.some((id: string) => photoHasUnknownFaces[id])
+
       if (total === 0) {
         notProcessedList.push({ id: gallery.id, title: gallery.title, date, photos: 0 })
       } else if (processed === 0) {
         notProcessedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
       } else if (processed === total) {
         fullyVerifiedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
+
+        if (!hasUnknownFaces) {
+          fullyRecognizedList.push({ id: gallery.id, title: gallery.title, date, photos: total })
+        }
       } else {
         partiallyVerifiedList.push({ id: gallery.id, title: gallery.title, date, processed, total })
       }
     }
 
-    // === Целостность ===
     const { count: inconsistentCount } = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
@@ -190,7 +230,7 @@ export async function GET(request: NextRequest) {
       const { count } = await supabase.rpc("count_orphaned_descriptors")
       orphanedDescriptorsCount = count || 0
     } catch {
-      // Fallback если RPC не существует
+      // Fallback
     }
 
     const { data: unverifiedConfidences } = await supabase
@@ -207,24 +247,14 @@ export async function GET(request: NextRequest) {
       avgUnverifiedConfidence = sum / unverifiedConfidences.length
     }
 
-    // === Распределение (кумулятивное) ===
-    const thresholds = [1, 3, 5, 10, 20, 40]
+    const thresholds = generateDynamicThresholds(maxPhotosPerPlayer)
     const distribution = thresholds.map((threshold) => {
       const count = faceCounts.filter((c) => c >= threshold).length
       const percentage = faceCounts.length > 0 ? Math.round((count / faceCounts.length) * 100) : 0
       return { threshold, count, percentage }
     })
 
-    // === Гистограмма ===
-    const histogramBuckets = [
-      { range: "1-2", min: 1, max: 2 },
-      { range: "3-4", min: 3, max: 4 },
-      { range: "5-9", min: 5, max: 9 },
-      { range: "10-19", min: 10, max: 19 },
-      { range: "20-39", min: 20, max: 39 },
-      { range: "40+", min: 40, max: 9999 },
-    ]
-
+    const histogramBuckets = generateDynamicHistogramBuckets(maxPhotosPerPlayer)
     const histogram = histogramBuckets.map((bucket) => {
       const peopleInBucket = faceCounts.filter((c) => c >= bucket.min && c <= bucket.max)
       return {
@@ -234,7 +264,6 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // === Формируем ответ ===
     return NextResponse.json({
       players: {
         total: totalPeopleCount || 0,
@@ -274,6 +303,8 @@ export async function GET(request: NextRequest) {
       top_players: topPlayers,
       galleries: {
         total: (galleries || []).length,
+        fully_recognized: fullyRecognizedList.length,
+        fully_recognized_list: fullyRecognizedList,
         fully_verified: fullyVerifiedList.length,
         fully_verified_list: fullyVerifiedList,
         partially_verified: partiallyVerifiedList.length,
