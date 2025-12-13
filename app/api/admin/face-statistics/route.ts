@@ -94,12 +94,36 @@ async function loadAllPhotoFaces<T>(
   return allRecords
 }
 
+/**
+ * Получить порог confidence из настроек
+ */
+async function getConfidenceThreshold(supabase: any): Promise<number> {
+  try {
+    const { data } = await supabase
+      .from("face_recognition_config")
+      .select("value")
+      .eq("key", "recognition_settings")
+      .single()
+
+    if (data?.value?.confidence_thresholds?.high_data) {
+      return data.value.confidence_thresholds.high_data
+    }
+  } catch (error) {
+    console.error("[face-statistics] Failed to get config:", error)
+  }
+  return 0.6 // fallback
+}
+
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const searchParams = request.nextUrl.searchParams
   const topCount = Number.parseInt(searchParams.get("top") || "15", 10)
 
   try {
+    // Получаем порог confidence из настроек
+    const confidenceThreshold = await getConfidenceThreshold(supabase)
+    console.log(`[face-statistics] Using confidence threshold: ${confidenceThreshold}`)
+
     const [
       { count: totalPeopleCount },
       { count: totalPhotoFacesCount },
@@ -160,10 +184,15 @@ export async function GET(request: NextRequest) {
       else if (count >= 4) with4PlusPersons++
     }
 
-    const verifiedFacesPerPerson = allPhotoFaces.filter((face) => face.verified && face.person_id !== null)
+    // ИСПРАВЛЕНО: считаем все "видимые" лица (confidence >= threshold), не только verified
+    const visibleFacesPerPerson = allPhotoFaces.filter((face) => 
+      face.person_id !== null && 
+      face.recognition_confidence !== null && 
+      face.recognition_confidence >= confidenceThreshold
+    )
 
     const personFaceCounts: Record<string, number> = {}
-    for (const face of verifiedFacesPerPerson || []) {
+    for (const face of visibleFacesPerPerson || []) {
       if (face.person_id) {
         personFaceCounts[face.person_id] = (personFaceCounts[face.person_id] || 0) + 1
       }
@@ -382,6 +411,7 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({
+      confidence_threshold: confidenceThreshold, // Добавляем в ответ для прозрачности
       players: {
         total: totalPeopleCount || 0,
         with_verified: peopleWithVerifiedCount,
