@@ -9,6 +9,10 @@ export interface Photographer {
 export interface Location {
   id: string
   name: string
+  city_id?: string | null
+  address?: string | null
+  maps_url?: string | null
+  website_url?: string | null
   created_at: string
 }
 
