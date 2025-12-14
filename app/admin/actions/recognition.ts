@@ -2,6 +2,7 @@
 
 import { apiFetch } from "@/lib/apiClient"
 import { logger } from "@/lib/logger"
+import { createClient } from "@/lib/supabase/server"
 
 export async function getRecognitionConfigAction() {
   logger.debug("actions/recognition", "[getRecognitionConfigAction] Reading config from DB")
@@ -170,5 +171,150 @@ export async function regenerateSingleDescriptorAction(faceId: string): Promise<
   } catch (error: any) {
     logger.error("actions/recognition", `Error regenerating descriptor for ${faceId}`, error)
     return { success: false, error: error.message || String(error) }
+  }
+}
+
+/**
+ * Получить список галерей с нераспознанными фото
+ */
+export async function getGalleriesWithUnprocessedPhotosAction(): Promise<{
+  success: boolean
+  galleries: Array<{
+    id: string
+    title: string
+    shoot_date: string | null
+    total_photos: number
+    unprocessed_photos: number
+  }>
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+
+    // Получаем все галереи с подсчётом фото
+    const { data: galleries, error: galleriesError } = await supabase
+      .from("galleries")
+      .select("id, title, shoot_date")
+      .order("shoot_date", { ascending: false })
+
+    if (galleriesError) throw galleriesError
+
+    if (!galleries || galleries.length === 0) {
+      return { success: true, galleries: [] }
+    }
+
+    // Для каждой галереи считаем общее количество фото и необработанные
+    const result = []
+
+    for (const gallery of galleries) {
+      // Общее количество фото
+      const { count: totalCount } = await supabase
+        .from("gallery_images")
+        .select("*", { count: "exact", head: true })
+        .eq("gallery_id", gallery.id)
+
+      // Необработанные фото (has_been_processed = false или null)
+      const { count: unprocessedCount } = await supabase
+        .from("gallery_images")
+        .select("*", { count: "exact", head: true })
+        .eq("gallery_id", gallery.id)
+        .or("has_been_processed.is.null,has_been_processed.eq.false")
+
+      if ((unprocessedCount || 0) > 0) {
+        result.push({
+          id: gallery.id,
+          title: gallery.title,
+          shoot_date: gallery.shoot_date,
+          total_photos: totalCount || 0,
+          unprocessed_photos: unprocessedCount || 0,
+        })
+      }
+    }
+
+    return { success: true, galleries: result }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error getting galleries with unprocessed photos", error)
+    return { success: false, galleries: [], error: error.message || String(error) }
+  }
+}
+
+/**
+ * Получить фото галереи для распознавания
+ */
+export async function getGalleryPhotosForRecognitionAction(galleryId: string): Promise<{
+  success: boolean
+  images: Array<{
+    id: string
+    image_url: string
+    original_filename: string
+  }>
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+
+    const { data: images, error } = await supabase
+      .from("gallery_images")
+      .select("id, image_url, original_filename")
+      .eq("gallery_id", galleryId)
+      .or("has_been_processed.is.null,has_been_processed.eq.false")
+      .order("original_filename")
+
+    if (error) throw error
+
+    return { success: true, images: images || [] }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error getting gallery photos for recognition", error)
+    return { success: false, images: [], error: error.message || String(error) }
+  }
+}
+
+/**
+ * Глобальная кластеризация неизвестных лиц (по всей базе)
+ */
+export async function clusterAllUnknownFacesAction(): Promise<{
+  success: boolean
+  data?: {
+    clusters: Array<{
+      cluster_id: number
+      size: number
+      faces: Array<{
+        id: string
+        photo_id: string
+        image_url: string
+        bbox: { x: number; y: number; width: number; height: number }
+        gallery_title?: string
+        shoot_date?: string
+      }>
+    }>
+    ungrouped_faces: any[]
+  }
+  error?: string
+}> {
+  try {
+    logger.debug("actions/recognition", "[clusterAllUnknownFacesAction] Starting global clustering")
+
+    const result = await apiFetch<{ clusters: any[]; ungrouped_faces: any[] }>(
+      `/api/recognition/cluster-unknown-faces?min_cluster_size=2`,
+      {
+        method: "POST",
+      },
+    )
+
+    logger.debug("actions/recognition", `[clusterAllUnknownFacesAction] Found ${result.clusters?.length || 0} clusters`)
+
+    return {
+      success: true,
+      data: {
+        clusters: result.clusters || [],
+        ungrouped_faces: result.ungrouped_faces || [],
+      },
+    }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error clustering all unknown faces", error)
+    return {
+      success: false,
+      error: error.message || String(error),
+    }
   }
 }
