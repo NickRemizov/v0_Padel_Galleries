@@ -3,7 +3,7 @@ Galleries API Router
 CRUD operations for galleries
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import Optional
 
