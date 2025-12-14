@@ -32,6 +32,8 @@ class LocationCreate(BaseModel):
     slug: str
     address: Optional[str] = None
     city_id: Optional[str] = None
+    maps_url: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 class LocationUpdate(BaseModel):
@@ -39,6 +41,8 @@ class LocationUpdate(BaseModel):
     slug: Optional[str] = None
     address: Optional[str] = None
     city_id: Optional[str] = None
+    maps_url: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 @router.get("")
