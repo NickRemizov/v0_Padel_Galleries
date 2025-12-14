@@ -14,11 +14,13 @@ export async function GET(request: Request) {
       const { data: galleries } = await supabase
         .from("galleries")
         .select(`
-          id, 
+          id,
+          slug, 
           title, 
           shoot_date,
           gallery_images (
             id,
+            slug,
             has_been_processed
           )
         `)
@@ -50,6 +52,7 @@ export async function GET(request: Request) {
         if (processed !== total || processed !== photosWithFaces) {
           problemGalleries.push({
             id: gallery.id,
+            slug: gallery.slug,
             title: gallery.title,
             shoot_date: gallery.shoot_date,
             total_photos: total,
@@ -73,7 +76,7 @@ export async function GET(request: Request) {
     // Детальная диагностика конкретной галереи
     const { data: gallery } = await supabase
       .from("galleries")
-      .select("id, title, shoot_date")
+      .select("id, slug, title, shoot_date")
       .eq("id", galleryId)
       .single()
 
@@ -84,7 +87,7 @@ export async function GET(request: Request) {
     // Все фото галереи
     const { data: images } = await supabase
       .from("gallery_images")
-      .select("id, original_filename, has_been_processed, created_at")
+      .select("id, slug, original_filename, has_been_processed, created_at")
       .eq("gallery_id", galleryId)
       .order("original_filename")
 
@@ -118,6 +121,7 @@ export async function GET(request: Request) {
 
       return {
         id: img.id,
+        slug: img.slug,
         filename: img.original_filename,
         has_been_processed: img.has_been_processed,
         faces_count: faces.length,
@@ -201,6 +205,7 @@ export async function GET(request: Request) {
       problem_photos: problemPhotos.slice(0, 20), // Лимит для читаемости
       photos_without_faces: photosWithoutAnyFaces.slice(0, 10).map(p => ({
         id: p.id,
+        slug: p.slug,
         filename: p.filename,
         has_been_processed: p.has_been_processed
       })),
