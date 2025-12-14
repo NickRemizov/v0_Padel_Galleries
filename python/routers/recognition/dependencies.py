@@ -22,9 +22,13 @@ def set_services(face_service: FaceRecognitionService, supabase_client: Supabase
 
 def get_face_service() -> FaceRecognitionService:
     """Dependency for FastAPI endpoints"""
+    if face_service_instance is None:
+        raise RuntimeError("FaceRecognitionService not initialized. Check server startup logs.")
     return face_service_instance
 
 
 def get_supabase_client() -> SupabaseClient:
     """Dependency for FastAPI endpoints"""
+    if supabase_client_instance is None:
+        raise RuntimeError("SupabaseClient not initialized. Check server startup logs.")
     return supabase_client_instance
