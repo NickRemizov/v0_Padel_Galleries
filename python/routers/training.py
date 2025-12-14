@@ -1,14 +1,30 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+"""
+Training API Router
+Endpoints for model training and batch recognition
+"""
+
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from datetime import datetime
 
+from core.responses import ApiResponse
+from core.exceptions import ValidationError, DatabaseError, NotFoundError
+from core.logging import get_logger
 from services.training_service import TrainingService
 
+logger = get_logger(__name__)
 router = APIRouter()
-# training_service = TrainingService()  # УДАЛЕНО - теперь через DI
 
-# Pydantic models for validation
+training_service_instance = None
+
+
+def set_training_service(service: TrainingService):
+    global training_service_instance
+    training_service_instance = service
+
+
+# Pydantic models
 
 class TrainingFilters(BaseModel):
     event_ids: Optional[List[str]] = None
@@ -46,8 +62,8 @@ class ConfigUpdate(BaseModel):
 
 
 class BatchRecognitionRequest(BaseModel):
-    gallery_ids: Optional[List[str]] = None  # Specific galleries, or None for all unverified
-    confidence_threshold: Optional[float] = None  # Override default threshold
+    gallery_ids: Optional[List[str]] = None
+    confidence_threshold: Optional[float] = None
 
 
 # Endpoints
@@ -57,19 +73,16 @@ async def prepare_training(
     request: PrepareRequest,
     training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
-    """
-    Подготовка датасета для обучения (без запуска обучения).
-    
-    Возвращает статистику и валидацию датасета.
-    """
+    """Подготовка датасета для обучения (без запуска обучения)."""
     try:
         result = await training_service.prepare_dataset(
-            filters=request.filters.dict(),
-            options=request.options.dict()
+            filters=request.filters.model_dump(),
+            options=request.options.model_dump()
         )
-        return result
+        return ApiResponse.ok(result)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error preparing training: {e}")
+        raise DatabaseError(str(e), operation="prepare_training")
 
 
 @router.post("/train/execute")
@@ -78,51 +91,45 @@ async def execute_training(
     background_tasks: BackgroundTasks,
     training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
-    """
-    Запуск обучения модели.
-    
-    Обучение выполняется в фоне. Возвращает session_id для отслеживания прогресса.
-    """
+    """Запуск обучения модели в фоне."""
     try:
-        # Validate mode
         if request.mode not in ['full', 'incremental']:
-            raise HTTPException(
-                status_code=400,
-                detail="mode must be 'full' or 'incremental'"
-            )
+            raise ValidationError("mode must be 'full' or 'incremental'", field="mode")
         
-        # Create session
         session_id = await training_service.execute_training(
             mode=request.mode,
-            filters=request.filters.dict(),
+            filters=request.filters.model_dump(),
             options={
-                **request.options.dict(),
+                **request.options.model_dump(),
                 'model_version': request.model_version,
                 'update_existing': request.update_existing
             }
         )
         
-        # Start training in background
         background_tasks.add_task(
             training_service._train_background,
             session_id=session_id,
             mode=request.mode,
-            filters=request.filters.dict(),
+            filters=request.filters.model_dump(),
             options={
-                **request.options.dict(),
+                **request.options.model_dump(),
                 'model_version': request.model_version,
                 'update_existing': request.update_existing
             }
         )
         
-        return {
+        logger.info(f"Training started: session_id={session_id}")
+        return ApiResponse.ok({
             'session_id': session_id,
             'status': 'running',
             'message': 'Training started in background'
-        }
+        })
     
+    except ValidationError:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error executing training: {e}")
+        raise DatabaseError(str(e), operation="execute_training")
 
 
 @router.get("/train/status/{session_id}")
@@ -130,18 +137,17 @@ async def get_training_status(
     session_id: str,
     training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
-    """
-    Получить статус обучения по session_id.
-    """
+    """Получить статус обучения."""
     try:
         status = training_service.get_training_status(session_id)
         if 'error' in status:
-            raise HTTPException(status_code=404, detail=status['error'])
-        return status
-    except HTTPException:
+            raise NotFoundError("Training session", session_id)
+        return ApiResponse.ok(status)
+    except NotFoundError:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting training status: {e}")
+        raise DatabaseError(str(e), operation="get_training_status")
 
 
 @router.get("/train/history")
@@ -150,14 +156,13 @@ async def get_training_history(
     offset: int = 0,
     training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
-    """
-    Получить историю обучений.
-    """
+    """Получить историю обучений."""
     try:
         history = training_service.get_training_history(limit, offset)
-        return history
+        return ApiResponse.ok(history)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting training history: {e}")
+        raise DatabaseError(str(e), operation="get_training_history")
 
 
 @router.post("/recognize/batch")
@@ -166,46 +171,37 @@ async def batch_recognize_photos(
     background_tasks: BackgroundTasks,
     training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
-    """
-    Пакетное распознавание фото без ручной верификации.
-    
-    Обрабатывает только фото где verified = false или NULL.
-    Использует confidence_threshold для фильтрации результатов.
-    """
+    """Пакетное распознавание фото."""
     try:
-        # Get confidence threshold from request or config
         if request.confidence_threshold is not None:
             threshold = request.confidence_threshold
         else:
             config = await training_service.supabase.get_recognition_config()
             threshold = config.get('confidence_threshold', 0.60)
         
-        # Start batch recognition
         result = await training_service.batch_recognize(
             gallery_ids=request.gallery_ids,
             confidence_threshold=threshold
         )
         
-        return result
+        return ApiResponse.ok(result)
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in batch recognition: {e}")
+        raise DatabaseError(str(e), operation="batch_recognize")
 
 
 @router.get("/config")
 async def get_config(
     training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
-    """
-    Получить текущую конфигурацию распознавания.
-    """
+    """Получить текущую конфигурацию."""
     try:
-        # Try from Supabase first
         config = await training_service.supabase.get_recognition_config()
-        
-        return config
+        return ApiResponse.ok(config)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting config: {e}")
+        raise DatabaseError(str(e), operation="get_config")
 
 
 @router.put("/config")
@@ -213,37 +209,18 @@ async def update_config(
     updates: ConfigUpdate,
     training_service: TrainingService = Depends(lambda: training_service_instance)
 ):
-    """
-    Обновить конфигурацию распознавания.
-    """
+    """Обновить конфигурацию."""
     try:
-        settings = {}
-        
-        if updates.confidence_thresholds is not None:
-            settings['confidence_thresholds'] = updates.confidence_thresholds
-        if updates.context_weight is not None:
-            settings['context_weight'] = updates.context_weight
-        if updates.min_faces_per_person is not None:
-            settings['min_faces_per_person'] = updates.min_faces_per_person
-        if updates.auto_retrain_threshold is not None:
-            settings['auto_retrain_threshold'] = updates.auto_retrain_threshold
-        if updates.auto_retrain_percentage is not None:
-            settings['auto_retrain_percentage'] = updates.auto_retrain_percentage
-        if updates.quality_filters is not None:
-            settings['quality_filters'] = updates.quality_filters
+        settings = updates.model_dump(exclude_none=True)
         
         if settings:
             await training_service.supabase.update_recognition_config(settings)
         
-        return {
-            'success': True,
+        logger.info(f"Config updated: {list(settings.keys())}")
+        return ApiResponse.ok({
+            'updated': True,
             'updated_at': datetime.now().isoformat()
-        }
+        })
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-training_service_instance = None
-
-def set_training_service(service: TrainingService):
-    global training_service_instance
-    training_service_instance = service
+        logger.error(f"Error updating config: {e}")
+        raise DatabaseError(str(e), operation="update_config")
