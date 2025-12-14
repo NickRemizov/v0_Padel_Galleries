@@ -28,12 +28,11 @@ export interface IntegrityReport {
     nonExistentPerson: number
     nonExistentPhoto: number
     orphanedLinks: number
-    unrecognizedFaces: number // Renamed from descriptorsWithoutPerson - informational metric
+    unrecognizedFaces: number
   }
   people: {
-    withoutDescriptors: number
     withoutFaces: number
-    duplicatePeople: number // Renamed from duplicateNames - now checks 5 fields
+    duplicatePeople: number
   }
   totalIssues: number
   checksPerformed: number
@@ -157,7 +156,6 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       unrecognizedFaces: 0,
     }
     const people = {
-      withoutDescriptors: 0,
       withoutFaces: 0,
       duplicatePeople: 0,
     }
@@ -345,43 +343,26 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     // ========== PEOPLE CHECKS ==========
 
-    // 8. People без descriptors (С ПАГИНАЦИЕЙ для facesWithDescriptors)
     const { data: allPeopleData } = await supabase
       .from("people")
       .select("id, real_name, telegram_nickname, telegram_profile_url, facebook_profile_url, instagram_profile_url, gmail, avatar_url, created_at")
-      .order("created_at", { ascending: true })
+      .order("real_name", { ascending: true })
 
+    // 8. People без фото - выводим сразу список имён
     if (allPeopleData) {
-      const facesWithDescriptors = await loadAllPhotoFaces<{ person_id: string }>(
-        supabase,
-        "person_id",
-        (q) => q.not("person_id", "is", null).not("insightface_descriptor", "is", null)
-      )
-      console.log(`[v0] Faces with descriptors loaded: ${facesWithDescriptors.length}`)
-
-      const peopleWithDescriptorIds = new Set(facesWithDescriptors.map((f) => f.person_id))
-      const peopleWithoutDescriptors = allPeopleData.filter((p) => !peopleWithDescriptorIds.has(p.id))
-
-      people.withoutDescriptors = peopleWithoutDescriptors.length
-      console.log("[v0] peopleWithoutDescriptors count:", people.withoutDescriptors)
-      if (peopleWithoutDescriptors.length > 0) {
-        details.peopleWithoutDescriptors = peopleWithoutDescriptors.slice(0, 10)
-      }
-    }
-
-    // 9. People без faces (используем уже загруженные данные)
-    if (allPeopleData && allPhotoFacesWithPerson.length > 0) {
       const peopleWithFaces = new Set(allPhotoFacesWithPerson.map((pf) => pf.person_id))
-      const peopleWithoutFaces = allPeopleData.filter((p) => !peopleWithFaces.has(p.id))
+      const peopleWithoutFacesList = allPeopleData.filter((p) => !peopleWithFaces.has(p.id))
 
-      people.withoutFaces = peopleWithoutFaces.length
+      people.withoutFaces = peopleWithoutFacesList.length
       console.log("[v0] peopleWithoutFaces count:", people.withoutFaces)
-      if (peopleWithoutFaces.length > 0) {
-        details.peopleWithoutFaces = peopleWithoutFaces.slice(0, 10)
+      
+      // Сохраняем только имена для вывода списком
+      if (peopleWithoutFacesList.length > 0) {
+        details.peopleWithoutFaces = peopleWithoutFacesList.map((p) => p.real_name)
       }
     }
 
-    // 10. Duplicate people - проверка по 5 полям (gmail, telegram_nickname, telegram_profile_url, facebook_profile_url, instagram_profile_url)
+    // 9. Duplicate people - проверка по 5 полям
     if (allPeopleData) {
       const duplicateGroups: Array<{ matchField: string; matchValue: string; people: any[] }> = []
       const processedPeopleIds = new Set<string>()
@@ -456,7 +437,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces,
       people,
       totalIssues,
-      checksPerformed: 10,
+      checksPerformed: 9,
       details,
     }
 
