@@ -1,6 +1,7 @@
 """
 People API Router
 CRUD and advanced operations for people (players)
+Supports both UUID and slug identifiers for human-readable URLs
 """
 
 from fastapi import APIRouter, Query
@@ -11,6 +12,7 @@ import re
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
+from core.slug import resolve_identifier, is_uuid
 from services.supabase_database import SupabaseDatabase
 from services.face_recognition import FaceRecognitionService
 
@@ -25,6 +27,24 @@ def set_services(supabase_db: SupabaseDatabase, face_service: FaceRecognitionSer
     global supabase_db_instance, face_service_instance
     supabase_db_instance = supabase_db
     face_service_instance = face_service
+
+
+def _resolve_person(identifier: str) -> Optional[dict]:
+    """Resolve person by ID or slug."""
+    return resolve_identifier(
+        supabase_db_instance.client,
+        "people",
+        identifier,
+        slug_column="slug"
+    )
+
+
+def _get_person_id(identifier: str) -> str:
+    """Get person ID from identifier (ID or slug). Raises NotFoundError if not found."""
+    person = _resolve_person(identifier)
+    if not person:
+        raise NotFoundError("Person", identifier)
+    return person["id"]
 
 
 class PersonCreate(BaseModel):
@@ -93,25 +113,27 @@ async def get_people(with_stats: bool = Query(False)):
         raise DatabaseError(str(e), operation="get_people")
 
 
-@router.get("/{person_id}")
-async def get_person(person_id: str):
-    """Get a person by ID."""
+@router.get("/{identifier}")
+async def get_person(identifier: str):
+    """Get a person by ID or slug."""
     try:
-        result = supabase_db_instance.client.table("people").select("*").eq("id", person_id).execute()
-        if result.data and len(result.data) > 0:
-            return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", person_id)
+        person = _resolve_person(identifier)
+        if person:
+            return ApiResponse.ok(person)
+        raise NotFoundError("Person", identifier)
     except NotFoundError:
         raise
     except Exception as e:
-        logger.error(f"Error getting person {person_id}: {e}")
+        logger.error(f"Error getting person {identifier}: {e}")
         raise DatabaseError(str(e), operation="get_person")
 
 
-@router.get("/{person_id}/photos")
-async def get_person_photos(person_id: str):
+@router.get("/{identifier}/photos")
+async def get_person_photos(identifier: str):
     """Get all photos containing this person."""
     try:
+        person_id = _get_person_id(identifier)
+        
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
@@ -119,6 +141,8 @@ async def get_person_photos(person_id: str):
             "id, photo_id, verified, recognition_confidence, gallery_images!inner(id, image_url, original_filename, gallery_id)"
         ).eq("person_id", person_id).or_(f"verified.eq.true,recognition_confidence.gte.{confidence_threshold}").execute()
         return ApiResponse.ok(result.data or [])
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting person photos: {e}")
         raise DatabaseError(str(e), operation="get_person_photos")
@@ -139,10 +163,12 @@ async def create_person(data: PersonCreate):
         raise DatabaseError(str(e), operation="create_person")
 
 
-@router.put("/{person_id}")
-async def update_person(person_id: str, data: PersonUpdate):
-    """Update a person."""
+@router.put("/{identifier}")
+async def update_person(identifier: str, data: PersonUpdate):
+    """Update a person by ID or slug."""
     try:
+        person_id = _get_person_id(identifier)
+        
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
             raise ValidationError("No fields to update")
@@ -150,23 +176,25 @@ async def update_person(person_id: str, data: PersonUpdate):
         if result.data:
             logger.info(f"Updated person {person_id}")
             return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", person_id)
+        raise NotFoundError("Person", identifier)
     except (NotFoundError, ValidationError):
         raise
     except Exception as e:
-        logger.error(f"Error updating person {person_id}: {e}")
+        logger.error(f"Error updating person {identifier}: {e}")
         raise DatabaseError(str(e), operation="update_person")
 
 
-@router.patch("/{person_id}/avatar")
-async def update_avatar(person_id: str, avatar_url: str = Query(...)):
+@router.patch("/{identifier}/avatar")
+async def update_avatar(identifier: str, avatar_url: str = Query(...)):
     """Update person's avatar."""
     try:
+        person_id = _get_person_id(identifier)
+        
         result = supabase_db_instance.client.table("people").update({"avatar_url": avatar_url}).eq("id", person_id).execute()
         if result.data:
             logger.info(f"Updated avatar for person {person_id}")
             return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", person_id)
+        raise NotFoundError("Person", identifier)
     except NotFoundError:
         raise
     except Exception as e:
@@ -174,17 +202,19 @@ async def update_avatar(person_id: str, avatar_url: str = Query(...)):
         raise DatabaseError(str(e), operation="update_avatar")
 
 
-@router.patch("/{person_id}/visibility")
-async def update_visibility(person_id: str, data: VisibilityUpdate):
+@router.patch("/{identifier}/visibility")
+async def update_visibility(identifier: str, data: VisibilityUpdate):
     """Update person's visibility settings."""
     try:
+        person_id = _get_person_id(identifier)
+        
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
             raise ValidationError("No fields to update")
         result = supabase_db_instance.client.table("people").update(update_data).eq("id", person_id).execute()
         if result.data:
             return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", person_id)
+        raise NotFoundError("Person", identifier)
     except (NotFoundError, ValidationError):
         raise
     except Exception as e:
@@ -192,19 +222,20 @@ async def update_visibility(person_id: str, data: VisibilityUpdate):
         raise DatabaseError(str(e), operation="update_visibility")
 
 
-@router.delete("/{person_id}")
-async def delete_person(person_id: str):
+@router.delete("/{identifier}")
+async def delete_person(identifier: str):
     """Delete a person and cleanup related data."""
     try:
+        person_id = _get_person_id(identifier)
+        
         # Cleanup deprecated face_descriptors table (if exists)
-        # Try both old and new table names for compatibility during migration
         for table_name in ["face_descriptors_DEPRECATED", "face_descriptors"]:
             try:
                 supabase_db_instance.client.table(table_name).delete().eq("person_id", person_id).execute()
                 logger.debug(f"Cleaned up {table_name} for person {person_id}")
-                break  # Success, no need to try other table name
+                break
             except Exception:
-                continue  # Table doesn't exist, try next
+                continue
         
         # Unlink photo_faces (clear person_id, keep embeddings)
         supabase_db_instance.client.table("photo_faces").update(
@@ -222,15 +253,19 @@ async def delete_person(person_id: str):
         
         logger.info(f"Deleted person {person_id}")
         return ApiResponse.ok({"deleted": True, "index_rebuilt": index_rebuilt})
+    except NotFoundError:
+        raise
     except Exception as e:
-        logger.error(f"Error deleting person {person_id}: {e}")
+        logger.error(f"Error deleting person {identifier}: {e}")
         raise DatabaseError(str(e), operation="delete_person")
 
 
-@router.post("/{person_id}/verify-on-photo")
-async def verify_person_on_photo(person_id: str, photo_id: str = Query(...)):
+@router.post("/{identifier}/verify-on-photo")
+async def verify_person_on_photo(identifier: str, photo_id: str = Query(...)):
     """Верифицирует человека на конкретном фото."""
     try:
+        person_id = _get_person_id(identifier)
+        
         logger.info(f"Verifying person {person_id} on photo {photo_id}")
         
         result = supabase_db_instance.client.table("photo_faces")\
@@ -242,7 +277,7 @@ async def verify_person_on_photo(person_id: str, photo_id: str = Query(...)):
         if result.data:
             logger.info(f"Person verified on photo successfully")
             return ApiResponse.ok({"verified": True})
-        raise NotFoundError("Face", f"{person_id} on photo {photo_id}")
+        raise NotFoundError("Face", f"{identifier} on photo {photo_id}")
     except NotFoundError:
         raise
     except Exception as e:
@@ -250,10 +285,12 @@ async def verify_person_on_photo(person_id: str, photo_id: str = Query(...)):
         raise DatabaseError(str(e), operation="verify_person_on_photo")
 
 
-@router.post("/{person_id}/unlink-from-photo")
-async def unlink_person_from_photo(person_id: str, photo_id: str = Query(...)):
+@router.post("/{identifier}/unlink-from-photo")
+async def unlink_person_from_photo(identifier: str, photo_id: str = Query(...)):
     """Отвязывает человека от фото."""
     try:
+        person_id = _get_person_id(identifier)
+        
         logger.info(f"Unlinking person {person_id} from photo {photo_id}")
         
         result = supabase_db_instance.client.table("photo_faces")\
@@ -271,15 +308,19 @@ async def unlink_person_from_photo(person_id: str, photo_id: str = Query(...)):
         
         logger.info(f"Unlinked {len(result.data or [])} faces")
         return ApiResponse.ok({"unlinked_count": len(result.data or [])})
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error unlinking person from photo: {e}")
         raise DatabaseError(str(e), operation="unlink_person_from_photo")
 
 
-@router.get("/{person_id}/photos-with-details")
-async def get_person_photos_with_details(person_id: str):
+@router.get("/{identifier}/photos-with-details")
+async def get_person_photos_with_details(identifier: str):
     """Получает фотографии человека с детальной информацией."""
     try:
+        person_id = _get_person_id(identifier)
+        
         logger.info(f"Getting photos with details for person {person_id}")
         
         config = supabase_db_instance.get_recognition_config()
@@ -367,6 +408,8 @@ async def get_person_photos_with_details(person_id: str):
         logger.info(f"Returning {len(photos_with_other_faces)} photos with details")
         return ApiResponse.ok(photos_with_other_faces)
         
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting photos with details: {e}", exc_info=True)
         raise DatabaseError(str(e), operation="get_person_photos_with_details")
