@@ -59,18 +59,42 @@ export async function getGalleriesFaceRecognitionStatsAction(galleryIds: string[
   }
 }
 
-export async function addGalleryAction(data: {
-  title: string
-  shoot_date: string
-  gallery_url: string
-  cover_image_url: string
-  cover_image_square_url?: string
-  external_gallery_url?: string
-  photographer_id?: string
-  location_id?: string
-  organizer_id?: string
-}) {
+export async function addGalleryAction(formData: FormData) {
   try {
+    // Convert FormData to object
+    const title = formData.get("title") as string
+    const shoot_date = formData.get("shoot_date") as string
+    const cover_image_url = formData.get("cover_image_url") as string
+    const cover_image_square_url = formData.get("cover_image_square_url") as string | null
+    const external_gallery_url = formData.get("external_gallery_url") as string | null
+    const photographer_id = formData.get("photographer_id") as string | null
+    const location_id = formData.get("location_id") as string | null
+    const organizer_id = formData.get("organizer_id") as string | null
+
+    // Generate gallery_url from title and date
+    const slugifiedTitle = title
+      .toLowerCase()
+      .replace(/[^a-zа-яё0-9\s]/gi, "")
+      .replace(/\s+/g, "-")
+      .substring(0, 50)
+    const gallery_url = `${shoot_date}-${slugifiedTitle}`
+
+    const data: Record<string, any> = {
+      title,
+      shoot_date,
+      gallery_url,
+      cover_image_url,
+    }
+
+    // Add optional fields
+    if (cover_image_square_url) data.cover_image_square_url = cover_image_square_url
+    if (external_gallery_url) data.external_gallery_url = external_gallery_url
+    if (photographer_id && photographer_id !== "none") data.photographer_id = photographer_id
+    if (location_id && location_id !== "none") data.location_id = location_id
+    if (organizer_id && organizer_id !== "none") data.organizer_id = organizer_id
+
+    console.log("[addGalleryAction] Sending data:", data)
+
     const result = await apiFetch("/api/galleries", {
       method: "POST",
       body: JSON.stringify(data),
