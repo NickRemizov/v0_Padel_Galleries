@@ -18,14 +18,16 @@ class ApiResponse(BaseModel, Generic[T]):
     {
         "success": true/false,
         "data": <payload or null>,
-        "error": <error info or null>,
+        "error": <error message or null>,
+        "code": <error code for errors, null for success>,
         "meta": <optional metadata>
     }
     """
     
     success: bool
     data: Optional[T] = None
-    error: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None  # Just the message for backward compatibility
+    code: Optional[str] = None   # Error code at top level for frontend
     meta: Optional[Dict[str, Any]] = None
     
     @classmethod
@@ -38,19 +40,15 @@ class ApiResponse(BaseModel, Generic[T]):
         cls,
         message: str,
         code: str = "ERROR",
-        details: Dict[str, Any] = None
     ) -> "ApiResponse":
         """Create error response."""
-        error = {"code": code, "message": message}
-        if details:
-            error["details"] = details
-        return cls(success=False, error=error)
+        return cls(success=False, error=message, code=code)
     
     @classmethod
     def from_exception(cls, exc: "AppException") -> "ApiResponse":
         """Create error response from AppException."""
         from core.exceptions import AppException
-        return cls(success=False, error=exc.to_dict())
+        return cls(success=False, error=exc.message, code=exc.code)
 
 
 # === Pagination ===
