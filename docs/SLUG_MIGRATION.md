@@ -6,6 +6,19 @@ This migration adds human-readable URLs to the application:
 - **Galleries**: `/gallery/tournament-19-10` instead of `/gallery/uuid`
 - **Photos**: `?photo=img-1234` instead of `?photo=uuid`
 
+## Migration Status
+
+### ✅ Backend Ready
+- `python/core/slug.py` - utility functions for slug resolution
+- `python/routers/people.py` - supports both UUID and slug
+- `python/routers/galleries.py` - supports both UUID and slug
+
+### ⏳ Database Migration Required
+Run `scripts/052_add_slugs_and_featured.sql` in Supabase SQL Editor
+
+### ⏳ Frontend Changes Needed
+Update routes and links to use slugs
+
 ## Database Changes
 
 ### New Fields
@@ -29,7 +42,7 @@ This migration adds human-readable URLs to the application:
 4. Fallback to `player-{uuid}`
 
 **Galleries:**
-1. Use `title-DD-MM` (event date)
+1. Use `title-DD-MM` (shoot_date)
 2. Fallback to `gallery-{uuid}`
 
 **Photos:**
@@ -40,42 +53,82 @@ This migration adds human-readable URLs to the application:
 
 ### Examples
 
-\`\`\`
+```
 @rockpick → rockpick
 @rockpick (duplicate) → rockpick-2
-Иван Петров → ivan-petrov
-IVIN Padel Tournament → ivin-padel-tournament
+Иван Петров → иван-петров
+IVIN Padel Tournament 15.12 → ivin-padel-tournament-15-12
 IMG_1234.jpg → img-1234
-\`\`\`
+```
 
 ## Running the Migration
 
-\`\`\`bash
-# 1. Run SQL script
-psql -U your_user -d your_database -f scripts/052_add_slugs_and_featured.sql
+```bash
+# 1. Run SQL script in Supabase SQL Editor
+# Copy contents of scripts/052_add_slugs_and_featured.sql
 
 # 2. Verify slugs generated
-SELECT id, real_name, slug FROM people WHERE slug IS NULL;
-SELECT id, title, slug FROM galleries WHERE slug IS NULL;
+SELECT 'people' as tbl, COUNT(*) as total, COUNT(slug) as with_slug FROM people
+UNION ALL
+SELECT 'galleries', COUNT(*), COUNT(slug) FROM galleries
+UNION ALL
+SELECT 'gallery_images', COUNT(*), COUNT(slug) FROM gallery_images;
 
-# 3. If all good, make slugs required (uncomment in SQL file):
+# 3. If all good, make slugs required (optional):
 ALTER TABLE people ALTER COLUMN slug SET NOT NULL;
 ALTER TABLE galleries ALTER COLUMN slug SET NOT NULL;
 ALTER TABLE gallery_images ALTER COLUMN slug SET NOT NULL;
-\`\`\`
 
-## Backend Changes Required
+# 4. Restart backend for API changes
+```
 
-1. Update FastAPI endpoints to accept slug OR uuid
-2. Add slug generation on record creation
-3. Update queries to search by slug first, fallback to uuid
+## Backend API
+
+After migration, all endpoints accept **both UUID and slug**:
+
+```
+# Both work:
+GET /api/people/550e8400-e29b-41d4-a716-446655440000
+GET /api/people/rockpick
+
+GET /api/galleries/550e8400-e29b-41d4-a716-446655440000
+GET /api/galleries/ivin-padel-tournament-15-12
+```
+
+The API automatically detects if the identifier is a UUID or slug and searches accordingly.
 
 ## Frontend Changes Required
 
-1. Update routes: `[id]` → `[slug]`
-2. Update all `href` links to use slug
-3. Update page params to accept slug
-4. Add slug to API responses
+### 1. Update Routes
+
+```
+app/players/[id]/page.tsx → app/players/[slug]/page.tsx
+app/gallery/[id]/page.tsx → app/gallery/[slug]/page.tsx
+```
+
+### 2. Update Links
+
+```tsx
+// Before
+<Link href={`/players/${person.id}`}>
+
+// After  
+<Link href={`/players/${person.slug || person.id}`}>
+```
+
+### 3. Update Page Params
+
+```tsx
+// Before
+export default function PlayerPage({ params }: { params: { id: string } }) {
+
+// After
+export default function PlayerPage({ params }: { params: { slug: string } }) {
+```
+
+### 4. API Responses Include Slug
+
+All API responses now include `slug` field where applicable.
 
 ## Featured Photos
 
@@ -83,11 +136,18 @@ ALTER TABLE gallery_images ALTER COLUMN slug SET NOT NULL;
 - Gallery cards randomly rotate featured photos for variety
 - If no featured photos, use `cover_image_url`
 
+## Backward Compatibility
+
+✅ **Old UUID URLs continue to work** - the backend accepts both formats
+✅ **No breaking changes** - existing integrations are safe
+✅ **Gradual migration** - update frontend at your own pace
+
 ## Rollback
 
-\`\`\`sql
+```sql
 ALTER TABLE people DROP COLUMN IF EXISTS slug;
 ALTER TABLE galleries DROP COLUMN IF EXISTS slug;
 ALTER TABLE gallery_images DROP COLUMN IF EXISTS slug;
 ALTER TABLE gallery_images DROP COLUMN IF EXISTS is_featured;
 DROP FUNCTION IF EXISTS generate_unique_slug;
+```
