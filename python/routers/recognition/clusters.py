@@ -19,20 +19,25 @@ router = APIRouter()
 
 @router.post("/cluster-unknown-faces")
 async def cluster_unknown_faces(
-    gallery_id: str = Query(..., description="ID галереи"),
+    gallery_id: Optional[str] = Query(None, description="ID галереи (опционально, если не указан - по всей базе)"),
     min_cluster_size: int = Query(2, description="Минимальный размер кластера"),
 ):
     """
-    Кластеризация неизвестных лиц в галерее с HDBSCAN
+    Кластеризация неизвестных лиц с HDBSCAN.
+    Если gallery_id указан - только в этой галерее.
+    Если gallery_id не указан - по всей базе.
     """
     supabase_client = get_supabase_client()
     try:
-        logger.info(f"Clustering unknown faces for gallery {gallery_id}")
-        
-        # Get unknown faces
-        faces = await supabase_client.get_unknown_faces_from_gallery(gallery_id)
+        if gallery_id:
+            logger.info(f"Clustering unknown faces for gallery {gallery_id}")
+            faces = await supabase_client.get_unknown_faces_from_gallery(gallery_id)
+        else:
+            logger.info("Clustering ALL unknown faces from database (global mode)")
+            faces = await supabase_client.get_all_unknown_faces()
         
         if not faces or len(faces) < min_cluster_size:
+            logger.info(f"Not enough faces for clustering: {len(faces) if faces else 0}")
             return {
                 "clusters": [],
                 "ungrouped_faces": []
@@ -92,6 +97,9 @@ async def cluster_unknown_faces(
                     }
                 
                 face["image_url"] = face.get("photo_url")
+                
+                # Keep gallery info for global clustering
+                # gallery_id, gallery_title, shoot_date are already in face from get_all_unknown_faces
                 
                 # Remove unnecessary fields
                 face.pop("insightface_descriptor", None)
