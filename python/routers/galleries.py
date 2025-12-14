@@ -5,7 +5,7 @@ CRUD operations for galleries
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
@@ -77,6 +77,51 @@ async def get_galleries(
         raise DatabaseError(str(e), operation="get_galleries")
 
 
+@router.get("/with-unprocessed-photos")
+async def get_galleries_with_unprocessed_photos():
+    """Get galleries that have unprocessed photos (has_been_processed = false or null)."""
+    try:
+        # Get all galleries
+        galleries_result = supabase_db_instance.client.table("galleries").select(
+            "id, title, shoot_date"
+        ).order("shoot_date", desc=True).execute()
+        
+        galleries = galleries_result.data or []
+        if not galleries:
+            return ApiResponse.ok([])
+        
+        result = []
+        for gallery in galleries:
+            # Total photos count
+            total_result = supabase_db_instance.client.table("gallery_images").select(
+                "id", count="exact"
+            ).eq("gallery_id", gallery["id"]).execute()
+            total_count = total_result.count or 0
+            
+            # Unprocessed photos count (has_been_processed = false or null)
+            unprocessed_result = supabase_db_instance.client.table("gallery_images").select(
+                "id", count="exact"
+            ).eq("gallery_id", gallery["id"]).or_(
+                "has_been_processed.is.null,has_been_processed.eq.false"
+            ).execute()
+            unprocessed_count = unprocessed_result.count or 0
+            
+            if unprocessed_count > 0:
+                result.append({
+                    "id": gallery["id"],
+                    "title": gallery["title"],
+                    "shoot_date": gallery["shoot_date"],
+                    "total_photos": total_count,
+                    "unprocessed_photos": unprocessed_count
+                })
+        
+        logger.info(f"Found {len(result)} galleries with unprocessed photos")
+        return ApiResponse.ok(result)
+    except Exception as e:
+        logger.error(f"Error getting galleries with unprocessed photos: {e}")
+        raise DatabaseError(str(e), operation="get_galleries_with_unprocessed_photos")
+
+
 @router.get("/{gallery_id}")
 async def get_gallery(gallery_id: str):
     """Get a gallery by ID."""
@@ -101,6 +146,24 @@ async def get_gallery(gallery_id: str):
     except Exception as e:
         logger.error(f"Error getting gallery {gallery_id}: {e}")
         raise DatabaseError(str(e), operation="get_gallery")
+
+
+@router.get("/{gallery_id}/unprocessed-photos")
+async def get_gallery_unprocessed_photos(gallery_id: str):
+    """Get unprocessed photos from a gallery for recognition."""
+    try:
+        result = supabase_db_instance.client.table("gallery_images").select(
+            "id, image_url, original_filename"
+        ).eq("gallery_id", gallery_id).or_(
+            "has_been_processed.is.null,has_been_processed.eq.false"
+        ).order("original_filename").execute()
+        
+        images = result.data or []
+        logger.info(f"Found {len(images)} unprocessed photos in gallery {gallery_id}")
+        return ApiResponse.ok(images)
+    except Exception as e:
+        logger.error(f"Error getting unprocessed photos for gallery {gallery_id}: {e}")
+        raise DatabaseError(str(e), operation="get_gallery_unprocessed_photos")
 
 
 @router.get("/{gallery_id}/stats")
