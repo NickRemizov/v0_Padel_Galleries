@@ -124,7 +124,11 @@ async def get_galleries_with_unprocessed_photos():
 
 @router.get("/with-unverified-faces")
 async def get_galleries_with_unverified_faces():
-    """Get galleries that have photos with unverified faces (recognition_confidence < 1)."""
+    """
+    Get galleries that have photos NOT fully verified.
+    A photo is fully verified ONLY if ALL its faces have recognition_confidence = 1.
+    Photos with no faces or with any face having confidence != 1 are unverified.
+    """
     try:
         # Get all galleries
         galleries_result = supabase_db_instance.client.table("galleries").select(
@@ -149,16 +153,30 @@ async def get_galleries_with_unverified_faces():
             total_count = len(photos)
             photo_ids = [p["id"] for p in photos]
             
-            # Get photos that have unverified faces (recognition_confidence < 1 or NULL)
-            # A photo needs verification if it has at least one face with confidence < 1
-            unverified_faces_result = supabase_db_instance.client.table("photo_faces").select(
-                "photo_id"
-            ).in_("photo_id", photo_ids).or_(
-                "recognition_confidence.lt.1,recognition_confidence.is.null"
-            ).execute()
+            # Get ALL faces for these photos
+            all_faces_result = supabase_db_instance.client.table("photo_faces").select(
+                "photo_id, recognition_confidence"
+            ).in_("photo_id", photo_ids).execute()
             
-            unverified_photo_ids = set(f["photo_id"] for f in (unverified_faces_result.data or []))
-            unverified_count = len(unverified_photo_ids)
+            all_faces = all_faces_result.data or []
+            
+            # Build map: photo_id -> list of faces
+            faces_by_photo = {}
+            for face in all_faces:
+                pid = face["photo_id"]
+                if pid not in faces_by_photo:
+                    faces_by_photo[pid] = []
+                faces_by_photo[pid].append(face)
+            
+            # Find fully verified photos (ALL faces have confidence = 1)
+            fully_verified_photo_ids = set()
+            for photo_id, faces in faces_by_photo.items():
+                # Photo is fully verified only if it has faces AND all have confidence = 1
+                if len(faces) > 0 and all(f.get("recognition_confidence") == 1 for f in faces):
+                    fully_verified_photo_ids.add(photo_id)
+            
+            # Unverified = all photos - fully verified
+            unverified_count = total_count - len(fully_verified_photo_ids)
             
             if unverified_count > 0:
                 result.append({
@@ -229,7 +247,10 @@ async def get_gallery_unprocessed_photos(gallery_id: str):
 
 @router.get("/{gallery_id}/unverified-photos")
 async def get_gallery_unverified_photos(gallery_id: str):
-    """Get photos from a gallery that have unverified faces (recognition_confidence < 1)."""
+    """
+    Get photos from a gallery that are NOT fully verified.
+    A photo is fully verified ONLY if ALL its faces have recognition_confidence = 1.
+    """
     try:
         # Get all photos in gallery
         photos_result = supabase_db_instance.client.table("gallery_images").select(
@@ -242,19 +263,31 @@ async def get_gallery_unverified_photos(gallery_id: str):
         
         photo_ids = [p["id"] for p in photos]
         
-        # Get photos that have unverified faces (recognition_confidence < 1 or NULL)
-        unverified_faces_result = supabase_db_instance.client.table("photo_faces").select(
-            "photo_id"
-        ).in_("photo_id", photo_ids).or_(
-            "recognition_confidence.lt.1,recognition_confidence.is.null"
-        ).execute()
+        # Get ALL faces for these photos
+        all_faces_result = supabase_db_instance.client.table("photo_faces").select(
+            "photo_id, recognition_confidence"
+        ).in_("photo_id", photo_ids).execute()
         
-        unverified_photo_ids = set(f["photo_id"] for f in (unverified_faces_result.data or []))
+        all_faces = all_faces_result.data or []
         
-        # Filter photos that have unverified faces
-        result = [p for p in photos if p["id"] in unverified_photo_ids]
+        # Build map: photo_id -> list of faces
+        faces_by_photo = {}
+        for face in all_faces:
+            pid = face["photo_id"]
+            if pid not in faces_by_photo:
+                faces_by_photo[pid] = []
+            faces_by_photo[pid].append(face)
         
-        logger.info(f"Found {len(result)} photos with unverified faces in gallery {gallery_id}")
+        # Find fully verified photos (ALL faces have confidence = 1)
+        fully_verified_photo_ids = set()
+        for photo_id, faces in faces_by_photo.items():
+            if len(faces) > 0 and all(f.get("recognition_confidence") == 1 for f in faces):
+                fully_verified_photo_ids.add(photo_id)
+        
+        # Return photos that are NOT fully verified
+        result = [p for p in photos if p["id"] not in fully_verified_photo_ids]
+        
+        logger.info(f"Found {len(result)} unverified photos in gallery {gallery_id}")
         return ApiResponse.ok(result)
     except Exception as e:
         logger.error(f"Error getting unverified photos for gallery {gallery_id}: {e}")
