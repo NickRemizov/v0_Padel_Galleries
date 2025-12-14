@@ -3,18 +3,6 @@
 import { apiFetch } from "@/lib/apiClient"
 import { revalidatePath } from "next/cache"
 
-// Helper function to generate slug from name
-function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // Remove diacritics
-    .replace(/[^a-z0-9\s-]/g, "") // Remove special chars
-    .replace(/\s+/g, "-") // Replace spaces with hyphens
-    .replace(/-+/g, "-") // Remove multiple hyphens
-    .substring(0, 100)
-}
-
 // ===== PEOPLE =====
 
 export async function getPeopleAction(withStats = false) {
@@ -128,12 +116,9 @@ export async function addLocationAction(data: {
   maps_url?: string
   website_url?: string
 }) {
-  // Generate slug from name (required by backend)
-  const slug = generateSlug(data.name)
-  
   const result = await apiFetch("/api/locations", {
     method: "POST",
-    body: JSON.stringify({ ...data, slug }),
+    body: JSON.stringify(data),
   })
   if (result.success) revalidatePath("/admin")
   return result
@@ -146,15 +131,9 @@ export async function updateLocationAction(locationId: string, data: {
   maps_url?: string | null
   website_url?: string | null
 }) {
-  // If name is updated, regenerate slug
-  const updateData = { ...data }
-  if (data.name) {
-    updateData.slug = generateSlug(data.name)
-  }
-  
   const result = await apiFetch(`/api/locations/${locationId}`, {
     method: "PUT",
-    body: JSON.stringify(updateData),
+    body: JSON.stringify(data),
   })
   if (result.success) revalidatePath("/admin")
   return result
