@@ -47,13 +47,35 @@ class GalleryUpdate(BaseModel):
 
 
 @router.get("")
-async def get_galleries(limit: int = 50, offset: int = 0):
+async def get_galleries(limit: int = 50, offset: int = 0, with_photo_count: bool = False):
     """Get galleries with related data."""
     try:
         result = supabase_db_instance.client.table("galleries").select(
             "*, locations(id, name), organizers(id, name), photographers(id, name)"
         ).order("shoot_date", desc=True).range(offset, offset + limit - 1).execute()
-        return ApiResponse.ok(result.data or [])
+        
+        galleries = result.data or []
+        
+        # Add photo_count if requested
+        if with_photo_count and galleries:
+            gallery_ids = [g["id"] for g in galleries]
+            
+            # Get photo counts for all galleries in one query
+            counts_result = supabase_db_instance.client.table("images").select(
+                "gallery_id"
+            ).in_("gallery_id", gallery_ids).execute()
+            
+            # Count photos per gallery
+            photo_counts = {}
+            for img in (counts_result.data or []):
+                gid = img["gallery_id"]
+                photo_counts[gid] = photo_counts.get(gid, 0) + 1
+            
+            # Add counts to galleries
+            for gallery in galleries:
+                gallery["photo_count"] = photo_counts.get(gallery["id"], 0)
+        
+        return ApiResponse.ok(galleries)
     except Exception as e:
         logger.error(f"Error getting galleries: {e}")
         raise DatabaseError(str(e), operation="get_galleries")
@@ -67,7 +89,15 @@ async def get_gallery(gallery_id: str):
             "*, locations(id, name, slug), organizers(id, name, slug), photographers(id, name, slug)"
         ).eq("id", gallery_id).execute()
         if result.data and len(result.data) > 0:
-            return ApiResponse.ok(result.data[0])
+            gallery = result.data[0]
+            
+            # Add photo count
+            count_result = supabase_db_instance.client.table("images").select(
+                "id", count="exact"
+            ).eq("gallery_id", gallery_id).execute()
+            gallery["photo_count"] = count_result.count or 0
+            
+            return ApiResponse.ok(gallery)
         raise NotFoundError("Gallery", gallery_id)
     except NotFoundError:
         raise
