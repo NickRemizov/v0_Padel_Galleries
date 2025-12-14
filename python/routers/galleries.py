@@ -11,16 +11,19 @@ from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
 from services.supabase_database import SupabaseDatabase
+from services.face_recognition import FaceRecognitionService
 
 logger = get_logger(__name__)
 router = APIRouter()
 
 supabase_db_instance: SupabaseDatabase = None
+face_service_instance: FaceRecognitionService = None
 
 
-def set_services(supabase_db: SupabaseDatabase):
-    global supabase_db_instance
+def set_services(supabase_db: SupabaseDatabase, face_service: FaceRecognitionService = None):
+    global supabase_db_instance, face_service_instance
     supabase_db_instance = supabase_db
+    face_service_instance = face_service
 
 
 class GalleryCreate(BaseModel):
@@ -201,7 +204,18 @@ async def delete_gallery(gallery_id: str, delete_images: bool = Query(True)):
         # Delete gallery
         supabase_db_instance.client.table("galleries").delete().eq("id", gallery_id).execute()
         logger.info(f"Deleted gallery {gallery_id}")
-        return ApiResponse.ok({"deleted": True})
+        
+        # Rebuild face recognition index to remove stale embeddings
+        index_rebuilt = False
+        if face_service_instance:
+            try:
+                await face_service_instance.rebuild_players_index()
+                index_rebuilt = True
+                logger.info(f"Rebuilt players index after deleting gallery {gallery_id}")
+            except Exception as e:
+                logger.error(f"Failed to rebuild index after gallery deletion: {e}")
+        
+        return ApiResponse.ok({"deleted": True, "index_rebuilt": index_rebuilt})
     except Exception as e:
         logger.error(f"Error deleting gallery {gallery_id}: {e}")
         raise DatabaseError(str(e), operation="delete_gallery")
