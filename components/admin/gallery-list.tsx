@@ -78,7 +78,8 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
   return (
     <div className="grid gap-4">
       {galleries.map((gallery) => {
-        const imagesCount = gallery.gallery_images?.length ?? 0
+        // photo_count приходит с бэкенда, gallery_images - fallback для обратной совместимости
+        const imagesCount = gallery.photo_count ?? gallery.gallery_images?.length ?? 0
         const stats = galleryStats.get(gallery.id)
         const isFullyVerified = stats?.isFullyVerified ?? false
         const verifiedCount = stats?.verifiedCount ?? 0
