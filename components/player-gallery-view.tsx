@@ -13,6 +13,17 @@ interface PlayerGalleryViewProps {
   images: (GalleryImage & { gallery?: any })[]
 }
 
+/**
+ * Создаёт ссылку на Telegram из ника
+ * @param nickname - ник в формате @username или username
+ * @returns URL ссылки или null
+ */
+function getTelegramLink(nickname: string | null | undefined): string | null {
+  if (!nickname) return null
+  const username = nickname.startsWith("@") ? nickname.slice(1) : nickname
+  return `https://t.me/${username}`
+}
+
 export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -128,6 +139,8 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
     }
   }, [searchParams, images])
 
+  const telegramLink = getTelegramLink(player.telegram_nickname)
+
   if (images.length === 0) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center">
@@ -153,9 +166,9 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
           </Button>
         </Link>
         <h1 className="text-3xl font-bold mb-2">{player.real_name}</h1>
-        {player.telegram_nickname && (
+        {telegramLink && (
           <a
-            href={player.telegram_profile_url || `https://t.me/${player.telegram_nickname.replace("@", "")}`}
+            href={telegramLink}
             target="_blank"
             rel="noopener noreferrer"
             className="text-muted-foreground hover:text-foreground transition-colors underline decoration-dotted"
