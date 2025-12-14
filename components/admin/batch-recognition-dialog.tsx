@@ -8,9 +8,12 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, CheckCircle2, XCircle, Play, Images } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   getGalleriesWithUnprocessedPhotosAction,
   getGalleryPhotosForRecognitionAction,
+  getGalleriesWithUnrecognizedFacesAction,
+  getGalleryUnrecognizedPhotosAction,
   getRecognitionConfigAction,
 } from "@/app/admin/actions/recognition"
 import { processPhotoAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
@@ -26,7 +29,7 @@ interface GalleryInfo {
   title: string
   shoot_date: string | null
   total_photos: number
-  unprocessed_photos: number
+  photos_to_process: number
   selected: boolean
 }
 
@@ -41,6 +44,8 @@ interface ProcessingResult {
   error?: string
 }
 
+type ProcessingMode = "unprocessed" | "unrecognized"
+
 export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: BatchRecognitionDialogProps) {
   const [loading, setLoading] = useState(false)
   const [galleries, setGalleries] = useState<GalleryInfo[]>([])
@@ -49,6 +54,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
   const [currentIndex, setCurrentIndex] = useState(0)
   const [applyQualityFilters, setApplyQualityFilters] = useState(true)
   const [stage, setStage] = useState<"select" | "processing" | "done">("select")
+  const [mode, setMode] = useState<ProcessingMode>("unprocessed")
 
   useEffect(() => {
     if (open) {
@@ -56,19 +62,39 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
       setStage("select")
       setResults([])
     }
-  }, [open])
+  }, [open, mode])
 
   async function loadGalleries() {
     setLoading(true)
     try {
-      const result = await getGalleriesWithUnprocessedPhotosAction()
-      if (result.success) {
-        setGalleries(
-          result.galleries.map((g) => ({
-            ...g,
-            selected: false,
-          }))
-        )
+      if (mode === "unprocessed") {
+        const result = await getGalleriesWithUnprocessedPhotosAction()
+        if (result.success) {
+          setGalleries(
+            result.galleries.map((g) => ({
+              id: g.id,
+              title: g.title,
+              shoot_date: g.shoot_date,
+              total_photos: g.total_photos,
+              photos_to_process: g.unprocessed_photos,
+              selected: false,
+            }))
+          )
+        }
+      } else {
+        const result = await getGalleriesWithUnrecognizedFacesAction()
+        if (result.success) {
+          setGalleries(
+            result.galleries.map((g) => ({
+              id: g.id,
+              title: g.title,
+              shoot_date: g.shoot_date,
+              total_photos: g.total_photos,
+              photos_to_process: g.unrecognized_photos,
+              selected: false,
+            }))
+          )
+        }
       }
     } catch (error) {
       console.error("[BatchRecognition] Error loading galleries:", error)
@@ -117,6 +143,8 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
 
     // Загружаем конфиг
     const configResult = await getRecognitionConfigAction()
+    console.log("[BatchRecognition] Config loaded:", configResult.config)
+    
     const qualityParams = applyQualityFilters
       ? {
           confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
@@ -125,18 +153,27 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
           minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
         }
       : undefined
+    
+    console.log("[BatchRecognition] Quality params:", qualityParams)
 
     // Собираем все фото из выбранных галерей
-    const allImages: { galleryId: string; galleryTitle: string; image: any }[] = []
+    const allImages: { galleryId: string; galleryTitle: string; shootDate: string | null; image: any }[] = []
 
     for (const gallery of selectedGalleries) {
-      const photosResult = await getGalleryPhotosForRecognitionAction(gallery.id)
+      let photosResult
+      if (mode === "unprocessed") {
+        photosResult = await getGalleryPhotosForRecognitionAction(gallery.id)
+      } else {
+        photosResult = await getGalleryUnrecognizedPhotosAction(gallery.id)
+      }
+      
       if (photosResult.success) {
         const titleWithDate = formatGalleryTitle(gallery.title, gallery.shoot_date)
         for (const image of photosResult.images) {
           allImages.push({
             galleryId: gallery.id,
             galleryTitle: titleWithDate,
+            shootDate: gallery.shoot_date,
             image,
           })
         }
@@ -165,9 +202,12 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
       )
 
       try {
+        // Для режима "unrecognized" всегда делаем re-detect (forceRedetect = true)
+        const forceRedetect = mode === "unrecognized"
+        
         const result = await processPhotoAction(
           item.image.id,
-          false,
+          forceRedetect,
           applyQualityFilters
         )
 
@@ -223,9 +263,9 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
   }
 
   const selectedCount = galleries.filter((g) => g.selected).length
-  const totalUnprocessed = galleries
+  const totalToProcess = galleries
     .filter((g) => g.selected)
-    .reduce((sum, g) => sum + g.unprocessed_photos, 0)
+    .reduce((sum, g) => sum + g.photos_to_process, 0)
 
   const processedImages = results.filter((r) => r.status !== "pending" && r.status !== "processing").length
   const progress = results.length > 0 ? (processedImages / results.length) * 100 : 0
@@ -233,13 +273,28 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
   const totalRecognized = results.reduce((sum, r) => sum + r.facesRecognized, 0)
   const errorCount = results.filter((r) => r.status === "error").length
 
+  const modeLabels = {
+    unprocessed: {
+      title: "Необработанные фото",
+      description: "Фото, которые ещё не проходили детекцию лиц",
+      empty: "Нет галерей с необработанными фото",
+      badge: "к обработке",
+    },
+    unrecognized: {
+      title: "Нераспознанные лица",
+      description: "Фото с неверифицированными лицами (повторное распознавание)",
+      empty: "Нет галерей с нераспознанными лицами",
+      badge: "к распознаванию",
+    },
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Пакетное распознавание галерей</DialogTitle>
           <DialogDescription>
-            {stage === "select" && "Выберите галереи для распознавания"}
+            {stage === "select" && "Выберите режим и галереи для распознавания"}
             {stage === "processing" && `Обработка ${results.length} фото...`}
             {stage === "done" && "Обработка завершена"}
           </DialogDescription>
@@ -251,10 +306,22 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
           </div>
         ) : stage === "select" ? (
           <div className="space-y-4">
+            {/* Mode selector */}
+            <Tabs value={mode} onValueChange={(v) => setMode(v as ProcessingMode)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="unprocessed">Необработанные</TabsTrigger>
+                <TabsTrigger value="unrecognized">Нераспознанные</TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            <p className="text-sm text-muted-foreground">
+              {modeLabels[mode].description}
+            </p>
+
             {galleries.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Images className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>Нет галерей с необработанными фото</p>
+                <p>{modeLabels[mode].empty}</p>
               </div>
             ) : (
               <>
@@ -279,7 +346,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
                   </div>
                 </div>
 
-                <ScrollArea className="h-[400px] border rounded-md p-2">
+                <ScrollArea className="h-[350px] border rounded-md p-2">
                   <div className="space-y-1">
                     {galleries.map((gallery) => (
                       <div
@@ -306,7 +373,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
                           </div>
                         </div>
                         <Badge variant="secondary">
-                          {gallery.unprocessed_photos} к обработке
+                          {gallery.photos_to_process} {modeLabels[mode].badge}
                         </Badge>
                       </div>
                     ))}
@@ -315,7 +382,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
 
                 <div className="flex items-center justify-between pt-2 border-t">
                   <div className="text-sm text-muted-foreground">
-                    Выбрано: {selectedCount} галерей, {totalUnprocessed} фото
+                    Выбрано: {selectedCount} галерей, {totalToProcess} фото
                   </div>
                   <Button onClick={startProcessing} disabled={selectedCount === 0}>
                     <Play className="mr-2 h-4 w-4" />
