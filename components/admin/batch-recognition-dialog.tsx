@@ -103,6 +103,11 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
     }
   }
 
+  function formatGalleryTitle(title: string, shootDate: string | null): string {
+    const dateStr = formatDate(shootDate)
+    return dateStr ? `${title} ${dateStr}` : title
+  }
+
   async function startProcessing() {
     const selectedGalleries = galleries.filter((g) => g.selected)
     if (selectedGalleries.length === 0) return
@@ -127,10 +132,11 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
     for (const gallery of selectedGalleries) {
       const photosResult = await getGalleryPhotosForRecognitionAction(gallery.id)
       if (photosResult.success) {
+        const titleWithDate = formatGalleryTitle(gallery.title, gallery.shoot_date)
         for (const image of photosResult.images) {
           allImages.push({
             galleryId: gallery.id,
-            galleryTitle: gallery.title,
+            galleryTitle: titleWithDate,
             image,
           })
         }
