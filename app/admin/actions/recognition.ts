@@ -7,7 +7,8 @@ export async function getRecognitionConfigAction() {
   logger.debug("actions/recognition", "[getRecognitionConfigAction] Reading config from DB")
 
   try {
-    const result = await apiFetch("/api/v2/training/config", {
+    // Правильный путь: /api/v2/config (training.router с prefix="/api/v2")
+    const result = await apiFetch("/api/v2/config", {
       method: "GET",
     })
 
