@@ -1,7 +1,21 @@
 # Схема базы данных Padel Galleries
 
-**Дата обновления:** 13.12.2025  
-**Версия:** 3.1 (Мультигород + расширенные площадки)
+**Дата обновления:** 14.12.2025  
+**Версия:** 3.2 (Legacy cleanup)
+
+---
+
+## ⚠️ LEGACY ПРЕДУПРЕЖДЕНИЕ
+
+### НЕ ИСПОЛЬЗОВАТЬ следующие таблицы и поля:
+
+| Legacy | Актуальное | Описание |
+|--------|------------|----------|
+| `face_descriptors` (таблица) | `photo_faces.insightface_descriptor` | Эмбеддинги лиц |
+| `photo_faces.bounding_box` | `photo_faces.insightface_bbox` | Координаты лица |
+| `photo_faces.confidence` | `photo_faces.insightface_confidence` | Уверенность детекции |
+
+**Причина:** Все данные распознавания лиц хранятся в `photo_faces`. Таблица `face_descriptors` - историческое наследие, не обновляется.
 
 ---
 
@@ -9,15 +23,14 @@
 
 База данных поддерживает мультигородскую архитектуру с возможностью расширения на новые города и страны.
 
-\`\`\`
+```
 cities
   └── locations (площадки)
         └── galleries (галереи)
               └── gallery_images (фото)
-                    └── photo_faces (лица на фото)
-                          └── face_descriptors (векторы лиц)
+                    └── photo_faces (лица на фото + эмбеддинги)
                           └── people (игроки)
-\`\`\`
+```
 
 ---
 
@@ -89,12 +102,12 @@ cities
 - `organizer_id` → `organizers.id`
 
 **Получение города галереи:**
-\`\`\`sql
+```sql
 SELECT c.* FROM galleries g
 JOIN locations l ON l.id = g.location_id
 JOIN cities c ON c.id = l.city_id
 WHERE g.id = 'gallery_uuid';
-\`\`\`
+```
 
 ---
 
@@ -107,6 +120,8 @@ WHERE g.id = 'gallery_uuid';
 | `original_filename` | text | NO | Оригинальное имя файла |
 | `image_url` | text | NO | URL в Vercel Blob |
 | `gallery_id` | uuid | NO | FK → galleries.id |
+| `width` | int | YES | Ширина изображения |
+| `height` | int | YES | Высота изображения |
 | `slug` | varchar(255) | YES | URL-slug фото (🔜 планируется NOT NULL) |
 | `is_featured` | boolean | YES | Избранное фото для карусели (default: false) |
 
@@ -120,8 +135,9 @@ WHERE g.id = 'gallery_uuid';
 
 ---
 
-### photo_faces (Лица на фото)
-Обнаруженные лица на фотографиях.
+### photo_faces (Лица на фото) ⭐ ГЛАВНАЯ ТАБЛИЦА ДЛЯ РАСПОЗНАВАНИЯ
+
+Обнаруженные лица на фотографиях. **Содержит ВСЕ данные для распознавания.**
 
 | Поле | Тип | NULL | Описание |
 |------|-----|------|----------|
@@ -130,9 +146,20 @@ WHERE g.id = 'gallery_uuid';
 | `person_id` | uuid | YES | FK → people.id |
 | `verified` | boolean | YES | Подтверждено вручную |
 | `recognition_confidence` | double precision | YES | Уверенность распознавания (0-1) |
-| `confidence` | double precision | YES | Уверенность детекции (0-1) |
+| `insightface_descriptor` | vector(512) | YES | **512-мерный эмбеддинг InsightFace** |
+| `insightface_bbox` | jsonb | YES | **Координаты лица {x, y, width, height}** |
+| `insightface_confidence` | double precision | YES | **Уверенность детекции InsightFace** |
 | `blur_score` | double precision | YES | Оценка размытия (0-1) |
-| `bounding_box` | jsonb | YES | Координаты лица {x, y, width, height} |
+| `verified_at` | timestamptz | YES | Дата верификации |
+| `verified_by` | text | YES | Кто верифицировал |
+| `training_used` | boolean | YES | Использовано в обучении |
+| `training_context` | jsonb | YES | Контекст обучения |
+
+**⚠️ LEGACY поля (НЕ ИСПОЛЬЗОВАТЬ):**
+| Поле | Заменено на |
+|------|-------------|
+| `bounding_box` | `insightface_bbox` |
+| `confidence` | `insightface_confidence` |
 
 **Связи:**
 - `photo_id` → `gallery_images.id`
@@ -141,22 +168,38 @@ WHERE g.id = 'gallery_uuid';
 **Важно:**
 - `verified=true` означает ручное подтверждение, `recognition_confidence` должен быть 1.0
 - `recognition_confidence >= threshold` используется для отображения (не только verified)
+- **Эмбеддинги хранятся в `insightface_descriptor`** - это единственный источник!
+
+**Типичные запросы:**
+
+```sql
+-- Получить все эмбеддинги для индекса
+SELECT person_id, insightface_descriptor 
+FROM photo_faces 
+WHERE verified = true 
+  AND insightface_descriptor IS NOT NULL 
+  AND person_id IS NOT NULL;
+
+-- Подсчитать дескрипторы для человека
+SELECT COUNT(*) FROM photo_faces 
+WHERE person_id = 'xxx' 
+  AND insightface_descriptor IS NOT NULL;
+```
 
 ---
 
-### face_descriptors (Дескрипторы лиц)
-Векторные представления лиц для распознавания (512-мерные эмбеддинги).
+### ~~face_descriptors~~ ❌ DEPRECATED
+
+> **⛔ НЕ ИСПОЛЬЗОВАТЬ!** Это legacy таблица. Все данные в `photo_faces.insightface_descriptor`.
 
 | Поле | Тип | NULL | Описание |
 |------|-----|------|----------|
 | `id` | uuid | NO | Первичный ключ |
 | `source_image_id` | uuid | NO | FK → photo_faces.id |
 | `person_id` | uuid | YES | FK → people.id |
-| `descriptor` | jsonb | NO | 512-мерный вектор |
+| `descriptor` | jsonb | NO | ~~512-мерный вектор~~ DEPRECATED |
 
-**Связи:**
-- `source_image_id` → `photo_faces.id`
-- `person_id` → `people.id`
+**⚠️ Рекомендуется переименовать в `face_descriptors_DEPRECATED`**
 
 ---
 
@@ -170,6 +213,13 @@ WHERE g.id = 'gallery_uuid';
 | `slug` | varchar(255) | YES | URL-slug (🔜 планируется NOT NULL) |
 | `telegram_nickname` | text | YES | Telegram username (без @) |
 | `telegram_name` | text | YES | Имя в Telegram |
+| `telegram_profile_url` | text | YES | URL Telegram профиля |
+| `facebook_profile_url` | text | YES | URL Facebook профиля |
+| `instagram_profile_url` | text | YES | URL Instagram профиля |
+| `avatar_url` | text | YES | URL аватара |
+| `paddle_ranking` | int | YES | Рейтинг |
+| `show_in_players_gallery` | boolean | YES | Показывать в галерее игроков |
+| `show_photos_in_galleries` | boolean | YES | Показывать фото в галереях |
 
 **Примечание:** Город игрока определяется через `person_city_cache`.
 
@@ -262,9 +312,9 @@ WHERE g.id = 'gallery_uuid';
 - `trg_photo_faces_update_cache` — обновляет кеш при назначении person_id
 
 **Цепочка определения города игрока:**
-\`\`\`
+```
 people → photo_faces → gallery_images → galleries → locations → cities
-\`\`\`
+```
 
 ---
 
@@ -273,14 +323,14 @@ people → photo_faces → gallery_images → galleries → locations → cities
 ### generate_unique_slug
 Генерирует уникальный URL-slug с автоматическим добавлением счётчика при дубликатах.
 
-\`\`\`sql
+```sql
 generate_unique_slug(
   base_text TEXT,           -- Исходный текст
   table_name TEXT,          -- Имя таблицы
   column_name TEXT,         -- Имя колонки (default: 'slug')
   exclude_id UUID           -- ID для исключения при обновлении
 ) RETURNS TEXT
-\`\`\`
+```
 
 **Логика:**
 1. Приводит к lowercase
@@ -293,7 +343,7 @@ generate_unique_slug(
 
 ## ER-диаграмма связей
 
-\`\`\`
+```
 ┌─────────────┐
 │   cities    │
 └──────┬──────┘
@@ -314,55 +364,55 @@ generate_unique_slug(
 └──────┬──────┘                                        │
        │ 1:N                                           │
        ▼                                               │
-┌─────────────┐     ┌─────────────────┐                │
-│ photo_faces │────►│ face_descriptors│                │
-└──────┬──────┘     └─────────────────┘                │
+┌─────────────────────────────────────┐                │
+│ photo_faces (+ insightface_descriptor)              │
+└──────┬──────────────────────────────┘                │
        │ N:1                                           │
        ▼                                               │
 ┌─────────────┐     ┌─────────────────┐                │
 │   people    │◄───►│person_city_cache│◄───────────────┘
 └─────────────┘     └─────────────────┘   (🔜 person_id)
-\`\`\`
+```
 
 ---
 
 ## Типичные запросы
 
 ### Получить всех игроков города
-\`\`\`sql
+```sql
 SELECT p.* FROM people p
 JOIN person_city_cache pcc ON pcc.person_id = p.id
 WHERE pcc.city_id = 'city_uuid'
 ORDER BY pcc.photos_count DESC;
-\`\`\`
+```
 
 ### Получить галереи города
-\`\`\`sql
+```sql
 SELECT g.* FROM galleries g
 JOIN locations l ON l.id = g.location_id
 WHERE l.city_id = 'city_uuid'
 ORDER BY g.shoot_date DESC;
-\`\`\`
+```
 
 ### Получить организаторов города
-\`\`\`sql
+```sql
 SELECT o.* FROM organizers o
 JOIN organizer_cities oc ON oc.organizer_id = o.id
 WHERE oc.city_id = 'city_uuid';
-\`\`\`
+```
 
 ### Найти галерею по slug
-\`\`\`sql
+```sql
 SELECT * FROM galleries WHERE slug = 'turnir-valencia-13-12';
-\`\`\`
+```
 
 ### Найти игрока по slug
-\`\`\`sql
+```sql
 SELECT * FROM people WHERE slug = 'ivan-petrov';
-\`\`\`
+```
 
 ### Пересчитать кеш person_city_cache
-\`\`\`sql
+```sql
 INSERT INTO person_city_cache (person_id, city_id, photos_count, first_photo_date, last_photo_date)
 SELECT 
   pf.person_id,
@@ -383,7 +433,7 @@ ON CONFLICT (person_id, city_id) DO UPDATE SET
   first_photo_date = EXCLUDED.first_photo_date,
   last_photo_date = EXCLUDED.last_photo_date,
   updated_at = NOW();
-\`\`\`
+```
 
 ---
 
@@ -401,39 +451,55 @@ ON CONFLICT (person_id, city_id) DO UPDATE SET
 4. Уникальные индексы
 
 ### 🔜 Связь организаторов/фотографов с игроками
-\`\`\`sql
+```sql
 ALTER TABLE organizers ADD COLUMN person_id UUID REFERENCES people(id);
 ALTER TABLE photographers ADD COLUMN person_id UUID REFERENCES people(id);
-\`\`\`
+```
+
+### 🔜 Удаление legacy таблицы face_descriptors
+```sql
+-- Рекомендуется сначала переименовать
+ALTER TABLE face_descriptors RENAME TO face_descriptors_DEPRECATED;
+
+-- Через месяц, если всё работает - удалить
+DROP TABLE face_descriptors_DEPRECATED;
+```
 
 ---
 
 ## Миграции (выполненные)
 
 ### Добавление нового города
-\`\`\`sql
+```sql
 INSERT INTO cities (name, slug, country) 
 VALUES ('Madrid', 'madrid', 'Spain');
-\`\`\`
+```
 
 ### Привязка площадки к городу
-\`\`\`sql
+```sql
 UPDATE locations 
 SET city_id = (SELECT id FROM cities WHERE slug = 'madrid')
 WHERE name = 'Club Padel Madrid';
-\`\`\`
+```
 
 ### Привязка организатора к нескольким городам
-\`\`\`sql
+```sql
 INSERT INTO organizer_cities (organizer_id, city_id)
 VALUES 
   ('org_uuid', (SELECT id FROM cities WHERE slug = 'valencia')),
   ('org_uuid', (SELECT id FROM cities WHERE slug = 'madrid'));
-\`\`\`
+```
 
 ---
 
 ## История изменений
+
+### v3.2 (14.12.2025) — Legacy cleanup
+- **КРИТИЧНО:** Добавлено предупреждение о legacy полях
+- Документировано что `face_descriptors` - DEPRECATED
+- Документировано что `photo_faces.bounding_box` - DEPRECATED
+- Добавлены поля `width`, `height` в `gallery_images`
+- Добавлены поля профилей в `people`
 
 ### v3.1 (13.12.2025) — Расширенные площадки
 - Добавлены поля в `locations`: `address`, `maps_url`, `website_url`
