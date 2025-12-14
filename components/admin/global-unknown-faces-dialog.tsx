@@ -3,13 +3,13 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, UserPlus, Users, X, Trash2, ChevronRight } from "lucide-react"
+import { Loader2, UserPlus, Users, X, Trash2 } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { assignFacesToPersonAction, markPhotoAsProcessedAction, clusterUnknownFacesAction } from "@/app/admin/actions/faces"
+import { assignFacesToPersonAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
-import { getGalleriesWithUnknownFacesAction } from "@/app/admin/actions/recognition"
+import { clusterAllUnknownFacesAction } from "@/app/admin/actions/recognition"
 import type { Person } from "@/lib/types"
 import FaceCropPreview from "@/components/FaceCropPreview"
 import { Badge } from "@/components/ui/badge"
@@ -30,29 +30,19 @@ interface ClusterFace {
     width: number
     height: number
   }
+  gallery_id?: string
+  gallery_title?: string
+  shoot_date?: string
 }
 
 interface Cluster {
   cluster_id: number
   size: number
   faces: ClusterFace[]
-  gallery_id: string
-  gallery_title: string
-  shoot_date: string | null
-}
-
-interface GalleryInfo {
-  id: string
-  title: string
-  shoot_date: string | null
-  unknown_faces_count: number
 }
 
 export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: GlobalUnknownFacesDialogProps) {
   const [loading, setLoading] = useState(false)
-  const [loadingClusters, setLoadingClusters] = useState(false)
-  const [galleries, setGalleries] = useState<GalleryInfo[]>([])
-  const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0)
   const [clusters, setClusters] = useState<Cluster[]>([])
   const [currentClusterIndex, setCurrentClusterIndex] = useState(0)
   const [people, setPeople] = useState<Person[]>([])
@@ -61,16 +51,13 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   const [selectedPersonId, setSelectedPersonId] = useState<string>("")
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
-  const [stage, setStage] = useState<"loading" | "no-data" | "clustering">("loading")
 
   useEffect(() => {
     if (open) {
-      loadGalleries()
+      loadClusters()
       loadPeople()
       setRemovedFaces(new Set())
-      setCurrentGalleryIndex(0)
       setCurrentClusterIndex(0)
-      setClusters([])
     }
   }, [open])
 
@@ -78,61 +65,24 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     setRemovedFaces(new Set())
   }, [currentClusterIndex])
 
-  async function loadGalleries() {
+  async function loadClusters() {
     setLoading(true)
-    setStage("loading")
     try {
-      console.log("[GlobalUnknownFaces] Loading galleries with unknown faces...")
+      console.log("[GlobalUnknownFaces] Loading all unknown face clusters...")
 
-      const result = await getGalleriesWithUnknownFacesAction()
+      const result = await clusterAllUnknownFacesAction()
 
-      console.log("[GlobalUnknownFaces] Galleries result:", result)
+      console.log("[GlobalUnknownFaces] Result:", result)
 
-      if (result.success && result.galleries.length > 0) {
-        setGalleries(result.galleries)
-        setCurrentGalleryIndex(0)
-        // Загружаем кластеры для первой галереи
-        await loadClustersForGallery(result.galleries[0])
-      } else {
-        setStage("no-data")
-      }
-    } catch (error) {
-      console.error("[GlobalUnknownFaces] Error loading galleries:", error)
-      setStage("no-data")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function loadClustersForGallery(gallery: GalleryInfo) {
-    setLoadingClusters(true)
-    try {
-      console.log("[GlobalUnknownFaces] Loading clusters for gallery:", gallery.id, gallery.title)
-
-      const result = await clusterUnknownFacesAction(gallery.id)
-
-      console.log("[GlobalUnknownFaces] Clusters result:", result)
-
-      if (result.success && result.data && result.data.clusters.length > 0) {
-        // Добавляем информацию о галерее к каждому кластеру
-        const clustersWithGallery = result.data.clusters.map((cluster: any) => ({
-          ...cluster,
-          gallery_id: gallery.id,
-          gallery_title: gallery.title,
-          shoot_date: gallery.shoot_date,
-        }))
-        setClusters(clustersWithGallery)
+      if (result.success && result.data) {
+        setClusters(result.data.clusters || [])
         setCurrentClusterIndex(0)
-        setStage("clustering")
-      } else {
-        // Нет кластеров в этой галерее, переходим к следующей
-        await moveToNextGallery()
+        console.log("[GlobalUnknownFaces] Loaded", result.data.clusters?.length || 0, "clusters")
       }
     } catch (error) {
       console.error("[GlobalUnknownFaces] Error loading clusters:", error)
-      await moveToNextGallery()
     } finally {
-      setLoadingClusters(false)
+      setLoading(false)
     }
   }
 
@@ -177,7 +127,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
           await markPhotoAsProcessedAction(photoId)
         }
 
-        await moveToNextCluster()
+        moveToNextCluster()
       }
     } catch (error) {
       console.error("[GlobalUnknownFaces] Error assigning faces:", error)
@@ -187,30 +137,16 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   }
 
   async function handleRejectCluster() {
-    await moveToNextCluster()
+    moveToNextCluster()
   }
 
-  async function moveToNextCluster() {
+  function moveToNextCluster() {
     setRemovedFaces(new Set())
     if (currentClusterIndex + 1 >= clusters.length) {
-      // Все кластеры в текущей галерее обработаны, переходим к следующей
-      await moveToNextGallery()
-    } else {
-      setCurrentClusterIndex(currentClusterIndex + 1)
-    }
-  }
-
-  async function moveToNextGallery() {
-    const nextIndex = currentGalleryIndex + 1
-    if (nextIndex >= galleries.length) {
-      // Все галереи обработаны
       onOpenChange(false)
       onComplete?.()
     } else {
-      setCurrentGalleryIndex(nextIndex)
-      setClusters([])
-      setCurrentClusterIndex(0)
-      await loadClustersForGallery(galleries[nextIndex])
+      setCurrentClusterIndex(currentClusterIndex + 1)
     }
   }
 
@@ -231,12 +167,8 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   }
 
   const currentCluster = clusters[currentClusterIndex]
-  const currentGallery = galleries[currentGalleryIndex]
   const hasMoreClusters = currentClusterIndex + 1 < clusters.length
-  const hasMoreGalleries = currentGalleryIndex + 1 < galleries.length
   const visibleFaces = currentCluster?.faces.filter((f) => !removedFaces.has(f.id)) || []
-
-  const totalUnknownFaces = galleries.reduce((sum, g) => sum + g.unknown_faces_count, 0)
 
   return (
     <>
@@ -245,37 +177,26 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
           <DialogHeader>
             <DialogTitle>Неизвестные лица — глобальная кластеризация</DialogTitle>
             <DialogDescription>
-              {loading || loadingClusters
-                ? "Загрузка кластеров..."
-                : stage === "no-data"
+              {loading
+                ? "Загрузка кластеров по всей базе..."
+                : clusters.length === 0
                   ? "Нет неизвестных лиц для кластеризации"
-                  : `Галерея ${currentGalleryIndex + 1}/${galleries.length}: ${currentGallery?.title || ""} • Кластер ${currentClusterIndex + 1}/${clusters.length}`}
+                  : `Кластер ${currentClusterIndex + 1} из ${clusters.length} (${currentCluster?.size || 0} похожих лиц)`}
             </DialogDescription>
           </DialogHeader>
 
-          {(loading || loadingClusters) ? (
+          {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : stage === "no-data" ? (
+          ) : clusters.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <p>Все лица распознаны!</p>
             </div>
           ) : currentCluster ? (
             <div className="space-y-4">
-              {/* Информация о галерее */}
-              <div className="flex items-center gap-2 text-sm">
-                <Badge variant="outline">
-                  {currentGallery?.title}
-                  {currentGallery?.shoot_date && ` ${formatDate(currentGallery.shoot_date)}`}
-                </Badge>
-                <span className="text-muted-foreground">
-                  {currentCluster.size} похожих лиц
-                </span>
-              </div>
-
               <div className="grid grid-cols-4 gap-4">
-                {visibleFaces.map((face, index) => (
+                {visibleFaces.map((face) => (
                   <div key={face.id} className="relative">
                     <div className="aspect-square rounded-lg overflow-hidden border">
                       <FaceCropPreview
@@ -291,6 +212,12 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                    {(face.gallery_title || face.shoot_date) && (
+                      <div className="mt-1 text-xs text-muted-foreground truncate text-center">
+                        {face.gallery_title}
+                        {face.shoot_date && ` ${formatDate(face.shoot_date)}`}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -344,22 +271,16 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
 
                   <Button variant="destructive" onClick={handleRejectCluster} disabled={processing}>
                     <X className="h-4 w-4 mr-2" />
-                    Пропустить
+                    Пропустить кластер
                   </Button>
                 </div>
               )}
 
-              <div className="text-sm text-muted-foreground text-center space-y-1">
-                {hasMoreClusters && (
-                  <p>Еще {clusters.length - currentClusterIndex - 1} кластер(ов) в этой галерее</p>
-                )}
-                {hasMoreGalleries && (
-                  <p className="flex items-center justify-center gap-1">
-                    <ChevronRight className="h-4 w-4" />
-                    Еще {galleries.length - currentGalleryIndex - 1} галерей с неизвестными лицами
-                  </p>
-                )}
-              </div>
+              {hasMoreClusters && (
+                <p className="text-sm text-muted-foreground text-center">
+                  Еще {clusters.length - currentClusterIndex - 1} кластер(ов) после этого
+                </p>
+              )}
             </div>
           ) : null}
         </DialogContent>
