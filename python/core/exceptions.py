@@ -82,11 +82,11 @@ class PhotoNotFoundError(NotFoundError):
 class ValidationError(AppException):
     """Input validation failed."""
     
-    def __init__(self, message: str, field: str = None):
+    def __init__(self, message: str, field: str = None, code: str = "VALIDATION_ERROR"):
         details = {"field": field} if field else {}
         super().__init__(
             message=message,
-            code="VALIDATION_ERROR",
+            code=code,
             status_code=422,
             details=details
         )
