@@ -177,10 +177,17 @@ async def update_visibility(person_id: str, data: VisibilityUpdate):
 async def delete_person(person_id: str):
     """Delete a person and cleanup related data."""
     try:
-        # Delete face descriptors (legacy table)
-        supabase_db_instance.client.table("face_descriptors").delete().eq("person_id", person_id).execute()
+        # Cleanup deprecated face_descriptors table (if exists)
+        # Try both old and new table names for compatibility during migration
+        for table_name in ["face_descriptors_DEPRECATED", "face_descriptors"]:
+            try:
+                supabase_db_instance.client.table(table_name).delete().eq("person_id", person_id).execute()
+                logger.debug(f"Cleaned up {table_name} for person {person_id}")
+                break  # Success, no need to try other table name
+            except Exception:
+                continue  # Table doesn't exist, try next
         
-        # Unlink photo_faces
+        # Unlink photo_faces (clear person_id, keep embeddings)
         supabase_db_instance.client.table("photo_faces").update(
             {"person_id": None, "verified": False}
         ).eq("person_id", person_id).execute()
@@ -188,7 +195,7 @@ async def delete_person(person_id: str):
         # Delete person
         supabase_db_instance.client.table("people").delete().eq("id", person_id).execute()
         
-        # Rebuild index
+        # Rebuild index to remove stale references
         index_rebuilt = False
         if face_service_instance:
             await face_service_instance.rebuild_players_index()
