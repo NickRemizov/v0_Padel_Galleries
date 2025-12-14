@@ -114,6 +114,7 @@ export interface Person {
   telegram_profile_url: string | null
   facebook_profile_url: string | null
   instagram_profile_url: string | null
+  gmail: string | null
   paddle_ranking: number | null
   tournament_results: TournamentResult[]
   avatar_url: string | null
