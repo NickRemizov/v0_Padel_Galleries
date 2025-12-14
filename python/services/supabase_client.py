@@ -549,6 +549,70 @@ class SupabaseClient:
             traceback.print_exc()
             raise
 
+    async def get_all_unknown_faces(self) -> List[Dict]:
+        """
+        Получить ВСЕ неизвестные лица из всей базы (person_id = NULL).
+        Включает информацию о галерее для каждого лица.
+        
+        Returns:
+            List of dicts with face data including gallery info
+        """
+        try:
+            print("[SupabaseClient] Loading ALL unknown faces from database...")
+            
+            # Получаем все лица с person_id = NULL, включая информацию о галерее
+            response = self.client.table("photo_faces").select(
+                "id, photo_id, insightface_descriptor, insightface_bbox, insightface_confidence, "
+                "gallery_images(id, image_url, width, height, gallery_id, "
+                "galleries(id, title, shoot_date))"
+            ).is_("person_id", "null").execute()
+            
+            if not response.data:
+                print("[SupabaseClient] No unknown faces found")
+                return []
+            
+            print(f"[SupabaseClient] Found {len(response.data)} raw unknown faces")
+            
+            # Формируем результат, фильтруем только те, у которых есть дескриптор И bbox
+            filtered_faces = []
+            for face in response.data:
+                photo = face.get("gallery_images")
+                if not photo:
+                    continue
+                
+                # Проверяем наличие дескриптора
+                if not face.get("insightface_descriptor"):
+                    continue
+                
+                # Проверяем наличие bbox
+                if not face.get("insightface_bbox"):
+                    continue
+                
+                gallery = photo.get("galleries") or {}
+                
+                filtered_faces.append({
+                    "id": face["id"],
+                    "photo_id": face["photo_id"],
+                    "photo_url": photo["image_url"],
+                    "width": photo.get("width"),
+                    "height": photo.get("height"),
+                    "insightface_descriptor": face["insightface_descriptor"],
+                    "insightface_bbox": face["insightface_bbox"],
+                    "insightface_confidence": face["insightface_confidence"],
+                    "gallery_id": photo.get("gallery_id"),
+                    "gallery_title": gallery.get("title"),
+                    "shoot_date": gallery.get("shoot_date")
+                })
+            
+            print(f"[SupabaseClient] Returning {len(filtered_faces)} unknown faces with descriptors")
+            return filtered_faces
+            
+        except Exception as e:
+            print(f"[SupabaseClient] Error getting all unknown faces: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
     def get_training_history(self, limit: int = 10, offset: int = 0) -> List[Dict]:
         """
         Получить историю обучений из face_training_sessions.
