@@ -24,6 +24,17 @@ interface PersonListProps {
   people: PersonWithStats[]
 }
 
+/**
+ * Создаёт ссылку на Telegram из ника
+ * @param nickname - ник в формате @username или username
+ * @returns URL ссылки или null
+ */
+function getTelegramLink(nickname: string | null | undefined): string | null {
+  if (!nickname) return null
+  const username = nickname.startsWith("@") ? nickname.slice(1) : nickname
+  return `https://t.me/${username}`
+}
+
 export function PersonList({ people }: PersonListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingPerson, setEditingPerson] = useState<PersonWithStats | null>(null)
@@ -63,21 +74,25 @@ export function PersonList({ people }: PersonListProps) {
       <div className="grid gap-3">
         {people.map((person) => {
           const socialLinks = []
-          if (person.telegram_profile_url) {
+          
+          // Telegram: используем telegram_nickname для создания ссылки
+          const telegramLink = getTelegramLink(person.telegram_nickname)
+          if (telegramLink) {
             socialLinks.push(
               <span key="telegram">
                 Telegram:{" "}
                 <a
-                  href={person.telegram_profile_url}
+                  href={telegramLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
-                  {person.telegram_nickname || "профиль"}
+                  {person.telegram_nickname}
                 </a>
               </span>,
             )
           }
+          
           if (person.instagram_profile_url) {
             socialLinks.push(
               <span key="instagram">
@@ -145,7 +160,7 @@ export function PersonList({ people }: PersonListProps) {
                           {person.real_name}
                           {person.telegram_name && ` (${person.telegram_name})`}
                         </h3>
-                        {person.paddle_ranking && <Badge variant="secondary">Рейтинг: {person.paddle_ranking}</Badge>}
+                        {person.paddle_ranking && <Badge variant="secondary">Уровень: {person.paddle_ranking}</Badge>}
                       </div>
                       <div className="space-y-1 text-sm text-muted-foreground">
                         <p>
