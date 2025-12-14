@@ -1,21 +1,21 @@
 # Схема базы данных Padel Galleries
 
 **Дата обновления:** 14.12.2025  
-**Версия:** 3.2 (Legacy cleanup)
+**Версия:** 3.3 (Legacy renamed to DEPRECATED)
 
 ---
 
-## ⚠️ LEGACY ПРЕДУПРЕЖДЕНИЕ
+## ✅ LEGACY ПОЛЯ ПЕРЕИМЕНОВАНЫ
 
-### НЕ ИСПОЛЬЗОВАТЬ следующие таблицы и поля:
+Миграция выполнена 14.12.2025. Legacy поля переименованы в `*_DEPRECATED`:
 
-| Legacy | Актуальное | Описание |
-|--------|------------|----------|
-| `face_descriptors` (таблица) | `photo_faces.insightface_descriptor` | Эмбеддинги лиц |
-| `photo_faces.bounding_box` | `photo_faces.insightface_bbox` | Координаты лица |
-| `photo_faces.confidence` | `photo_faces.insightface_confidence` | Уверенность детекции |
+| Было | Стало | Использовать |
+|------|-------|--------------|
+| `face_descriptors` | `face_descriptors_DEPRECATED` | `photo_faces.insightface_descriptor` |
+| `photo_faces.bounding_box` | `bounding_box_DEPRECATED` | `photo_faces.insightface_bbox` |
+| `photo_faces.confidence` | `confidence_DEPRECATED` | `photo_faces.insightface_confidence` |
 
-**Причина:** Все данные распознавания лиц хранятся в `photo_faces`. Таблица `face_descriptors` - историческое наследие, не обновляется.
+**Любая попытка использовать старые имена вызовет ошибку** — это защита от случайного использования.
 
 ---
 
@@ -23,14 +23,14 @@
 
 База данных поддерживает мультигородскую архитектуру с возможностью расширения на новые города и страны.
 
-\`\`\`
+```
 cities
   └── locations (площадки)
         └── galleries (галереи)
               └── gallery_images (фото)
                     └── photo_faces (лица на фото + эмбеддинги)
                           └── people (игроки)
-\`\`\`
+```
 
 ---
 
@@ -102,12 +102,12 @@ cities
 - `organizer_id` → `organizers.id`
 
 **Получение города галереи:**
-\`\`\`sql
+```sql
 SELECT c.* FROM galleries g
 JOIN locations l ON l.id = g.location_id
 JOIN cities c ON c.id = l.city_id
 WHERE g.id = 'gallery_uuid';
-\`\`\`
+```
 
 ---
 
@@ -154,12 +154,8 @@ WHERE g.id = 'gallery_uuid';
 | `verified_by` | text | YES | Кто верифицировал |
 | `training_used` | boolean | YES | Использовано в обучении |
 | `training_context` | jsonb | YES | Контекст обучения |
-
-**⚠️ LEGACY поля (НЕ ИСПОЛЬЗОВАТЬ):**
-| Поле | Заменено на |
-|------|-------------|
-| `bounding_box` | `insightface_bbox` |
-| `confidence` | `insightface_confidence` |
+| `bounding_box_DEPRECATED` | jsonb | YES | ⛔ НЕ ИСПОЛЬЗОВАТЬ → `insightface_bbox` |
+| `confidence_DEPRECATED` | double | YES | ⛔ НЕ ИСПОЛЬЗОВАТЬ → `insightface_confidence` |
 
 **Связи:**
 - `photo_id` → `gallery_images.id`
@@ -168,11 +164,11 @@ WHERE g.id = 'gallery_uuid';
 **Важно:**
 - `verified=true` означает ручное подтверждение, `recognition_confidence` должен быть 1.0
 - `recognition_confidence >= threshold` используется для отображения (не только verified)
-- **Эмбеддинги хранятся в `insightface_descriptor`** - это единственный источник!
+- **Эмбеддинги хранятся в `insightface_descriptor`** — это единственный источник!
 
 **Типичные запросы:**
 
-\`\`\`sql
+```sql
 -- Получить все эмбеддинги для индекса
 SELECT person_id, insightface_descriptor 
 FROM photo_faces 
@@ -184,13 +180,15 @@ WHERE verified = true
 SELECT COUNT(*) FROM photo_faces 
 WHERE person_id = 'xxx' 
   AND insightface_descriptor IS NOT NULL;
-\`\`\`
+```
 
 ---
 
-### ~~face_descriptors~~ ❌ DEPRECATED
+### face_descriptors_DEPRECATED ⛔ НЕ ИСПОЛЬЗОВАТЬ
 
-> **⛔ НЕ ИСПОЛЬЗОВАТЬ!** Это legacy таблица. Все данные в `photo_faces.insightface_descriptor`.
+> **Таблица переименована 14.12.2025. Будет удалена после 01.02.2025.**
+> 
+> Все данные в `photo_faces.insightface_descriptor`.
 
 | Поле | Тип | NULL | Описание |
 |------|-----|------|----------|
@@ -198,8 +196,6 @@ WHERE person_id = 'xxx'
 | `source_image_id` | uuid | NO | FK → photo_faces.id |
 | `person_id` | uuid | YES | FK → people.id |
 | `descriptor` | jsonb | NO | ~~512-мерный вектор~~ DEPRECATED |
-
-**⚠️ Рекомендуется переименовать в `face_descriptors_DEPRECATED`**
 
 ---
 
@@ -312,9 +308,9 @@ WHERE person_id = 'xxx'
 - `trg_photo_faces_update_cache` — обновляет кеш при назначении person_id
 
 **Цепочка определения города игрока:**
-\`\`\`
+```
 people → photo_faces → gallery_images → galleries → locations → cities
-\`\`\`
+```
 
 ---
 
@@ -323,14 +319,14 @@ people → photo_faces → gallery_images → galleries → locations → cities
 ### generate_unique_slug
 Генерирует уникальный URL-slug с автоматическим добавлением счётчика при дубликатах.
 
-\`\`\`sql
+```sql
 generate_unique_slug(
   base_text TEXT,           -- Исходный текст
   table_name TEXT,          -- Имя таблицы
   column_name TEXT,         -- Имя колонки (default: 'slug')
   exclude_id UUID           -- ID для исключения при обновлении
 ) RETURNS TEXT
-\`\`\`
+```
 
 **Логика:**
 1. Приводит к lowercase
@@ -343,7 +339,7 @@ generate_unique_slug(
 
 ## ER-диаграмма связей
 
-\`\`\`
+```
 ┌─────────────┐
 │   cities    │
 └──────┬──────┘
@@ -372,47 +368,47 @@ generate_unique_slug(
 ┌─────────────┐     ┌─────────────────┐                │
 │   people    │◄───►│person_city_cache│◄───────────────┘
 └─────────────┘     └─────────────────┘   (🔜 person_id)
-\`\`\`
+```
 
 ---
 
 ## Типичные запросы
 
 ### Получить всех игроков города
-\`\`\`sql
+```sql
 SELECT p.* FROM people p
 JOIN person_city_cache pcc ON pcc.person_id = p.id
 WHERE pcc.city_id = 'city_uuid'
 ORDER BY pcc.photos_count DESC;
-\`\`\`
+```
 
 ### Получить галереи города
-\`\`\`sql
+```sql
 SELECT g.* FROM galleries g
 JOIN locations l ON l.id = g.location_id
 WHERE l.city_id = 'city_uuid'
 ORDER BY g.shoot_date DESC;
-\`\`\`
+```
 
 ### Получить организаторов города
-\`\`\`sql
+```sql
 SELECT o.* FROM organizers o
 JOIN organizer_cities oc ON oc.organizer_id = o.id
 WHERE oc.city_id = 'city_uuid';
-\`\`\`
+```
 
 ### Найти галерею по slug
-\`\`\`sql
+```sql
 SELECT * FROM galleries WHERE slug = 'turnir-valencia-13-12';
-\`\`\`
+```
 
 ### Найти игрока по slug
-\`\`\`sql
+```sql
 SELECT * FROM people WHERE slug = 'ivan-petrov';
-\`\`\`
+```
 
 ### Пересчитать кеш person_city_cache
-\`\`\`sql
+```sql
 INSERT INTO person_city_cache (person_id, city_id, photos_count, first_photo_date, last_photo_date)
 SELECT 
   pf.person_id,
@@ -433,7 +429,7 @@ ON CONFLICT (person_id, city_id) DO UPDATE SET
   first_photo_date = EXCLUDED.first_photo_date,
   last_photo_date = EXCLUDED.last_photo_date,
   updated_at = NOW();
-\`\`\`
+```
 
 ---
 
@@ -451,53 +447,64 @@ ON CONFLICT (person_id, city_id) DO UPDATE SET
 4. Уникальные индексы
 
 ### 🔜 Связь организаторов/фотографов с игроками
-\`\`\`sql
+```sql
 ALTER TABLE organizers ADD COLUMN person_id UUID REFERENCES people(id);
 ALTER TABLE photographers ADD COLUMN person_id UUID REFERENCES people(id);
-\`\`\`
+```
 
-### 🔜 Удаление legacy таблицы face_descriptors
-\`\`\`sql
--- Рекомендуется сначала переименовать
-ALTER TABLE face_descriptors RENAME TO face_descriptors_DEPRECATED;
-
--- Через месяц, если всё работает - удалить
+### 🔜 Удаление DEPRECATED (после 01.02.2025)
+```sql
 DROP TABLE face_descriptors_DEPRECATED;
-\`\`\`
+ALTER TABLE photo_faces DROP COLUMN bounding_box_DEPRECATED;
+ALTER TABLE photo_faces DROP COLUMN confidence_DEPRECATED;
+```
 
 ---
 
 ## Миграции (выполненные)
 
+### 14.12.2025 — Переименование legacy в DEPRECATED ✅
+```sql
+-- Файл: migrations/20241214_rename_legacy_to_deprecated.sql
+ALTER TABLE face_descriptors RENAME TO face_descriptors_DEPRECATED;
+ALTER TABLE photo_faces RENAME COLUMN bounding_box TO bounding_box_DEPRECATED;
+ALTER TABLE photo_faces RENAME COLUMN confidence TO confidence_DEPRECATED;
+```
+
 ### Добавление нового города
-\`\`\`sql
+```sql
 INSERT INTO cities (name, slug, country) 
 VALUES ('Madrid', 'madrid', 'Spain');
-\`\`\`
+```
 
 ### Привязка площадки к городу
-\`\`\`sql
+```sql
 UPDATE locations 
 SET city_id = (SELECT id FROM cities WHERE slug = 'madrid')
 WHERE name = 'Club Padel Madrid';
-\`\`\`
+```
 
 ### Привязка организатора к нескольким городам
-\`\`\`sql
+```sql
 INSERT INTO organizer_cities (organizer_id, city_id)
 VALUES 
   ('org_uuid', (SELECT id FROM cities WHERE slug = 'valencia')),
   ('org_uuid', (SELECT id FROM cities WHERE slug = 'madrid'));
-\`\`\`
+```
 
 ---
 
 ## История изменений
 
+### v3.3 (14.12.2025) — Legacy renamed to DEPRECATED ✅
+- **ВЫПОЛНЕНО:** `face_descriptors` → `face_descriptors_DEPRECATED`
+- **ВЫПОЛНЕНО:** `photo_faces.bounding_box` → `bounding_box_DEPRECATED`
+- **ВЫПОЛНЕНО:** `photo_faces.confidence` → `confidence_DEPRECATED`
+- Код обновлён для совместимости с обоими именами
+
 ### v3.2 (14.12.2025) — Legacy cleanup
-- **КРИТИЧНО:** Добавлено предупреждение о legacy полях
+- Добавлено предупреждение о legacy полях
 - Документировано что `face_descriptors` - DEPRECATED
-- Документировано что `photo_faces.bounding_box` - DEPRECATED
 - Добавлены поля `width`, `height` в `gallery_images`
 - Добавлены поля профилей в `people`
 
