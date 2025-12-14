@@ -12,20 +12,40 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Unified API response format (matches backend ApiResponse)
+ */
+interface ApiResponseFormat<T = any> {
+  success: boolean
+  data?: T
+  error?: string
+  code?: string
+  meta?: Record<string, any>
+}
+
 interface ApiFetchOptions extends RequestInit {
   timeout?: number
   retries?: number
+  /**
+   * If true, throw ApiError on HTTP errors (legacy behavior).
+   * If false (default), return {success: false, error, code} for HTTP errors.
+   */
+  throwOnError?: boolean
 }
 
-export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<T> {
-  const { timeout = 30000, retries = 3, headers = {}, ...fetchOptions } = options
+export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<ApiResponseFormat<T>> {
+  const { timeout = 30000, retries = 3, throwOnError = false, headers = {}, ...fetchOptions } = options
 
   if (!env.FASTAPI_URL) {
-    throw new ApiError(
-      503,
-      "FASTAPI_URL_MISSING",
-      "FASTAPI_URL environment variable is not set. Please configure it in Vercel dashboard.",
-    )
+    const errorResponse: ApiResponseFormat<T> = {
+      success: false,
+      error: "FASTAPI_URL environment variable is not set. Please configure it in Vercel dashboard.",
+      code: "FASTAPI_URL_MISSING",
+    }
+    if (throwOnError) {
+      throw new ApiError(503, errorResponse.code, errorResponse.error)
+    }
+    return errorResponse
   }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`
@@ -33,7 +53,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
   const requestId = randomUUID()
 
-  const fetchWithTimeout = async (attemptNumber: number): Promise<T> => {
+  const fetchWithTimeout = async (attemptNumber: number): Promise<ApiResponseFormat<T>> => {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
 
@@ -55,37 +75,20 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
       clearTimeout(timeoutId)
 
-      if (!response.ok) {
-        const contentType = response.headers.get("content-type")
-        let errorMessage = `HTTP ${response.status}`
-        let errorCode: string | undefined
+      // Try to parse JSON response body (backend always returns JSON)
+      const contentType = response.headers.get("content-type")
+      let responseBody: any = null
 
-        if (contentType?.includes("application/json")) {
-          try {
-            const errorData = await response.json()
-
-            // Handle FastAPI validation errors (detail is array of error objects)
-            if (Array.isArray(errorData.detail)) {
-              const validationErrors = errorData.detail
-                .map((err: any) => {
-                  const field = Array.isArray(err.loc) ? err.loc.join(".") : "unknown"
-                  return `${field}: ${err.msg || err.message || "validation error"}`
-                })
-                .join("; ")
-              errorMessage = validationErrors || errorMessage
-            } else {
-              errorMessage = errorData.message || errorData.detail || errorMessage
-            }
-
-            errorCode = errorData.code
-          } catch {
-            errorMessage = response.statusText || errorMessage
-          }
-        } else {
-          const text = await response.text()
-          errorMessage = text || response.statusText || errorMessage
+      if (contentType?.includes("application/json")) {
+        try {
+          responseBody = await response.json()
+        } catch {
+          responseBody = null
         }
+      }
 
+      if (!response.ok) {
+        // Check if we should retry (5xx errors)
         const shouldRetry = (response.status >= 500 || response.status === 503) && attemptNumber < retries
 
         if (shouldRetry) {
@@ -97,17 +100,63 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
           return fetchWithTimeout(attemptNumber + 1)
         }
 
-        throw new ApiError(response.status, errorCode, errorMessage)
+        // Backend returns {success: false, error: "...", code: "..."} format
+        // Use it directly if available
+        if (responseBody && typeof responseBody === "object" && "success" in responseBody) {
+          console.log(`[apiClient] Request ${requestId} failed with ${response.status}:`, responseBody)
+          if (throwOnError) {
+            throw new ApiError(response.status, responseBody.code, responseBody.error)
+          }
+          return responseBody as ApiResponseFormat<T>
+        }
+
+        // Fallback: construct error response from HTTP status
+        let errorMessage = `HTTP ${response.status}`
+        let errorCode: string | undefined
+
+        if (responseBody) {
+          // Handle FastAPI validation errors (detail is array of error objects)
+          if (Array.isArray(responseBody.detail)) {
+            const validationErrors = responseBody.detail
+              .map((err: any) => {
+                const field = Array.isArray(err.loc) ? err.loc.join(".") : "unknown"
+                return `${field}: ${err.msg || err.message || "validation error"}`
+              })
+              .join("; ")
+            errorMessage = validationErrors || errorMessage
+            errorCode = "VALIDATION_ERROR"
+          } else {
+            errorMessage = responseBody.message || responseBody.detail || errorMessage
+            errorCode = responseBody.code
+          }
+        } else {
+          errorMessage = response.statusText || errorMessage
+        }
+
+        const errorResponse: ApiResponseFormat<T> = {
+          success: false,
+          error: errorMessage,
+          code: errorCode || `HTTP_${response.status}`,
+        }
+
+        console.log(`[apiClient] Request ${requestId} failed with ${response.status}:`, errorResponse)
+
+        if (throwOnError) {
+          throw new ApiError(response.status, errorResponse.code, errorResponse.error)
+        }
+
+        return errorResponse
       }
 
-      const contentType = response.headers.get("content-type")
-      if (contentType?.includes("application/json")) {
-        const data = await response.json()
-        console.log(`[apiClient] Request ${requestId} succeeded - Response:`, JSON.stringify(data, null, 2))
-        return data
+      // Success response
+      if (responseBody) {
+        console.log(`[apiClient] Request ${requestId} succeeded - Response:`, JSON.stringify(responseBody, null, 2))
+        return responseBody
       }
 
-      return (await response.text()) as any
+      // Non-JSON success response (rare)
+      const textBody = await response.text()
+      return { success: true, data: textBody as any }
     } catch (error) {
       clearTimeout(timeoutId)
 
@@ -118,14 +167,36 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
           await new Promise((resolve) => setTimeout(resolve, backoffDelay))
           return fetchWithTimeout(attemptNumber + 1)
         }
-        throw new ApiError(408, "TIMEOUT", `Request timed out after ${timeout}ms (${retries} attempts)`)
+
+        const errorResponse: ApiResponseFormat<T> = {
+          success: false,
+          error: `Request timed out after ${timeout}ms (${retries} attempts)`,
+          code: "TIMEOUT",
+        }
+
+        if (throwOnError) {
+          throw new ApiError(408, errorResponse.code, errorResponse.error)
+        }
+
+        return errorResponse
       }
 
       if (error instanceof ApiError) {
         throw error
       }
 
-      throw new ApiError(500, "FETCH_ERROR", error instanceof Error ? error.message : "Unknown error")
+      // Network or other error
+      const errorResponse: ApiResponseFormat<T> = {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        code: "FETCH_ERROR",
+      }
+
+      if (throwOnError) {
+        throw new ApiError(500, errorResponse.code, errorResponse.error)
+      }
+
+      return errorResponse
     }
   }
 
