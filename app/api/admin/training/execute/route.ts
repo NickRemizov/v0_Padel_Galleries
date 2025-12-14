@@ -12,13 +12,23 @@ export async function POST(request: NextRequest) {
     console.log("[v0] Starting training")
     console.log("[v0] Request body:", JSON.stringify(body))
 
-    const data = await apiFetch("/api/v2/train/execute", {
+    const response = await apiFetch("/api/v2/train/execute", {
       method: "POST",
       body: JSON.stringify(body),
     })
 
-    console.log("[v0] Successfully started training, session_id:", data.session_id)
-    return NextResponse.json(data)
+    // apiFetch returns {success, data, error, code, meta}
+    if (response.success && response.data) {
+      console.log("[v0] Successfully started training, session_id:", response.data.session_id)
+      return NextResponse.json(response.data)
+    }
+
+    // Backend returned error
+    console.error("[v0] Backend returned error:", response.error)
+    return NextResponse.json(
+      { error: response.error || "Failed to execute training" },
+      { status: 500 },
+    )
   } catch (error) {
     console.error("[v0] Error executing training:", error)
 
