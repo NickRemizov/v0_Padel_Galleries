@@ -1,7 +1,7 @@
 # Схема базы данных Padel Galleries
 
 **Дата обновления:** 14.12.2025  
-**Версия:** 3.3 (Legacy renamed to DEPRECATED)
+**Версия:** 3.4 (Gmail и Telegram поля)
 
 ---
 
@@ -207,21 +207,28 @@ WHERE person_id = 'xxx'
 | `id` | uuid | NO | Первичный ключ |
 | `real_name` | text | NO | Имя игрока |
 | `slug` | varchar(255) | YES | URL-slug (🔜 планируется NOT NULL) |
-| `telegram_nickname` | text | YES | Telegram username (без @) |
-| `telegram_name` | text | YES | Имя в Telegram |
-| `telegram_profile_url` | text | YES | URL Telegram профиля |
+| `gmail` | text | YES | **Gmail для OAuth авторизации** (формат: user@gmail.com) |
+| `telegram_name` | text | YES | Имя в Telegram (отображаемое) |
+| `telegram_nickname` | text | YES | **Ник в Telegram** (формат: @username), используется для ссылок |
+| `telegram_profile_url` | text | YES | **URL профиля Telegram** (формат: tg://user?id=...), заполняется ботом автоматически |
 | `facebook_profile_url` | text | YES | URL Facebook профиля |
 | `instagram_profile_url` | text | YES | URL Instagram профиля |
 | `avatar_url` | text | YES | URL аватара |
-| `paddle_ranking` | int | YES | Рейтинг |
+| `paddle_ranking` | numeric | YES | Уровень в падел (0-10, шаг 0.25) |
 | `show_in_players_gallery` | boolean | YES | Показывать в галерее игроков |
 | `show_photos_in_galleries` | boolean | YES | Показывать фото в галереях |
+
+**Telegram поля:**
+- `telegram_name` — отображаемое имя (например "Иван Петров"), не трогаем
+- `telegram_nickname` — ник для ссылок (@username → https://t.me/username)
+- `telegram_profile_url` — заполняется **автоматически ботом** после авторизации игрока (формат: `tg://user?id=123456`), disabled в UI
 
 **Примечание:** Город игрока определяется через `person_city_cache`.
 
 **Индексы:**
 - PRIMARY KEY (id)
 - UNIQUE INDEX idx_people_slug (slug) WHERE slug IS NOT NULL
+- INDEX idx_people_gmail (gmail) WHERE gmail IS NOT NULL
 
 ---
 
@@ -407,6 +414,11 @@ SELECT * FROM galleries WHERE slug = 'turnir-valencia-13-12';
 SELECT * FROM people WHERE slug = 'ivan-petrov';
 ```
 
+### Найти игрока по Gmail (для OAuth)
+```sql
+SELECT * FROM people WHERE gmail = 'user@gmail.com';
+```
+
 ### Пересчитать кеш person_city_cache
 ```sql
 INSERT INTO person_city_cache (person_id, city_id, photos_count, first_photo_date, last_photo_date)
@@ -463,6 +475,15 @@ ALTER TABLE photo_faces DROP COLUMN confidence_DEPRECATED;
 
 ## Миграции (выполненные)
 
+### 14.12.2025 — Gmail и Telegram поля ✅
+```sql
+-- Файл: migrations/20241214_people_gmail_telegram.sql
+ALTER TABLE people ADD COLUMN gmail TEXT;
+CREATE INDEX idx_people_gmail ON people(gmail) WHERE gmail IS NOT NULL;
+-- Миграция telegram_profile_url → telegram_nickname
+-- telegram_profile_url очищено (будет заполняться ботом)
+```
+
 ### 14.12.2025 — Переименование legacy в DEPRECATED ✅
 ```sql
 -- Файл: migrations/20241214_rename_legacy_to_deprecated.sql
@@ -495,6 +516,16 @@ VALUES
 ---
 
 ## История изменений
+
+### v3.4 (14.12.2025) — Gmail и Telegram поля ✅
+- **ДОБАВЛЕНО:** `people.gmail` для OAuth авторизации
+- **ОБНОВЛЕНО:** `people.paddle_ranking` теперь numeric (шаг 0.25)
+- **ОБНОВЛЕНО:** Telegram поля документированы:
+  - `telegram_name` — отображаемое имя (не трогаем)
+  - `telegram_nickname` — ник @username для ссылок
+  - `telegram_profile_url` — заполняется ботом (tg://user?id=...)
+- **ДОБАВЛЕНО:** Индекс `idx_people_gmail`
+- UI: "Рейтинг" → "Уровень в падел"
 
 ### v3.3 (14.12.2025) — Legacy renamed to DEPRECATED ✅
 - **ВЫПОЛНЕНО:** `face_descriptors` → `face_descriptors_DEPRECATED`
