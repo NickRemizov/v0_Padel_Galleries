@@ -205,10 +205,12 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
         // Для режима "unrecognized" всегда делаем re-detect (forceRedetect = true)
         const forceRedetect = mode === "unrecognized"
         
+        // FIX: Pass qualityParams as 4th argument
         const result = await processPhotoAction(
           item.image.id,
           forceRedetect,
-          applyQualityFilters
+          applyQualityFilters,
+          qualityParams
         )
 
         if (result.success) {
