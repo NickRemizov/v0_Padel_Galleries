@@ -8,11 +8,13 @@ import { SyncVerifiedButton } from "@/components/admin/sync-verified-button"
 import { DebugPersonPhotos } from "@/components/admin/debug-person-photos"
 import { DatabaseIntegrityChecker } from "@/components/admin/database-integrity-checker"
 import { RegenerateDescriptorsDialog } from "@/components/admin/regenerate-descriptors-dialog"
+import { DuplicatePeopleDialog } from "@/components/admin/duplicate-people-dialog"
 import { Button } from "@/components/ui/button"
-import { Database, Bug, Wrench, Shield, RefreshCw } from "lucide-react"
+import { Database, Bug, Wrench, Shield, RefreshCw, Users } from "lucide-react"
 
 export function ServiceManager() {
   const [showRegenerateDescriptors, setShowRegenerateDescriptors] = useState(false)
+  const [showDuplicatePeople, setShowDuplicatePeople] = useState(false)
 
   const handleComingSoon = (feature: string) => {
     alert(`${feature} - в разработке`)
@@ -92,6 +94,33 @@ export function ServiceManager() {
         </CardContent>
       </Card>
 
+      {/* Информация об игроках */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            <CardTitle>Информация об игроках (People)</CardTitle>
+          </div>
+          <CardDescription>Управление данными игроков и поиск дубликатов</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Поиск дубликатов игроков</div>
+                <div className="text-sm text-muted-foreground">
+                  Найти игроков с совпадающими контактными данными (Gmail, Telegram, Facebook, Instagram) и объединить или удалить
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowDuplicatePeople(true)}>
+                <Users className="mr-2 h-4 w-4" />
+                Найти дубликаты
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Отладка */}
       <Card>
         <CardHeader>
@@ -165,6 +194,11 @@ export function ServiceManager() {
       {/* Regenerate Descriptors Dialog */}
       {showRegenerateDescriptors && (
         <RegenerateDescriptorsDialog open={showRegenerateDescriptors} onOpenChange={setShowRegenerateDescriptors} />
+      )}
+
+      {/* Duplicate People Dialog */}
+      {showDuplicatePeople && (
+        <DuplicatePeopleDialog open={showDuplicatePeople} onOpenChange={setShowDuplicatePeople} />
       )}
     </div>
   )
