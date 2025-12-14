@@ -15,18 +15,30 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Plus } from "lucide-react"
 import { addPhotographerAction } from "@/app/admin/actions"
+import { toast } from "sonner"
 
 export function AddPhotographerDialog() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [name, setName] = useState("")
 
-  async function handleSubmit(formData: FormData) {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) {
+      toast.error("Введите имя фотографа")
+      return
+    }
+    
     setLoading(true)
-    const result = await addPhotographerAction(formData)
+    const result = await addPhotographerAction(name.trim())
     setLoading(false)
 
     if (result.success) {
+      toast.success("Фотограф добавлен")
+      setName("")
       setOpen(false)
+    } else {
+      toast.error(result.error || "Ошибка добавления")
     }
   }
 
@@ -39,7 +51,7 @@ export function AddPhotographerDialog() {
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
-        <form action={handleSubmit}>
+        <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Добавить фотографа</DialogTitle>
             <DialogDescription>Введите имя фотографа</DialogDescription>
@@ -48,7 +60,12 @@ export function AddPhotographerDialog() {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Имя</Label>
-              <Input id="name" name="name" required />
+              <Input 
+                id="name" 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required 
+              />
             </div>
           </div>
 
