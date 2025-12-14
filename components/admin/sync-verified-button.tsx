@@ -12,6 +12,14 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Loader2, RefreshCw, CheckCircle2, XCircle } from "lucide-react"
+import { ScrollArea } from "@/components/ui/scroll-area"
+
+interface FixedRecord {
+  id: string
+  gallery_title: string
+  filename: string
+  person_name?: string
+}
 
 interface SyncResult {
   success: boolean
@@ -20,7 +28,9 @@ interface SyncResult {
     updatedVerified: number
     updatedConfidence: number
     updatedProcessed: number
-    processedFixedList: Array<{ id: string; gallery_title: string; filename: string }>
+    verifiedFixedList: FixedRecord[]
+    confidenceFixedList: FixedRecord[]
+    processedFixedList: FixedRecord[]
     totalVerified: number
     totalConfidence1: number
     totalProcessed: number
@@ -53,6 +63,39 @@ export function SyncVerifiedButton() {
     }
   }
 
+  const renderFixedList = (
+    title: string,
+    count: number,
+    list: FixedRecord[],
+    colorClass: string
+  ) => {
+    if (count === 0) return null
+
+    return (
+      <div className={`rounded-lg border ${colorClass} p-4`}>
+        <h4 className="font-medium mb-2">
+          {title} ({count}):
+        </h4>
+        <ScrollArea className="max-h-32">
+          <div className="space-y-1 text-sm">
+            {list.map((item, i) => (
+              <div key={item.id} className="text-amber-700">
+                <span className="font-medium">{item.gallery_title}</span>
+                <span className="text-amber-600 ml-1">/ {item.filename}</span>
+                {item.person_name && (
+                  <span className="text-amber-500 ml-1">({item.person_name})</span>
+                )}
+              </div>
+            ))}
+            {count > 100 && (
+              <div className="text-amber-600 italic">...и ещё {count - 100}</div>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+    )
+  }
+
   return (
     <>
       <Button onClick={handleSync} disabled={isLoading} variant="outline" size="sm">
@@ -70,7 +113,7 @@ export function SyncVerifiedButton() {
       </Button>
 
       <Dialog open={showResult} onOpenChange={setShowResult}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[550px] max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {result?.success ? (
@@ -84,76 +127,81 @@ export function SyncVerifiedButton() {
           </DialogHeader>
 
           {result?.success && result.data ? (
-            <div className="space-y-4">
-              <div className="rounded-lg border p-4">
-                <h4 className="font-medium mb-3">Обновлено записей:</h4>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div className="rounded bg-muted p-3">
-                    <div className="text-2xl font-bold text-center">{result.data.updatedVerified}</div>
-                    <div className="text-xs text-muted-foreground text-center">verified → confidence=1</div>
-                  </div>
-                  <div className="rounded bg-muted p-3">
-                    <div className="text-2xl font-bold text-center">{result.data.updatedConfidence}</div>
-                    <div className="text-xs text-muted-foreground text-center">confidence=1 → verified</div>
-                  </div>
-                  <div className="rounded bg-muted p-3">
-                    <div className="text-2xl font-bold text-center">{result.data.updatedProcessed}</div>
-                    <div className="text-xs text-muted-foreground text-center">has_been_processed</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-                <h4 className="font-medium text-green-800 mb-2">Итого в базе:</h4>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <span className="text-green-700">Verified:</span>
-                    <span className="ml-2 font-bold text-green-800">{result.data.totalVerified.toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-green-700">Confidence=1:</span>
-                    <span className="ml-2 font-bold text-green-800">
-                      {result.data.totalConfidence1.toLocaleString()}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-green-700">Processed:</span>
-                    <span className="ml-2 font-bold text-green-800">
-                      {result.data.totalProcessed.toLocaleString()}/{result.data.totalImages.toLocaleString()}
-                    </span>
+            <ScrollArea className="max-h-[70vh]">
+              <div className="space-y-4 pr-4">
+                <div className="rounded-lg border p-4">
+                  <h4 className="font-medium mb-3">Обновлено записей:</h4>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div className="rounded bg-muted p-3">
+                      <div className="text-2xl font-bold text-center">{result.data.updatedVerified}</div>
+                      <div className="text-xs text-muted-foreground text-center">verified → confidence=1</div>
+                    </div>
+                    <div className="rounded bg-muted p-3">
+                      <div className="text-2xl font-bold text-center">{result.data.updatedConfidence}</div>
+                      <div className="text-xs text-muted-foreground text-center">confidence=1 → verified</div>
+                    </div>
+                    <div className="rounded bg-muted p-3">
+                      <div className="text-2xl font-bold text-center">{result.data.updatedProcessed}</div>
+                      <div className="text-xs text-muted-foreground text-center">has_been_processed</div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {result.data.updatedProcessed > 0 && result.data.processedFixedList.length > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                  <h4 className="font-medium text-amber-800 mb-2">
-                    Исправлено has_been_processed ({result.data.updatedProcessed}):
-                  </h4>
-                  <div className="max-h-40 overflow-y-auto space-y-1 text-sm">
-                    {result.data.processedFixedList.map((item, i) => (
-                      <div key={item.id} className="text-amber-700">
-                        <span className="font-medium">{item.gallery_title}</span>
-                        <span className="text-amber-600 ml-1">/ {item.filename}</span>
-                      </div>
-                    ))}
-                    {result.data.updatedProcessed > 100 && (
-                      <div className="text-amber-600 italic">...и ещё {result.data.updatedProcessed - 100}</div>
-                    )}
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                  <h4 className="font-medium text-green-800 mb-2">Итого в базе:</h4>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-green-700">Verified:</span>
+                      <span className="ml-2 font-bold text-green-800">{result.data.totalVerified.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-green-700">Confidence=1:</span>
+                      <span className="ml-2 font-bold text-green-800">
+                        {result.data.totalConfidence1.toLocaleString()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-green-700">Processed:</span>
+                      <span className="ml-2 font-bold text-green-800">
+                        {result.data.totalProcessed.toLocaleString()}/{result.data.totalImages.toLocaleString()}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              {result.data.updatedVerified === 0 &&
-                result.data.updatedConfidence === 0 &&
-                result.data.updatedProcessed === 0 && (
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
-                    <CheckCircle2 className="mx-auto h-8 w-8 text-blue-600 mb-2" />
-                    <p className="font-medium text-blue-800">Всё синхронизировано!</p>
-                    <p className="text-sm text-blue-600">Все данные согласованы</p>
-                  </div>
+                {/* Детальные списки исправлений */}
+                {renderFixedList(
+                  "Исправлено verified → confidence=1",
+                  result.data.updatedVerified,
+                  result.data.verifiedFixedList || [],
+                  "border-blue-200 bg-blue-50"
                 )}
-            </div>
+
+                {renderFixedList(
+                  "Исправлено confidence=1 → verified",
+                  result.data.updatedConfidence,
+                  result.data.confidenceFixedList || [],
+                  "border-purple-200 bg-purple-50"
+                )}
+
+                {renderFixedList(
+                  "Исправлено has_been_processed",
+                  result.data.updatedProcessed,
+                  result.data.processedFixedList || [],
+                  "border-amber-200 bg-amber-50"
+                )}
+
+                {result.data.updatedVerified === 0 &&
+                  result.data.updatedConfidence === 0 &&
+                  result.data.updatedProcessed === 0 && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
+                      <CheckCircle2 className="mx-auto h-8 w-8 text-blue-600 mb-2" />
+                      <p className="font-medium text-blue-800">Всё синхронизировано!</p>
+                      <p className="text-sm text-blue-600">Все данные согласованы</p>
+                    </div>
+                  )}
+              </div>
+            </ScrollArea>
           ) : (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4">
               <p className="text-red-800">{result?.error || "Неизвестная ошибка"}</p>
