@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache"
  * Database Integrity Checker
  * Исправлены имена полей + orphanedLinks + actions для карточек
  * + пагинация для всех запросов к photo_faces
+ * + правильная проверка дубликатов по 5 полям
  */
 
 export interface IntegrityReport {
@@ -32,12 +33,23 @@ export interface IntegrityReport {
   people: {
     withoutDescriptors: number
     withoutFaces: number
-    duplicateNames: number
+    duplicatePeople: number // Renamed from duplicateNames - now checks 5 fields
   }
   totalIssues: number
   checksPerformed: number
   details: Record<string, any[]>
 }
+
+/**
+ * Поля для проверки дубликатов игроков
+ */
+const DUPLICATE_CHECK_FIELDS = [
+  "gmail",
+  "telegram_nickname", 
+  "telegram_profile_url",
+  "facebook_profile_url",
+  "instagram_profile_url",
+] as const
 
 /**
  * Получить порог confidence из настроек
@@ -147,7 +159,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     const people = {
       withoutDescriptors: 0,
       withoutFaces: 0,
-      duplicateNames: 0,
+      duplicatePeople: 0,
     }
     let totalIssues = 0
     const details: any = {}
@@ -334,9 +346,12 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     // ========== PEOPLE CHECKS ==========
 
     // 8. People без descriptors (С ПАГИНАЦИЕЙ для facesWithDescriptors)
-    const { data: allPeople } = await supabase.from("people").select("id, real_name, telegram_username")
+    const { data: allPeopleData } = await supabase
+      .from("people")
+      .select("id, real_name, telegram_nickname, telegram_profile_url, facebook_profile_url, instagram_profile_url, gmail, avatar_url, created_at")
+      .order("created_at", { ascending: true })
 
-    if (allPeople) {
+    if (allPeopleData) {
       const facesWithDescriptors = await loadAllPhotoFaces<{ person_id: string }>(
         supabase,
         "person_id",
@@ -345,7 +360,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       console.log(`[v0] Faces with descriptors loaded: ${facesWithDescriptors.length}`)
 
       const peopleWithDescriptorIds = new Set(facesWithDescriptors.map((f) => f.person_id))
-      const peopleWithoutDescriptors = allPeople.filter((p) => !peopleWithDescriptorIds.has(p.id))
+      const peopleWithoutDescriptors = allPeopleData.filter((p) => !peopleWithDescriptorIds.has(p.id))
 
       people.withoutDescriptors = peopleWithoutDescriptors.length
       console.log("[v0] peopleWithoutDescriptors count:", people.withoutDescriptors)
@@ -355,9 +370,9 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     }
 
     // 9. People без faces (используем уже загруженные данные)
-    if (allPeople && allPhotoFacesWithPerson.length > 0) {
+    if (allPeopleData && allPhotoFacesWithPerson.length > 0) {
       const peopleWithFaces = new Set(allPhotoFacesWithPerson.map((pf) => pf.person_id))
-      const peopleWithoutFaces = allPeople.filter((p) => !peopleWithFaces.has(p.id))
+      const peopleWithoutFaces = allPeopleData.filter((p) => !peopleWithFaces.has(p.id))
 
       people.withoutFaces = peopleWithoutFaces.length
       console.log("[v0] peopleWithoutFaces count:", people.withoutFaces)
@@ -366,31 +381,60 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
     }
 
-    // 10. Duplicate names
-    if (allPeople) {
-      const nameGroups = new Map<string, any[]>()
-      for (const person of allPeople) {
-        if (!person.real_name) continue
-        const key = `${person.real_name.toLowerCase()}_${person.telegram_username || "notelegram"}`
-        if (!nameGroups.has(key)) {
-          nameGroups.set(key, [])
+    // 10. Duplicate people - проверка по 5 полям (gmail, telegram_nickname, telegram_profile_url, facebook_profile_url, instagram_profile_url)
+    if (allPeopleData) {
+      const duplicateGroups: Array<{ matchField: string; matchValue: string; people: any[] }> = []
+      const processedPeopleIds = new Set<string>()
+
+      // Подсчитываем фото для каждого человека
+      const photoCountMap = new Map<string, number>()
+      allPhotoFacesWithPerson?.forEach((pf: any) => {
+        photoCountMap.set(pf.person_id, (photoCountMap.get(pf.person_id) || 0) + 1)
+      })
+
+      for (const field of DUPLICATE_CHECK_FIELDS) {
+        // Группируем по значению поля
+        const valueGroups = new Map<string, any[]>()
+
+        for (const person of allPeopleData) {
+          const value = person[field as keyof typeof person]
+          if (!value || typeof value !== "string" || value.trim() === "") continue
+
+          const normalizedValue = value.trim().toLowerCase()
+          if (!valueGroups.has(normalizedValue)) {
+            valueGroups.set(normalizedValue, [])
+          }
+          valueGroups.get(normalizedValue)!.push(person)
         }
-        nameGroups.get(key)!.push(person)
+
+        // Находим группы с 2+ людьми
+        for (const [value, peopleInGroup] of valueGroups) {
+          if (peopleInGroup.length < 2) continue
+
+          // Проверяем, не были ли эти люди уже добавлены в другую группу
+          const newPeople = peopleInGroup.filter(p => !processedPeopleIds.has(p.id))
+          if (newPeople.length < 2) continue
+
+          // Добавляем группу дубликатов
+          duplicateGroups.push({
+            matchField: field,
+            matchValue: value,
+            people: peopleInGroup.map(p => ({
+              ...p,
+              photo_count: photoCountMap.get(p.id) || 0,
+            })),
+          })
+
+          // Помечаем людей как обработанных
+          peopleInGroup.forEach(p => processedPeopleIds.add(p.id))
+        }
       }
 
-      const duplicateNames = Array.from(nameGroups.entries()).filter(([_, people]) => people.length > 1)
+      people.duplicatePeople = duplicateGroups.length
+      console.log("[v0] duplicatePeople groups:", people.duplicatePeople)
 
-      people.duplicateNames = duplicateNames.length
-      console.log("[v0] duplicateNames groups:", people.duplicateNames)
-
-      if (duplicateNames.length > 0) {
-        details.duplicateNames = duplicateNames.slice(0, 10).flatMap(([key, people]) =>
-          people.map((p: any) => ({
-            ...p,
-            duplicate_key: key,
-            duplicate_count: people.length,
-          }))
-        )
+      if (duplicateGroups.length > 0) {
+        details.duplicatePeople = duplicateGroups
       }
     }
 
@@ -404,12 +448,15 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces.nonExistentPhoto +
       photoFaces.orphanedLinks
 
+    // Дубликаты игроков тоже считаем как проблемы
+    totalIssues += people.duplicatePeople
+
     const report: IntegrityReport = {
       stats,
       photoFaces,
       people,
       totalIssues,
-      checksPerformed: 9,
+      checksPerformed: 10,
       details,
     }
 
@@ -611,6 +658,17 @@ export async function fixIntegrityIssuesAction(
             fixed: 0,
             issueType,
             message: "Используйте 'Лица с несуществующим фото' для удаления этих записей",
+          },
+        }
+      }
+
+      case "duplicatePeople": {
+        return {
+          success: true,
+          data: {
+            fixed: 0,
+            issueType,
+            message: "Используйте диалог 'Просмотреть дубликаты' для ручного объединения или удаления",
           },
         }
       }
