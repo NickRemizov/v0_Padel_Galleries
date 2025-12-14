@@ -96,6 +96,61 @@ async def get_gallery(gallery_id: str):
         raise DatabaseError(str(e), operation="get_gallery")
 
 
+@router.get("/{gallery_id}/stats")
+async def get_gallery_stats(gallery_id: str):
+    """Get face recognition stats for a gallery."""
+    try:
+        # Get all images in gallery
+        images_result = supabase_db_instance.client.table("gallery_images").select(
+            "id", count="exact"
+        ).eq("gallery_id", gallery_id).execute()
+        
+        total_count = images_result.count or 0
+        
+        if total_count == 0:
+            return ApiResponse.ok({
+                "totalCount": 0,
+                "verifiedCount": 0,
+                "isFullyVerified": False
+            })
+        
+        # Get image IDs
+        images_data = supabase_db_instance.client.table("gallery_images").select(
+            "id"
+        ).eq("gallery_id", gallery_id).execute()
+        
+        image_ids = [img["id"] for img in (images_data.data or [])]
+        
+        if not image_ids:
+            return ApiResponse.ok({
+                "totalCount": 0,
+                "verifiedCount": 0,
+                "isFullyVerified": False
+            })
+        
+        # Count images that have at least one verified face
+        # An image is "verified" if it has at least one verified face OR has been manually marked as having no faces
+        verified_faces_result = supabase_db_instance.client.table("photo_faces").select(
+            "photo_id"
+        ).in_("photo_id", image_ids).eq("verified", True).execute()
+        
+        # Get unique photo_ids with verified faces
+        verified_photo_ids = set(face["photo_id"] for face in (verified_faces_result.data or []))
+        verified_count = len(verified_photo_ids)
+        
+        is_fully_verified = verified_count == total_count and total_count > 0
+        
+        return ApiResponse.ok({
+            "totalCount": total_count,
+            "verifiedCount": verified_count,
+            "isFullyVerified": is_fully_verified
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting gallery stats {gallery_id}: {e}")
+        raise DatabaseError(str(e), operation="get_gallery_stats")
+
+
 @router.post("")
 async def create_gallery(data: GalleryCreate):
     """Create a new gallery."""
