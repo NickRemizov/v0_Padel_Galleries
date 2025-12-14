@@ -14,6 +14,7 @@
 | 5 | ~~Контракт ошибок: унификация~~ | 🟢 Низкий | ✅ DONE |
 | 6 | [Репозиторий БД: объединить SupabaseClient и SupabaseDatabase](#6-репозиторий-бд-объединить-supabaseclient-и-supabasedatabase) | 🟡 Средний | ⏳ TODO |
 | 7 | ~~Frontend: apiFetch кидал исключения вместо {success: false}~~ | 🔴 Высокий | ✅ DONE |
+| 8 | [Прямое использование Supabase на фронтенде](#8-прямое-использование-supabase-на-фронтенде) | 🔴 Высокий | ⏳ TODO |
 
 ---
 
@@ -434,6 +435,133 @@ if (!response.ok) {
 
 ---
 
+## 8. Прямое использование Supabase на фронтенде
+
+> ⚠️ **КРИТИЧЕСКАЯ АРХИТЕКТУРНАЯ ПРОБЛЕМА**
+> Нарушение требования "всё через бэкенд"
+
+**Проблема:**
+Frontend напрямую обращается к Supabase, минуя FastAPI бэкенд. Это нарушает централизацию операций с БД.
+
+### Масштаб проблемы
+
+**1. Публичные страницы (Server Components):**
+| Файл | Операции |
+|------|----------|
+| `app/page.tsx` | SELECT galleries, gallery_images (count) |
+| `app/gallery/[id]/page.tsx` | SELECT galleries, gallery_images, photo_faces |
+| `app/players/page.tsx` | SELECT people |
+| `app/players/[id]/page.tsx` | SELECT people, photo_faces, gallery_images |
+| `app/favorites/page.tsx` | SELECT favorites, gallery_images |
+
+**2. Next.js API Routes:**
+| Файл | Операции |
+|------|----------|
+| `app/api/comments/[imageId]/route.ts` | SELECT/INSERT/DELETE comments |
+| `app/api/likes/[imageId]/route.ts` | SELECT/INSERT/DELETE likes |
+| `app/api/favorites/*/route.ts` | SELECT/INSERT/DELETE favorites |
+| `app/api/auth/telegram/route.ts` | SELECT/UPSERT users |
+| `app/api/downloads/route.ts` | SELECT gallery_images |
+| `app/api/images/*/route.ts` | SELECT/UPDATE gallery_images |
+
+**3. Admin Server Actions:**
+| Файл | Размер | Операции |
+|------|--------|----------|
+| `app/admin/actions/cleanup.ts` | 12KB | Сложные UPDATE/DELETE photo_faces, gallery_images |
+| `app/admin/actions/debug.ts` | 10KB | SELECT для диагностики |
+| `app/admin/actions/integrity.ts` | 28KB | Массовые проверки/исправления БД |
+| `app/admin/actions/auth.ts` | 2KB | SELECT admins |
+
+### Почему это плохо
+
+1. **Два источника правды** — логика работы с БД размазана между Python и TypeScript
+2. **Нет единой точки контроля** — нельзя добавить валидацию/авторизацию в одном месте
+3. **Дублирование запросов** — одни и те же SELECT в разных местах
+4. **Несогласованность** — разные форматы ответов, разная обработка ошибок
+5. **Сложность тестирования** — нужно мокать Supabase в двух местах
+
+### Решение
+
+**Поэтапная миграция:**
+
+**Этап 1: Создать эндпоинты на бэкенде (Python)**
+```python
+# python/routers/public.py - публичные эндпоинты без авторизации
+@router.get("/galleries")
+async def get_public_galleries(): ...
+
+@router.get("/galleries/{id}")
+async def get_public_gallery(id: str): ...
+
+@router.get("/players")
+async def get_public_players(): ...
+
+# python/routers/social.py - комментарии, лайки, избранное
+@router.get("/images/{id}/comments")
+async def get_comments(id: str): ...
+
+@router.post("/images/{id}/comments")
+async def add_comment(id: str, data: CommentCreate): ...
+```
+
+**Этап 2: Создать клиент на фронтенде**
+```typescript
+// lib/api/public.ts
+export async function getGalleries() {
+  return apiFetch('/api/public/galleries')
+}
+
+export async function getGallery(id: string) {
+  return apiFetch(`/api/public/galleries/${id}`)
+}
+```
+
+**Этап 3: Заменить прямые вызовы Supabase**
+```typescript
+// БЫЛО (app/page.tsx):
+const supabase = await createClient()
+const { data: galleries } = await supabase.from("galleries").select("*")
+
+// СТАЛО:
+const { data: galleries } = await getGalleries()
+```
+
+**Этап 4: Удалить прямой доступ к Supabase**
+- Удалить `lib/supabase/server.ts` (или оставить только для auth)
+- Убрать `SUPABASE_URL` из env фронтенда
+
+### План миграции по файлам
+
+| Приоритет | Файл | Новый эндпоинт | Сложность |
+|-----------|------|----------------|-----------|
+| 🔴 1 | `app/page.tsx` | `GET /api/public/galleries` | Низкая |
+| 🔴 2 | `app/gallery/[id]/page.tsx` | `GET /api/public/galleries/{id}` | Низкая |
+| 🔴 3 | `app/players/*.tsx` | `GET /api/public/players` | Низкая |
+| 🟡 4 | `app/api/comments/*` | `GET/POST/DELETE /api/social/comments` | Средняя |
+| 🟡 5 | `app/api/likes/*` | `GET/POST/DELETE /api/social/likes` | Средняя |
+| 🟡 6 | `app/api/favorites/*` | `GET/POST/DELETE /api/social/favorites` | Средняя |
+| 🟢 7 | `app/admin/actions/cleanup.ts` | Вызывать существующие эндпоинты | Высокая |
+| 🟢 8 | `app/admin/actions/integrity.ts` | Новый эндпоинт `/api/admin/integrity` | Высокая |
+
+### Исключения (можно оставить прямой Supabase)
+
+- **Supabase Auth** — для авторизации через Google/Telegram
+- **Supabase Storage** — для загрузки файлов (если используется)
+
+### Оценка трудозатрат
+
+| Этап | Часы |
+|------|------|
+| Публичные страницы (galleries, players) | 4-6 |
+| Социальные функции (comments, likes, favorites) | 6-8 |
+| Admin actions (cleanup, integrity) | 8-12 |
+| Тестирование и отладка | 4-6 |
+| **Итого** | **22-32 часа** |
+
+**Связано с:** Задача #6 (Repository слой)
+
+---
+
 ## Текущее состояние архитектуры (хорошо)
 
 Уже сделано правильное разделение:
@@ -459,6 +587,7 @@ if (!response.ok) {
 ## Приоритет выполнения
 
 1. **#1 CORS** — безопасность, сделать первым
-2. **#4 Async/Sync** — влияет на производительность
-3. **#6 Репозиторий БД** — устраняет дублирование, связано с #4
-4. **#3 DI** — архитектурный рефакторинг
+2. **#8 Прямой Supabase** — архитектурная проблема, делать поэтапно
+3. **#4 Async/Sync** — влияет на производительность
+4. **#6 Репозиторий БД** — устраняет дублирование, связано с #4 и #8
+5. **#3 DI** — архитектурный рефакторинг
