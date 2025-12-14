@@ -8,11 +8,15 @@ import { SyncVerifiedButton } from "@/components/admin/sync-verified-button"
 import { DebugPersonPhotos } from "@/components/admin/debug-person-photos"
 import { DatabaseIntegrityChecker } from "@/components/admin/database-integrity-checker"
 import { RegenerateDescriptorsDialog } from "@/components/admin/regenerate-descriptors-dialog"
+import { BatchRecognitionDialog } from "@/components/admin/batch-recognition-dialog"
+import { GlobalUnknownFacesDialog } from "@/components/admin/global-unknown-faces-dialog"
 import { Button } from "@/components/ui/button"
-import { Database, Bug, Wrench, Shield, RefreshCw } from "lucide-react"
+import { Database, Bug, Wrench, Shield, RefreshCw, Scan, Users, Images } from "lucide-react"
 
 export function ServiceManager() {
   const [showRegenerateDescriptors, setShowRegenerateDescriptors] = useState(false)
+  const [showBatchRecognition, setShowBatchRecognition] = useState(false)
+  const [showGlobalUnknownFaces, setShowGlobalUnknownFaces] = useState(false)
 
   const handleComingSoon = (feature: string) => {
     alert(`${feature} - в разработке`)
@@ -20,6 +24,50 @@ export function ServiceManager() {
 
   return (
     <div className="space-y-6">
+      {/* Пакетное распознавание */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Scan className="h-5 w-5" />
+            <CardTitle>Пакетное распознавание</CardTitle>
+          </div>
+          <CardDescription>
+            Массовое распознавание лиц и кластеризация неизвестных лиц по всей базе
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Распознать галереи</div>
+                <div className="text-sm text-muted-foreground">
+                  Выбрать галереи с необработанными фото и запустить распознавание
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowBatchRecognition(true)}>
+                <Images className="mr-2 h-4 w-4" />
+                Распознать
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Неизвестные лица</div>
+                <div className="text-sm text-muted-foreground">
+                  Кластеризация всех нераспознанных лиц по всей базе для группового назначения
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowGlobalUnknownFaces(true)}>
+                <Users className="mr-2 h-4 w-4" />
+                Кластеризация
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -162,10 +210,20 @@ export function ServiceManager() {
         </CardContent>
       </Card>
 
-      {/* Regenerate Descriptors Dialog */}
+      {/* Dialogs */}
       {showRegenerateDescriptors && (
         <RegenerateDescriptorsDialog open={showRegenerateDescriptors} onOpenChange={setShowRegenerateDescriptors} />
       )}
+
+      <BatchRecognitionDialog
+        open={showBatchRecognition}
+        onOpenChange={setShowBatchRecognition}
+      />
+
+      <GlobalUnknownFacesDialog
+        open={showGlobalUnknownFaces}
+        onOpenChange={setShowGlobalUnknownFaces}
+      />
     </div>
   )
 }
