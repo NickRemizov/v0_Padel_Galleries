@@ -17,6 +17,10 @@ router = APIRouter()
 
 supabase_db_instance: SupabaseDatabase = None
 
+# PostgreSQL error codes
+PG_UNIQUE_VIOLATION = "23505"
+PG_FOREIGN_KEY_VIOLATION = "23503"
+
 
 def set_services(supabase_db: SupabaseDatabase):
     global supabase_db_instance
@@ -25,20 +29,10 @@ def set_services(supabase_db: SupabaseDatabase):
 
 class PhotographerCreate(BaseModel):
     name: str
-    slug: str
-    bio: Optional[str] = None
-    website: Optional[str] = None
-    instagram: Optional[str] = None
-    avatar_url: Optional[str] = None
 
 
 class PhotographerUpdate(BaseModel):
     name: Optional[str] = None
-    slug: Optional[str] = None
-    bio: Optional[str] = None
-    website: Optional[str] = None
-    instagram: Optional[str] = None
-    avatar_url: Optional[str] = None
 
 
 @router.get("")
@@ -71,8 +65,7 @@ async def get_photographer(photographer_id: str):
 async def create_photographer(data: PhotographerCreate):
     """Create a new photographer."""
     try:
-        insert_data = data.model_dump(exclude_none=True)
-        result = supabase_db_instance.client.table("photographers").insert(insert_data).execute()
+        result = supabase_db_instance.client.table("photographers").insert({"name": data.name}).execute()
         if result.data:
             logger.info(f"Created photographer: {data.name}")
             return ApiResponse.ok(result.data[0])
@@ -81,7 +74,7 @@ async def create_photographer(data: PhotographerCreate):
         error_str = str(e)
         logger.error(f"Error creating photographer: {e}")
         if "23505" in error_str or "duplicate" in error_str.lower():
-            raise ValidationError("Фотограф с таким slug уже существует", field="slug")
+            raise ValidationError("Фотограф с таким именем уже существует", field="name", code=PG_UNIQUE_VIOLATION)
         raise DatabaseError(error_str, operation="create_photographer")
 
 
@@ -104,7 +97,7 @@ async def update_photographer(photographer_id: str, data: PhotographerUpdate):
         error_str = str(e)
         logger.error(f"Error updating photographer {photographer_id}: {e}")
         if "23505" in error_str or "duplicate" in error_str.lower():
-            raise ValidationError("Фотограф с таким slug уже существует", field="slug")
+            raise ValidationError("Фотограф с таким именем уже существует", field="name", code=PG_UNIQUE_VIOLATION)
         raise DatabaseError(error_str, operation="update_photographer")
 
 
@@ -119,5 +112,5 @@ async def delete_photographer(photographer_id: str):
         error_str = str(e)
         logger.error(f"Error deleting photographer {photographer_id}: {e}")
         if "23503" in error_str or "foreign key" in error_str.lower():
-            raise ValidationError("Невозможно удалить: есть связанные галереи")
+            raise ValidationError("Невозможно удалить: есть связанные галереи", code=PG_FOREIGN_KEY_VIOLATION)
         raise DatabaseError(error_str, operation="delete_photographer")
