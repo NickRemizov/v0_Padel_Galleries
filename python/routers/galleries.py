@@ -86,7 +86,7 @@ async def get_gallery(gallery_id: str):
     """Get a gallery by ID with full details."""
     try:
         result = supabase_db_instance.client.table("galleries").select(
-            "*, locations(id, name, slug), organizers(id, name, slug), photographers(id, name, slug)"
+            "*, locations(id, name), organizers(id, name), photographers(id, name)"
         ).eq("id", gallery_id).execute()
         if result.data and len(result.data) > 0:
             gallery = result.data[0]
