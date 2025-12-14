@@ -122,9 +122,9 @@ async def get_galleries_with_unprocessed_photos():
         raise DatabaseError(str(e), operation="get_galleries_with_unprocessed_photos")
 
 
-@router.get("/with-unrecognized-faces")
-async def get_galleries_with_unrecognized_faces():
-    """Get galleries that have photos with unverified faces (verified = false)."""
+@router.get("/with-unverified-faces")
+async def get_galleries_with_unverified_faces():
+    """Get galleries that have photos with unverified faces (recognition_confidence < 1)."""
     try:
         # Get all galleries
         galleries_result = supabase_db_instance.client.table("galleries").select(
@@ -149,29 +149,38 @@ async def get_galleries_with_unrecognized_faces():
             total_count = len(photos)
             photo_ids = [p["id"] for p in photos]
             
-            # Get photos that have unverified faces
-            # A photo needs re-recognition if it has at least one unverified face
+            # Get photos that have unverified faces (recognition_confidence < 1 or NULL)
+            # A photo needs verification if it has at least one face with confidence < 1
             unverified_faces_result = supabase_db_instance.client.table("photo_faces").select(
                 "photo_id"
-            ).in_("photo_id", photo_ids).eq("verified", False).execute()
+            ).in_("photo_id", photo_ids).or_(
+                "recognition_confidence.lt.1,recognition_confidence.is.null"
+            ).execute()
             
             unverified_photo_ids = set(f["photo_id"] for f in (unverified_faces_result.data or []))
-            unrecognized_count = len(unverified_photo_ids)
+            unverified_count = len(unverified_photo_ids)
             
-            if unrecognized_count > 0:
+            if unverified_count > 0:
                 result.append({
                     "id": gallery["id"],
                     "title": gallery["title"],
                     "shoot_date": gallery["shoot_date"],
                     "total_photos": total_count,
-                    "unrecognized_photos": unrecognized_count
+                    "unverified_photos": unverified_count
                 })
         
-        logger.info(f"Found {len(result)} galleries with unrecognized faces")
+        logger.info(f"Found {len(result)} galleries with unverified faces")
         return ApiResponse.ok(result)
     except Exception as e:
-        logger.error(f"Error getting galleries with unrecognized faces: {e}")
-        raise DatabaseError(str(e), operation="get_galleries_with_unrecognized_faces")
+        logger.error(f"Error getting galleries with unverified faces: {e}")
+        raise DatabaseError(str(e), operation="get_galleries_with_unverified_faces")
+
+
+# Keep old endpoint for backward compatibility
+@router.get("/with-unrecognized-faces")
+async def get_galleries_with_unrecognized_faces():
+    """Alias for with-unverified-faces (backward compatibility)."""
+    return await get_galleries_with_unverified_faces()
 
 
 @router.get("/{gallery_id}")
@@ -218,9 +227,9 @@ async def get_gallery_unprocessed_photos(gallery_id: str):
         raise DatabaseError(str(e), operation="get_gallery_unprocessed_photos")
 
 
-@router.get("/{gallery_id}/unrecognized-photos")
-async def get_gallery_unrecognized_photos(gallery_id: str):
-    """Get photos from a gallery that have unverified faces."""
+@router.get("/{gallery_id}/unverified-photos")
+async def get_gallery_unverified_photos(gallery_id: str):
+    """Get photos from a gallery that have unverified faces (recognition_confidence < 1)."""
     try:
         # Get all photos in gallery
         photos_result = supabase_db_instance.client.table("gallery_images").select(
@@ -233,21 +242,30 @@ async def get_gallery_unrecognized_photos(gallery_id: str):
         
         photo_ids = [p["id"] for p in photos]
         
-        # Get photos that have unverified faces
+        # Get photos that have unverified faces (recognition_confidence < 1 or NULL)
         unverified_faces_result = supabase_db_instance.client.table("photo_faces").select(
             "photo_id"
-        ).in_("photo_id", photo_ids).eq("verified", False).execute()
+        ).in_("photo_id", photo_ids).or_(
+            "recognition_confidence.lt.1,recognition_confidence.is.null"
+        ).execute()
         
         unverified_photo_ids = set(f["photo_id"] for f in (unverified_faces_result.data or []))
         
         # Filter photos that have unverified faces
         result = [p for p in photos if p["id"] in unverified_photo_ids]
         
-        logger.info(f"Found {len(result)} photos with unrecognized faces in gallery {gallery_id}")
+        logger.info(f"Found {len(result)} photos with unverified faces in gallery {gallery_id}")
         return ApiResponse.ok(result)
     except Exception as e:
-        logger.error(f"Error getting unrecognized photos for gallery {gallery_id}: {e}")
-        raise DatabaseError(str(e), operation="get_gallery_unrecognized_photos")
+        logger.error(f"Error getting unverified photos for gallery {gallery_id}: {e}")
+        raise DatabaseError(str(e), operation="get_gallery_unverified_photos")
+
+
+# Keep old endpoint for backward compatibility
+@router.get("/{gallery_id}/unrecognized-photos")
+async def get_gallery_unrecognized_photos(gallery_id: str):
+    """Alias for unverified-photos (backward compatibility)."""
+    return await get_gallery_unverified_photos(gallery_id)
 
 
 @router.get("/{gallery_id}/stats")
