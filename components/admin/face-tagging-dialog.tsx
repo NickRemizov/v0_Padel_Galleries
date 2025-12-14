@@ -14,10 +14,10 @@ import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from "lucid
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { debounce } from "@/lib/debounce"
-import { processPhotoAction, batchVerifyFacesAction } from "@/app/admin/actions/faces"
+import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities" // Add import for people action
 
-const VERSION = "v6.0" // Увеличена версия для финальной архитектуры v2.3.0
+const VERSION = "v6.1" // Fixed: add markPhotoAsProcessedAction on save
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -315,6 +315,10 @@ export function FaceTaggingDialog({
         setSaving(false)
         return
       }
+
+      // Mark photo as processed after successful save
+      await markPhotoAsProcessedAction(imageId)
+      console.log(`[${VERSION}] ✓ Photo marked as processed`)
 
       console.log(`[${VERSION}] ✓ All faces saved successfully! Verified: ${result.verified}`)
       setSaving(false)
