@@ -12,7 +12,7 @@ import { processPhotoAction } from "@/app/admin/actions/faces"
 import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 import type { GalleryImage } from "@/lib/types"
 
-const VERSION = "v5.0-FixedForceRedetect" // Updated version for deployment tracking
+const VERSION = "v5.1-FixQualityParams" // Updated version for deployment tracking
 
 interface AutoRecognitionDialogProps {
   images: GalleryImage[]
@@ -36,26 +36,25 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
   const [currentIndex, setCurrentIndex] = useState(0)
   const [applyQualityFilters, setApplyQualityFilters] = useState(true)
 
-  async function processImageFaces(photoId: string, imageUrl: string, qualityParams: any) {
+  async function processImageFaces(
+    photoId: string, 
+    imageUrl: string, 
+    qualityParams: {
+      confidenceThreshold: number
+      minDetectionScore: number
+      minFaceSize: number
+      minBlurScore: number
+    } | undefined,
+    shouldApplyFilters: boolean
+  ) {
     console.log(`[${VERSION}] Processing image: ${photoId}`)
-    console.log(`[${VERSION}] Apply quality filters:`, applyQualityFilters)
+    console.log(`[${VERSION}] Apply quality filters:`, shouldApplyFilters)
     console.log(`[${VERSION}] Quality params:`, qualityParams)
 
-    // Pass only 3 params when applyQualityFilters=false, let qualityParams be undefined
-    const result = await processPhotoAction(photoId, !applyQualityFilters, applyQualityFilters)
+    // FIX: Pass qualityParams as 4th argument
+    const result = await processPhotoAction(photoId, false, shouldApplyFilters, qualityParams)
 
     console.log(`[${VERSION}] processPhotoAction result:`, result)
-    console.log(`[${VERSION}] result.error type:`, typeof result.error)
-    console.log(`[${VERSION}] result.error value:`, result.error)
-    if (typeof result.error === "string") {
-      console.log(`[${VERSION}] Error is string, trying to parse as JSON...`)
-      try {
-        const parsed = JSON.parse(result.error)
-        console.log(`[${VERSION}] Parsed error:`, parsed)
-      } catch (e) {
-        console.log(`[${VERSION}] Cannot parse error as JSON`)
-      }
-    }
 
     if (!result.success) {
       console.error(`[${VERSION}] processPhotoAction failed:`, result.error)
@@ -79,6 +78,8 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     console.log(`[${VERSION}] AUTO-RECOGNITION: images.length =`, images.length)
 
     const configResult = await getRecognitionConfigAction()
+    console.log(`[${VERSION}] AUTO-RECOGNITION: Config loaded:`, configResult.config)
+    
     const qualityParams = applyQualityFilters
       ? {
           confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
@@ -170,8 +171,6 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
     setResults(initialResults)
     console.log(`[${VERSION}] AUTO-RECOGNITION: Set initialResults, length =`, initialResults.length)
 
-    const batchSize = 2
-
     for (let i = 0; i < imagesToProcess.length; i++) {
       const image = imagesToProcess[i]
       setCurrentIndex(i)
@@ -184,7 +183,8 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
 
         console.log(`[${VERSION}] Image ${image.original_filename}: Found ${existingFaces.length} existing faces`)
 
-        const result = await processImageFaces(image.id, image.image_url, qualityParams)
+        // FIX: Pass qualityParams and applyQualityFilters correctly
+        const result = await processImageFaces(image.id, image.image_url, qualityParams, applyQualityFilters)
 
         console.log(`[${VERSION}] Processed ${result.facesFound} faces, recognized ${result.facesRecognized}`)
 
@@ -229,7 +229,7 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
   const totalFaces = results.reduce((sum, r) => sum + r.facesFound, 0)
   const totalRecognized = results.reduce((sum, r) => sum + r.facesRecognized, 0)
 
-  const imagesToProcess = mode === "remaining" ? results.length : images.length
+  const imagesToProcessCount = mode === "remaining" ? results.length : images.length
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -240,8 +240,8 @@ export function AutoRecognitionDialog({ images, open, onOpenChange, mode }: Auto
           </DialogTitle>
           <DialogDescription>
             {mode === "all"
-              ? `Обработка ${imagesToProcess} фотографий. Это может занять несколько минут.`
-              : `Обработка ${imagesToProcess} фотографий без ручной верификации. Это может занять несколько минут.`}
+              ? `Обработка ${imagesToProcessCount} фотографий. Это может занять несколько минут.`
+              : `Обработка ${imagesToProcessCount} фотографий без ручной верификации. Это может занять несколько минут.`}
           </DialogDescription>
         </DialogHeader>
 
