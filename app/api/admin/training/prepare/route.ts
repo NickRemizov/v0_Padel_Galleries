@@ -12,13 +12,23 @@ export async function POST(request: NextRequest) {
     console.log("[v0] Preparing dataset")
     console.log("[v0] Request body:", JSON.stringify(body))
 
-    const data = await apiFetch("/api/v2/train/prepare", {
+    const response = await apiFetch("/api/v2/train/prepare", {
       method: "POST",
       body: JSON.stringify(body),
     })
 
-    console.log("[v0] Successfully prepared dataset")
-    return NextResponse.json(data)
+    // apiFetch returns {success, data, error, code, meta}
+    if (response.success && response.data) {
+      console.log("[v0] Successfully prepared dataset")
+      return NextResponse.json(response.data)
+    }
+
+    // Backend returned error
+    console.error("[v0] Backend returned error:", response.error)
+    return NextResponse.json(
+      { error: response.error || "Failed to prepare dataset" },
+      { status: 500 },
+    )
   } catch (error) {
     console.error("[v0] Error preparing dataset:", error)
 
