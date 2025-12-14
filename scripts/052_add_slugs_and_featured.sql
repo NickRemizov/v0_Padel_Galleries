@@ -47,7 +47,7 @@ DECLARE
   exists_check BOOLEAN;
 BEGIN
   -- Generate base slug: lowercase, replace spaces/special chars with hyphens
-  slug := lower(regexp_replace(base_text, '[^a-zA-Z0-9А-Яа-я]+', '-', 'g'));
+  slug := lower(regexp_replace(base_text, '[^a-zA-Z0-9А-Яа-яЁё]+', '-', 'g'));
   slug := trim(both '-' from slug);
   
   -- Remove consecutive hyphens
@@ -69,7 +69,7 @@ BEGIN
     -- Slug exists, try with counter
     counter := counter + 1;
     slug := substring(
-      lower(regexp_replace(base_text, '[^a-zA-Z0-9А-Яа-я]+', '-', 'g'))
+      lower(regexp_replace(base_text, '[^a-zA-Z0-9А-Яа-яЁё]+', '-', 'g'))
       from 1 for 190
     ) || '-' || counter;
     slug := trim(both '-' from slug);
@@ -100,7 +100,7 @@ WHERE slug IS NULL;
 UPDATE galleries
 SET slug = generate_unique_slug(
   COALESCE(
-    title || '-' || to_char(event_date, 'DD-MM'),
+    title || '-' || to_char(shoot_date, 'DD-MM'),
     'gallery-' || substr(id::text, 1, 8)
   ),
   'galleries'
@@ -122,21 +122,31 @@ SET slug = (
 WHERE slug IS NULL;
 
 -- ===================================================================
--- 5. MAKE SLUGS REQUIRED FOR NEW RECORDS
+-- 5. VERIFICATION QUERIES
 -- ===================================================================
 
--- Note: NOT making them NOT NULL yet to allow gradual migration
+-- Check for any NULL slugs (should be 0 after migration)
+-- SELECT 'people' as table_name, COUNT(*) as null_slugs FROM people WHERE slug IS NULL
+-- UNION ALL
+-- SELECT 'galleries', COUNT(*) FROM galleries WHERE slug IS NULL
+-- UNION ALL
+-- SELECT 'gallery_images', COUNT(*) FROM gallery_images WHERE slug IS NULL;
+
+-- ===================================================================
+-- 6. MAKE SLUGS REQUIRED (run after verification)
+-- ===================================================================
+
 -- Uncomment these after confirming all slugs are generated:
 -- ALTER TABLE people ALTER COLUMN slug SET NOT NULL;
 -- ALTER TABLE galleries ALTER COLUMN slug SET NOT NULL;
 -- ALTER TABLE gallery_images ALTER COLUMN slug SET NOT NULL;
 
 -- ===================================================================
--- 6. ADD COMMENTS
+-- 7. ADD COMMENTS
 -- ===================================================================
 
 COMMENT ON COLUMN people.slug IS 'URL-friendly identifier generated from telegram_nickname or real_name';
-COMMENT ON COLUMN galleries.slug IS 'URL-friendly identifier generated from title and event date';
+COMMENT ON COLUMN galleries.slug IS 'URL-friendly identifier generated from title and shoot date';
 COMMENT ON COLUMN gallery_images.slug IS 'URL-friendly identifier generated from original filename';
 COMMENT ON COLUMN gallery_images.is_featured IS 'Whether this image should be used in gallery thumbnail rotation (3-5 recommended)';
 
