@@ -177,6 +177,9 @@ async def update_visibility(person_id: str, data: VisibilityUpdate):
 async def delete_person(person_id: str):
     """Delete a person and cleanup related data."""
     try:
+        # Delete face descriptors
+        supabase_db_instance.client.table("face_descriptors").delete().eq("person_id", person_id).execute()
+        
         # Unlink photo_faces
         supabase_db_instance.client.table("photo_faces").update(
             {"person_id": None, "verified": False}
@@ -349,12 +352,13 @@ async def _calculate_people_stats(people: list) -> list:
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
+        # Load all photo_faces
         all_faces = []
         offset = 0
         page_size = 1000
         while True:
             faces_result = supabase_db_instance.client.table("photo_faces").select(
-                "person_id, photo_id, verified, recognition_confidence, insightface_descriptor"
+                "person_id, photo_id, verified, recognition_confidence"
             ).range(offset, offset + page_size - 1).execute()
             
             batch = faces_result.data or []
@@ -366,12 +370,31 @@ async def _calculate_people_stats(people: list) -> list:
         
         logger.info(f"Loaded {len(all_faces)} total photo_faces for stats")
         
+        # Load all face_descriptors
+        all_descriptors = []
+        offset = 0
+        while True:
+            descriptors_result = supabase_db_instance.client.table("face_descriptors").select(
+                "person_id"
+            ).range(offset, offset + page_size - 1).execute()
+            
+            batch = descriptors_result.data or []
+            all_descriptors.extend(batch)
+            
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        
+        logger.info(f"Loaded {len(all_descriptors)} total descriptors for stats")
+        
+        # Count descriptors per person
         descriptor_counts = {}
-        for face in all_faces:
-            pid = face.get("person_id")
-            if pid and face.get("insightface_descriptor"):
+        for d in all_descriptors:
+            pid = d.get("person_id")
+            if pid:
                 descriptor_counts[pid] = descriptor_counts.get(pid, 0) + 1
         
+        # Calculate stats for each person
         result = []
         for person in people:
             person_id = person["id"]
@@ -387,6 +410,7 @@ async def _calculate_people_stats(people: list) -> list:
                 elif (face.get("recognition_confidence") or 0) >= confidence_threshold:
                     high_conf_photos.add(photo_id)
             
+            # Remove from high_conf those already verified
             high_conf_photos -= verified_photos
             
             result.append({
