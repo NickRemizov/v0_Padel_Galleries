@@ -58,22 +58,12 @@ async def get_galleries(limit: int = 50, offset: int = 0, with_photo_count: bool
         
         # Add photo_count if requested
         if with_photo_count and galleries:
-            gallery_ids = [g["id"] for g in galleries]
-            
-            # Get photo counts for all galleries in one query
-            counts_result = supabase_db_instance.client.table("gallery_images").select(
-                "gallery_id"
-            ).in_("gallery_id", gallery_ids).execute()
-            
-            # Count photos per gallery
-            photo_counts = {}
-            for img in (counts_result.data or []):
-                gid = img["gallery_id"]
-                photo_counts[gid] = photo_counts.get(gid, 0) + 1
-            
-            # Add counts to galleries
+            # Get photo count for each gallery using exact count
             for gallery in galleries:
-                gallery["photo_count"] = photo_counts.get(gallery["id"], 0)
+                count_result = supabase_db_instance.client.table("gallery_images").select(
+                    "id", count="exact"
+                ).eq("gallery_id", gallery["id"]).execute()
+                gallery["photo_count"] = count_result.count or 0
         
         return ApiResponse.ok(galleries)
     except Exception as e:
