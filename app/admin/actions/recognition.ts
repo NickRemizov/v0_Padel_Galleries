@@ -210,24 +210,24 @@ export async function getGalleriesWithUnprocessedPhotosAction(): Promise<{
 }
 
 /**
- * Получить список галерей с нераспознанными лицами
- * Использует бэкенд API: GET /api/galleries/with-unrecognized-faces
+ * Получить список галерей с неверифицированными лицами (recognition_confidence < 1)
+ * Использует бэкенд API: GET /api/galleries/with-unverified-faces
  */
-export async function getGalleriesWithUnrecognizedFacesAction(): Promise<{
+export async function getGalleriesWithUnverifiedFacesAction(): Promise<{
   success: boolean
   galleries: Array<{
     id: string
     title: string
     shoot_date: string | null
     total_photos: number
-    unrecognized_photos: number
+    unverified_photos: number
   }>
   error?: string
 }> {
   try {
-    logger.debug("actions/recognition", "[getGalleriesWithUnrecognizedFacesAction] Fetching from backend")
+    logger.debug("actions/recognition", "[getGalleriesWithUnverifiedFacesAction] Fetching from backend")
 
-    const result = await apiFetch("/api/galleries/with-unrecognized-faces", {
+    const result = await apiFetch("/api/galleries/with-unverified-faces", {
       method: "GET",
     })
 
@@ -237,7 +237,7 @@ export async function getGalleriesWithUnrecognizedFacesAction(): Promise<{
 
     return { success: true, galleries: result.data || [] }
   } catch (error: any) {
-    logger.error("actions/recognition", "Error getting galleries with unrecognized faces", error)
+    logger.error("actions/recognition", "Error getting galleries with unverified faces", error)
     return { success: false, galleries: [], error: error.message || String(error) }
   }
 }
@@ -274,10 +274,10 @@ export async function getGalleryPhotosForRecognitionAction(galleryId: string): P
 }
 
 /**
- * Получить фото галереи с нераспознанными лицами
- * Использует бэкенд API: GET /api/galleries/{gallery_id}/unrecognized-photos
+ * Получить фото галереи с неверифицированными лицами (recognition_confidence < 1)
+ * Использует бэкенд API: GET /api/galleries/{gallery_id}/unverified-photos
  */
-export async function getGalleryUnrecognizedPhotosAction(galleryId: string): Promise<{
+export async function getGalleryUnverifiedPhotosAction(galleryId: string): Promise<{
   success: boolean
   images: Array<{
     id: string
@@ -287,9 +287,9 @@ export async function getGalleryUnrecognizedPhotosAction(galleryId: string): Pro
   error?: string
 }> {
   try {
-    logger.debug("actions/recognition", `[getGalleryUnrecognizedPhotosAction] Gallery: ${galleryId}`)
+    logger.debug("actions/recognition", `[getGalleryUnverifiedPhotosAction] Gallery: ${galleryId}`)
 
-    const result = await apiFetch(`/api/galleries/${galleryId}/unrecognized-photos`, {
+    const result = await apiFetch(`/api/galleries/${galleryId}/unverified-photos`, {
       method: "GET",
     })
 
@@ -299,7 +299,7 @@ export async function getGalleryUnrecognizedPhotosAction(galleryId: string): Pro
 
     return { success: true, images: result.data || [] }
   } catch (error: any) {
-    logger.error("actions/recognition", "Error getting gallery unrecognized photos", error)
+    logger.error("actions/recognition", "Error getting gallery unverified photos", error)
     return { success: false, images: [], error: error.message || String(error) }
   }
 }
