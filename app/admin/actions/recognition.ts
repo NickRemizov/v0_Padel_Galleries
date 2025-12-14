@@ -174,6 +174,70 @@ export async function regenerateSingleDescriptorAction(faceId: string): Promise<
 }
 
 /**
+ * Получить список галерей с необработанными фото
+ * Использует бэкенд API: GET /api/galleries/with-unprocessed-photos
+ */
+export async function getGalleriesWithUnprocessedPhotosAction(): Promise<{
+  success: boolean
+  galleries: Array<{
+    id: string
+    title: string
+    shoot_date: string | null
+    total_photos: number
+    unprocessed_photos: number
+  }>
+  error?: string
+}> {
+  try {
+    logger.debug("actions/recognition", "[getGalleriesWithUnprocessedPhotosAction] Fetching from backend")
+
+    const result = await apiFetch("/api/galleries/with-unprocessed-photos", {
+      method: "GET",
+    })
+
+    if (!result.success) {
+      return { success: false, galleries: [], error: result.error || "Failed to get galleries" }
+    }
+
+    return { success: true, galleries: result.data || [] }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error getting galleries with unprocessed photos", error)
+    return { success: false, galleries: [], error: error.message || String(error) }
+  }
+}
+
+/**
+ * Получить фото галереи для распознавания (необработанные)
+ * Использует бэкенд API: GET /api/galleries/{gallery_id}/unprocessed-photos
+ */
+export async function getGalleryPhotosForRecognitionAction(galleryId: string): Promise<{
+  success: boolean
+  images: Array<{
+    id: string
+    image_url: string
+    original_filename: string
+  }>
+  error?: string
+}> {
+  try {
+    logger.debug("actions/recognition", `[getGalleryPhotosForRecognitionAction] Gallery: ${galleryId}`)
+
+    const result = await apiFetch(`/api/galleries/${galleryId}/unprocessed-photos`, {
+      method: "GET",
+    })
+
+    if (!result.success) {
+      return { success: false, images: [], error: result.error || "Failed to get photos" }
+    }
+
+    return { success: true, images: result.data || [] }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error getting gallery photos for recognition", error)
+    return { success: false, images: [], error: error.message || String(error) }
+  }
+}
+
+/**
  * Глобальная кластеризация неизвестных лиц (по всей базе)
  * Вызывает бэкенд без gallery_id
  */
