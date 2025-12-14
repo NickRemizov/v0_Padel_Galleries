@@ -5,7 +5,7 @@ Represents a person (player) in the system.
 
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 
 
 class PersonSummary(BaseModel):
@@ -28,7 +28,7 @@ class Person(BaseModel):
     real_name: Optional[str] = Field(None, description="Real name")
     telegram_name: Optional[str] = Field(None, description="Telegram username")
     telegram_id: Optional[str] = Field(None, description="Telegram user ID")
-    email: Optional[EmailStr] = Field(None, description="Email address")
+    email: Optional[str] = Field(None, description="Email address")
     
     # Profile
     avatar_url: Optional[str] = Field(None, description="Avatar image URL")
