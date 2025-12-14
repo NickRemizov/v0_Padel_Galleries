@@ -177,7 +177,7 @@ async def update_visibility(person_id: str, data: VisibilityUpdate):
 async def delete_person(person_id: str):
     """Delete a person and cleanup related data."""
     try:
-        # Delete face descriptors
+        # Delete face descriptors (legacy table)
         supabase_db_instance.client.table("face_descriptors").delete().eq("person_id", person_id).execute()
         
         # Unlink photo_faces
@@ -347,19 +347,25 @@ async def get_person_photos_with_details(person_id: str):
 
 
 async def _calculate_people_stats(people: list) -> list:
-    """Calculate face statistics for all people."""
+    """Calculate face statistics for all people.
+    
+    Counts:
+    - verified_photos_count: photos where person is verified
+    - high_confidence_photos_count: photos with high confidence (not verified)
+    - descriptor_count: total photo_faces with embeddings for this person
+    """
     try:
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
-        # Load all photo_faces
+        # Load all photo_faces with their embedding status
         all_faces = []
         offset = 0
         page_size = 1000
         while True:
             faces_result = supabase_db_instance.client.table("photo_faces").select(
                 "person_id, photo_id, verified, recognition_confidence"
-            ).range(offset, offset + page_size - 1).execute()
+            ).not_.is_("insightface_descriptor", "null").range(offset, offset + page_size - 1).execute()
             
             batch = faces_result.data or []
             all_faces.extend(batch)
@@ -368,29 +374,12 @@ async def _calculate_people_stats(people: list) -> list:
                 break
             offset += page_size
         
-        logger.info(f"Loaded {len(all_faces)} total photo_faces for stats")
+        logger.info(f"Loaded {len(all_faces)} photo_faces with embeddings for stats")
         
-        # Load all face_descriptors
-        all_descriptors = []
-        offset = 0
-        while True:
-            descriptors_result = supabase_db_instance.client.table("face_descriptors").select(
-                "person_id"
-            ).range(offset, offset + page_size - 1).execute()
-            
-            batch = descriptors_result.data or []
-            all_descriptors.extend(batch)
-            
-            if len(batch) < page_size:
-                break
-            offset += page_size
-        
-        logger.info(f"Loaded {len(all_descriptors)} total descriptors for stats")
-        
-        # Count descriptors per person
+        # Count descriptors (faces with embeddings) per person
         descriptor_counts = {}
-        for d in all_descriptors:
-            pid = d.get("person_id")
+        for f in all_faces:
+            pid = f.get("person_id")
             if pid:
                 descriptor_counts[pid] = descriptor_counts.get(pid, 0) + 1
         
