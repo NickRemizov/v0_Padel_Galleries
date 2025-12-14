@@ -1,39 +1,35 @@
-from fastapi import APIRouter, HTTPException
+"""
+Images API Router
+Gallery image management endpoints
+"""
+
+from fastapi import APIRouter
 from pydantic import BaseModel
-from services.supabase_database import SupabaseDatabase
-from services.face_recognition import FaceRecognitionService
+from typing import Optional, List
 import httpx
 import os
-from typing import Optional
-import logging
 
-logger = logging.getLogger(__name__)
+from core.responses import ApiResponse
+from core.exceptions import NotFoundError, DatabaseError
+from core.logging import get_logger
+from services.supabase_database import SupabaseDatabase
+from services.face_recognition import FaceRecognitionService
 
+logger = get_logger(__name__)
 router = APIRouter()
 
-# Глобальные сервисы будут инжектированы из main.py
 supabase_db: Optional[SupabaseDatabase] = None
 face_service: Optional[FaceRecognitionService] = None
 
+
 def set_services(db: SupabaseDatabase, face: FaceRecognitionService):
-    """Инжектирует сервисы из main.py"""
+    """Inject services from main.py"""
     global supabase_db, face_service
     supabase_db = db
     face_service = face
 
-class DeleteImageResponse(BaseModel):
-    success: bool
-    message: str
-    had_descriptors: bool
-    index_rebuilt: bool
 
-class BatchDeleteResponse(BaseModel):
-    success: bool
-    deleted_count: int
-    failed_count: int
-    had_descriptors: bool
-    index_rebuilt: bool
-    message: str
+# Request/Response Models
 
 class GalleryImageInput(BaseModel):
     imageUrl: str
@@ -43,43 +39,28 @@ class GalleryImageInput(BaseModel):
     width: int
     height: int
 
+
 class BatchAddImagesRequest(BaseModel):
     galleryId: str
-    images: list[GalleryImageInput]
+    images: List[GalleryImageInput]
 
-class BatchAddImagesResponse(BaseModel):
-    success: bool
-    inserted_count: int
-    message: str
-
-class MarkProcessedResponse(BaseModel):
-    success: bool
-    message: str
-
-class GalleryImagesResponse(BaseModel):
-    success: bool
-    data: list
-    error: Optional[str] = None
 
 class BatchSortOrderItem(BaseModel):
     id: str
     order: int
 
+
 class BatchSortOrderRequest(BaseModel):
-    image_orders: list[BatchSortOrderItem]
+    image_orders: List[BatchSortOrderItem]
 
-class VerifiedPeopleResponse(BaseModel):
-    success: bool
-    data: list
-    error: Optional[str] = None
 
-@router.get("/gallery/{gallery_id}", response_model=GalleryImagesResponse)
+# Endpoints
+
+@router.get("/gallery/{gallery_id}")
 async def get_gallery_images(gallery_id: str):
-    """
-    Получает все изображения галереи с сортировкой по display_order.
-    """
+    """Получает все изображения галереи."""
     try:
-        logger.info(f"[Images API] Getting images for gallery: {gallery_id}")
+        logger.info(f"Getting images for gallery: {gallery_id}")
         
         result = supabase_db.client.table("gallery_images")\
             .select("*")\
@@ -88,27 +69,19 @@ async def get_gallery_images(gallery_id: str):
             .execute()
         
         images = result.data or []
-        logger.info(f"[Images API] Found {len(images)} images")
+        logger.info(f"Found {len(images)} images")
+        return ApiResponse.ok(images)
         
-        return GalleryImagesResponse(
-            success=True,
-            data=images
-        )
     except Exception as e:
-        logger.error(f"[Images API] Error getting gallery images: {e}")
-        return GalleryImagesResponse(
-            success=False,
-            data=[],
-            error=str(e)
-        )
+        logger.error(f"Error getting gallery images: {e}")
+        raise DatabaseError(str(e), operation="get_gallery_images")
+
 
 @router.patch("/gallery/{gallery_id}/sort-order")
 async def update_images_sort_order(gallery_id: str, request: BatchSortOrderRequest):
-    """
-    Обновляет порядок отображения изображений в галерее.
-    """
+    """Обновляет порядок изображений в галерее."""
     try:
-        logger.info(f"[Images API] Updating sort order for gallery {gallery_id}, {len(request.image_orders)} images")
+        logger.info(f"Updating sort order for gallery {gallery_id}, {len(request.image_orders)} images")
         
         for item in request.image_orders:
             supabase_db.client.table("gallery_images")\
@@ -117,35 +90,32 @@ async def update_images_sort_order(gallery_id: str, request: BatchSortOrderReque
                 .eq("gallery_id", gallery_id)\
                 .execute()
         
-        logger.info(f"[Images API] Sort order updated successfully")
-        return {"success": True}
+        logger.info("Sort order updated successfully")
+        return ApiResponse.ok({"updated": True})
+        
     except Exception as e:
-        logger.error(f"[Images API] Error updating sort order: {e}")
-        return {"success": False, "error": str(e)}
+        logger.error(f"Error updating sort order: {e}")
+        raise DatabaseError(str(e), operation="update_sort_order")
 
-@router.delete("/{image_id}", response_model=DeleteImageResponse)
+
+@router.delete("/{image_id}")
 async def delete_image(image_id: str):
-    """
-    Удаляет фото и все связанные данные (photo_faces, face_descriptors через CASCADE).
-    Автоматически перестраивает индекс если были дескрипторы.
-    """
-    logger.info("=" * 80)
-    logger.info(f"[Images API] ===== DELETE REQUEST RECEIVED =====")
-    logger.info(f"[Images API] Deleting image: {image_id}")
-    
+    """Удаляет фото и все связанные данные."""
     try:
-        # 1. Получаем URL фото для удаления из blob
+        logger.info(f"Deleting image: {image_id}")
+        
+        # Get image URL for blob deletion
         result = supabase_db.client.table("gallery_images")\
             .select("image_url")\
             .eq("id", image_id)\
             .execute()
         
         if not result.data:
-            raise HTTPException(status_code=404, detail="Image not found")
+            raise NotFoundError("Image", image_id)
         
         image_url = result.data[0].get("image_url")
         
-        # 2. Проверяем есть ли дескрипторы у этого фото
+        # Check for descriptors
         descriptors_result = supabase_db.client.table("photo_faces")\
             .select("id, insightface_descriptor")\
             .eq("photo_id", image_id)\
@@ -156,18 +126,15 @@ async def delete_image(image_id: str):
             for face in (descriptors_result.data or [])
         )
         
-        logger.info(f"[Images API] Image has descriptors: {has_descriptors}")
-        
-        # 3. Удаляем запись из gallery_images
-        # CASCADE автоматически удалит photo_faces и face_descriptors
-        delete_result = supabase_db.client.table("gallery_images")\
+        # Delete from DB (CASCADE deletes photo_faces)
+        supabase_db.client.table("gallery_images")\
             .delete()\
             .eq("id", image_id)\
             .execute()
         
-        logger.info(f"[Images API] ✓ Image deleted from DB")
+        logger.info("Image deleted from DB")
         
-        # 4. Удаляем blob файл
+        # Delete blob file
         if image_url:
             try:
                 blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
@@ -178,77 +145,55 @@ async def delete_image(image_id: str):
                             headers={"Authorization": f"Bearer {blob_token}"}
                         )
                         if delete_response.status_code in [200, 204]:
-                            logger.info(f"[Images API] ✓ Blob file deleted")
-                        else:
-                            logger.warning(f"[Images API] Warning: Blob delete returned {delete_response.status_code}")
+                            logger.info("Blob file deleted")
             except Exception as e:
-                logger.warning(f"[Images API] Warning: Failed to delete blob: {e}")
+                logger.warning(f"Failed to delete blob: {e}")
         
-        # 5. Перестраиваем индекс если были дескрипторы
+        # Rebuild index if had descriptors
         index_rebuilt = False
         if has_descriptors:
             try:
-                pre_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
-                logger.info(f"[Images API] Rebuilding index (current size: {pre_count})...")
-                
                 rebuild_result = await face_service.rebuild_players_index()
-                
                 if rebuild_result.get("success"):
-                    post_count = rebuild_result.get('new_descriptor_count', 0)
-                    logger.info(f"[Images API] ✓ Index rebuilt: {pre_count} -> {post_count} descriptors")
                     index_rebuilt = True
-                else:
-                    logger.error(f"[Images API] Index rebuild failed: {rebuild_result.get('error')}")
+                    logger.info("Index rebuilt successfully")
             except Exception as e:
-                logger.error(f"[Images API] Warning: Failed to rebuild index: {e}", exc_info=True)
+                logger.error(f"Failed to rebuild index: {e}")
         
-        logger.info("[Images API] ===== DELETE REQUEST COMPLETE =====")
-        logger.info("=" * 80)
+        return ApiResponse.ok({
+            "deleted": True,
+            "had_descriptors": has_descriptors,
+            "index_rebuilt": index_rebuilt
+        })
         
-        return DeleteImageResponse(
-            success=True,
-            message="Image deleted successfully",
-            had_descriptors=has_descriptors,
-            index_rebuilt=index_rebuilt
-        )
-        
-    except HTTPException:
+    except NotFoundError:
         raise
     except Exception as e:
-        logger.error(f"[Images API] Error deleting image: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error deleting image: {e}")
+        raise DatabaseError(str(e), operation="delete_image")
 
-@router.delete("/gallery/{gallery_id}/all", response_model=BatchDeleteResponse)
+
+@router.delete("/gallery/{gallery_id}/all")
 async def delete_all_gallery_images(gallery_id: str):
-    """
-    Удаляет все фото из галереи и автоматически перестраивает индекс.
-    """
+    """Удаляет все фото из галереи."""
     try:
-        logger.info("=" * 80)
-        logger.info(f"[Images API] ===== DELETE ALL REQUEST RECEIVED =====")
-        logger.info(f"[Images API] Deleting all images from gallery: {gallery_id}")
+        logger.info(f"Deleting all images from gallery: {gallery_id}")
         
-        # 1. Получаем все фото из галереи
         result = supabase_db.client.table("gallery_images")\
             .select("id, image_url")\
             .eq("gallery_id", gallery_id)\
             .execute()
         
         if not result.data:
-            return BatchDeleteResponse(
-                success=True,
-                deleted_count=0,
-                failed_count=0,
-                had_descriptors=False,
-                index_rebuilt=False,
-                message="No images to delete"
-            )
+            return ApiResponse.ok({
+                "deleted_count": 0,
+                "message": "No images to delete"
+            })
         
         images = result.data
-        logger.info(f"[Images API] Found {len(images)} images to delete")
-        
-        # 2. Проверяем есть ли дескрипторы у любого фото
         image_ids = [img["id"] for img in images]
+        
+        # Check for descriptors
         descriptors_result = supabase_db.client.table("photo_faces")\
             .select("id, insightface_descriptor")\
             .in_("photo_id", image_ids)\
@@ -259,9 +204,7 @@ async def delete_all_gallery_images(gallery_id: str):
             for face in (descriptors_result.data or [])
         )
         
-        logger.info(f"[Images API] Gallery has descriptors: {has_descriptors}")
-        
-        # 3. Удаляем все фото из БД (CASCADE удалит связанные данные)
+        # Delete all images
         deleted_count = 0
         failed_count = 0
         
@@ -273,7 +216,7 @@ async def delete_all_gallery_images(gallery_id: str):
                     .execute()
                 deleted_count += 1
                 
-                # Удаляем blob файл
+                # Delete blob
                 image_url = image.get("image_url")
                 if image_url:
                     try:
@@ -284,58 +227,46 @@ async def delete_all_gallery_images(gallery_id: str):
                                     image_url,
                                     headers={"Authorization": f"Bearer {blob_token}"}
                                 )
-                    except Exception as e:
-                        logger.warning(f"[Images API] Warning: Failed to delete blob {image_url}: {e}")
+                    except Exception:
+                        pass
                         
             except Exception as e:
-                logger.error(f"[Images API] Failed to delete image {image['id']}: {e}")
+                logger.error(f"Failed to delete image {image['id']}: {e}")
                 failed_count += 1
         
-        logger.info(f"[Images API] Deleted {deleted_count} images, {failed_count} failed")
+        logger.info(f"Deleted {deleted_count} images, {failed_count} failed")
         
-        # 4. Перестраиваем индекс если были дескрипторы
+        # Rebuild index if had descriptors
         index_rebuilt = False
         if has_descriptors and deleted_count > 0:
             try:
-                pre_count = len(face_service.player_ids_map) if face_service.player_ids_map else 0
-                logger.info(f"[Images API] Rebuilding index (current size: {pre_count})...")
-                
                 rebuild_result = await face_service.rebuild_players_index()
-                
                 if rebuild_result.get("success"):
-                    post_count = rebuild_result.get('new_descriptor_count', 0)
-                    logger.info(f"[Images API] ✓ Index rebuilt: {pre_count} -> {post_count} descriptors")
                     index_rebuilt = True
-                else:
-                    logger.error(f"[Images API] Index rebuild failed: {rebuild_result.get('error')}")
+                    logger.info("Index rebuilt successfully")
             except Exception as e:
-                logger.error(f"[Images API] Warning: Failed to rebuild index: {e}", exc_info=True)
+                logger.error(f"Failed to rebuild index: {e}")
         
-        logger.info("[Images API] ===== DELETE ALL REQUEST COMPLETE =====")
-        logger.info("=" * 80)
-        
-        return BatchDeleteResponse(
-            success=failed_count == 0,
-            deleted_count=deleted_count,
-            failed_count=failed_count,
-            had_descriptors=has_descriptors,
-            index_rebuilt=index_rebuilt,
-            message=f"Deleted {deleted_count} images" + (f", {failed_count} failed" if failed_count > 0 else "")
-        )
+        return ApiResponse.ok({
+            "deleted_count": deleted_count,
+            "failed_count": failed_count,
+            "had_descriptors": has_descriptors,
+            "index_rebuilt": index_rebuilt,
+            "message": f"Deleted {deleted_count} images" + (f", {failed_count} failed" if failed_count > 0 else "")
+        })
         
     except Exception as e:
-        logger.error(f"[Images API] Error in batch delete: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in batch delete: {e}")
+        raise DatabaseError(str(e), operation="delete_all_gallery_images")
 
-@router.post("/batch-add", response_model=BatchAddImagesResponse)
+
+@router.post("/batch-add")
 async def batch_add_images(request: BatchAddImagesRequest):
-    """
-    Добавляет несколько фото в галерею одновременно.
-    """
+    """Добавляет несколько фото в галерею."""
     try:
-        logger.info(f"[Images API] Adding {len(request.images)} images to gallery {request.galleryId}")
+        logger.info(f"Adding {len(request.images)} images to gallery {request.galleryId}")
         
-        # Получаем максимальный display_order для галереи
+        # Get max display_order
         max_order_result = supabase_db.client.table("gallery_images")\
             .select("display_order")\
             .eq("gallery_id", request.galleryId)\
@@ -345,7 +276,6 @@ async def batch_add_images(request: BatchAddImagesRequest):
         
         start_order = max_order_result.data[0]["display_order"] + 1 if max_order_result.data else 0
         
-        # Формируем данные для вставки
         images_to_insert = [
             {
                 "gallery_id": request.galleryId,
@@ -360,29 +290,26 @@ async def batch_add_images(request: BatchAddImagesRequest):
             for idx, img in enumerate(request.images)
         ]
         
-        # Вставляем в БД
         result = supabase_db.client.table("gallery_images").insert(images_to_insert).execute()
         
         inserted_count = len(result.data) if result.data else 0
-        logger.info(f"[Images API] Successfully inserted {inserted_count} images")
+        logger.info(f"Successfully inserted {inserted_count} images")
         
-        return BatchAddImagesResponse(
-            success=True,
-            inserted_count=inserted_count,
-            message=f"Successfully added {inserted_count} images"
-        )
+        return ApiResponse.ok({
+            "inserted_count": inserted_count,
+            "message": f"Successfully added {inserted_count} images"
+        })
         
     except Exception as e:
-        logger.error(f"[Images API] Error in batch add: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in batch add: {e}")
+        raise DatabaseError(str(e), operation="batch_add_images")
 
-@router.patch("/{image_id}/mark-processed", response_model=MarkProcessedResponse)
+
+@router.patch("/{image_id}/mark-processed")
 async def mark_image_as_processed(image_id: str):
-    """
-    Помечает фото как обработанное (has_been_processed = true).
-    """
+    """Помечает фото как обработанное."""
     try:
-        logger.info(f"[Images API] Marking image {image_id} as processed")
+        logger.info(f"Marking image {image_id} as processed")
         
         result = supabase_db.client.table("gallery_images")\
             .update({"has_been_processed": True})\
@@ -390,38 +317,30 @@ async def mark_image_as_processed(image_id: str):
             .execute()
         
         if not result.data:
-            raise HTTPException(status_code=404, detail="Image not found")
+            raise NotFoundError("Image", image_id)
         
-        logger.info(f"[Images API] Image {image_id} marked as processed")
+        logger.info(f"Image {image_id} marked as processed")
+        return ApiResponse.ok({"processed": True})
         
-        return MarkProcessedResponse(
-            success=True,
-            message="Image marked as processed"
-        )
-        
-    except HTTPException:
+    except NotFoundError:
         raise
     except Exception as e:
-        logger.error(f"[Images API] Error marking image as processed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error marking image as processed: {e}")
+        raise DatabaseError(str(e), operation="mark_processed")
 
-@router.get("/{image_id}/people", response_model=VerifiedPeopleResponse)
+
+@router.get("/{image_id}/people")
 async def get_image_verified_people(image_id: str):
-    """
-    Получает список верифицированных людей на фото.
-    Возвращает массив объектов с id и name.
-    """
+    """Получает список верифицированных людей на фото."""
     try:
-        logger.info(f"[Images API] Getting verified people for image: {image_id}")
+        logger.info(f"Getting verified people for image: {image_id}")
         
-        # Получаем верифицированные лица с информацией о людях
         result = supabase_db.client.table("photo_faces")\
             .select("person_id, people!inner(id, real_name, telegram_name)")\
             .eq("photo_id", image_id)\
             .eq("verified", True)\
             .execute()
         
-        # Форматируем данные
         people = []
         for item in (result.data or []):
             person_data = item.get("people", {})
@@ -430,17 +349,9 @@ async def get_image_verified_people(image_id: str):
                 "name": person_data.get("real_name") or person_data.get("telegram_name") or "Unknown"
             })
         
-        logger.info(f"[Images API] Found {len(people)} verified people on image")
-        
-        return VerifiedPeopleResponse(
-            success=True,
-            data=people
-        )
+        logger.info(f"Found {len(people)} verified people on image")
+        return ApiResponse.ok(people)
         
     except Exception as e:
-        logger.error(f"[Images API] Error getting verified people: {e}", exc_info=True)
-        return VerifiedPeopleResponse(
-            success=False,
-            data=[],
-            error=str(e)
-        )
+        logger.error(f"Error getting verified people: {e}")
+        raise DatabaseError(str(e), operation="get_verified_people")
