@@ -16,6 +16,7 @@ import {
   Info,
   Check,
   Trash2,
+  Users,
 } from "lucide-react"
 import {
   checkDatabaseIntegrityAction,
@@ -27,6 +28,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import FaceCropPreview from "@/components/FaceCropPreview"
 import { createClient } from "@/lib/supabase/client"
 import { FaceTaggingDialog } from "@/components/admin/face-tagging-dialog"
+import { DuplicatePeopleDialog } from "@/components/admin/duplicate-people-dialog"
 
 interface IntegrityReport {
   stats: {
@@ -50,7 +52,7 @@ interface IntegrityReport {
   people: {
     withoutDescriptors: number
     withoutFaces: number
-    duplicateNames: number
+    duplicatePeople: number // Changed from duplicateNames
   }
   totalIssues: number
   checksPerformed: number
@@ -70,6 +72,7 @@ export function DatabaseIntegrityChecker() {
     imageId: string
     imageUrl: string
   } | null>(null)
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
 
   const supabaseClient = createClient()
 
@@ -226,6 +229,14 @@ export function DatabaseIntegrityChecker() {
     handleCheck()
   }
 
+  const handleDuplicateDialogClose = (open: boolean) => {
+    setDuplicateDialogOpen(open)
+    if (!open) {
+      // Перезапускаем проверку после закрытия диалога
+      handleCheck()
+    }
+  }
+
   const formatShortDate = (dateStr: string | null | undefined): string => {
     if (!dateStr) return ""
     try {
@@ -347,6 +358,8 @@ export function DatabaseIntegrityChecker() {
     hasActions = false,
     maxItems = 40,
     simpleCards = false,
+    customDetailsButton = false,
+    onCustomDetails,
   }: {
     title: string
     count: number
@@ -361,6 +374,8 @@ export function DatabaseIntegrityChecker() {
     hasActions?: boolean
     maxItems?: number
     simpleCards?: boolean
+    customDetailsButton?: boolean
+    onCustomDetails?: () => void
   }) => {
     const isExpanded = expandedIssues.has(issueType)
     const details = report?.details?.[issueType] || []
@@ -392,7 +407,13 @@ export function DatabaseIntegrityChecker() {
             <p className="text-sm text-muted-foreground">{description}</p>
           </div>
           <div className="flex items-center gap-2">
-            {!checked && hasDetails && (
+            {!checked && customDetailsButton && onCustomDetails && (
+              <Button variant="outline" size="sm" onClick={onCustomDetails}>
+                <Users className="mr-2 h-4 w-4" />
+                Просмотреть дубликаты
+              </Button>
+            )}
+            {!checked && !customDetailsButton && hasDetails && (
               <Button
                 variant="outline"
                 size="sm"
@@ -412,7 +433,7 @@ export function DatabaseIntegrityChecker() {
                 )}
               </Button>
             )}
-            {!checked && canFix && !infoOnly && (
+            {!checked && canFix && !infoOnly && !customDetailsButton && (
               <Button variant="outline" size="sm" onClick={() => handleFix(issueType)} disabled={fixingIssue !== null}>
                 {fixingIssue === issueType ? (
                   <>
@@ -427,14 +448,14 @@ export function DatabaseIntegrityChecker() {
                 )}
               </Button>
             )}
-            {infoOnly && !checked && (
+            {infoOnly && !checked && !customDetailsButton && (
               <Badge variant="outline" className="text-muted-foreground">
                 Только информация
               </Badge>
             )}
           </div>
         </div>
-        {isExpanded && hasDetails && (
+        {isExpanded && hasDetails && !customDetailsButton && (
           <div className="ml-4 p-3 bg-muted rounded-lg space-y-2">
             <div className="text-sm font-medium">
               Найдено записей: {details.length}
@@ -665,12 +686,22 @@ export function DatabaseIntegrityChecker() {
             <CardHeader>
               <CardTitle>Информация об игроках (People)</CardTitle>
               <CardDescription>
-                Проверок выполнено: {report.checksPerformed}. Записей об игроках:{" "}
-                {report.people.withoutDescriptors + report.people.withoutFaces + report.people.duplicateNames}
+                Проверок выполнено: {report.checksPerformed}. Найдено групп дубликатов: {report.people.duplicatePeople}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
+                <IssueRow
+                  title="Дубликаты игроков"
+                  count={report.people.duplicatePeople}
+                  issueType="duplicatePeople"
+                  description="Игроки с совпадающими контактами (Gmail, Telegram, Facebook, Instagram)"
+                  severity="high"
+                  canFix={false}
+                  checked={report.people.duplicatePeople === 0}
+                  customDetailsButton={report.people.duplicatePeople > 0}
+                  onCustomDetails={() => setDuplicateDialogOpen(true)}
+                />
                 <IssueRow
                   title="Игроки без дескрипторов"
                   count={report.people.withoutDescriptors}
@@ -691,16 +722,6 @@ export function DatabaseIntegrityChecker() {
                   infoOnly={true}
                   checked={report.people.withoutFaces === 0}
                 />
-                <IssueRow
-                  title="Дубликаты имен"
-                  count={report.people.duplicateNames}
-                  issueType="duplicateNames"
-                  description="Несколько игроков с ОДИНАКОВЫМИ именем И telegram"
-                  severity="medium"
-                  canFix={false}
-                  infoOnly={true}
-                  checked={report.people.duplicateNames === 0}
-                />
               </div>
             </CardContent>
           </Card>
@@ -715,6 +736,10 @@ export function DatabaseIntegrityChecker() {
           onSave={handleTaggingSave}
         />
       )}
+      <DuplicatePeopleDialog 
+        open={duplicateDialogOpen} 
+        onOpenChange={handleDuplicateDialogClose} 
+      />
     </div>
   )
 }
