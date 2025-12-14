@@ -7,6 +7,7 @@ Face detection endpoints.
 from fastapi import APIRouter, HTTPException, Depends
 import logging
 import numpy as np
+import json
 
 from models.recognition_schemas import (
     DetectFacesRequest,
@@ -18,6 +19,59 @@ from .dependencies import get_face_service, get_supabase_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _get_face_metrics(face_service, supabase_client, embedding: np.ndarray):
+    """
+    Helper function to get distance_to_nearest and top_matches from HNSWLIB index.
+    
+    Returns:
+        tuple: (distance_to_nearest, top_matches)
+    """
+    distance_to_nearest = None
+    top_matches = []
+    
+    has_index = hasattr(face_service, 'players_index') and face_service.players_index is not None
+    index_count = face_service.players_index.get_current_count() if has_index else 0
+    
+    if has_index and index_count > 0:
+        try:
+            # Query index for top 3 matches
+            k = min(3, index_count)
+            labels, distances = face_service.players_index.knn_query(embedding.reshape(1, -1), k=k)
+            
+            if len(distances) > 0 and len(distances[0]) > 0:
+                distance_to_nearest = float(distances[0][0])
+                
+                # Get person names for top matches
+                for i, (label_idx, distance) in enumerate(zip(labels[0], distances[0])):
+                    if i >= 3:
+                        break
+                    
+                    if not hasattr(face_service, 'player_ids_map') or len(face_service.player_ids_map) == 0:
+                        break
+                    
+                    person_id_match = face_service.player_ids_map[int(label_idx)]
+                    
+                    # Get person name from database
+                    person_response = supabase_client.client.table("people").select(
+                        "real_name"
+                    ).eq("id", person_id_match).execute()
+                    
+                    person_name = "Unknown"
+                    if person_response.data and len(person_response.data) > 0:
+                        person_name = person_response.data[0].get("real_name", "Unknown")
+                    
+                    similarity = 1.0 - float(distance)
+                    top_matches.append({
+                        "person_id": person_id_match,
+                        "name": person_name,
+                        "similarity": similarity
+                    })
+        except Exception as e:
+            logger.warning(f"[_get_face_metrics] Could not get metrics: {str(e)}")
+    
+    return distance_to_nearest, top_matches
 
 
 @router.post("/detect-faces", response_model=FaceDetectionResponse)
@@ -64,54 +118,12 @@ async def detect_faces(
             
             person_id, confidence = await face_service.recognize_face(embedding, confidence_threshold=0.0)
             
-            # Get top 3 matches from HNSWLIB index
-            top_matches = []
-            distance_to_nearest = None
+            # Get metrics from HNSWLIB index
+            distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
             
-            if has_index and index_count > 0:
-                try:
-                    # Query index for top 3 matches
-                    k = min(3, index_count)  # Can't query more than index has
-                    labels, distances = face_service.players_index.knn_query(embedding.reshape(1, -1), k=k)
-                    
-                    logger.info(f"[v3.1]   - Raw KNN result: labels={labels}, distances={distances}")
-                    
-                    if len(distances) > 0 and len(distances[0]) > 0:
-                        distance_to_nearest = float(distances[0][0])
-                        
-                        # Get person names for top matches
-                        for i, (label_idx, distance) in enumerate(zip(labels[0], distances[0])):
-                            if i >= 3:  # Only top 3
-                                break
-                            
-                            if not hasattr(face_service, 'player_ids_map') or len(face_service.player_ids_map) == 0:
-                                logger.warning(f"[v3.1] player_ids_map is empty or not available")
-                                break
-                            
-                            person_id_match = face_service.player_ids_map[int(label_idx)]
-                            
-                            # Get person name from database
-                            person_response = supabase_client.client.table("people").select(
-                                "real_name"
-                            ).eq("id", person_id_match).execute()
-                            
-                            person_name = "Unknown"
-                            if person_response.data and len(person_response.data) > 0:
-                                person_name = person_response.data[0].get("real_name", "Unknown")
-                            
-                            similarity = 1.0 - float(distance)  # Convert distance to similarity
-                            top_matches.append({
-                                "person_id": person_id_match,
-                                "name": person_name,
-                                "similarity": similarity
-                            })
-                            
-                        logger.info(f"[v3.1]   - Distance to nearest: {distance_to_nearest:.4f}")
-                        logger.info(f"[v3.1]   - Top matches: {len(top_matches)}")
-                except Exception as e:
-                    logger.warning(f"[v3.1] Could not get top matches: {str(e)}")
-            else:
-                logger.warning(f"[v3.1] Skipping KNN query: has_index={has_index}, index_count={index_count}")
+            if distance_to_nearest is not None:
+                logger.info(f"[v3.1]   - Distance to nearest: {distance_to_nearest:.4f}")
+                logger.info(f"[v3.1]   - Top matches: {len(top_matches)}")
             
             face_data = {
                 "insightface_bbox": {
@@ -157,7 +169,7 @@ async def process_photo(
     2. If force_redetect=True → DELETE all + redetect
     3. If no faces → detect + recognize + SAVE
     4. If faces exist → recognize unassigned + UPDATE
-    5. Return all faces (WITHOUT embeddings)
+    5. Return all faces (WITHOUT embeddings) + metrics for details dialog
     """
     try:
         config = await supabase_client.get_recognition_config()
@@ -169,25 +181,25 @@ async def process_photo(
                 "min_face_size": request.min_face_size or quality_filters_config.get('min_face_size', 80),
                 "min_blur_score": request.min_blur_score or quality_filters_config.get('min_blur_score', 100)
             }
-            logger.info(f"[v2.4.1] Quality filters: det={face_service.quality_filters['min_detection_score']}, size={face_service.quality_filters['min_face_size']}, blur={face_service.quality_filters['min_blur_score']}")
+            logger.info(f"[v2.5] Quality filters: det={face_service.quality_filters['min_detection_score']}, size={face_service.quality_filters['min_face_size']}, blur={face_service.quality_filters['min_blur_score']}")
         else:
-            logger.info(f"[v2.4.1] Quality filters DISABLED - all faces will be detected")
+            logger.info(f"[v2.5] Quality filters DISABLED - all faces will be detected")
         
         logger.info("=" * 80)
-        logger.info("[v2.3] ===== PROCESS PHOTO REQUEST START =====")
-        logger.info(f"[v2.3] Photo ID: {request.photo_id}")
-        logger.info(f"[v2.3] Force redetect: {request.force_redetect}")
-        logger.info(f"[v2.3] Apply quality filters: {request.apply_quality_filters}")
-        logger.info(f"[v2.3] Quality params received:")
-        logger.info(f"[v2.3]   - confidence_threshold: {request.confidence_threshold}")
-        logger.info(f"[v2.3]   - min_detection_score: {request.min_detection_score}")
-        logger.info(f"[v2.3]   - min_face_size: {request.min_face_size}")
-        logger.info(f"[v2.3]   - min_blur_score: {request.min_blur_score}")
+        logger.info("[v2.5] ===== PROCESS PHOTO REQUEST START =====")
+        logger.info(f"[v2.5] Photo ID: {request.photo_id}")
+        logger.info(f"[v2.5] Force redetect: {request.force_redetect}")
+        logger.info(f"[v2.5] Apply quality filters: {request.apply_quality_filters}")
+        logger.info(f"[v2.5] Quality params received:")
+        logger.info(f"[v2.5]   - confidence_threshold: {request.confidence_threshold}")
+        logger.info(f"[v2.5]   - min_detection_score: {request.min_detection_score}")
+        logger.info(f"[v2.5]   - min_face_size: {request.min_face_size}")
+        logger.info(f"[v2.5]   - min_blur_score: {request.min_blur_score}")
         
         if request.force_redetect:
-            logger.info("[v2.3] Force redetect requested - deleting existing faces")
+            logger.info("[v2.5] Force redetect requested - deleting existing faces")
             supabase_client.client.table("photo_faces").delete().eq("photo_id", request.photo_id).execute()
-            logger.info("[v2.3] ✓ Existing faces deleted")
+            logger.info("[v2.5] ✓ Existing faces deleted")
         
         # Check existing faces in database
         existing_result = supabase_client.client.table("photo_faces").select(
@@ -195,10 +207,10 @@ async def process_photo(
         ).eq("photo_id", request.photo_id).execute()
         
         existing_faces = existing_result.data or []
-        logger.info(f"[v2.3] Found {len(existing_faces)} existing faces in DB")
+        logger.info(f"[v2.5] Found {len(existing_faces)} existing faces in DB")
         
         if len(existing_faces) == 0:
-            logger.info("[v2.3] Case 1: New photo - detecting faces")
+            logger.info("[v2.5] Case 1: New photo - detecting faces")
             
             # Get image URL
             photo_response = supabase_client.client.table("gallery_images").select("image_url").eq("id", request.photo_id).execute()
@@ -206,17 +218,17 @@ async def process_photo(
                 raise HTTPException(status_code=404, detail="Photo not found")
             
             image_url = photo_response.data[0]["image_url"]
-            logger.info(f"[v2.3] Image URL: {image_url}")
+            logger.info(f"[v2.5] Image URL: {image_url}")
             
             # Detect faces
             detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=request.apply_quality_filters)
-            logger.info(f"[v2.3] ✓ Detected {len(detected_faces)} faces")
+            logger.info(f"[v2.5] ✓ Detected {len(detected_faces)} faces")
             
             saved_faces = []
-            blur_scores = {}  # Store blur scores from detection
+            face_metrics = {}  # Store blur_score, distance_to_nearest, top_matches per face
             
             for idx, face in enumerate(detected_faces):
-                logger.info(f"[v2.3] Processing face {idx + 1}/{len(detected_faces)}")
+                logger.info(f"[v2.5] Processing face {idx + 1}/{len(detected_faces)}")
                 
                 embedding = face["embedding"]
                 bbox = {
@@ -226,15 +238,19 @@ async def process_photo(
                     "height": float(face["bbox"][3] - face["bbox"][1]),
                 }
                 det_confidence = float(face["det_score"])
+                blur_score = float(face.get("blur_score", 0))
                 
                 # Recognize
                 person_id, rec_confidence = await face_service.recognize_face(embedding, confidence_threshold=request.confidence_threshold or 0.60)
                 
                 if rec_confidence and rec_confidence < (request.confidence_threshold or 0.60):
                     person_id = None
-                    logger.info(f"[v2.4.1]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold or 0.60}")
+                    logger.info(f"[v2.5]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold or 0.60}")
                 
-                logger.info(f"[v2.3]   Recognition: person_id={person_id}, confidence={rec_confidence}")
+                logger.info(f"[v2.5]   Recognition: person_id={person_id}, confidence={rec_confidence}")
+                
+                # Get metrics for details dialog
+                distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
                 
                 insert_data = {
                     "photo_id": request.photo_id,
@@ -250,15 +266,19 @@ async def process_photo(
                 
                 if save_response.data:
                     saved_face = save_response.data[0]
-                    logger.info(f"[v2.3]   ✓ Saved with ID: {saved_face['id']}")
+                    logger.info(f"[v2.5]   ✓ Saved with ID: {saved_face['id']}")
                     saved_faces.append(saved_face)
-                    blur_scores[saved_face['id']] = float(face.get("blur_score", 0))
+                    face_metrics[saved_face['id']] = {
+                        "blur_score": blur_score,
+                        "distance_to_nearest": distance_to_nearest,
+                        "top_matches": top_matches,
+                    }
                 else:
-                    logger.error(f"[v2.3]   ❌ Failed to save face")
+                    logger.error(f"[v2.5]   ❌ Failed to save face")
             
-            logger.info(f"[v2.3] ✓ Saved {len(saved_faces)} faces to database")
+            logger.info(f"[v2.5] ✓ Saved {len(saved_faces)} faces to database")
             
-            # Load people info
+            # Load people info and build response
             response_faces = []
             for face in saved_faces:
                 if face["person_id"]:
@@ -267,6 +287,7 @@ async def process_photo(
                 else:
                     person_data = None
                 
+                metrics = face_metrics.get(face["id"], {})
                 response_faces.append({
                     "id": face["id"],
                     "person_id": face["person_id"],
@@ -274,48 +295,59 @@ async def process_photo(
                     "verified": face["verified"],
                     "insightface_bbox": face["insightface_bbox"],
                     "insightface_confidence": face["insightface_confidence"],
-                    "blur_score": blur_scores.get(face["id"]),
+                    "blur_score": metrics.get("blur_score"),
+                    "distance_to_nearest": metrics.get("distance_to_nearest"),
+                    "top_matches": metrics.get("top_matches", []),
                     "people": person_data,
                 })
             
-            logger.info("[v2.3] ===== PROCESS PHOTO REQUEST END =====")
+            logger.info("[v2.5] ===== PROCESS PHOTO REQUEST END =====")
             logger.info("=" * 80)
             
             return {"success": True, "data": response_faces, "error": None}
         
-        logger.info(f"[v2.3] Case 2: Existing faces - checking for unverified")
+        logger.info(f"[v2.5] Case 2: Existing faces - checking for unverified")
         
         unverified_faces = [f for f in existing_faces if not f["person_id"] or not f["verified"]]
-        logger.info(f"[v2.3] Found {len(unverified_faces)} unverified faces")
+        logger.info(f"[v2.5] Found {len(unverified_faces)} unverified faces")
+        
+        # Store metrics for all faces
+        face_metrics = {}
         
         if len(unverified_faces) > 0:
-            logger.info(f"[v2.3] Recognizing {len(unverified_faces)} unverified faces")
+            logger.info(f"[v2.5] Recognizing {len(unverified_faces)} unverified faces")
             
             for face in unverified_faces:
                 # Read embedding from DB
                 descriptor = face["insightface_descriptor"]
                 if not descriptor:
-                    logger.warning(f"[v2.3] Face {face['id']} has no descriptor - skipping")
+                    logger.warning(f"[v2.5] Face {face['id']} has no descriptor - skipping")
                     continue
                 
                 if isinstance(descriptor, str):
-                    import json
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
                 elif isinstance(descriptor, list):
                     embedding = np.array(descriptor, dtype=np.float32)
                 else:
-                    logger.warning(f"[v2.3] Unknown descriptor type: {type(descriptor)}")
+                    logger.warning(f"[v2.5] Unknown descriptor type: {type(descriptor)}")
                     continue
+                
+                # Get metrics for this face
+                distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
+                face_metrics[face["id"]] = {
+                    "distance_to_nearest": distance_to_nearest,
+                    "top_matches": top_matches,
+                }
                 
                 # Recognize
                 person_id, rec_confidence = await face_service.recognize_face(embedding, confidence_threshold=request.confidence_threshold or 0.60)
                 
                 if rec_confidence and rec_confidence < (request.confidence_threshold or 0.60):
                     person_id = None
-                    logger.info(f"[v2.4.1]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold or 0.60}")
+                    logger.info(f"[v2.5]   Filtered by confidence: {rec_confidence:.2f} < {request.confidence_threshold or 0.60}")
                 
                 if person_id and rec_confidence:
-                    logger.info(f"[v2.3]   Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")
+                    logger.info(f"[v2.5]   Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")
                     
                     # UPDATE database
                     supabase_client.client.table("photo_faces").update({
@@ -323,29 +355,55 @@ async def process_photo(
                         "recognition_confidence": rec_confidence,
                     }).eq("id", face["id"]).execute()
                     
-                    logger.info(f"[v2.3]   ✓ Updated face {face['id']}")
+                    logger.info(f"[v2.5]   ✓ Updated face {face['id']}")
+        
+        # Also get metrics for verified faces that weren't processed above
+        for face in existing_faces:
+            if face["id"] not in face_metrics:
+                descriptor = face.get("insightface_descriptor")
+                if descriptor:
+                    if isinstance(descriptor, str):
+                        embedding = np.array(json.loads(descriptor), dtype=np.float32)
+                    elif isinstance(descriptor, list):
+                        embedding = np.array(descriptor, dtype=np.float32)
+                    else:
+                        continue
+                    
+                    distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
+                    face_metrics[face["id"]] = {
+                        "distance_to_nearest": distance_to_nearest,
+                        "top_matches": top_matches,
+                    }
         
         # Load all faces (updated)
         final_result = supabase_client.client.table("photo_faces").select(
             "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, people(id, real_name, telegram_name)"
         ).eq("photo_id", request.photo_id).execute()
         
-        response_faces = final_result.data or []
+        response_faces = []
+        for face in (final_result.data or []):
+            metrics = face_metrics.get(face["id"], {})
+            response_faces.append({
+                **face,
+                "blur_score": metrics.get("blur_score"),
+                "distance_to_nearest": metrics.get("distance_to_nearest"),
+                "top_matches": metrics.get("top_matches", []),
+            })
         
-        logger.info(f"[v2.3] ✓ Returning {len(response_faces)} faces")
-        logger.info("[v2.3] ===== PROCESS PHOTO REQUEST END =====")
+        logger.info(f"[v2.5] ✓ Returning {len(response_faces)} faces with metrics")
+        logger.info("[v2.5] ===== PROCESS PHOTO REQUEST END =====")
         logger.info("=" * 80)
         
         return {"success": True, "data": response_faces, "error": None}
         
     except Exception as e:
         logger.error("=" * 80)
-        logger.error(f"[v2.3] ❌ ERROR in process_photo")
-        logger.error(f"[v2.3] Photo ID: {request.photo_id}")
-        logger.error(f"[v2.3] Apply quality filters: {request.apply_quality_filters}")
-        logger.error(f"[v2.3] Error type: {type(e).__name__}")
-        logger.error(f"[v2.3] Error message: {str(e)}")
-        logger.error(f"[v2.3] Full traceback:", exc_info=True)
+        logger.error(f"[v2.5] ❌ ERROR in process_photo")
+        logger.error(f"[v2.5] Photo ID: {request.photo_id}")
+        logger.error(f"[v2.5] Apply quality filters: {request.apply_quality_filters}")
+        logger.error(f"[v2.5] Error type: {type(e).__name__}")
+        logger.error(f"[v2.5] Error message: {str(e)}")
+        logger.error(f"[v2.5] Full traceback:", exc_info=True)
         logger.error("=" * 80)
         
         # Сериализация ошибки для frontend

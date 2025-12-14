@@ -46,15 +46,17 @@ export function FaceRecognitionDetailsDialog({
             const isExactMatch = face.recognition_confidence !== undefined && face.recognition_confidence >= 0.999
             const isRecognized = face.recognition_confidence !== undefined && face.recognition_confidence > 0 && face.person_name
             
-            // Calculate distance (1 - confidence) for unrecognized faces
-            const distance = face.recognition_confidence !== undefined 
-              ? (1 - face.recognition_confidence).toFixed(3)
-              : face.distance_to_nearest?.toFixed(3)
+            // Use distance_to_nearest if available, otherwise calculate from confidence
+            const distance = face.distance_to_nearest !== undefined && face.distance_to_nearest !== null
+              ? face.distance_to_nearest.toFixed(3)
+              : face.recognition_confidence !== undefined 
+                ? (1 - face.recognition_confidence).toFixed(3)
+                : "N/A"
 
             return (
               <Card key={index}>
                 <CardHeader>
-                  <CardTitle className="text-2xl">{face.person_name || `Лицо ${index + 1}`}</CardTitle>
+                  <CardTitle className="text-2xl">{face.person_name || `Неизвестный ${index + 1}`}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex gap-6">
@@ -91,7 +93,7 @@ export function FaceRecognitionDetailsDialog({
                             ? "Exact Match"
                             : isRecognized
                               ? face.recognition_confidence!.toFixed(3)
-                              : distance || "N/A"}
+                              : distance}
                         </p>
                       </div>
                     </div>
