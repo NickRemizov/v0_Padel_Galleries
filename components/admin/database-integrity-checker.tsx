@@ -47,12 +47,11 @@ interface IntegrityReport {
     nonExistentPerson: number
     nonExistentPhoto: number
     orphanedLinks: number
-    unrecognizedFaces: number // Renamed from descriptorsWithoutPerson
+    unrecognizedFaces: number
   }
   people: {
-    withoutDescriptors: number
     withoutFaces: number
-    duplicatePeople: number // Changed from duplicateNames
+    duplicatePeople: number
   }
   totalIssues: number
   checksPerformed: number
@@ -352,7 +351,7 @@ export function DatabaseIntegrityChecker() {
     severity = "medium",
     canFix = true,
     infoOnly = false,
-    checked = false, // New parameter - true if check passed (count=0)
+    checked = false,
     showConfidence = false,
     showVerified = false,
     hasActions = false,
@@ -368,7 +367,7 @@ export function DatabaseIntegrityChecker() {
     severity?: "critical" | "high" | "medium" | "low"
     canFix?: boolean
     infoOnly?: boolean
-    checked?: boolean // New parameter for showing OK checks
+    checked?: boolean
     showConfidence?: boolean
     showVerified?: boolean
     hasActions?: boolean
@@ -508,6 +507,47 @@ export function DatabaseIntegrityChecker() {
             {details.length > maxItems && (
               <div className="text-xs text-muted-foreground">... и еще {details.length - maxItems} записей</div>
             )}
+          </div>
+        )}
+        <Separator />
+      </div>
+    )
+  }
+
+  // Компонент для отображения списка игроков без фото
+  const PeopleWithoutFacesRow = () => {
+    const names = report?.details?.peopleWithoutFaces || []
+    const count = report?.people?.withoutFaces || 0
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between py-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">Игроки без фото</span>
+              {count === 0 ? (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  OK
+                </Badge>
+              ) : (
+                <Badge variant="secondary">{count}</Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Игроки, которым не назначено ни одного фото
+            </p>
+          </div>
+          <Badge variant="outline" className="text-muted-foreground">
+            Только информация
+          </Badge>
+        </div>
+        {count > 0 && names.length > 0 && (
+          <div className="ml-4 p-3 bg-muted rounded-lg">
+            <div className="text-sm leading-relaxed">
+              {names.join(", ")}
+            </div>
           </div>
         )}
         <Separator />
@@ -686,7 +726,7 @@ export function DatabaseIntegrityChecker() {
             <CardHeader>
               <CardTitle>Информация об игроках (People)</CardTitle>
               <CardDescription>
-                Проверок выполнено: {report.checksPerformed}. Найдено групп дубликатов: {report.people.duplicatePeople}
+                Найдено групп дубликатов: {report.people.duplicatePeople}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -702,26 +742,7 @@ export function DatabaseIntegrityChecker() {
                   customDetailsButton={report.people.duplicatePeople > 0}
                   onCustomDetails={() => setDuplicateDialogOpen(true)}
                 />
-                <IssueRow
-                  title="Игроки без дескрипторов"
-                  count={report.people.withoutDescriptors}
-                  issueType="peopleWithoutDescriptors"
-                  description="Новые игроки, которым еще не назначено ни одного фото (это нормально)"
-                  severity="low"
-                  canFix={false}
-                  infoOnly={true}
-                  checked={report.people.withoutDescriptors === 0}
-                />
-                <IssueRow
-                  title="Игроки без фото"
-                  count={report.people.withoutFaces}
-                  issueType="peopleWithoutFaces"
-                  description="Игроки без отметок на фото (это нормально, могут быть новыми)"
-                  severity="low"
-                  canFix={false}
-                  infoOnly={true}
-                  checked={report.people.withoutFaces === 0}
-                />
+                <PeopleWithoutFacesRow />
               </div>
             </CardContent>
           </Card>
