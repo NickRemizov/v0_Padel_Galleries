@@ -1,6 +1,7 @@
 """
 Galleries API Router
 CRUD operations for galleries
+Supports both UUID and slug identifiers for human-readable URLs
 """
 
 from fastapi import APIRouter, Query
@@ -10,6 +11,7 @@ from typing import Optional, List
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
+from core.slug import resolve_identifier, is_uuid
 from services.supabase_database import SupabaseDatabase
 from services.face_recognition import FaceRecognitionService
 
@@ -24,6 +26,25 @@ def set_services(supabase_db: SupabaseDatabase, face_service: FaceRecognitionSer
     global supabase_db_instance, face_service_instance
     supabase_db_instance = supabase_db
     face_service_instance = face_service
+
+
+def _resolve_gallery(identifier: str, select: str = "*") -> Optional[dict]:
+    """Resolve gallery by ID or slug."""
+    return resolve_identifier(
+        supabase_db_instance.client,
+        "galleries",
+        identifier,
+        slug_column="slug",
+        select=select
+    )
+
+
+def _get_gallery_id(identifier: str) -> str:
+    """Get gallery ID from identifier (ID or slug). Raises NotFoundError if not found."""
+    gallery = _resolve_gallery(identifier)
+    if not gallery:
+        raise NotFoundError("Gallery", identifier)
+    return gallery["id"]
 
 
 class GalleryCreate(BaseModel):
@@ -83,7 +104,7 @@ async def get_galleries_with_unprocessed_photos():
     try:
         # Get all galleries
         galleries_result = supabase_db_instance.client.table("galleries").select(
-            "id, title, shoot_date"
+            "id, title, shoot_date, slug"
         ).order("shoot_date", desc=True).execute()
         
         galleries = galleries_result.data or []
@@ -109,6 +130,7 @@ async def get_galleries_with_unprocessed_photos():
             if unprocessed_count > 0:
                 result.append({
                     "id": gallery["id"],
+                    "slug": gallery.get("slug"),
                     "title": gallery["title"],
                     "shoot_date": gallery["shoot_date"],
                     "total_photos": total_count,
@@ -132,7 +154,7 @@ async def get_galleries_with_unverified_faces():
     try:
         # Get all galleries
         galleries_result = supabase_db_instance.client.table("galleries").select(
-            "id, title, shoot_date"
+            "id, title, shoot_date, slug"
         ).order("shoot_date", desc=True).execute()
         
         galleries = galleries_result.data or []
@@ -181,6 +203,7 @@ async def get_galleries_with_unverified_faces():
             if unverified_count > 0:
                 result.append({
                     "id": gallery["id"],
+                    "slug": gallery.get("slug"),
                     "title": gallery["title"],
                     "shoot_date": gallery["shoot_date"],
                     "total_photos": total_count,
@@ -201,38 +224,39 @@ async def get_galleries_with_unrecognized_faces():
     return await get_galleries_with_unverified_faces()
 
 
-@router.get("/{gallery_id}")
-async def get_gallery(gallery_id: str):
-    """Get a gallery by ID."""
+@router.get("/{identifier}")
+async def get_gallery(identifier: str):
+    """Get a gallery by ID or slug."""
     try:
-        result = supabase_db_instance.client.table("galleries").select(
-            "*, photographers(id, name), locations(id, name), organizers(id, name)"
-        ).eq("id", gallery_id).execute()
+        gallery = _resolve_gallery(
+            identifier,
+            select="*, photographers(id, name), locations(id, name), organizers(id, name)"
+        )
         
-        if result.data and len(result.data) > 0:
-            gallery = result.data[0]
-            
+        if gallery:
             # Add photo count
             count_result = supabase_db_instance.client.table("gallery_images").select(
                 "id", count="exact"
-            ).eq("gallery_id", gallery_id).execute()
+            ).eq("gallery_id", gallery["id"]).execute()
             gallery["photo_count"] = count_result.count or 0
             
             return ApiResponse.ok(gallery)
-        raise NotFoundError("Gallery", gallery_id)
+        raise NotFoundError("Gallery", identifier)
     except NotFoundError:
         raise
     except Exception as e:
-        logger.error(f"Error getting gallery {gallery_id}: {e}")
+        logger.error(f"Error getting gallery {identifier}: {e}")
         raise DatabaseError(str(e), operation="get_gallery")
 
 
-@router.get("/{gallery_id}/unprocessed-photos")
-async def get_gallery_unprocessed_photos(gallery_id: str):
+@router.get("/{identifier}/unprocessed-photos")
+async def get_gallery_unprocessed_photos(identifier: str):
     """Get unprocessed photos from a gallery for recognition."""
     try:
+        gallery_id = _get_gallery_id(identifier)
+        
         result = supabase_db_instance.client.table("gallery_images").select(
-            "id, image_url, original_filename"
+            "id, image_url, original_filename, slug"
         ).eq("gallery_id", gallery_id).or_(
             "has_been_processed.is.null,has_been_processed.eq.false"
         ).order("original_filename").execute()
@@ -240,21 +264,25 @@ async def get_gallery_unprocessed_photos(gallery_id: str):
         images = result.data or []
         logger.info(f"Found {len(images)} unprocessed photos in gallery {gallery_id}")
         return ApiResponse.ok(images)
+    except NotFoundError:
+        raise
     except Exception as e:
-        logger.error(f"Error getting unprocessed photos for gallery {gallery_id}: {e}")
+        logger.error(f"Error getting unprocessed photos for gallery {identifier}: {e}")
         raise DatabaseError(str(e), operation="get_gallery_unprocessed_photos")
 
 
-@router.get("/{gallery_id}/unverified-photos")
-async def get_gallery_unverified_photos(gallery_id: str):
+@router.get("/{identifier}/unverified-photos")
+async def get_gallery_unverified_photos(identifier: str):
     """
     Get photos from a gallery that are NOT fully verified.
     A photo is fully verified ONLY if ALL its faces have recognition_confidence = 1.
     """
     try:
+        gallery_id = _get_gallery_id(identifier)
+        
         # Get all photos in gallery
         photos_result = supabase_db_instance.client.table("gallery_images").select(
-            "id, image_url, original_filename"
+            "id, image_url, original_filename, slug"
         ).eq("gallery_id", gallery_id).order("original_filename").execute()
         
         photos = photos_result.data or []
@@ -289,22 +317,26 @@ async def get_gallery_unverified_photos(gallery_id: str):
         
         logger.info(f"Found {len(result)} unverified photos in gallery {gallery_id}")
         return ApiResponse.ok(result)
+    except NotFoundError:
+        raise
     except Exception as e:
-        logger.error(f"Error getting unverified photos for gallery {gallery_id}: {e}")
+        logger.error(f"Error getting unverified photos for gallery {identifier}: {e}")
         raise DatabaseError(str(e), operation="get_gallery_unverified_photos")
 
 
 # Keep old endpoint for backward compatibility
-@router.get("/{gallery_id}/unrecognized-photos")
-async def get_gallery_unrecognized_photos(gallery_id: str):
+@router.get("/{identifier}/unrecognized-photos")
+async def get_gallery_unrecognized_photos(identifier: str):
     """Alias for unverified-photos (backward compatibility)."""
-    return await get_gallery_unverified_photos(gallery_id)
+    return await get_gallery_unverified_photos(identifier)
 
 
-@router.get("/{gallery_id}/stats")
-async def get_gallery_stats(gallery_id: str):
+@router.get("/{identifier}/stats")
+async def get_gallery_stats(identifier: str):
     """Get face recognition stats for a gallery."""
     try:
+        gallery_id = _get_gallery_id(identifier)
+        
         images_result = supabase_db_instance.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
         image_ids = [img["id"] for img in (images_result.data or [])]
         
@@ -329,8 +361,10 @@ async def get_gallery_stats(gallery_id: str):
             "verifiedCount": verified_count,
             "totalCount": total_count
         })
+    except NotFoundError:
+        raise
     except Exception as e:
-        logger.error(f"Error getting gallery stats {gallery_id}: {e}")
+        logger.error(f"Error getting gallery stats {identifier}: {e}")
         raise DatabaseError(str(e), operation="get_gallery_stats")
 
 
@@ -349,10 +383,12 @@ async def create_gallery(data: GalleryCreate):
         raise DatabaseError(str(e), operation="create_gallery")
 
 
-@router.put("/{gallery_id}")
-async def update_gallery(gallery_id: str, data: GalleryUpdate):
-    """Update a gallery."""
+@router.put("/{identifier}")
+async def update_gallery(identifier: str, data: GalleryUpdate):
+    """Update a gallery by ID or slug."""
     try:
+        gallery_id = _get_gallery_id(identifier)
+        
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
             raise ValidationError("No fields to update")
@@ -361,30 +397,36 @@ async def update_gallery(gallery_id: str, data: GalleryUpdate):
         if result.data:
             logger.info(f"Updated gallery {gallery_id}")
             return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Gallery", gallery_id)
+        raise NotFoundError("Gallery", identifier)
     except (NotFoundError, ValidationError):
         raise
     except Exception as e:
-        logger.error(f"Error updating gallery {gallery_id}: {e}")
+        logger.error(f"Error updating gallery {identifier}: {e}")
         raise DatabaseError(str(e), operation="update_gallery")
 
 
-@router.patch("/{gallery_id}/sort-order")
-async def update_sort_order(gallery_id: str, sort_order: str = Query(...)):
+@router.patch("/{identifier}/sort-order")
+async def update_sort_order(identifier: str, sort_order: str = Query(...)):
     """Update gallery sort order."""
     try:
+        gallery_id = _get_gallery_id(identifier)
+        
         supabase_db_instance.client.table("galleries").update({"sort_order": sort_order}).eq("id", gallery_id).execute()
         logger.info(f"Updated sort order for gallery {gallery_id}")
         return ApiResponse.ok({"updated": True})
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error updating sort order: {e}")
         raise DatabaseError(str(e), operation="update_sort_order")
 
 
-@router.delete("/{gallery_id}")
-async def delete_gallery(gallery_id: str, delete_images: bool = Query(True)):
+@router.delete("/{identifier}")
+async def delete_gallery(identifier: str, delete_images: bool = Query(True)):
     """Delete a gallery and optionally all its images."""
     try:
+        gallery_id = _get_gallery_id(identifier)
+        
         if delete_images:
             # Get all images in gallery
             images = supabase_db_instance.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
@@ -414,6 +456,8 @@ async def delete_gallery(gallery_id: str, delete_images: bool = Query(True)):
                 logger.error(f"Failed to rebuild index after gallery deletion: {e}")
         
         return ApiResponse.ok({"deleted": True, "index_rebuilt": index_rebuilt})
+    except NotFoundError:
+        raise
     except Exception as e:
-        logger.error(f"Error deleting gallery {gallery_id}: {e}")
+        logger.error(f"Error deleting gallery {identifier}: {e}")
         raise DatabaseError(str(e), operation="delete_gallery")
