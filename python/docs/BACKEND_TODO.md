@@ -9,6 +9,9 @@
 |---|--------|-----------|--------|
 | 1 | [CORS: динамическая проверка origins](#1-cors-динамическая-проверка-origins) | 🔴 Высокий | ⏳ TODO |
 | 2 | ~~Config: дублирование и неверный prefix~~ | 🟡 Средний | ✅ DONE |
+| 3 | [DI: глобальные переменные вместо Depends](#3-di-глобальные-переменные-вместо-depends) | 🟡 Средний | ⏳ TODO |
+| 4 | [Async/Sync: блокирующие вызовы в async](#4-asyncsync-блокирующие-вызовы-в-async) | 🟡 Средний | ⏳ TODO |
+| 5 | [Контракт ошибок: унификация](#5-контракт-ошибок-унификация) | 🟢 Низкий | ⏳ TODO |
 
 ---
 
@@ -138,19 +141,204 @@ app.add_middleware(
 
 ---
 
-## Будущие задачи
-
-> Сюда будут добавляться задачи из аудита
-
-<!-- 
-## 3. Название задачи
+## 3. DI: глобальные переменные вместо Depends
 
 **Проблема:**
-...
+Все роутеры используют анти-паттерн с глобальными переменными для Dependency Injection:
+
+```python
+# people.py, faces.py, galleries.py, etc. - везде одинаково
+supabase_db_instance: SupabaseDatabase = None
+face_service_instance: FaceRecognitionService = None
+
+def set_services(supabase_db: SupabaseDatabase, face_service: FaceRecognitionService):
+    global supabase_db_instance, face_service_instance
+    supabase_db_instance = supabase_db
+    face_service_instance = face_service
+
+# А в main.py вызывается:
+people.set_services(supabase_db, face_service)
+faces.set_services(face_service, supabase_db)  # Порядок аргументов разный!
+```
+
+**Почему это плохо:**
+- Порядок инициализации критичен — если вызвать эндпоинт до `set_services()`, будет `None`
+- Тестирование сложное — нужно мокать глобальные переменные
+- Порядок аргументов в `set_services()` разный в разных роутерах — легко ошибиться
+- Нет изоляции между тестами
 
 **Решение:**
-...
+
+**Вариант A — Правильный FastAPI Depends:**
+```python
+# core/dependencies.py
+from functools import lru_cache
+
+@lru_cache()
+def get_supabase_db() -> SupabaseDatabase:
+    return SupabaseDatabase()
+
+@lru_cache()
+def get_face_service(supabase_db: SupabaseDatabase = Depends(get_supabase_db)) -> FaceRecognitionService:
+    return FaceRecognitionService(supabase_db=supabase_db)
+
+# В роутерах:
+@router.get("")
+async def get_people(
+    supabase_db: SupabaseDatabase = Depends(get_supabase_db)
+):
+    ...
+```
+
+**Вариант B — Dependency Container (для тяжёлых сервисов):**
+```python
+# core/container.py
+class ServiceContainer:
+    _instance = None
+    
+    def __init__(self):
+        self.supabase_db = SupabaseDatabase()
+        self.face_service = FaceRecognitionService(supabase_db=self.supabase_db)
+    
+    @classmethod
+    def get(cls) -> "ServiceContainer":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+def get_container() -> ServiceContainer:
+    return ServiceContainer.get()
+
+# В роутерах:
+@router.get("")
+async def get_people(container: ServiceContainer = Depends(get_container)):
+    result = container.supabase_db.client.table("people")...
+```
 
 **Файлы для изменения:**
-...
--->
+- Создать `python/core/dependencies.py`
+- Изменить все роутеры: `people.py`, `faces.py`, `galleries.py`, `images.py`, `photographers.py`, `locations.py`, `organizers.py`, `cities.py`, `training.py`, `recognition.py`
+- Изменить `main.py` — убрать вызовы `set_services()`
+
+**Оценка трудозатрат:** ~2-3 часа
+
+---
+
+## 4. Async/Sync: блокирующие вызовы в async
+
+**Проблема:**
+Все эндпоинты объявлены как `async def`, но вызовы к Supabase — синхронные:
+
+```python
+# routers/people.py
+async def get_people(...):
+    # ЭТО СИНХРОННЫЙ ВЫЗОВ внутри async функции!
+    result = supabase_db_instance.client.table("people").select("*").execute()
+```
+
+```python
+# services/supabase_database.py - ВСЕ методы синхронные
+def get_recognition_config(self) -> Dict:  # def, не async def!
+    response = self.client.table("face_recognition_config").select(...).execute()
+
+# НО в faces.py вызывается с await - ОШИБКА!
+config = await supabase_db.get_recognition_config()  # await на sync метод
+```
+
+**Почему это плохо:**
+- Блокирует event loop на время выполнения запроса к БД
+- При нагрузке — "подвисания" даже при небольшой конкурентности
+- Особенно плохо в циклах (например, `_calculate_people_stats`, `delete_gallery`)
+
+**Решение:**
+
+**Вариант A — asyncio.to_thread() (быстрый фикс):**
+```python
+import asyncio
+
+async def get_people(...):
+    result = await asyncio.to_thread(
+        supabase_db_instance.client.table("people").select("*").execute
+    )
+```
+
+**Вариант B — Async Supabase клиент (правильное решение):**
+```python
+# Использовать supabase-py async версию
+from supabase import acreate_client, AsyncClient
+
+class AsyncSupabaseDatabase:
+    def __init__(self):
+        self.client: AsyncClient = None
+    
+    async def init(self):
+        self.client = await acreate_client(url, key)
+    
+    async def get_recognition_config(self) -> Dict:
+        response = await self.client.table("face_recognition_config").select(...).execute()
+```
+
+**Файлы для изменения:**
+- `python/services/supabase_database.py` — переписать на async
+- Все роутеры — обновить вызовы
+
+**Оценка трудозатрат:** ~4-6 часов (вариант B)
+
+**Быстрый фикс (вариант A):** ~1 час
+
+---
+
+## 5. Контракт ошибок: унификация
+
+**Проблема:**
+В целом контракт ошибок уже неплохой (используется `ApiResponse` + кастомные исключения), но есть несогласованности:
+
+1. **Мёртвые импорты:**
+```python
+# galleries.py
+from fastapi import HTTPException  # Импортируется, но НЕ используется
+```
+
+2. **Несогласованность async/sync в методах:**
+```python
+# supabase_database.py
+def get_recognition_config(self) -> Dict:  # SYNC
+# faces.py  
+config = await supabase_db.get_recognition_config()  # Вызывается как ASYNC - работает случайно!
+```
+
+3. **Неконсистентная обработка в сервисах:**
+```python
+# Где-то return None, где-то raise, где-то return {"error": ...}
+```
+
+**Текущее состояние (хорошо):**
+- Роутеры используют `ApiResponse.ok()` для успеха
+- Роутеры кидают `NotFoundError`, `DatabaseError`, `ValidationError`
+- `main.py` имеет глобальные обработчики
+
+**Решение:**
+
+1. Убрать мёртвые импорты `HTTPException`
+2. Исправить async/sync несоответствия (см. задачу #4)
+3. Унифицировать возврат ошибок в сервисах
+
+**Быстрый фикс — убрать мёртвый импорт:**
+```bash
+# galleries.py - убрать HTTPException из импортов
+```
+
+**Файлы для изменения:**
+- `python/routers/galleries.py` — убрать `HTTPException`
+- Другие роутеры — проверить на мёртвые импорты
+
+**Оценка трудозатрат:** ~30 минут (cleanup), связано с задачей #4
+
+---
+
+## Приоритет выполнения
+
+1. **#1 CORS** — безопасность, сделать первым
+2. **#4 Async/Sync** — влияет на производительность, но быстрый фикс с `to_thread` можно сделать быстро
+3. **#3 DI** — архитектурный рефакторинг, можно отложить
+4. **#5 Контракт ошибок** — cleanup, низкий приоритет
