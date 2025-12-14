@@ -12,8 +12,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   getGalleriesWithUnprocessedPhotosAction,
   getGalleryPhotosForRecognitionAction,
-  getGalleriesWithUnrecognizedFacesAction,
-  getGalleryUnrecognizedPhotosAction,
+  getGalleriesWithUnverifiedFacesAction,
+  getGalleryUnverifiedPhotosAction,
   getRecognitionConfigAction,
 } from "@/app/admin/actions/recognition"
 import { processPhotoAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
@@ -44,7 +44,7 @@ interface ProcessingResult {
   error?: string
 }
 
-type ProcessingMode = "unprocessed" | "unrecognized"
+type ProcessingMode = "unprocessed" | "unverified"
 
 export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: BatchRecognitionDialogProps) {
   const [loading, setLoading] = useState(false)
@@ -82,7 +82,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
           )
         }
       } else {
-        const result = await getGalleriesWithUnrecognizedFacesAction()
+        const result = await getGalleriesWithUnverifiedFacesAction()
         if (result.success) {
           setGalleries(
             result.galleries.map((g) => ({
@@ -90,7 +90,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
               title: g.title,
               shoot_date: g.shoot_date,
               total_photos: g.total_photos,
-              photos_to_process: g.unrecognized_photos,
+              photos_to_process: g.unverified_photos,
               selected: false,
             }))
           )
@@ -164,7 +164,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
       if (mode === "unprocessed") {
         photosResult = await getGalleryPhotosForRecognitionAction(gallery.id)
       } else {
-        photosResult = await getGalleryUnrecognizedPhotosAction(gallery.id)
+        photosResult = await getGalleryUnverifiedPhotosAction(gallery.id)
       }
       
       if (photosResult.success) {
@@ -202,10 +202,9 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
       )
 
       try {
-        // Для режима "unrecognized" всегда делаем re-detect (forceRedetect = true)
-        const forceRedetect = mode === "unrecognized"
+        // Для режима "unverified" всегда делаем re-detect (forceRedetect = true)
+        const forceRedetect = mode === "unverified"
         
-        // FIX: Pass qualityParams as 4th argument
         const result = await processPhotoAction(
           item.image.id,
           forceRedetect,
@@ -278,15 +277,15 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
   const modeLabels = {
     unprocessed: {
       title: "Необработанные фото",
-      description: "Фото, которые ещё не проходили детекцию лиц",
+      description: "Фото, которые ещё не проходили детекцию лиц (has_been_processed = false)",
       empty: "Нет галерей с необработанными фото",
       badge: "к обработке",
     },
-    unrecognized: {
-      title: "Нераспознанные лица",
-      description: "Фото с неверифицированными лицами (повторное распознавание)",
-      empty: "Нет галерей с нераспознанными лицами",
-      badge: "к распознаванию",
+    unverified: {
+      title: "Неверифицированные лица",
+      description: "Фото с лицами, где confidence < 1 (не подтверждены вручную)",
+      empty: "Нет галерей с неверифицированными лицами",
+      badge: "к верификации",
     },
   }
 
@@ -312,7 +311,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
             <Tabs value={mode} onValueChange={(v) => setMode(v as ProcessingMode)}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="unprocessed">Необработанные</TabsTrigger>
-                <TabsTrigger value="unrecognized">Нераспознанные</TabsTrigger>
+                <TabsTrigger value="unverified">Неверифицированные</TabsTrigger>
               </TabsList>
             </Tabs>
 
