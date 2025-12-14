@@ -1,6 +1,6 @@
 "use client"
 
-const VERSION = "v1.0-FixedPhotoCount"
+const VERSION = "v1.1-TelegramNicknameOnly"
 
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -10,6 +10,17 @@ import { ExternalLink, ImageIcon } from "lucide-react"
 
 interface PlayerCardProps {
   player: Person
+}
+
+/**
+ * Создаёт ссылку на Telegram из ника
+ * @param nickname - ник в формате @username или username
+ * @returns URL ссылки или null
+ */
+function getTelegramLink(nickname: string | null | undefined): string | null {
+  if (!nickname) return null
+  const username = nickname.startsWith("@") ? nickname.slice(1) : nickname
+  return `https://t.me/${username}`
 }
 
 export function PlayerCard({ player }: PlayerCardProps) {
@@ -24,6 +35,7 @@ export function PlayerCard({ player }: PlayerCardProps) {
   const lastName = nameParts.slice(1).join(" ") || "\u00A0"
 
   const photoCount = player.verified_photos_count || player._count?.photo_faces || 0
+  const telegramLink = getTelegramLink(player.telegram_nickname)
 
   return (
     <div onClick={handleCardClick} className="group cursor-pointer">
@@ -50,9 +62,9 @@ export function PlayerCard({ player }: PlayerCardProps) {
             <h3 className="font-semibold text-lg sm:text-xl leading-tight">{lastName}</h3>
           </div>
 
-          {player.telegram_nickname ? (
+          {telegramLink ? (
             <a
-              href={player.telegram_profile_url || `https://t.me/${player.telegram_nickname.replace("@", "")}`}
+              href={telegramLink}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
