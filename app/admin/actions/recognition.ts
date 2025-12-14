@@ -27,8 +27,9 @@ export async function getRecognitionConfigAction() {
       }
     }
 
-    logger.debug("actions/recognition", "Config loaded successfully")
-    return { success: true, config: result }
+    logger.debug("actions/recognition", "Config loaded successfully", result.data)
+    // FIX: return result.data, not result (which is {success, data, ...})
+    return { success: true, config: result.data }
   } catch (error: any) {
     logger.error("actions/recognition", "Error reading config", error)
     return {
@@ -77,7 +78,7 @@ export async function getMissingDescriptorsCountAction(): Promise<{
     const result = await apiFetch("/api/recognition/missing-descriptors-count", {
       method: "GET",
     })
-    return { success: true, count: result.count || 0 }
+    return { success: true, count: result.data?.count || result.count || 0 }
   } catch (error) {
     logger.error("actions/recognition", "Error getting missing descriptors count", error)
     return { success: false, count: 0, error: String(error) }
@@ -102,12 +103,13 @@ export async function regenerateMissingDescriptorsAction(): Promise<{
     const result = await apiFetch("/api/recognition/regenerate-missing-descriptors", {
       method: "POST",
     })
+    const data = result.data || result
     return {
       success: true,
-      total_faces: result.total_faces || 0,
-      regenerated: result.regenerated || 0,
-      failed: result.failed || 0,
-      details: result.details || [],
+      total_faces: data.total_faces || 0,
+      regenerated: data.regenerated || 0,
+      failed: data.failed || 0,
+      details: data.details || [],
     }
   } catch (error) {
     logger.error("actions/recognition", "Error regenerating missing descriptors", error)
@@ -148,7 +150,8 @@ export async function getMissingDescriptorsListAction(): Promise<{
       return { success: false, faces: [], count: 0, error: result.error || "Failed to get list" }
     }
 
-    return { success: true, faces: result.faces || [], count: result.count || 0 }
+    const data = result.data || result
+    return { success: true, faces: data.faces || [], count: data.count || 0 }
   } catch (error: any) {
     logger.error("actions/recognition", "Error getting missing descriptors list", error)
     return { success: false, faces: [], count: 0, error: error.message || String(error) }
@@ -166,7 +169,7 @@ export async function regenerateSingleDescriptorAction(faceId: string): Promise<
       method: "POST",
     })
 
-    return result
+    return result.data || result
   } catch (error: any) {
     logger.error("actions/recognition", `Error regenerating descriptor for ${faceId}`, error)
     return { success: false, error: error.message || String(error) }
@@ -207,6 +210,39 @@ export async function getGalleriesWithUnprocessedPhotosAction(): Promise<{
 }
 
 /**
+ * Получить список галерей с нераспознанными лицами
+ * Использует бэкенд API: GET /api/galleries/with-unrecognized-faces
+ */
+export async function getGalleriesWithUnrecognizedFacesAction(): Promise<{
+  success: boolean
+  galleries: Array<{
+    id: string
+    title: string
+    shoot_date: string | null
+    total_photos: number
+    unrecognized_photos: number
+  }>
+  error?: string
+}> {
+  try {
+    logger.debug("actions/recognition", "[getGalleriesWithUnrecognizedFacesAction] Fetching from backend")
+
+    const result = await apiFetch("/api/galleries/with-unrecognized-faces", {
+      method: "GET",
+    })
+
+    if (!result.success) {
+      return { success: false, galleries: [], error: result.error || "Failed to get galleries" }
+    }
+
+    return { success: true, galleries: result.data || [] }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error getting galleries with unrecognized faces", error)
+    return { success: false, galleries: [], error: error.message || String(error) }
+  }
+}
+
+/**
  * Получить фото галереи для распознавания (необработанные)
  * Использует бэкенд API: GET /api/galleries/{gallery_id}/unprocessed-photos
  */
@@ -233,6 +269,37 @@ export async function getGalleryPhotosForRecognitionAction(galleryId: string): P
     return { success: true, images: result.data || [] }
   } catch (error: any) {
     logger.error("actions/recognition", "Error getting gallery photos for recognition", error)
+    return { success: false, images: [], error: error.message || String(error) }
+  }
+}
+
+/**
+ * Получить фото галереи с нераспознанными лицами
+ * Использует бэкенд API: GET /api/galleries/{gallery_id}/unrecognized-photos
+ */
+export async function getGalleryUnrecognizedPhotosAction(galleryId: string): Promise<{
+  success: boolean
+  images: Array<{
+    id: string
+    image_url: string
+    original_filename: string
+  }>
+  error?: string
+}> {
+  try {
+    logger.debug("actions/recognition", `[getGalleryUnrecognizedPhotosAction] Gallery: ${galleryId}`)
+
+    const result = await apiFetch(`/api/galleries/${galleryId}/unrecognized-photos`, {
+      method: "GET",
+    })
+
+    if (!result.success) {
+      return { success: false, images: [], error: result.error || "Failed to get photos" }
+    }
+
+    return { success: true, images: result.data || [] }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error getting gallery unrecognized photos", error)
     return { success: false, images: [], error: error.message || String(error) }
   }
 }
@@ -272,13 +339,14 @@ export async function clusterAllUnknownFacesAction(): Promise<{
       },
     )
 
-    logger.debug("actions/recognition", `[clusterAllUnknownFacesAction] Found ${result.clusters?.length || 0} clusters`)
+    const data = result.data || result
+    logger.debug("actions/recognition", `[clusterAllUnknownFacesAction] Found ${data.clusters?.length || 0} clusters`)
 
     return {
       success: true,
       data: {
-        clusters: result.clusters || [],
-        ungrouped_faces: result.ungrouped_faces || [],
+        clusters: data.clusters || [],
+        ungrouped_faces: data.ungrouped_faces || [],
       },
     }
   } catch (error: any) {
