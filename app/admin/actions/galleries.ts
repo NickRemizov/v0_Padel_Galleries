@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/apiClient"
 import { revalidatePath } from "next/cache"
 
 export async function getGalleriesAction(sortBy: "created_at" | "shoot_date" = "created_at") {
-  return await apiFetch(`/api/galleries?sort_by=${sortBy}&with_relations=true`)
+  return await apiFetch(`/api/galleries?sort_by=${sortBy}&with_relations=true&with_photo_count=true`)
 }
 
 export async function getGalleryAction(galleryId: string) {
