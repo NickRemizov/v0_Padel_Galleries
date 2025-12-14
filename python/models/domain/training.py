@@ -5,7 +5,7 @@ Represents training sessions and configuration.
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
 
@@ -60,6 +60,9 @@ class TrainingProgress(BaseModel):
 class TrainingSession(BaseModel):
     """Training session record."""
     
+    # Allow model_ prefix fields
+    model_config = ConfigDict(protected_namespaces=())
+    
     id: str = Field(..., description="Session ID")
     
     # Configuration
@@ -101,11 +104,6 @@ class TrainingSession(BaseModel):
     @property
     def is_failed(self) -> bool:
         return self.status == TrainingStatus.FAILED
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
-        }
 
 
 class TrainingConfig(BaseModel):
