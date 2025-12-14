@@ -5,7 +5,7 @@ Handles photo caching and file management.
 
 import os
 import hashlib
-from typing import Optional
+from typing import Optional, Dict
 import httpx
 import cv2
 import numpy as np
