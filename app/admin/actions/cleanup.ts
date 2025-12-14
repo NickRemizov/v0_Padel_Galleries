@@ -4,39 +4,80 @@ import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { logger } from "@/lib/logger"
 
+interface FixedRecord {
+  id: string
+  gallery_title: string
+  filename: string
+  person_name?: string
+}
+
 export async function syncVerifiedAndConfidenceAction() {
   const supabase = await createClient()
 
   try {
     logger.debug("actions/cleanup", "Starting sync of verified and recognition_confidence fields...")
 
-    // 1. Установить recognition_confidence=1.0 где verified=true
-    const { data: verifiedRecords, error: verifiedError } = await supabase
+    // 1. Найти записи где verified=true но confidence≠1
+    const { data: verifiedToFix } = await supabase
       .from("photo_faces")
-      .update({ recognition_confidence: 1.0 })
+      .select(`
+        id, photo_id, person_id,
+        gallery_images(original_filename, galleries(title)),
+        people(real_name)
+      `)
       .eq("verified", true)
       .neq("recognition_confidence", 1.0)
-      .select("id")
 
-    if (verifiedError) throw verifiedError
+    const verifiedFixedList: FixedRecord[] = (verifiedToFix || []).map((item: any) => ({
+      id: item.id,
+      gallery_title: item.gallery_images?.galleries?.title || "Unknown",
+      filename: item.gallery_images?.original_filename || item.photo_id,
+      person_name: item.people?.real_name,
+    }))
 
-    const verifiedCount = verifiedRecords?.length || 0
+    // Исправить их
+    if (verifiedFixedList.length > 0) {
+      await supabase
+        .from("photo_faces")
+        .update({ recognition_confidence: 1.0 })
+        .eq("verified", true)
+        .neq("recognition_confidence", 1.0)
+    }
+
+    const verifiedCount = verifiedFixedList.length
     logger.debug(
       "actions/cleanup",
       `Updated ${verifiedCount} records: set recognition_confidence=1 where verified=true`,
     )
 
-    // 2. Установить verified=true где recognition_confidence=1.0
-    const { data: confidenceRecords, error: confidenceError } = await supabase
+    // 2. Найти записи где confidence=1 но verified=false
+    const { data: confidenceToFix } = await supabase
       .from("photo_faces")
-      .update({ verified: true })
+      .select(`
+        id, photo_id, person_id,
+        gallery_images(original_filename, galleries(title)),
+        people(real_name)
+      `)
       .eq("recognition_confidence", 1.0)
       .eq("verified", false)
-      .select("id")
 
-    if (confidenceError) throw confidenceError
+    const confidenceFixedList: FixedRecord[] = (confidenceToFix || []).map((item: any) => ({
+      id: item.id,
+      gallery_title: item.gallery_images?.galleries?.title || "Unknown",
+      filename: item.gallery_images?.original_filename || item.photo_id,
+      person_name: item.people?.real_name,
+    }))
 
-    const confidenceCount = confidenceRecords?.length || 0
+    // Исправить их
+    if (confidenceFixedList.length > 0) {
+      await supabase
+        .from("photo_faces")
+        .update({ verified: true })
+        .eq("recognition_confidence", 1.0)
+        .eq("verified", false)
+    }
+
+    const confidenceCount = confidenceFixedList.length
 
     // 3. Проверить и исправить has_been_processed
     // Если у фото есть записи в photo_faces, значит оно было обработано
@@ -62,7 +103,7 @@ export async function syncVerifiedAndConfidenceAction() {
 
     // Находим фото которые имеют faces но has_been_processed=false
     let processedFixCount = 0
-    const processedFixedList: Array<{ id: string; gallery_title: string; filename: string }> = []
+    const processedFixedList: FixedRecord[] = []
 
     if (photoIdsWithFaces.length > 0) {
       // Сначала находим проблемные записи
@@ -136,7 +177,9 @@ export async function syncVerifiedAndConfidenceAction() {
         updatedVerified: verifiedCount,
         updatedConfidence: confidenceCount,
         updatedProcessed: processedFixCount,
-        processedFixedList: processedFixedList.slice(0, 100), // Лимит для UI
+        verifiedFixedList: verifiedFixedList.slice(0, 100),
+        confidenceFixedList: confidenceFixedList.slice(0, 100),
+        processedFixedList: processedFixedList.slice(0, 100),
         totalVerified: totalVerified || 0,
         totalConfidence1: totalConfidence1 || 0,
         totalProcessed: totalProcessed || 0,
