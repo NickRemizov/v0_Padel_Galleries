@@ -26,9 +26,22 @@ export async function GET() {
   try {
     console.log("[v0] Fetching config from FastAPI")
 
-    const data = await apiFetch("/api/v2/config", { timeout: 5000 })
+    const response = await apiFetch("/api/v2/config", { timeout: 5000 })
 
-    return NextResponse.json(data)
+    // apiFetch returns {success, data, error, code, meta}
+    // Extract data for the frontend
+    if (response.success && response.data) {
+      console.log("[v0] Config received:", response.data)
+      return NextResponse.json(response.data)
+    }
+
+    // Backend returned error
+    console.error("[v0] Backend returned error:", response.error)
+    return NextResponse.json({
+      ...DEFAULT_CONFIG,
+      error: "connection_failed",
+      message: response.error || "Unknown error",
+    })
   } catch (error) {
     console.error("[v0] Error fetching config from FastAPI:", error)
 
@@ -47,15 +60,29 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
 
-    console.log("[v0] Updating config")
+    console.log("[v0] Updating config:", body)
 
-    const data = await apiFetch("/api/v2/config", {
+    const response = await apiFetch("/api/v2/config", {
       method: "PUT",
       body: JSON.stringify(body),
       timeout: 5000,
     })
 
-    return NextResponse.json(data)
+    // apiFetch returns {success, data, error, code, meta}
+    if (response.success) {
+      console.log("[v0] Config updated successfully")
+      return NextResponse.json(response.data || { updated: true })
+    }
+
+    // Backend returned error
+    console.error("[v0] Backend returned error:", response.error)
+    return NextResponse.json(
+      {
+        error: "connection_failed",
+        message: response.error || "Unknown error",
+      },
+      { status: 500 },
+    )
   } catch (error) {
     console.error("[v0] Error updating config:", error)
 
