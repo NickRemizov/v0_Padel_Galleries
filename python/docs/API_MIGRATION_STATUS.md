@@ -65,7 +65,7 @@
 
 ## Architecture Summary
 
-```
+\`\`\`
 python/
 ├── main.py                      # Entry point, DI, exception handlers
 ├── core/                        # Foundation (no dependencies)
@@ -83,7 +83,7 @@ python/
 ├── repositories/                # Data access layer
 ├── services/                    # Business logic
 └── routers/                     # HTTP endpoints
-```
+\`\`\`
 
 ## Breaking Changes
 
