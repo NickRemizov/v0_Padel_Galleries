@@ -29,18 +29,16 @@ def set_services(supabase_db: SupabaseDatabase):
 
 class LocationCreate(BaseModel):
     name: str
-    slug: str
-    address: Optional[str] = None
     city_id: Optional[str] = None
+    address: Optional[str] = None
     maps_url: Optional[str] = None
     website_url: Optional[str] = None
 
 
 class LocationUpdate(BaseModel):
     name: Optional[str] = None
-    slug: Optional[str] = None
-    address: Optional[str] = None
     city_id: Optional[str] = None
+    address: Optional[str] = None
     maps_url: Optional[str] = None
     website_url: Optional[str] = None
 
@@ -89,7 +87,7 @@ async def create_location(data: LocationCreate):
         error_str = str(e)
         logger.error(f"Error creating location: {e}")
         if "23505" in error_str or "duplicate" in error_str.lower():
-            raise ValidationError("Площадка с таким slug уже существует", field="slug", code=PG_UNIQUE_VIOLATION)
+            raise ValidationError("Площадка с таким названием уже существует", field="name", code=PG_UNIQUE_VIOLATION)
         raise DatabaseError(error_str, operation="create_location")
 
 
@@ -112,7 +110,7 @@ async def update_location(location_id: str, data: LocationUpdate):
         error_str = str(e)
         logger.error(f"Error updating location {location_id}: {e}")
         if "23505" in error_str or "duplicate" in error_str.lower():
-            raise ValidationError("Площадка с таким slug уже существует", field="slug", code=PG_UNIQUE_VIOLATION)
+            raise ValidationError("Площадка с таким названием уже существует", field="name", code=PG_UNIQUE_VIOLATION)
         raise DatabaseError(error_str, operation="update_location")
 
 
