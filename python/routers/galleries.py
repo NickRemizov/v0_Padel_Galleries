@@ -1,13 +1,23 @@
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
-from typing import Optional, List
-from services.supabase_database import SupabaseDatabase
-import logging
+"""
+Galleries API Router
+CRUD operations for galleries
+"""
 
-logger = logging.getLogger(__name__)
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import Optional
+from datetime import date
+
+from core.responses import ApiResponse
+from core.exceptions import NotFoundError, ValidationError, DatabaseError
+from core.logging import get_logger
+from services.supabase_database import SupabaseDatabase
+
+logger = get_logger(__name__)
 router = APIRouter()
 
 supabase_db_instance: SupabaseDatabase = None
+
 
 def set_services(supabase_db: SupabaseDatabase):
     global supabase_db_instance
@@ -16,99 +26,54 @@ def set_services(supabase_db: SupabaseDatabase):
 
 class GalleryCreate(BaseModel):
     title: str
-    shoot_date: str
-    gallery_url: str
-    cover_image_url: str
-    cover_image_square_url: Optional[str] = None
-    external_gallery_url: Optional[str] = None
-    photographer_id: Optional[str] = None
+    slug: str
+    description: Optional[str] = None
+    shoot_date: Optional[date] = None
     location_id: Optional[str] = None
     organizer_id: Optional[str] = None
-    sort_order: Optional[str] = None
+    photographer_id: Optional[str] = None
+    is_public: Optional[bool] = False
+
 
 class GalleryUpdate(BaseModel):
     title: Optional[str] = None
-    shoot_date: Optional[str] = None
-    gallery_url: Optional[str] = None
-    cover_image_url: Optional[str] = None
-    cover_image_square_url: Optional[str] = None
-    external_gallery_url: Optional[str] = None
-    photographer_id: Optional[str] = None
+    slug: Optional[str] = None
+    description: Optional[str] = None
+    shoot_date: Optional[date] = None
     location_id: Optional[str] = None
     organizer_id: Optional[str] = None
-    sort_order: Optional[str] = None
+    photographer_id: Optional[str] = None
+    is_public: Optional[bool] = None
 
 
 @router.get("")
-async def get_galleries(
-    sort_by: str = Query("created_at", enum=["created_at", "shoot_date"]),
-    with_relations: bool = Query(True)
-):
-    """Get all galleries."""
+async def get_galleries(limit: int = 50, offset: int = 0):
+    """Get galleries with related data."""
     try:
-        select = "*"
-        if with_relations:
-            select = "*, photographers(id, name), locations(id, name), organizers(id, name), gallery_images(id)"
-        
-        result = supabase_db_instance.client.table("galleries").select(select).order(sort_by, desc=True).execute()
-        return {"success": True, "data": result.data or []}
+        result = supabase_db_instance.client.table("galleries").select(
+            "*, locations(id, name), organizers(id, name), photographers(id, name)"
+        ).order("shoot_date", desc=True).range(offset, offset + limit - 1).execute()
+        return ApiResponse.ok(result.data or [])
     except Exception as e:
-        logger.error(f"[Galleries API] Error: {e}")
-        return {"success": False, "error": str(e), "data": []}
+        logger.error(f"Error getting galleries: {e}")
+        raise DatabaseError(str(e), operation="get_galleries")
 
 
 @router.get("/{gallery_id}")
 async def get_gallery(gallery_id: str):
-    """Get a gallery by ID."""
+    """Get a gallery by ID with full details."""
     try:
         result = supabase_db_instance.client.table("galleries").select(
-            "*, photographers(id, name), locations(id, name), organizers(id, name)"
+            "*, locations(id, name, slug), organizers(id, name, slug), photographers(id, name, slug)"
         ).eq("id", gallery_id).execute()
         if result.data and len(result.data) > 0:
-            return {"success": True, "data": result.data[0]}
-        raise HTTPException(status_code=404, detail="Gallery not found")
-    except HTTPException:
+            return ApiResponse.ok(result.data[0])
+        raise NotFoundError("Gallery", gallery_id)
+    except NotFoundError:
         raise
     except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@router.get("/{gallery_id}/stats")
-async def get_gallery_stats(gallery_id: str):
-    """Get face recognition stats for a gallery."""
-    try:
-        images_result = supabase_db_instance.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
-        image_ids = [img["id"] for img in (images_result.data or [])]
-        
-        if not image_ids:
-            return {
-                "success": True, 
-                "data": {
-                    "isFullyVerified": False,
-                    "verifiedCount": 0,
-                    "totalCount": 0
-                }
-            }
-        
-        faces_result = supabase_db_instance.client.table("photo_faces").select(
-            "photo_id, verified"
-        ).in_("photo_id", image_ids).eq("verified", True).execute()
-        
-        verified_photo_ids = set(f["photo_id"] for f in (faces_result.data or []))
-        verified_count = len(verified_photo_ids)
-        total_count = len(image_ids)
-        is_fully_verified = verified_count == total_count and total_count > 0
-        
-        return {
-            "success": True,
-            "data": {
-                "isFullyVerified": is_fully_verified,
-                "verifiedCount": verified_count,
-                "totalCount": total_count
-            }
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        logger.error(f"Error getting gallery {gallery_id}: {e}")
+        raise DatabaseError(str(e), operation="get_gallery")
 
 
 @router.post("")
@@ -116,12 +81,21 @@ async def create_gallery(data: GalleryCreate):
     """Create a new gallery."""
     try:
         insert_data = data.model_dump(exclude_none=True)
+        # Convert date to string for JSON
+        if 'shoot_date' in insert_data and insert_data['shoot_date']:
+            insert_data['shoot_date'] = insert_data['shoot_date'].isoformat()
+        
         result = supabase_db_instance.client.table("galleries").insert(insert_data).execute()
         if result.data:
-            return {"success": True, "data": result.data[0]}
-        return {"success": False, "error": "Insert failed"}
+            logger.info(f"Created gallery: {data.title}")
+            return ApiResponse.ok(result.data[0])
+        raise DatabaseError("Insert failed", operation="create_gallery")
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        error_str = str(e)
+        logger.error(f"Error creating gallery: {e}")
+        if "23505" in error_str or "duplicate" in error_str.lower():
+            raise ValidationError("Галерея с таким slug уже существует", field="slug")
+        raise DatabaseError(error_str, operation="create_gallery")
 
 
 @router.put("/{gallery_id}")
@@ -130,39 +104,37 @@ async def update_gallery(gallery_id: str, data: GalleryUpdate):
     try:
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
-            return {"success": False, "error": "No fields to update"}
+            raise ValidationError("No fields to update")
+        
+        # Convert date to string for JSON
+        if 'shoot_date' in update_data and update_data['shoot_date']:
+            update_data['shoot_date'] = update_data['shoot_date'].isoformat()
+            
         result = supabase_db_instance.client.table("galleries").update(update_data).eq("id", gallery_id).execute()
         if result.data:
-            return {"success": True, "data": result.data[0]}
-        return {"success": False, "error": "Update failed"}
+            logger.info(f"Updated gallery {gallery_id}")
+            return ApiResponse.ok(result.data[0])
+        raise NotFoundError("Gallery", gallery_id)
+    except (NotFoundError, ValidationError):
+        raise
     except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@router.patch("/{gallery_id}/sort-order")
-async def update_sort_order(gallery_id: str, sort_order: str = Query(...)):
-    """Update gallery sort order."""
-    try:
-        supabase_db_instance.client.table("galleries").update({"sort_order": sort_order}).eq("id", gallery_id).execute()
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        error_str = str(e)
+        logger.error(f"Error updating gallery {gallery_id}: {e}")
+        if "23505" in error_str or "duplicate" in error_str.lower():
+            raise ValidationError("Галерея с таким slug уже существует", field="slug")
+        raise DatabaseError(error_str, operation="update_gallery")
 
 
 @router.delete("/{gallery_id}")
-async def delete_gallery(gallery_id: str, delete_images: bool = Query(True)):
+async def delete_gallery(gallery_id: str):
     """Delete a gallery."""
     try:
-        if delete_images:
-            images = supabase_db_instance.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
-            image_ids = [img["id"] for img in (images.data or [])]
-            
-            if image_ids:
-                for img_id in image_ids:
-                    supabase_db_instance.client.table("photo_faces").delete().eq("photo_id", img_id).execute()
-                supabase_db_instance.client.table("gallery_images").delete().eq("gallery_id", gallery_id).execute()
-        
         supabase_db_instance.client.table("galleries").delete().eq("id", gallery_id).execute()
-        return {"success": True}
+        logger.info(f"Deleted gallery {gallery_id}")
+        return ApiResponse.ok({"deleted": True})
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        error_str = str(e)
+        logger.error(f"Error deleting gallery {gallery_id}: {e}")
+        if "23503" in error_str or "foreign key" in error_str.lower():
+            raise ValidationError("Невозможно удалить: есть фотографии в галерее")
+        raise DatabaseError(error_str, operation="delete_gallery")
