@@ -7,7 +7,7 @@ import { Loader2, UserPlus, Users, X, Trash2 } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { clusterUnknownFacesAction, assignFacesToPersonAction } from "@/app/admin/actions/faces"
+import { clusterUnknownFacesAction, assignFacesToPersonAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 import type { Person } from "@/lib/types"
 import FaceCropPreview from "@/components/FaceCropPreview"
@@ -111,12 +111,21 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
     if (clusters.length === 0 || currentClusterIndex >= clusters.length) return
 
     const currentCluster = clusters[currentClusterIndex]
-    const faceIds = currentCluster.faces.filter((f) => !removedFaces.has(f.id)).map((f) => f.id)
+    const facesToAssign = currentCluster.faces.filter((f) => !removedFaces.has(f.id))
+    const faceIds = facesToAssign.map((f) => f.id)
 
     setProcessing(true)
     try {
       const result = await assignFacesToPersonAction(faceIds, personId)
       if (result.success) {
+        // Mark all unique photos as processed
+        const uniquePhotoIds = [...new Set(facesToAssign.map((f) => f.photo_id))]
+        console.log("[UnknownFacesReview] Marking", uniquePhotoIds.length, "photos as processed")
+        
+        for (const photoId of uniquePhotoIds) {
+          await markPhotoAsProcessedAction(photoId)
+        }
+        
         moveToNextCluster()
       }
     } catch (error) {
