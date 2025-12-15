@@ -5,37 +5,9 @@ import type { Gallery } from "@/lib/types"
 
 export const revalidate = 60
 
-// Fallback threshold if config fetch fails
-const DEFAULT_CONFIDENCE_THRESHOLD = 0.8
-
-async function getConfidenceThreshold(): Promise<number> {
-  try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-    const response = await fetch(`${apiUrl}/api/config`, {
-      next: { revalidate: 300 } // Cache config for 5 minutes
-    })
-    
-    if (response.ok) {
-      const config = await response.json()
-      // Use verified_threshold from quality_filters
-      const threshold = config?.quality_filters?.verified_threshold
-      if (typeof threshold === "number" && threshold > 0 && threshold <= 1) {
-        return threshold
-      }
-    }
-  } catch (error) {
-    console.error("[GalleryPage] Failed to fetch config:", error)
-  }
-  
-  return DEFAULT_CONFIDENCE_THRESHOLD
-}
-
 export default async function GalleryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
-  
-  // Get confidence threshold from config
-  const confidenceThreshold = await getConfidenceThreshold()
 
   const { data: gallery, error } = await supabase
     .from("galleries")
@@ -71,7 +43,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
   if (gallery.gallery_images && gallery.gallery_images.length > 0) {
     const imageIds = gallery.gallery_images.map((img: any) => img.id)
 
-    // Get photo faces for filtering (confidence >= threshold)
+    // Get photo faces for filtering (where person is assigned)
     const { data: photoFaces } = await supabase
       .from("photo_faces")
       .select(`
@@ -80,7 +52,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
         people!inner(show_photos_in_galleries)
       `)
       .in("photo_id", imageIds)
-      .gte("recognition_confidence", confidenceThreshold)
+      .not("person_id", "is", null)
 
     // Find photo IDs that should be hidden (have people with show_photos_in_galleries = false)
     const hiddenPhotoIds = new Set(
@@ -92,7 +64,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
     // Filter out hidden photos
     gallery.gallery_images = gallery.gallery_images.filter((img: any) => !hiddenPhotoIds.has(img.id))
 
-    // Get faces with confidence >= threshold for showing names
+    // Get all faces with assigned person_id for showing names
     const { data: recognizedFaces } = await supabase
       .from("photo_faces")
       .select(`
@@ -103,7 +75,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
         "photo_id",
         gallery.gallery_images.map((img: any) => img.id),
       )
-      .gte("recognition_confidence", confidenceThreshold)
+      .not("person_id", "is", null)
 
     // Group people by photo_id
     const peopleByPhoto = new Map<string, Array<{ id: string; name: string }>>()
