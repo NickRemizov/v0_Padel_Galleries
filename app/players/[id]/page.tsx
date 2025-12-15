@@ -45,7 +45,6 @@ async function loadPlayerPhotoFaces(supabase: any, personId: string) {
       `
       )
       .eq("person_id", personId)
-      .or("verified.eq.true,confidence.gte.80")
       .range(offset, offset + pageSize - 1)
 
     if (error) {
@@ -87,7 +86,7 @@ export default async function PlayerGalleryPage({ params }: PlayerGalleryPagePro
     notFound()
   }
 
-  // С ПАГИНАЦИЕЙ: загружаем все фото игрока
+  // С ПАГИНАЦИЕЙ: загружаем все фото игрока (без фильтра по verified/confidence)
   const photoFaces = await loadPlayerPhotoFaces(supabase, id)
 
   const images: any[] =
