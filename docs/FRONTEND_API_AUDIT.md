@@ -78,13 +78,13 @@
 ### Приоритет 1: Admin actions → FastAPI
 
 1. **Создать backend эндпоинты:**
-\`\`\`python
+```python
 # python/routers/admin.py (добавить)
 POST /api/admin/sync-verified
 POST /api/admin/cleanup-duplicates
 GET /api/admin/integrity-check
 POST /api/admin/integrity-fix
-\`\`\`
+```
 
 2. **Переписать frontend actions:**
 - `app/admin/actions/cleanup.ts`
@@ -94,11 +94,11 @@ POST /api/admin/integrity-fix
 ### Приоритет 2: После авторизации
 
 1. **Создать python/routers/social.py:**
-\`\`\`python
+```python
 GET/POST/DELETE /api/social/comments/{image_id}
 GET/POST/DELETE /api/social/likes/{image_id}
 GET/POST/DELETE /api/social/favorites/{image_id}
-\`\`\`
+```
 
 2. **Переписать social routes**
 

@@ -10,15 +10,15 @@
 Детекция лиц на изображении с помощью InsightFace.
 
 **Request Body:**
-\`\`\`typescript
+```typescript
 {
   imageUrl: string;              // URL изображения в Blob Storage
   applyQualityFilters: boolean;  // Применять ли фильтры качества
 }
-\`\`\`
+```
 
 **Response:**
-\`\`\`typescript
+```typescript
 {
   faces: Array<{
     embedding: number[];         // 512-мерный вектор
@@ -33,7 +33,7 @@
     face_size: number;           // Размер лица в пикселях
   }>;
 }
-\`\`\`
+```
 
 **Файл:** `app/api/face-detection/detect/route.ts`
 
@@ -43,21 +43,21 @@
 Распознавание лица по эмбеддингу.
 
 **Request Body:**
-\`\`\`typescript
+```typescript
 {
   embedding: number[];           // 512-мерный вектор лица
   galleryId?: string;            // ID галереи для контекстного поиска
 }
-\`\`\`
+```
 
 **Response:**
-\`\`\`typescript
+```typescript
 {
   personId: string | null;       // ID найденного игрока или null
   confidence: number;            // Уверенность распознавания (0-1)
   matchType: 'verified' | 'unverified' | 'none';
 }
-\`\`\`
+```
 
 **Файл:** `app/api/face-detection/recognize/route.ts`
 
@@ -69,14 +69,14 @@
 Кластеризация неизвестных лиц в галерее с помощью HDBSCAN.
 
 **Request Body:**
-\`\`\`typescript
+```typescript
 {
   galleryId: string;             // ID галереи
 }
-\`\`\`
+```
 
 **Response:**
-\`\`\`typescript
+```typescript
 {
   clusters: Array<{
     cluster_id: number;          // ID кластера (-1 для шума)
@@ -92,7 +92,7 @@
   clustered_faces: number;
   noise_faces: number;
 }
-\`\`\`
+```
 
 **Файл:** `app/api/training/cluster-unverified-faces/route.ts`
 
@@ -104,13 +104,13 @@
 **Request Body:** (пустой)
 
 **Response:**
-\`\`\`typescript
+```typescript
 {
   success: boolean;
   message: string;
   indexed_faces: number;         // Количество проиндексированных лиц
 }
-\`\`\`
+```
 
 **Файл:** `app/api/training/rebuild-index/route.ts`
 
@@ -124,11 +124,11 @@ Webhook для обработки сообщений от Telegram бота.
 **Request Body:** (Telegram Update object)
 
 **Response:**
-\`\`\`typescript
+```typescript
 {
   ok: boolean;
 }
-\`\`\`
+```
 
 **Файл:** `app/api/telegram/webhook/route.ts`
 
@@ -144,15 +144,15 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 Детекция лиц на изображении.
 
 **Request:**
-\`\`\`json
+```json
 {
   "image_url": "https://blob.vercel-storage.com/...",
   "apply_quality_filters": true
 }
-\`\`\`
+```
 
 **Response:**
-\`\`\`json
+```json
 {
   "faces": [
     {
@@ -169,7 +169,7 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
     }
   ]
 }
-\`\`\`
+```
 
 **Файл:** `python/routers/recognition.py`
 
@@ -179,21 +179,21 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 Распознавание лица по эмбеддингу.
 
 **Request:**
-\`\`\`json
+```json
 {
   "embedding": [0.123, 0.456, ...],
   "gallery_id": "uuid" // optional
 }
-\`\`\`
+```
 
 **Response:**
-\`\`\`json
+```json
 {
   "person_id": "uuid",
   "confidence": 0.85,
   "match_type": "verified"
 }
-\`\`\`
+```
 
 **Файл:** `python/routers/recognition.py`
 
@@ -205,14 +205,14 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 Кластеризация неизвестных лиц.
 
 **Request:**
-\`\`\`json
+```json
 {
   "gallery_id": "uuid"
 }
-\`\`\`
+```
 
 **Response:**
-\`\`\`json
+```json
 {
   "clusters": [
     {
@@ -232,7 +232,7 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
   "clustered_faces": 15,
   "noise_faces": 5
 }
-\`\`\`
+```
 
 **Файл:** `python/routers/training.py`
 
@@ -244,13 +244,13 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 **Request:** (пустой)
 
 **Response:**
-\`\`\`json
+```json
 {
   "success": true,
   "message": "Index rebuilt successfully",
   "indexed_faces": 150
 }
-\`\`\`
+```
 
 **Файл:** `python/routers/training.py`
 
@@ -264,18 +264,18 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 Загрузка фото в галерею.
 
 **Parameters:**
-\`\`\`typescript
+```typescript
 formData: FormData  // Содержит файлы и galleryId
-\`\`\`
+```
 
 **Returns:**
-\`\`\`typescript
+```typescript
 {
   success: boolean;
   message: string;
   imageIds?: string[];
 }
-\`\`\`
+```
 
 ---
 
@@ -283,7 +283,7 @@ formData: FormData  // Содержит файлы и galleryId
 Создание нового игрока.
 
 **Parameters:**
-\`\`\`typescript
+```typescript
 {
   name: string;
   telegram_username?: string;
@@ -292,16 +292,16 @@ formData: FormData  // Содержит файлы и galleryId
   rating?: number;
   avatarUrl?: string;
 }
-\`\`\`
+```
 
 **Returns:**
-\`\`\`typescript
+```typescript
 {
   success: boolean;
   person?: Person;
   error?: string;
 }
-\`\`\`
+```
 
 ---
 
@@ -309,21 +309,21 @@ formData: FormData  // Содержит файлы и galleryId
 Назначение кластера лиц игроку.
 
 **Parameters:**
-\`\`\`typescript
+```typescript
 {
   faceIds: string[];      // ID лиц из кластера
   personId: string;       // ID игрока
   galleryId: string;      // ID галереи
 }
-\`\`\`
+```
 
 **Returns:**
-\`\`\`typescript
+```typescript
 {
   success: boolean;
   message: string;
 }
-\`\`\`
+```
 
 ---
 
@@ -331,7 +331,7 @@ formData: FormData  // Содержит файлы и galleryId
 Сохранение ручной разметки лиц на фото.
 
 **Parameters:**
-\`\`\`typescript
+```typescript
 {
   imageId: string;
   tags: Array<{
@@ -339,15 +339,15 @@ formData: FormData  // Содержит файлы и galleryId
     personId: string;
   }>;
 }
-\`\`\`
+```
 
 **Returns:**
-\`\`\`typescript
+```typescript
 {
   success: boolean;
   message: string;
 }
-\`\`\`
+```
 
 ---
 
@@ -355,28 +355,28 @@ formData: FormData  // Содержит файлы и galleryId
 Отправка фото игроку в Telegram.
 
 **Parameters:**
-\`\`\`typescript
+```typescript
 {
   personId: string;
   photoIds: string[];
 }
-\`\`\`
+```
 
 **Returns:**
-\`\`\`typescript
+```typescript
 {
   success: boolean;
   message: string;
   sentCount: number;
 }
-\`\`\`
+```
 
 ---
 
 ## Environment Variables
 
 ### Next.js (Vercel)
-\`\`\`bash
+```bash
 # Supabase
 POSTGRES_URL="postgresql://..."
 SUPABASE_URL="https://..."
@@ -394,10 +394,10 @@ NEXT_PUBLIC_TELEGRAM_BOT_USERNAME="..."
 # FastAPI Backend
 FASTAPI_URL="http://your-server:8001"
 NEXT_PUBLIC_FASTAPI_URL="http://your-server:8001"
-\`\`\`
+```
 
 ### FastAPI (Hetzner)
-\`\`\`bash
+```bash
 # Database
 POSTGRES_URL="postgresql://..."
 
@@ -411,7 +411,7 @@ JWT_SECRET_KEY="..."
 
 # CORS
 ALLOWED_ORIGINS="https://your-domain.com,http://localhost:3000"
-\`\`\`
+```
 
 ---
 

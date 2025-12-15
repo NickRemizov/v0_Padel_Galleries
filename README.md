@@ -30,7 +30,7 @@
 
 ## 📁 Структура проекта
 
-\`\`\`
+```
 galeries/
 ├── app/                    # Next.js приложение (фронтенд)
 │   ├── admin/             # Админ-панель
@@ -47,7 +47,7 @@ galeries/
 │   └── requirements.txt   # Python зависимости
 ├── scripts/               # SQL скрипты для Supabase
 └── lib/                   # Утилиты и хелперы
-\`\`\`
+```
 
 ## 🚀 Быстрый старт
 
@@ -61,26 +61,26 @@ galeries/
 ### Локальная разработка
 
 1. **Клонируйте репозиторий:**
-\`\`\`bash
+```bash
 git clone <repository-url>
 cd galeries
-\`\`\`
+```
 
 2. **Установите зависимости Next.js:**
-\`\`\`bash
+```bash
 npm install
-\`\`\`
+```
 
 3. **Установите зависимости Python:**
-\`\`\`bash
+```bash
 cd python
 pip install -r requirements.txt
-\`\`\`
+```
 
 4. **Настройте переменные окружения:**
 
 Создайте `.env.local` в корне проекта:
-\`\`\`env
+```env
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -96,28 +96,28 @@ NEXT_PUBLIC_FASTAPI_URL=http://localhost:8001
 # Telegram Bot (опционально)
 TELEGRAM_BOT_TOKEN=your_bot_token
 NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=your_bot_username
-\`\`\`
+```
 
 Создайте `.env` в папке `python/`:
-\`\`\`env
+```env
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 JWT_SECRET_KEY=your_jwt_secret
 ALLOWED_ORIGINS=http://localhost:3000
-\`\`\`
+```
 
 5. **Запустите оба сервера:**
 
 Terminal 1 (Next.js):
-\`\`\`bash
+```bash
 npm run dev
-\`\`\`
+```
 
 Terminal 2 (FastAPI):
-\`\`\`bash
+```bash
 cd python
 python main.py
-\`\`\`
+```
 
 6. **Откройте в браузере:**
    - Next.js: http://localhost:3000

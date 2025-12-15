@@ -4,14 +4,14 @@ FastAPI сервер для распознавания лиц с использ�
 
 ## Быстрая установка
 
-\`\`\`bash
+```bash
 cd /home/nick
 sudo rm -rf python
 unzip -o galeries.zip
 chmod +x SETUP.sh
 sudo ./SETUP.sh
 cd python && ./start.sh
-\`\`\`
+```
 
 ## Что внутри
 
@@ -39,16 +39,16 @@ cd python && ./start.sh
 
 Создаются автоматически при запуске `SETUP.sh`:
 
-\`\`\`env
+```env
 SERVER_HOST=0.0.0.0
 SERVER_PORT=8001
 SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
-\`\`\`
+```
 
 ## Структура
 
-\`\`\`
+```
 python/
 ├── main.py                          # FastAPI app
 ├── requirements.txt                 # Dependencies
@@ -64,7 +64,7 @@ python/
 │   └── auth.py                     # Authentication
 └── models/
     └── schemas.py                  # Pydantic models
-\`\`\`
+```
 
 ## Версия
 

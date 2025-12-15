@@ -33,9 +33,9 @@
 5. Скопируй результаты для документации
 
 ### Вариант 3: Через psql (для сервера)
-\`\`\`bash
+```bash
 psql $DATABASE_URL -f scripts/export-database-schema.sql > schema-export.txt
-\`\`\`
+```
 
 ## Результат
 

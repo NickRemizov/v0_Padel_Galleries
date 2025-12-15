@@ -7,14 +7,14 @@
 1. Скачайте архив `galeries.zip` и загрузите на сервер в `/home/nickr/`
 
 2. Выполните команды:
-\`\`\`bash
+```bash
 cd /home/nickr
 sudo rm -rf python
 unzip -o galeries.zip
 chmod +x SETUP.sh
 sudo ./SETUP.sh
 cd python && ./start.sh
-\`\`\`
+```
 
 Сервер будет доступен на `http://23.88.61.20:8001`
 
@@ -37,15 +37,15 @@ cd python && ./start.sh
 ## Локальная разработка
 
 1. Установите зависимости:
-\`\`\`bash
+```bash
 cd python
 pip install -r requirements.txt
-\`\`\`
+```
 
 2. Создайте файл `.env` на основе `.env.example`:
-\`\`\`bash
+```bash
 cp .env.example .env
-\`\`\`
+```
 
 3. Настройте переменные окружения в `.env`:
 - `SUPABASE_URL` - URL вашего Supabase проекта
@@ -54,9 +54,9 @@ cp .env.example .env
 - `SERVER_PORT` - порт сервера (по умолчанию 8001)
 
 4. Запустите сервер:
-\`\`\`bash
+```bash
 python main.py
-\`\`\`
+```
 
 ---
 
@@ -84,7 +84,7 @@ python main.py
 ### Вариант 1: Docker (рекомендуется)
 
 1. Создайте `Dockerfile` в папке `python/`:
-\`\`\`dockerfile
+```dockerfile
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -108,10 +108,10 @@ RUN mkdir -p data/cache/photos uploads static
 EXPOSE 8001
 
 CMD ["python", "main.py"]
-\`\`\`
+```
 
 2. Создайте `docker-compose.yml` в корне проекта:
-\`\`\`yaml
+```yaml
 version: '3.8'
 
 services:
@@ -137,17 +137,17 @@ services:
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
     volumes:
       - ./python/data:/app/data
-\`\`\`
+```
 
 3. Запустите на сервере:
-\`\`\`bash
+```bash
 docker-compose up -d
-\`\`\`
+```
 
 ### Вариант 2: Systemd service
 
 1. Создайте файл `/etc/systemd/system/fastapi-face-recognition.service`:
-\`\`\`ini
+```ini
 [Unit]
 Description=FastAPI Face Recognition Service
 After=network.target
@@ -162,14 +162,14 @@ Restart=always
 
 [Install]
 WantedBy=multi-user.target
-\`\`\`
+```
 
 2. Запустите сервис:
-\`\`\`bash
+```bash
 sudo systemctl daemon-reload
 sudo systemctl enable fastapi-face-recognition
 sudo systemctl start fastapi-face-recognition
-\`\`\`
+```
 
 ---
 
@@ -177,7 +177,7 @@ sudo systemctl start fastapi-face-recognition
 
 Добавьте в конфигурацию Nginx:
 
-\`\`\`nginx
+```nginx
 server {
     listen 80;
     server_name your-domain.com;
@@ -202,7 +202,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
-\`\`\`
+```
 
 ---
 
@@ -215,9 +215,9 @@ server {
    - `NEXT_PUBLIC_FASTAPI_URL=http://23.88.61.20:8001`
 
 2. Убедитесь, что порт 8001 открыт в файрволе Hetzner:
-\`\`\`bash
+```bash
 sudo ufw allow 8001/tcp
-\`\`\`
+```
 
 ---
 
@@ -226,28 +226,28 @@ sudo ufw allow 8001/tcp
 После деплоя проверьте:
 
 1. **Health check:**
-\`\`\`bash
+```bash
 curl http://23.88.61.20:8001/api/health
-\`\`\`
+```
 
 Ожидаемый ответ:
-\`\`\`json
+```json
 {
   "status": "healthy",
   "service": "padel-recognition",
   "model_loaded": true
 }
-\`\`\`
+```
 
 2. **Проверка конфигурации:**
-\`\`\`bash
+```bash
 curl http://23.88.61.20:8001/api/v2/config
-\`\`\`
+```
 
 3. **Проверка истории обучений:**
-\`\`\`bash
+```bash
 curl http://23.88.61.20:8001/api/v2/train/history?limit=10
-\`\`\`
+```
 
 ---
 
@@ -256,16 +256,16 @@ curl http://23.88.61.20:8001/api/v2/train/history?limit=10
 ### Сервер не запускается
 
 1. Проверьте логи:
-\`\`\`bash
+```bash
 cd /home/nickr/python
 source venv/bin/activate
 python main.py
-\`\`\`
+```
 
 2. Проверьте .env файл:
-\`\`\`bash
+```bash
 cat .env
-\`\`\`
+```
 
 ### 404 Not Found на /api/v2/config
 
@@ -277,11 +277,11 @@ cat .env
 ### Ошибки импорта модулей
 
 Переустановите зависимости:
-\`\`\`bash
+```bash
 cd /home/nickr/python
 source venv/bin/activate
 pip install -r requirements.txt --force-reinstall
-\`\`\`
+```
 
 ---
 

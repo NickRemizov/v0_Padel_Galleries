@@ -28,27 +28,27 @@ Next.js 15+ использует новую систему кэшировани�
 
 Для страниц с ISR используется экспорт `revalidate`:
 
-\`\`\`typescript
+```typescript
 // app/page.tsx
 export const revalidate = 60 // Обновлять каждые 60 секунд
 
 export default async function HomePage() {
   // ... fetch data
 }
-\`\`\`
+```
 
 ### Dynamic страницы
 
 Для динамических страниц используется `dynamic = 'force-dynamic'`:
 
-\`\`\`typescript
+```typescript
 // app/favorites/page.tsx
 export const dynamic = 'force-dynamic'
 
 export default async function FavoritesPage() {
   // ... fetch user-specific data
 }
-\`\`\`
+```
 
 ## Стратегия обновления
 
@@ -69,14 +69,14 @@ export default async function FavoritesPage() {
 
 Для принудительного обновления кэша используйте:
 
-\`\`\`typescript
+```typescript
 import { revalidatePath, revalidateTag } from 'next/cache'
 
 // В Server Action или API Route
 revalidatePath('/') // Обновить главную страницу
 revalidatePath('/players') // Обновить список игроков
 revalidateTag('galleries') // Обновить все страницы с тегом 'galleries'
-\`\`\`
+```
 
 ## Примечания
 

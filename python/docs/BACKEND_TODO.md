@@ -28,7 +28,7 @@
   - Любой сайт может делать запросы к API (проблема безопасности)
 
 **Текущий код (main.py:51-65):**
-\`\`\`python
+```python
 # Функция есть, но НЕ используется
 def is_origin_allowed(origin: str) -> bool:
     if origin in settings.cors_origins or "*" in settings.cors_origins:
@@ -44,12 +44,12 @@ app.add_middleware(
     allow_credentials=True,     # ← Конфликт с "*"
     ...
 )
-\`\`\`
+```
 
 **Решение:**
 Создать кастомный CORS middleware с динамической проверкой origins:
 
-\`\`\`python
+```python
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -101,10 +101,10 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
             response.headers["Access-Control-Allow-Credentials"] = "true"
         
         return response
-\`\`\`
+```
 
 **Использование:**
-\`\`\`python
+```python
 # Убрать стандартный CORSMiddleware
 # Добавить кастомный:
 app.add_middleware(
@@ -115,7 +115,7 @@ app.add_middleware(
     ],
     allow_vercel_previews=True,
 )
-\`\`\`
+```
 
 **Файлы для изменения:**
 - `python/main.py` - убрать стандартный CORSMiddleware, добавить DynamicCORSMiddleware
@@ -149,7 +149,7 @@ app.add_middleware(
 **Проблема:**
 Все роутеры используют анти-паттерн с глобальными переменными для Dependency Injection:
 
-\`\`\`python
+```python
 # people.py, faces.py, galleries.py, etc. - везде одинаково
 supabase_db_instance: SupabaseDatabase = None
 face_service_instance: FaceRecognitionService = None
@@ -162,7 +162,7 @@ def set_services(supabase_db: SupabaseDatabase, face_service: FaceRecognitionSer
 # А в main.py вызывается:
 people.set_services(supabase_db, face_service)
 faces.set_services(face_service, supabase_db)  # Порядок аргументов разный!
-\`\`\`
+```
 
 **Почему это плохо:**
 - Порядок инициализации критичен — если вызвать эндпоинт до `set_services()`, будет `None`
@@ -173,7 +173,7 @@ faces.set_services(face_service, supabase_db)  # Порядок аргумент
 **Решение:**
 
 **Вариант A — Правильный FastAPI Depends:**
-\`\`\`python
+```python
 # core/dependencies.py
 from functools import lru_cache
 
@@ -191,10 +191,10 @@ async def get_people(
     supabase_db: SupabaseDatabase = Depends(get_supabase_db)
 ):
     ...
-\`\`\`
+```
 
 **Вариант B — Dependency Container (для тяжёлых сервисов):**
-\`\`\`python
+```python
 # core/container.py
 class ServiceContainer:
     _instance = None
@@ -216,7 +216,7 @@ def get_container() -> ServiceContainer:
 @router.get("")
 async def get_people(container: ServiceContainer = Depends(get_container)):
     result = container.supabase_db.client.table("people")...
-\`\`\`
+```
 
 **Файлы для изменения:**
 - Создать `python/core/dependencies.py`
@@ -232,21 +232,21 @@ async def get_people(container: ServiceContainer = Depends(get_container)):
 **Проблема:**
 Все эндпоинты объявлены как `async def`, но вызовы к Supabase — синхронные:
 
-\`\`\`python
+```python
 # routers/people.py
 async def get_people(...):
     # ЭТО СИНХРОННЫЙ ВЫЗОВ внутри async функции!
     result = supabase_db_instance.client.table("people").select("*").execute()
-\`\`\`
+```
 
-\`\`\`python
+```python
 # services/supabase_database.py - ВСЕ методы синхронные
 def get_recognition_config(self) -> Dict:  # def, не async def!
     response = self.client.table("face_recognition_config").select(...).execute()
 
 # НО в faces.py вызывается с await - ОШИБКА!
 config = await supabase_db.get_recognition_config()  # await на sync метод
-\`\`\`
+```
 
 **Почему это плохо:**
 - Блокирует event loop на время выполнения запроса к БД
@@ -256,17 +256,17 @@ config = await supabase_db.get_recognition_config()  # await на sync мето�
 **Решение:**
 
 **Вариант A — asyncio.to_thread() (быстрый фикс):**
-\`\`\`python
+```python
 import asyncio
 
 async def get_people(...):
     result = await asyncio.to_thread(
         supabase_db_instance.client.table("people").select("*").execute
     )
-\`\`\`
+```
 
 **Вариант B — Async Supabase клиент (правильное решение):**
-\`\`\`python
+```python
 # Использовать supabase-py async версию
 from supabase import acreate_client, AsyncClient
 
@@ -279,7 +279,7 @@ class AsyncSupabaseDatabase:
     
     async def get_recognition_config(self) -> Dict:
         response = await self.client.table("face_recognition_config").select(...).execute()
-\`\`\`
+```
 
 **Файлы для изменения:**
 - `python/services/supabase_database.py` — переписать на async
@@ -333,7 +333,7 @@ class AsyncSupabaseDatabase:
 **Решение:**
 
 **Создать единый Repository слой:**
-\`\`\`
+```
 services/
   repositories/
     __init__.py
@@ -344,10 +344,10 @@ services/
     config_repo.py       # Работа с конфигами
     training_repo.py     # Сессии обучения
     embeddings_repo.py   # Загрузка/поиск embeddings
-\`\`\`
+```
 
 **Пример базового класса:**
-\`\`\`python
+```python
 # services/repositories/base.py
 from supabase import acreate_client, AsyncClient
 
@@ -359,17 +359,17 @@ class BaseRepository:
         if cls._client is None:
             cls._client = await acreate_client(url, key)
         return cls._client
-\`\`\`
+```
 
 **Пример репозитория:**
-\`\`\`python
+```python
 # services/repositories/config_repo.py
 class ConfigRepository(BaseRepository):
     async def get_recognition_config(self) -> Dict:
         client = await self.get_client()
         response = await client.table("face_recognition_config").select("*").execute()
         ...
-\`\`\`
+```
 
 **План миграции:**
 1. Создать `services/repositories/` с новой структурой
@@ -394,24 +394,24 @@ class ConfigRepository(BaseRepository):
 Server actions в `entities.ts` не оборачивали `apiFetch` в try/catch, а `apiFetch` при HTTP ошибках (404, 500) кидал исключение `ApiError` вместо возврата объекта ошибки.
 
 **Цепочка проблемы:**
-\`\`\`
+```
 Backend 404 → {success: false, error: "...", code: "..."}
     ↓
 apiFetch видит !response.ok → throw new ApiError(...)  ← ПРОБЛЕМА
     ↓
 Server action не ловит → исключение в Next.js → отвал UI
-\`\`\`
+```
 
 **Было (lib/apiClient.ts):**
-\`\`\`typescript
+```typescript
 if (!response.ok) {
   // ... парсинг ошибки
   throw new ApiError(response.status, errorCode, errorMessage)  // ← Кидает исключение
 }
-\`\`\`
+```
 
 **Стало:**
-\`\`\`typescript
+```typescript
 if (!response.ok) {
   // Backend уже возвращает {success: false, error, code} - используем его
   if (responseBody && "success" in responseBody) {
@@ -420,7 +420,7 @@ if (!response.ok) {
   // Fallback для не-JSON ответов
   return { success: false, error: errorMessage, code: errorCode }
 }
-\`\`\`
+```
 
 **Исправлено:**
 - Коммит `cdb9262`: apiFetch теперь возвращает `{success: false, error, code}` вместо throw
@@ -485,7 +485,7 @@ Frontend напрямую обращается к Supabase, минуя FastAPI �
 **Поэтапная миграция:**
 
 **Этап 1: Создать эндпоинты на бэкенде (Python)**
-\`\`\`python
+```python
 # python/routers/public.py - публичные эндпоинты без авторизации
 @router.get("/galleries")
 async def get_public_galleries(): ...
@@ -502,10 +502,10 @@ async def get_comments(id: str): ...
 
 @router.post("/images/{id}/comments")
 async def add_comment(id: str, data: CommentCreate): ...
-\`\`\`
+```
 
 **Этап 2: Создать клиент на фронтенде**
-\`\`\`typescript
+```typescript
 // lib/api/public.ts
 export async function getGalleries() {
   return apiFetch('/api/public/galleries')
@@ -514,17 +514,17 @@ export async function getGalleries() {
 export async function getGallery(id: string) {
   return apiFetch(`/api/public/galleries/${id}`)
 }
-\`\`\`
+```
 
 **Этап 3: Заменить прямые вызовы Supabase**
-\`\`\`typescript
+```typescript
 // БЫЛО (app/page.tsx):
 const supabase = await createClient()
 const { data: galleries } = await supabase.from("galleries").select("*")
 
 // СТАЛО:
 const { data: galleries } = await getGalleries()
-\`\`\`
+```
 
 **Этап 4: Удалить прямой доступ к Supabase**
 - Удалить `lib/supabase/server.ts` (или оставить только для auth)

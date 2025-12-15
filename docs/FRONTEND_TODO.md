@@ -47,7 +47,7 @@
 
 #### 1.1 gallery-images-manager.tsx (32KB → ~5 файлов)
 
-\`\`\`
+```
 components/admin/gallery-images/
   index.tsx                    # Основной компонент (контейнер)
   ImageGrid.tsx                # Сетка изображений
@@ -57,11 +57,11 @@ components/admin/gallery-images/
   hooks/
     useImageSelection.ts       # Логика выбора изображений
     useImageUpload.ts          # Логика загрузки
-\`\`\`
+```
 
 #### 1.2 database-integrity-checker.tsx (29KB → ~4 файла)
 
-\`\`\`
+```
 components/admin/integrity/
   index.tsx                    # Контейнер с табами
   CheckCard.tsx                # Карточка одной проверки
@@ -69,11 +69,11 @@ components/admin/integrity/
   FixActions.tsx               # Кнопки исправления
   hooks/
     useIntegrityCheck.ts       # Логика проверки
-\`\`\`
+```
 
 #### 1.3 face-training-manager.tsx (29KB → ~4 файла)
 
-\`\`\`
+```
 components/admin/training/
   index.tsx                    # Контейнер
   TrainingQueue.tsx            # Очередь обучения
@@ -81,30 +81,30 @@ components/admin/training/
   TrainingHistory.tsx          # История сессий
   hooks/
     useTrainingSession.ts      # Логика сессии
-\`\`\`
+```
 
 #### 1.4 training-stats-card.tsx (28KB → ~3 файла)
 
-\`\`\`
+```
 components/admin/stats/
   TrainingStatsCard.tsx        # Основная карточка
   ConfidenceChart.tsx          # График confidence
   DistributionChart.tsx        # График распределения
-\`\`\`
+```
 
 #### 1.5 face-tagging-dialog.tsx (23KB → ~3 файла)
 
-\`\`\`
+```
 components/admin/tagging/
   FaceTaggingDialog.tsx        # Диалог
   FaceCanvas.tsx               # Canvas с лицами
   PersonSelector.tsx           # Выбор персоны
-\`\`\`
+```
 
 ### Общие паттерны рефакторинга
 
 **1. Выделение хуков:**
-\`\`\`typescript
+```typescript
 // БЫЛО: всё в компоненте
 const [data, setData] = useState([])
 const [loading, setLoading] = useState(false)
@@ -119,10 +119,10 @@ export function useGalleryImages(galleryId: string) {
   // ...
   return { data, loading, refetch }
 }
-\`\`\`
+```
 
 **2. Композиция вместо монолита:**
-\`\`\`typescript
+```typescript
 // БЫЛО: один огромный компонент
 function GalleryImagesManager() {
   return (
@@ -142,17 +142,17 @@ function GalleryImagesManager() {
     </div>
   )
 }
-\`\`\`
+```
 
 **3. Унификация диалогов:**
-\`\`\`typescript
+```typescript
 // add-gallery-dialog.tsx и edit-gallery-dialog.tsx имеют 80% общего кода
 // Объединить в:
 components/admin/gallery/
   GalleryDialog.tsx            # Общий диалог
   GalleryForm.tsx              # Форма (переиспользуется)
   useGalleryForm.ts            # Логика формы
-\`\`\`
+```
 
 ### Оценка трудозатрат
 

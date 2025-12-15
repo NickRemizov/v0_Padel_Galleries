@@ -26,19 +26,19 @@
 
 Создайте fork репозитория на GitHub и клонируйте его локально:
 
-\`\`\`bash
+```bash
 git clone https://github.com/your-username/galeries.git
 cd galeries
 git remote add upstream https://github.com/original-owner/galeries.git
-\`\`\`
+```
 
 ### 2. Создайте ветку для изменений
 
-\`\`\`bash
+```bash
 git checkout -b feature/your-feature-name
 # или
 git checkout -b fix/your-bug-fix
-\`\`\`
+```
 
 ### 3. Внесите изменения
 
@@ -50,11 +50,11 @@ git checkout -b fix/your-bug-fix
 
 Используйте понятные commit сообщения:
 
-\`\`\`bash
+```bash
 git commit -m "feat: добавлена функция X"
 git commit -m "fix: исправлена ошибка Y"
 git commit -m "docs: обновлена документация Z"
-\`\`\`
+```
 
 **Типы commit:**
 - `feat:` - новая функциональность
@@ -67,9 +67,9 @@ git commit -m "docs: обновлена документация Z"
 
 ### 5. Push и создание Pull Request
 
-\`\`\`bash
+```bash
 git push origin feature/your-feature-name
-\`\`\`
+```
 
 Создайте Pull Request на GitHub с описанием изменений.
 
@@ -85,7 +85,7 @@ git push origin feature/your-feature-name
 
 **Пример Server Actions с новыми паттернами:**
 
-\`\`\`typescript
+```typescript
 // ✅ Хорошо - используем withSupabase декоратор и Result тип
 import { withSupabase } from "@/lib/supabase/with-supabase"
 import { success, failure, type Result } from "@/lib/types"
@@ -128,11 +128,11 @@ export async function addGalleryAction(formData: FormData) {
   
   return { success: true }
 }
-\`\`\`
+```
 
 **Пример использования logger:**
 
-\`\`\`typescript
+```typescript
 // ✅ Хорошо - используем logger с компонентом и сообщением
 import { logger } from "@/lib/logger"
 
@@ -168,7 +168,7 @@ function MyComponent() {
     }
   }
 }
-\`\`\`
+```
 
 ### Python
 
@@ -179,7 +179,7 @@ function MyComponent() {
 
 **Пример:**
 
-\`\`\`python
+```python
 # ✅ Хорошо
 async def recognize_faces(image_url: str) -> List[FaceDescriptor]:
     """
@@ -198,7 +198,7 @@ async def recognize_faces(image_url: str) -> List[FaceDescriptor]:
 def recognize_faces(image_url):
     faces = detector.detect(image_url)
     return [FaceDescriptor.from_detection(f) for f in faces]
-\`\`\`
+```
 
 ### React компоненты
 
@@ -209,7 +209,7 @@ def recognize_faces(image_url):
 
 **Пример:**
 
-\`\`\`typescript
+```typescript
 // ✅ Хорошо
 export function GalleryCard({ gallery }: { gallery: Gallery }) {
   const [isLoading, setIsLoading] = useState(false)
@@ -236,28 +236,28 @@ export function GalleryCard({ gallery }: { gallery: Gallery }) {
     </Card>
   )
 }
-\`\`\`
+```
 
 ## 🔄 Процесс разработки
 
 ### Локальная разработка
 
 1. Установите зависимости:
-\`\`\`bash
+```bash
 npm install
 cd python && pip install -r requirements.txt
-\`\`\`
+```
 
 2. Настройте переменные окружения (см. DOWNLOAD-INSTRUCTIONS.md)
 
 3. Запустите оба сервера:
-\`\`\`bash
+```bash
 # Terminal 1
 npm run dev
 
 # Terminal 2
 cd python && python main.py
-\`\`\`
+```
 
 ### Тестирование
 
@@ -269,10 +269,10 @@ cd python && python main.py
 - [ ] Все существующие функции работают
 - [ ] Новая функциональность протестирована вручную
 
-\`\`\`bash
+```bash
 npm run lint
 npm run typecheck
-\`\`\`
+```
 
 ## 🐛 Отчеты об ошибках
 
@@ -286,7 +286,7 @@ npm run typecheck
 
 **Шаблон:**
 
-\`\`\`markdown
+```markdown
 ## Описание
 Краткое описание проблемы
 
@@ -311,10 +311,10 @@ npm run typecheck
 [Прикрепите скриншоты]
 
 ## Логи
-\`\`\`
+```
 [Вставьте логи из консоли]
-\`\`\`
-\`\`\`
+```
+```
 
 ## 💡 Предложения новых функций
 

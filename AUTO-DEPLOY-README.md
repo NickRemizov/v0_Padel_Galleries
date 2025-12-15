@@ -16,23 +16,23 @@
 
 ### Вариант 1: Как systemd сервис (рекомендуется)
 
-\`\`\`bash
+```bash
 # На сервере
 cd /home/nickr
 chmod +x install-auto-deploy.sh
 sudo ./install-auto-deploy.sh
-\`\`\`
+```
 
 Сервис будет автоматически запускаться при перезагрузке сервера.
 
 ### Вариант 2: Ручной запуск
 
-\`\`\`bash
+```bash
 # На сервере
 cd /home/nickr
 chmod +x auto-deploy.sh
 sudo ./auto-deploy.sh
-\`\`\`
+```
 
 Скрипт будет работать пока не нажмете Ctrl+C.
 
@@ -40,7 +40,7 @@ sudo ./auto-deploy.sh
 
 ### С вашего компьютера:
 
-\`\`\`bash
+```bash
 # Создайте архив
 cd galeries
 zip -r galeries.zip python/ SETUP.sh
@@ -49,11 +49,11 @@ zip -r galeries.zip python/ SETUP.sh
 scp galeries.zip nickr@23.88.61.20:/home/nickr/
 
 # Деплой начнется автоматически!
-\`\`\`
+```
 
 ### Мониторинг
 
-\`\`\`bash
+```bash
 # Смотреть логи в реальном времени
 tail -f /home/nickr/auto-deploy.log
 
@@ -62,11 +62,11 @@ sudo systemctl status galeries-auto-deploy
 
 # Перезапустить сервис
 sudo systemctl restart galeries-auto-deploy
-\`\`\`
+```
 
 ## Управление сервисом
 
-\`\`\`bash
+```bash
 # Остановить автоматический деплой
 sudo systemctl stop galeries-auto-deploy
 
@@ -78,7 +78,7 @@ sudo systemctl disable galeries-auto-deploy
 
 # Включить автозапуск
 sudo systemctl enable galeries-auto-deploy
-\`\`\`
+```
 
 ## Бэкапы
 
@@ -89,7 +89,7 @@ sudo systemctl enable galeries-auto-deploy
 
 ### Восстановление из бэкапа:
 
-\`\`\`bash
+```bash
 cd /home/nickr
 sudo systemctl stop galeries-auto-deploy
 cd python && ./stop.sh
@@ -98,13 +98,13 @@ rm -rf python
 mv python_backup_20250130_143022 python  # замените на нужный бэкап
 cd python && ./start-daemon.sh
 sudo systemctl start galeries-auto-deploy
-\`\`\`
+```
 
 ## Логи
 
 Все действия записываются в `/home/nickr/auto-deploy.log`:
 
-\`\`\`bash
+```bash
 # Последние 50 строк
 tail -n 50 /home/nickr/auto-deploy.log
 
@@ -113,7 +113,7 @@ tail -f /home/nickr/auto-deploy.log
 
 # Очистить логи
 sudo truncate -s 0 /home/nickr/auto-deploy.log
-\`\`\`
+```
 
 ## Безопасность
 
@@ -128,7 +128,7 @@ sudo truncate -s 0 /home/nickr/auto-deploy.log
 
 ### Сервис не запускается
 
-\`\`\`bash
+```bash
 # Проверить статус
 sudo systemctl status galeries-auto-deploy
 
@@ -137,11 +137,11 @@ sudo journalctl -u galeries-auto-deploy -n 50
 
 # Проверить логи деплоя
 tail -n 100 /home/nickr/auto-deploy.log
-\`\`\`
+```
 
 ### Деплой не срабатывает
 
-\`\`\`bash
+```bash
 # Проверить что inotify-tools установлен
 which inotifywait
 
@@ -152,23 +152,23 @@ ls -la /home/nickr/
 # Попробовать ручной деплой
 cd /home/nickr
 sudo ./auto-deploy.sh
-\`\`\`
+```
 
 ### Ошибка при установке
 
-\`\`\`bash
+```bash
 # Проверить логи установки
 cat /home/nickr/auto-deploy.log | grep "SETUP.sh"
 
 # Проверить что SETUP.sh есть в архиве
 unzip -l galeries.zip | grep SETUP.sh
-\`\`\`
+```
 
 ## Тестирование
 
 Для проверки работы системы:
 
-\`\`\`bash
+```bash
 # 1. Создайте тестовый архив
 cd /tmp
 mkdir -p python
@@ -180,7 +180,7 @@ scp galeries.zip nickr@23.88.61.20:/home/nickr/
 
 # 3. Следите за логами
 ssh nickr@23.88.61.20 "tail -f /home/nickr/auto-deploy.log"
-\`\`\`
+```
 
 ## Версия
 

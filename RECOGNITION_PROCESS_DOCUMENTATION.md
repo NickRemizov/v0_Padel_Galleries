@@ -120,10 +120,10 @@
    - Настройки: `context_weight`, `min_confidence_for_gallery` (НУЖНО ДОБАВИТЬ)
 
 **ENUM типы (НУЖНО СОЗДАТЬ):**
-\`\`\`sql
+```sql
 CREATE TYPE person_category AS ENUM ('player', 'trainer');
 CREATE TYPE face_category AS ENUM ('player', 'trainer', 'spectator', 'unknown');
-\`\`\`
+```
 
 ---
 
@@ -716,20 +716,20 @@ CREATE TYPE face_category AS ENUM ('player', 'trainer', 'spectator', 'unknown');
 
 **Что нужно:**
 1. Создать ENUM типы:
-   \`\`\`sql
+   ```sql
    CREATE TYPE person_category AS ENUM ('player', 'trainer');
    CREATE TYPE face_category AS ENUM ('player', 'trainer', 'spectator', 'unknown');
-   \`\`\`
+   ```
 
 2. Добавить поле `category` в таблицу `people`:
-   \`\`\`sql
+   ```sql
    ALTER TABLE people ADD COLUMN category person_category DEFAULT 'player';
-   \`\`\`
+   ```
 
 3. Добавить поле `face_category` в таблицу `photo_faces`:
-   \`\`\`sql
+   ```sql
    ALTER TABLE photo_faces ADD COLUMN face_category face_category DEFAULT 'unknown';
-   \`\`\`
+   ```
 
 4. Миграция данных:
    - Для всех существующих записей в `people`: установить `category = 'player'`
@@ -819,10 +819,10 @@ CREATE TYPE face_category AS ENUM ('player', 'trainer', 'spectator', 'unknown');
 
 **Что нужно:**
 1. Добавить новое значение в ENUM:
-   \`\`\`sql
+   ```sql
    ALTER TYPE person_category ADD VALUE 'referee';
    ALTER TYPE face_category ADD VALUE 'referee';
-   \`\`\`
+   ```
 
 2. Обновить UI для выбора категории при создании человека
 
