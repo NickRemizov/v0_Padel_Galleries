@@ -193,13 +193,13 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     setLoading(true)
     const result = await getPersonPhotosWithDetailsAction(personId)
     console.log(
-      "[FaceCentering] Loaded photos:",
+      "[PersonGallery] Loaded photos:",
       result.data?.map((p) => ({ id: p.id, boundingBox: p.boundingBox, width: p.width, height: p.height })),
     )
     if (result.success && result.data) {
       setPhotos(result.data)
     } else if (result.error) {
-      console.error("Error loading photos:", result.error)
+      console.error("[PersonGallery] Error loading photos:", result.error)
     }
     setLoading(false)
   }
@@ -217,11 +217,15 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   }
 
   async function handleVerify(photoId: string) {
+    console.log("[PersonGallery] Verifying photo:", photoId, "person:", personId)
     const result = await verifyPersonOnPhotoAction(photoId, personId)
+    console.log("[PersonGallery] Verify result:", result)
     if (result.success) {
       setPhotos((prev) =>
         prev.map((photo) => (photo.id === photoId ? { ...photo, verified: true, confidence: 1 } : photo)),
       )
+    } else {
+      console.error("[PersonGallery] Verify failed:", result.error)
     }
   }
 
@@ -234,6 +238,12 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     if (!open) {
       setTaggingImage(null)
     }
+  }
+
+  // FIX: Reload photos after tagging dialog saves
+  async function handleTaggingSave() {
+    console.log("[PersonGallery] Tagging dialog saved, reloading photos...")
+    await loadPhotos()
   }
 
   function handleOpenTaggingDialog(imageId: string, imageUrl: string) {
@@ -283,7 +293,9 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
       }
     } else if (confirmDialog.action === "delete") {
       for (const photoId of selectedPhotos) {
-        await unlinkPersonFromPhotoAction(photoId, personId)
+        console.log("[PersonGallery] Batch unlink photo:", photoId, "person:", personId)
+        const result = await unlinkPersonFromPhotoAction(photoId, personId)
+        console.log("[PersonGallery] Batch unlink result:", result)
       }
     }
     setConfirmDialog({ open: false, action: null, count: 0 })
@@ -304,10 +316,16 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   async function confirmSingleDelete() {
     if (!singleDeleteDialog.photoId) return
 
+    console.log("[PersonGallery] Single unlink photo:", singleDeleteDialog.photoId, "person:", personId)
     const result = await unlinkPersonFromPhotoAction(singleDeleteDialog.photoId, personId)
+    console.log("[PersonGallery] Single unlink result:", result)
+    
     if (result.success) {
       router.refresh()
       await loadPhotos()
+    } else {
+      console.error("[PersonGallery] Unlink failed:", result.error)
+      alert(`Ошибка удаления: ${result.error}`)
     }
     setSingleDeleteDialog({ open: false, photoId: null, filename: "", galleryName: "" })
   }
@@ -558,6 +576,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
           imageUrl={taggingImage.url}
           open={!!taggingImage}
           onOpenChange={handleTaggingDialogClose}
+          onSave={handleTaggingSave}
         />
       )}
 
