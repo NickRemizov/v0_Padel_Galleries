@@ -53,17 +53,17 @@ Update routes and links to use slugs
 
 ### Examples
 
-```
+\`\`\`
 @rockpick → rockpick
 @rockpick (duplicate) → rockpick-2
 Иван Петров → иван-петров
 IVIN Padel Tournament 15.12 → ivin-padel-tournament-15-12
 IMG_1234.jpg → img-1234
-```
+\`\`\`
 
 ## Running the Migration
 
-```bash
+\`\`\`bash
 # 1. Run SQL script in Supabase SQL Editor
 # Copy contents of scripts/052_add_slugs_and_featured.sql
 
@@ -80,20 +80,20 @@ ALTER TABLE galleries ALTER COLUMN slug SET NOT NULL;
 ALTER TABLE gallery_images ALTER COLUMN slug SET NOT NULL;
 
 # 4. Restart backend for API changes
-```
+\`\`\`
 
 ## Backend API
 
 After migration, all endpoints accept **both UUID and slug**:
 
-```
+\`\`\`
 # Both work:
 GET /api/people/550e8400-e29b-41d4-a716-446655440000
 GET /api/people/rockpick
 
 GET /api/galleries/550e8400-e29b-41d4-a716-446655440000
 GET /api/galleries/ivin-padel-tournament-15-12
-```
+\`\`\`
 
 The API automatically detects if the identifier is a UUID or slug and searches accordingly.
 
@@ -101,30 +101,30 @@ The API automatically detects if the identifier is a UUID or slug and searches a
 
 ### 1. Update Routes
 
-```
+\`\`\`
 app/players/[id]/page.tsx → app/players/[slug]/page.tsx
 app/gallery/[id]/page.tsx → app/gallery/[slug]/page.tsx
-```
+\`\`\`
 
 ### 2. Update Links
 
-```tsx
+\`\`\`tsx
 // Before
 <Link href={`/players/${person.id}`}>
 
 // After  
 <Link href={`/players/${person.slug || person.id}`}>
-```
+\`\`\`
 
 ### 3. Update Page Params
 
-```tsx
+\`\`\`tsx
 // Before
 export default function PlayerPage({ params }: { params: { id: string } }) {
 
 // After
 export default function PlayerPage({ params }: { params: { slug: string } }) {
-```
+\`\`\`
 
 ### 4. API Responses Include Slug
 
@@ -144,10 +144,10 @@ All API responses now include `slug` field where applicable.
 
 ## Rollback
 
-```sql
+\`\`\`sql
 ALTER TABLE people DROP COLUMN IF EXISTS slug;
 ALTER TABLE galleries DROP COLUMN IF EXISTS slug;
 ALTER TABLE gallery_images DROP COLUMN IF EXISTS slug;
 ALTER TABLE gallery_images DROP COLUMN IF EXISTS is_featured;
 DROP FUNCTION IF EXISTS generate_unique_slug;
-```
+\`\`\`
