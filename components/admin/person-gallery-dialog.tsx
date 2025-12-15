@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Check, Trash2, User } from "lucide-react"
+import { Check, Trash2, User, ArrowUpDown, ArrowUp } from "lucide-react"
 import {
   getPersonPhotosWithDetailsAction,
   unlinkPersonFromPhotoAction,
@@ -55,6 +55,8 @@ interface PersonPhoto {
   filename: string
   gallery_name?: string
   shootDate?: string
+  sort_order?: string
+  created_at?: string
 }
 
 /**
@@ -163,6 +165,22 @@ function calculateFaceStyles(
   }
 }
 
+/**
+ * Sort images by gallery sort_order setting
+ */
+function sortByGalleryOrder(images: PersonPhoto[], sortOrder: string): PersonPhoto[] {
+  const sorted = [...images]
+  switch (sortOrder) {
+    case "filename":
+      return sorted.sort((a, b) => (a.filename || "").localeCompare(b.filename || ""))
+    case "created":
+    case "added":
+      return sorted.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+    default:
+      return sorted.sort((a, b) => (a.filename || "").localeCompare(b.filename || ""))
+  }
+}
+
 export function PersonGalleryDialog({ personId, personName, open, onOpenChange }: PersonGalleryDialogProps) {
   const router = useRouter()
   const [photos, setPhotos] = useState<PersonPhoto[]>([])
@@ -171,6 +189,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   const [avatarSelectorOpen, setAvatarSelectorOpen] = useState(false)
   const [selectedPhotoForAvatar, setSelectedPhotoForAvatar] = useState<string | null>(null)
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set())
+  const [showUnverifiedFirst, setShowUnverifiedFirst] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     action: "verify" | "delete" | null
@@ -203,6 +222,49 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     }
     setLoading(false)
   }
+
+  // Sort photos: by gallery date (newest first), then by gallery sort_order
+  // If showUnverifiedFirst is enabled, unverified photos come first
+  const sortedPhotos = useMemo(() => {
+    // Group photos by gallery
+    const galleryMap = new Map<string, PersonPhoto[]>()
+    for (const photo of photos) {
+      const galleryId = photo.gallery_id
+      if (!galleryMap.has(galleryId)) {
+        galleryMap.set(galleryId, [])
+      }
+      galleryMap.get(galleryId)!.push(photo)
+    }
+
+    // Sort galleries by shoot_date (newest first)
+    const sortedGalleries = Array.from(galleryMap.entries()).sort((a, b) => {
+      const dateA = new Date(a[1][0]?.shootDate || 0).getTime()
+      const dateB = new Date(b[1][0]?.shootDate || 0).getTime()
+      return dateB - dateA
+    })
+
+    // Sort images within each gallery according to gallery's sort_order
+    let result: PersonPhoto[] = []
+    for (const [galleryId, galleryPhotos] of sortedGalleries) {
+      const sortOrder = galleryPhotos[0]?.sort_order || "filename"
+      const sorted = sortByGalleryOrder(galleryPhotos, sortOrder)
+      result.push(...sorted)
+    }
+
+    // If showUnverifiedFirst is enabled, move unverified photos to the beginning
+    if (showUnverifiedFirst) {
+      const unverified = result.filter((p) => !p.verified)
+      const verified = result.filter((p) => p.verified)
+      return [...unverified, ...verified]
+    }
+
+    return result
+  }, [photos, showUnverifiedFirst])
+
+  // Count unverified photos
+  const unverifiedCount = useMemo(() => {
+    return photos.filter((p) => !p.verified).length
+  }, [photos])
 
   async function handleDeleteDescriptors(photoId: string) {
     const photo = photos.find((p) => p.id === photoId)
@@ -368,6 +430,22 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                 {photos.length > 0 && (
                   <div className="flex gap-2 shrink-0 mr-12">
                     <Button
+                      variant={showUnverifiedFirst ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setShowUnverifiedFirst(!showUnverifiedFirst)}
+                      className={`w-[220px] justify-start ${showUnverifiedFirst ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+                      disabled={unverifiedCount === 0}
+                    >
+                      {showUnverifiedFirst ? (
+                        <ArrowUp className="h-4 w-4 mr-2 flex-shrink-0" />
+                      ) : (
+                        <ArrowUpDown className="h-4 w-4 mr-2 flex-shrink-0" />
+                      )}
+                      <span className="truncate">
+                        {showUnverifiedFirst ? "Обычный порядок" : "Вначале неподтверждённые"}
+                      </span>
+                    </Button>
+                    <Button
                       variant="default"
                       size="sm"
                       disabled={!canVerifySelected()}
@@ -406,7 +484,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {photos.map((photo) => {
+                {sortedPhotos.map((photo) => {
                   const canVerify = !photo.verified
 
                   // Calculate face styles - returns null if bbox is invalid
@@ -519,7 +597,14 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
               </div>
             )}
 
-            <p className="text-sm text-muted-foreground">Всего фотографий: {photos.length}</p>
+            <div className="flex items-center justify-end gap-4">
+              {showUnverifiedFirst && unverifiedCount > 0 && (
+                <p className="text-sm text-orange-600 font-medium">
+                  Неподтверждённых: {unverifiedCount}
+                </p>
+              )}
+              <p className="text-sm text-muted-foreground">Всего фотографий: {photos.length}</p>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
