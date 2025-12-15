@@ -145,6 +145,7 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
                 <GalleryImagesManager
                   galleryId={gallery.id}
                   galleryTitle={gallery.title}
+                  shootDate={gallery.shoot_date}
                   initialSortOrder={gallery.sort_order || undefined}
                   isFullyVerified={isFullyVerified}
                   data-gallery-id={gallery.id}
