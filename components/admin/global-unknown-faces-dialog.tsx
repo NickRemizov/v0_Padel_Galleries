@@ -48,7 +48,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   const [people, setPeople] = useState<Person[]>([])
   const [showAddPerson, setShowAddPerson] = useState(false)
   const [showSelectPerson, setShowSelectPerson] = useState(false)
-  const [selectedPersonId, setSelectedPersonId] = useState<string>("")
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
 
@@ -99,13 +98,16 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
 
   async function handlePersonCreated(personId: string, personName: string) {
     setShowAddPerson(false)
+    // Reload people list to include newly created person
+    await loadPeople()
     await assignClusterToPerson(personId)
   }
 
-  async function handleSelectExistingPerson() {
-    if (!selectedPersonId) return
-    await assignClusterToPerson(selectedPersonId)
+  // FIX: Accept personId directly instead of using stale state
+  async function handleSelectPerson(personId: string) {
+    if (!personId) return
     setShowSelectPerson(false)
+    await assignClusterToPerson(personId)
   }
 
   async function assignClusterToPerson(personId: string) {
@@ -255,8 +257,8 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                               <CommandItem
                                 key={person.id}
                                 onSelect={() => {
-                                  setSelectedPersonId(person.id)
-                                  handleSelectExistingPerson()
+                                  // FIX: Pass person.id directly instead of using setState + stale closure
+                                  handleSelectPerson(person.id)
                                 }}
                               >
                                 {person.real_name}
