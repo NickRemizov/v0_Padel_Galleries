@@ -4,6 +4,7 @@ import { AuthButton } from "@/components/auth-button"
 import { MainNav } from "@/components/main-nav"
 import Link from "next/link"
 import type { Person } from "@/lib/types"
+import { apiFetch } from "@/lib/apiClient"
 
 export const revalidate = 300
 
@@ -46,42 +47,32 @@ export default async function PlayersPage() {
   let players: Person[] = []
 
   try {
-    const supabase = await createClient()
+    // Call FastAPI backend - returns {success, data, error, code, meta}
+    const response = await apiFetch<any[]>("/api/people", {
+      method: "GET",
+    })
 
-    // Get all people directly from Supabase
-    const { data: peopleData, error } = await supabase
-      .from("people")
-      .select("*")
-      .eq("show_in_players_gallery", true)
-      .not("avatar_url", "is", null)
-      .order("real_name")
+    console.log("[v0] /api/people response:", JSON.stringify(response, null, 2))
 
-    if (error) {
-      console.error("[v0] Error fetching people:", error)
-      return (
-        <main className="min-h-screen bg-background border-background">
-          <div className="mx-auto py-12 shadow-none">
-            <header className="mb-12 text-center relative px-4">
-              <div className="absolute right-0 top-0">
-                <AuthButton />
-              </div>
-              <Link href="/" className="inline-block mb-4 hover:opacity-80 transition-opacity">
-                <h1 className="font-serif font-bold tracking-tight text-foreground text-8xl">Padel in Valencia</h1>
-              </Link>
-              <MainNav />
-            </header>
-            <PlayersGrid players={[]} />
-          </div>
-        </main>
-      )
+    // Extract data from response
+    const peopleData = response.success && response.data ? response.data : []
+
+    if (!response.success) {
+      console.error("[v0] FastAPI error:", response.error)
     }
 
-    const filteredPlayers = (peopleData || []).map((player: any) => ({
-      ...player,
-      _count: {
-        photo_faces: 0,
-      },
-    }))
+    // Filter players: show_in_players_gallery=true AND has avatar
+    const filteredPlayers = peopleData
+      .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
+      .map((player: any) => ({
+        ...player,
+        _count: {
+          photo_faces: 0,
+        },
+      }))
+
+    // Fetch most recent gallery date for each player (read-only metadata)
+    const supabase = await createClient()
 
     // С ПАГИНАЦИЕЙ: загружаем photo_faces для всех игроков
     const photoFaces = await loadPhotoFacesForPlayers(
