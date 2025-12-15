@@ -1,4 +1,3 @@
-import { createClient } from "@/lib/supabase/server"
 import { PlayersGrid } from "@/components/players-grid"
 import { AuthButton } from "@/components/auth-button"
 import { MainNav } from "@/components/main-nav"
@@ -8,58 +7,32 @@ import { apiFetch } from "@/lib/apiClient"
 
 export const revalidate = 300
 
-/**
- * Helper: загрузить photo_faces для списка игроков с пагинацией
- */
-async function loadPhotoFacesForPlayers(supabase: any, playerIds: string[]) {
-  if (playerIds.length === 0) return []
-
-  let allFaces: any[] = []
-  let offset = 0
-  const pageSize = 1000
-
-  while (true) {
-    const { data: batch } = await supabase
-      .from("photo_faces")
-      .select(
-        `
-        person_id,
-        gallery_images!inner (
-          galleries!inner (
-            shoot_date
-          )
-        )
-      `
-      )
-      .in("person_id", playerIds)
-      .range(offset, offset + pageSize - 1)
-
-    if (!batch || batch.length === 0) break
-    allFaces = allFaces.concat(batch)
-    if (batch.length < pageSize) break
-    offset += pageSize
-  }
-
-  return allFaces
-}
-
 export default async function PlayersPage() {
   let players: Person[] = []
 
   try {
-    // Call FastAPI backend - returns {success, data, error, code, meta}
-    const response = await apiFetch<any[]>("/api/people", {
+    // Call FastAPI backend
+    const response = await apiFetch<any>("/api/people", {
       method: "GET",
     })
 
-    console.log("[v0] /api/people response:", JSON.stringify(response, null, 2))
+    console.log("[v0] /api/people raw response type:", typeof response)
+    console.log("[v0] /api/people is array:", Array.isArray(response))
+    console.log("[v0] /api/people has success:", 'success' in (response || {}))
 
-    // Extract data from response
-    const peopleData = response.success && response.data ? response.data : []
-
-    if (!response.success) {
-      console.error("[v0] FastAPI error:", response.error)
+    // Handle both formats:
+    // 1. Direct array: [...]
+    // 2. Wrapped: {success: true, data: [...]}
+    let peopleData: any[] = []
+    if (Array.isArray(response)) {
+      peopleData = response
+    } else if (response && response.success && Array.isArray(response.data)) {
+      peopleData = response.data
+    } else if (response && Array.isArray(response.data)) {
+      peopleData = response.data
     }
+
+    console.log("[v0] peopleData count:", peopleData.length)
 
     // Filter players: show_in_players_gallery=true AND has avatar
     const filteredPlayers = peopleData
@@ -67,45 +40,42 @@ export default async function PlayersPage() {
       .map((player: any) => ({
         ...player,
         _count: {
-          photo_faces: 0,
+          photo_faces: player.faces_count || player.photo_count || 0,
         },
       }))
 
-    // Fetch most recent gallery date for each player (read-only metadata)
-    const supabase = await createClient()
+    console.log("[v0] filteredPlayers count:", filteredPlayers.length)
 
-    // С ПАГИНАЦИЕЙ: загружаем photo_faces для всех игроков
-    const photoFaces = await loadPhotoFacesForPlayers(
-      supabase,
-      filteredPlayers.map((p) => p.id)
-    )
-
-    // Add most recent gallery date to each player
-    players = filteredPlayers.map((player: any) => {
-      const playerPhotoFaces = photoFaces.filter((pf: any) => pf.person_id === player.id)
-
-      let mostRecentDate: string | null = null
-      if (playerPhotoFaces.length > 0) {
-        const dates = playerPhotoFaces
-          .map((pf: any) => pf.gallery_images?.galleries?.shoot_date)
-          .filter((date: any) => date != null)
-
-        if (dates.length > 0) {
-          mostRecentDate = dates.sort((a: string, b: string) => b.localeCompare(a))[0]
+    // Get photo dates for each player from FastAPI
+    for (const player of filteredPlayers) {
+      try {
+        const photosResponse = await apiFetch<any>(`/api/people/${player.id}/photos`, {
+          method: "GET",
+        })
+        
+        const photos = photosResponse.photos || photosResponse.data || []
+        
+        let mostRecentDate: string | null = null
+        if (photos.length > 0) {
+          const dates = photos
+            .map((p: any) => p.gallery_shoot_date)
+            .filter((date: any) => date != null)
+          
+          if (dates.length > 0) {
+            mostRecentDate = dates.sort((a: string, b: string) => b.localeCompare(a))[0]
+          }
         }
+        
+        player._mostRecentGalleryDate = mostRecentDate
+        player._count.photo_faces = photos.length
+      } catch (e) {
+        console.error(`[v0] Error fetching photos for player ${player.id}:`, e)
+        player._mostRecentGalleryDate = null
       }
-
-      return {
-        ...player,
-        _mostRecentGalleryDate: mostRecentDate,
-        _count: {
-          photo_faces: playerPhotoFaces.length,
-        },
-      }
-    })
+    }
 
     // Sort by most recent gallery date (descending), then by name
-    players.sort((a: any, b: any) => {
+    players = filteredPlayers.sort((a: any, b: any) => {
       if (!a._mostRecentGalleryDate && !b._mostRecentGalleryDate) {
         return a.real_name.localeCompare(b.real_name)
       }
