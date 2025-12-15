@@ -110,8 +110,40 @@ export async function addGalleryAction(formData: FormData) {
   }
 }
 
-export async function updateGalleryAction(galleryId: string, data: Record<string, any>) {
+export async function updateGalleryAction(galleryId: string, formData: FormData) {
   try {
+    // Convert FormData to object
+    const title = formData.get("title") as string
+    const shoot_date = formData.get("shoot_date") as string
+    const cover_image_url = formData.get("cover_image_url") as string | null
+    const cover_image_square_url = formData.get("cover_image_square_url") as string | null
+    const external_gallery_url = formData.get("external_gallery_url") as string | null
+    const photographer_id = formData.get("photographer_id") as string | null
+    const location_id = formData.get("location_id") as string | null
+    const organizer_id = formData.get("organizer_id") as string | null
+
+    const data: Record<string, any> = {}
+
+    // Add fields that are present
+    if (title) data.title = title
+    if (shoot_date) data.shoot_date = shoot_date
+    if (cover_image_url) data.cover_image_url = cover_image_url
+    if (cover_image_square_url) data.cover_image_square_url = cover_image_square_url
+    if (external_gallery_url) data.external_gallery_url = external_gallery_url
+    
+    // Handle nullable foreign keys
+    if (photographer_id !== null) {
+      data.photographer_id = photographer_id === "none" ? null : photographer_id
+    }
+    if (location_id !== null) {
+      data.location_id = location_id === "none" ? null : location_id
+    }
+    if (organizer_id !== null) {
+      data.organizer_id = organizer_id === "none" ? null : organizer_id
+    }
+
+    console.log("[updateGalleryAction] Sending data:", data)
+
     const result = await apiFetch(`/api/galleries/${galleryId}`, {
       method: "PUT",
       body: JSON.stringify(data),
