@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { Images, Trash2, Upload, UserPlus, Scan, Download } from "lucide-react"
+import { Images, Trash2, Upload, UserPlus, Scan, Download, EyeOff, Eye } from "lucide-react"
 
 import {
   addGalleryImagesAction,
@@ -46,6 +46,7 @@ import { UnknownFacesReviewDialog } from "./unknown-faces-review-dialog"
 interface GalleryImagesManagerProps {
   galleryId: string
   galleryTitle: string
+  shootDate?: string | null
   initialSortOrder?: string
   isFullyVerified?: boolean
 }
@@ -54,6 +55,14 @@ function formatFileSize(bytes: number | null): string {
   if (!bytes) return "N/A"
   const kb = bytes / 1024
   return `${kb.toFixed(1)} KB`
+}
+
+function formatShortDate(dateString: string | null | undefined): string {
+  if (!dateString) return ""
+  const date = new Date(dateString)
+  const day = String(date.getDate()).padStart(2, "0")
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  return `${day}.${month}`
 }
 
 const GalleryImageCard = memo(function GalleryImageCard({
@@ -183,6 +192,7 @@ const GalleryImageCard = memo(function GalleryImageCard({
 export function GalleryImagesManager({
   galleryId,
   galleryTitle,
+  shootDate,
   initialSortOrder,
   isFullyVerified,
   ...props
@@ -193,6 +203,7 @@ export function GalleryImagesManager({
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState("")
   const [sortBy, setSortBy] = useState<SortOption>((initialSortOrder as SortOption) || "filename")
+  const [hideFullyVerified, setHideFullyVerified] = useState(false)
   const [taggingImage, setTaggingImage] = useState<{ id: string; url: string; hasBeenProcessed: boolean } | null>(null)
   const [autoRecognitionMode, setAutoRecognitionMode] = useState<"all" | "remaining" | null>(null)
   const [showUnknownFaces, setShowUnknownFaces] = useState(false)
@@ -339,19 +350,76 @@ export function GalleryImagesManager({
     return faces.some((face) => face.person_id === null)
   }
 
+  /**
+   * Check if photo is fully verified (all faces have verified=true)
+   */
+  function isPhotoFullyVerified(imageId: string): boolean {
+    const faces = photoFacesMap[imageId]
+    // No faces = not verified
+    if (!faces || faces.length === 0) return false
+    // All faces must be verified
+    return faces.every((face) => face.verified === true)
+  }
+
+  /**
+   * Check if photo should be shown when hideFullyVerified is enabled
+   * Show if:
+   * - Has at least one face with confidence < 1 (not verified)
+   * - Has unrecognized faces (person_id === null)
+   * - Is NFD (processed but no faces)
+   * - Not processed yet
+   */
+  function shouldShowPhoto(image: GalleryImage): boolean {
+    if (!hideFullyVerified) return true
+
+    const faces = photoFacesMap[image.id]
+    const hasBeenProcessed = image.has_been_processed || false
+
+    // Not processed yet - show
+    if (!hasBeenProcessed) return true
+
+    // NFD - show
+    if (hasBeenProcessed && (!faces || faces.length === 0)) return true
+
+    // Has unknown faces - show
+    if (faces?.some((face) => face.person_id === null)) return true
+
+    // Has at least one non-verified face - show
+    if (faces?.some((face) => !face.verified)) return true
+
+    // All faces verified - hide
+    return false
+  }
+
   const sortedImages = useMemo(() => {
     const imagesCopy = [...images]
 
+    let sorted: GalleryImage[]
     switch (sortBy) {
       case "filename":
-        return imagesCopy.sort((a, b) => (a.original_filename || "").localeCompare(b.original_filename || ""))
+        sorted = imagesCopy.sort((a, b) => (a.original_filename || "").localeCompare(b.original_filename || ""))
+        break
       case "created":
       case "added":
-        return imagesCopy.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        sorted = imagesCopy.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        break
       default:
-        return imagesCopy
+        sorted = imagesCopy
     }
-  }, [images, sortBy])
+
+    // Apply hide verified filter
+    if (hideFullyVerified && photoFacesLoaded) {
+      return sorted.filter(shouldShowPhoto)
+    }
+
+    return sorted
+  }, [images, sortBy, hideFullyVerified, photoFacesMap, photoFacesLoaded])
+
+  // Count how many photos are hidden
+  const hiddenCount = useMemo(() => {
+    if (!hideFullyVerified || !photoFacesLoaded) return 0
+    return images.filter((img) => !shouldShowPhoto(img)).length
+  }, [images, hideFullyVerified, photoFacesMap, photoFacesLoaded])
 
   function handleDragEnter(e: React.DragEvent) {
     e.preventDefault()
@@ -614,6 +682,9 @@ export function GalleryImagesManager({
     setTaggingImage({ id: imageId, url: imageUrl, hasBeenProcessed })
   }
 
+  // Format gallery title with date
+  const displayTitle = shootDate ? `${galleryTitle} ${formatShortDate(shootDate)}` : galleryTitle
+
   return (
     <>
       <Dialog
@@ -649,7 +720,7 @@ export function GalleryImagesManager({
           <div className="sticky top-0 z-10 pb-4 border-b">
             <DialogHeader>
               <DialogTitle>Управление фотографиями</DialogTitle>
-              <DialogDescription>{galleryTitle}</DialogDescription>
+              <DialogDescription>{displayTitle}</DialogDescription>
             </DialogHeader>
 
             <div className="flex items-center gap-4 flex-wrap mt-4">
@@ -679,6 +750,26 @@ export function GalleryImagesManager({
                     <SelectItem value="added">По времени добавления</SelectItem>
                   </SelectContent>
                 </Select>
+              )}
+              {images.length > 0 && photoFacesLoaded && (
+                <Button
+                  variant={hideFullyVerified ? "default" : "outline"}
+                  onClick={() => setHideFullyVerified(!hideFullyVerified)}
+                  disabled={uploading}
+                  className={hideFullyVerified ? "bg-purple-600 hover:bg-purple-700" : ""}
+                >
+                  {hideFullyVerified ? (
+                    <>
+                      <Eye className="h-4 w-4 mr-2" />
+                      Показать все ({hiddenCount} скрыто)
+                    </>
+                  ) : (
+                    <>
+                      <EyeOff className="h-4 w-4 mr-2" />
+                      Скрыть верифицированные
+                    </>
+                  )}
+                </Button>
               )}
               {images.length > 0 && (
                 <Button
@@ -768,7 +859,10 @@ export function GalleryImagesManager({
           </div>
 
           <div className="flex items-center justify-end">
-            <p className="text-sm text-muted-foreground">Всего фотографий: {images.length}</p>
+            <p className="text-sm text-muted-foreground">
+              Всего фотографий: {images.length}
+              {hideFullyVerified && hiddenCount > 0 && ` (показано: ${sortedImages.length})`}
+            </p>
           </div>
         </DialogContent>
       </Dialog>
