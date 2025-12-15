@@ -51,8 +51,11 @@ export default async function PlayersPage() {
       method: "GET",
     })
 
+    // apiFetch returns {success, data} format
+    const peopleData = response.success && response.data ? response.data : (Array.isArray(response) ? response : [])
+
     // Filter and sort players
-    const filteredPlayers = response
+    const filteredPlayers = peopleData
       .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
       .map((player: any) => ({
         ...player,
