@@ -4,7 +4,6 @@ import { AuthButton } from "@/components/auth-button"
 import { MainNav } from "@/components/main-nav"
 import Link from "next/link"
 import type { Person } from "@/lib/types"
-import { apiFetch } from "@/lib/apiClient"
 
 export const revalidate = 300
 
@@ -47,27 +46,42 @@ export default async function PlayersPage() {
   let players: Person[] = []
 
   try {
-    const response = await apiFetch<any[]>("/people", {
-      method: "GET",
-    })
-
-    // apiFetch returns {success, data} format
-    const peopleData = response.success && response.data ? response.data : (Array.isArray(response) ? response : [])
-
-    // Filter and sort players
-    const filteredPlayers = peopleData
-      .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
-      .map((player: any) => ({
-        ...player,
-        // Keep _count for backward compatibility with existing code
-        _count: {
-          photo_faces: player.verified_photos_count || 0,
-        },
-      }))
-
-    // Fetch most recent gallery date for each player (still need this from Supabase)
-    // This is read-only metadata that doesn't affect business logic
     const supabase = await createClient()
+
+    // Get all people directly from Supabase
+    const { data: peopleData, error } = await supabase
+      .from("people")
+      .select("*")
+      .eq("show_in_players_gallery", true)
+      .not("avatar_url", "is", null)
+      .order("real_name")
+
+    if (error) {
+      console.error("[v0] Error fetching people:", error)
+      return (
+        <main className="min-h-screen bg-background border-background">
+          <div className="mx-auto py-12 shadow-none">
+            <header className="mb-12 text-center relative px-4">
+              <div className="absolute right-0 top-0">
+                <AuthButton />
+              </div>
+              <Link href="/" className="inline-block mb-4 hover:opacity-80 transition-opacity">
+                <h1 className="font-serif font-bold tracking-tight text-foreground text-8xl">Padel in Valencia</h1>
+              </Link>
+              <MainNav />
+            </header>
+            <PlayersGrid players={[]} />
+          </div>
+        </main>
+      )
+    }
+
+    const filteredPlayers = (peopleData || []).map((player: any) => ({
+      ...player,
+      _count: {
+        photo_faces: 0,
+      },
+    }))
 
     // С ПАГИНАЦИЕЙ: загружаем photo_faces для всех игроков
     const photoFaces = await loadPhotoFacesForPlayers(
@@ -93,6 +107,9 @@ export default async function PlayersPage() {
       return {
         ...player,
         _mostRecentGalleryDate: mostRecentDate,
+        _count: {
+          photo_faces: playerPhotoFaces.length,
+        },
       }
     })
 
