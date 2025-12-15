@@ -17,7 +17,7 @@ import { debounce } from "@/lib/debounce"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities" // Add import for people action
 
-const VERSION = "v6.1" // Fixed: add markPhotoAsProcessedAction on save
+const VERSION = "v6.2" // Added: quick assign from details dialog
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -280,6 +280,33 @@ export function FaceTaggingDialog({
     drawFaces(updated)
 
     debouncedSave(updated)
+  }
+
+  // Handler for quick assign from details dialog
+  function handleAssignFromDetails(faceIndex: number, personId: string, personName: string) {
+    console.log(`[${VERSION}] Quick assign: face ${faceIndex} -> ${personName} (${personId})`)
+    
+    const updated = [...taggedFaces]
+    if (faceIndex >= 0 && faceIndex < updated.length) {
+      updated[faceIndex] = {
+        ...updated[faceIndex],
+        personId: personId,
+        personName: personName,
+        verified: true,
+      }
+      setTaggedFaces(updated)
+      drawFaces(updated)
+      
+      // Also update detailedFaces to reflect the assignment
+      const updatedDetailed = [...detailedFaces]
+      if (faceIndex < updatedDetailed.length) {
+        updatedDetailed[faceIndex] = {
+          ...updatedDetailed[faceIndex],
+          person_name: personName,
+        }
+        setDetailedFaces(updatedDetailed)
+      }
+    }
   }
 
   function handleRemoveFace(index: number) {
@@ -592,6 +619,7 @@ export function FaceTaggingDialog({
         onOpenChange={setShowDetailsDialog}
         faces={detailedFaces}
         imageUrl={imageUrl}
+        onAssignPerson={handleAssignFromDetails}
       />
     </Dialog>
   )
