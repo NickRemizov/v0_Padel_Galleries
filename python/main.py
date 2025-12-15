@@ -36,7 +36,8 @@ from services.auth import get_current_user, get_current_user_optional, verify_go
 # Router imports
 from routers import (
     training, recognition, faces, images,
-    photographers, people, galleries, locations, organizers, cities
+    photographers, people, galleries, locations, organizers, cities,
+    admin
 )
 
 # ============================================================
@@ -46,7 +47,7 @@ from routers import (
 app = FastAPI(
     title="Padel Tournament Face Recognition API",
     description="API для распознавания и группировки игроков на турнирах по паделу",
-    version="4.0.1",  # Bumped for config cleanup
+    version="4.1.0",  # Bumped for admin router
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -137,6 +138,7 @@ galleries.set_services(supabase_db, face_service)
 locations.set_services(supabase_db)
 organizers.set_services(supabase_db)
 cities.set_services(supabase_db)
+admin.set_services(supabase_db)
 logger.info("✓ Service instances injected into all routers")
 
 # ============================================================
@@ -193,7 +195,7 @@ async def health_check():
     return ApiResponse.ok({
         "status": "healthy",
         "service": "padel-recognition",
-        "version": "4.0.1",
+        "version": "4.1.0",
         "model_loaded": face_service.is_ready()
     }).model_dump()
 
@@ -211,6 +213,7 @@ app.include_router(galleries.router, prefix="/api/galleries", tags=["galleries"]
 app.include_router(locations.router, prefix="/api/locations", tags=["locations"])
 app.include_router(organizers.router, prefix="/api/organizers", tags=["organizers"])
 app.include_router(cities.router, prefix="/api/cities", tags=["cities"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 logger.info(f"Application startup complete. Running on {settings.server_host}:{settings.server_port}")
 
