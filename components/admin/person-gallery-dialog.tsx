@@ -433,7 +433,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                       variant={showUnverifiedFirst ? "default" : "outline"}
                       size="sm"
                       onClick={() => setShowUnverifiedFirst(!showUnverifiedFirst)}
-                      className={`w-[220px] justify-start ${showUnverifiedFirst ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+                      className={`w-[220px] justify-start ${showUnverifiedFirst ? "bg-blue-500 hover:bg-blue-600" : ""}`}
                       disabled={unverifiedCount === 0}
                     >
                       {showUnverifiedFirst ? (
@@ -599,7 +599,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
 
             <div className="flex items-center justify-end gap-4">
               {showUnverifiedFirst && unverifiedCount > 0 && (
-                <p className="text-sm text-orange-600 font-medium">
+                <p className="text-sm text-blue-600 font-medium">
                   Неподтверждённых: {unverifiedCount}
                 </p>
               )}
