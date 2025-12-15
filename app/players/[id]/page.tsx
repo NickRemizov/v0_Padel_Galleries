@@ -46,34 +46,38 @@ export default async function PlayerGalleryPage({ params }: PlayerGalleryPagePro
     method: "GET",
   })
 
-  console.log("[v0] /api/people/{id}/photos response:", JSON.stringify(photosResponse, null, 2).slice(0, 500))
-
-  // Extract photos from response
-  const photos = photosResponse.photos || photosResponse.data || []
+  // Extract photos from response - API returns {success, data: [...]}
+  // Each item has nested gallery_images object
+  const rawPhotos = photosResponse.data || photosResponse.photos || []
 
   // Transform photos to expected format
-  const images: any[] = photos.map((photo: any) => ({
-    id: photo.id,
-    image_url: photo.image_url,
-    original_url: photo.original_url,
-    original_filename: photo.original_filename,
-    file_size: photo.file_size,
-    width: photo.width,
-    height: photo.height,
-    gallery_id: photo.gallery_id,
-    created_at: photo.created_at,
-    gallery: {
-      id: photo.gallery_id,
-      title: photo.gallery_title,
-      shoot_date: photo.gallery_shoot_date,
-      sort_order: photo.sort_order || "filename",
-    },
-  }))
+  // API format: { id, photo_id, gallery_images: { id, image_url, gallery_id, original_filename } }
+  const images: any[] = rawPhotos.map((face: any) => {
+    const gi = face.gallery_images || {}
+    return {
+      id: gi.id || face.photo_id,
+      image_url: gi.image_url,
+      original_url: gi.original_url || gi.image_url,
+      original_filename: gi.original_filename,
+      file_size: gi.file_size,
+      width: gi.width,
+      height: gi.height,
+      gallery_id: gi.gallery_id,
+      created_at: gi.created_at,
+      gallery: {
+        id: gi.gallery_id,
+        title: gi.gallery_title || face.gallery_title,
+        shoot_date: gi.gallery_shoot_date || face.gallery_shoot_date,
+        sort_order: gi.sort_order || face.sort_order || "filename",
+      },
+    }
+  })
 
   // Group images by gallery
   const galleryMap = new Map<string, any[]>()
   for (const img of images) {
     const galleryId = img.gallery_id
+    if (!galleryId) continue
     if (!galleryMap.has(galleryId)) {
       galleryMap.set(galleryId, [])
     }
