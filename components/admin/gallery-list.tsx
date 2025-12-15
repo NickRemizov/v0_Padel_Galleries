@@ -17,6 +17,7 @@ interface GalleryListProps {
   locations: Location[]
   organizers: Organizer[]
   onDelete?: () => void
+  onUpdate?: () => void
 }
 
 function formatDateTime(dateString: string): string {
@@ -29,7 +30,7 @@ function formatDateTime(dateString: string): string {
   return `${day}.${month}.${year} ${hours}:${minutes}`
 }
 
-export function GalleryList({ galleries, photographers, locations, organizers, onDelete }: GalleryListProps) {
+export function GalleryList({ galleries, photographers, locations, organizers, onDelete, onUpdate }: GalleryListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [galleryStats, setGalleryStats] = useState<
     Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>
@@ -148,6 +149,7 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
                   shootDate={gallery.shoot_date}
                   initialSortOrder={gallery.sort_order || undefined}
                   isFullyVerified={isFullyVerified}
+                  onImagesChange={onUpdate}
                   data-gallery-id={gallery.id}
                 />
                 <EditGalleryDialog
@@ -155,6 +157,7 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
                   photographers={photographers}
                   locations={locations}
                   organizers={organizers}
+                  onSuccess={onUpdate}
                 />
                 <Button variant="outline" size="sm" asChild>
                   <a href={`/gallery/${gallery.id}`} target="_blank" rel="noopener noreferrer">
