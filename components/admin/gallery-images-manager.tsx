@@ -756,7 +756,7 @@ export function GalleryImagesManager({
                   variant={hideFullyVerified ? "default" : "outline"}
                   onClick={() => setHideFullyVerified(!hideFullyVerified)}
                   disabled={uploading}
-                  className={`w-[240px] justify-start ${hideFullyVerified ? "bg-purple-600 hover:bg-purple-700" : ""}`}
+                  className={`w-[240px] justify-start ${hideFullyVerified ? "bg-blue-500 hover:bg-blue-600" : ""}`}
                 >
                   {hideFullyVerified ? (
                     <Eye className="h-4 w-4 mr-2 flex-shrink-0" />
@@ -857,7 +857,7 @@ export function GalleryImagesManager({
 
           <div className="flex items-center justify-end gap-4">
             {hideFullyVerified && photoFacesLoaded && hiddenCount > 0 && (
-              <p className="text-sm text-purple-600 font-medium">
+              <p className="text-sm text-blue-600 font-medium">
                 Скрыто: {hiddenCount}
               </p>
             )}
