@@ -34,10 +34,12 @@ async function loadPlayerPhotoFaces(supabase: any, personId: string) {
           width,
           height,
           gallery_id,
+          created_at,
           galleries!inner (
             id,
             title,
-            shoot_date
+            shoot_date,
+            sort_order
           )
         )
       `
@@ -60,6 +62,21 @@ async function loadPlayerPhotoFaces(supabase: any, personId: string) {
   return allFaces
 }
 
+/**
+ * Sort images by gallery sort_order setting
+ */
+function sortByGalleryOrder(images: any[], sortOrder: string): any[] {
+  switch (sortOrder) {
+    case "filename":
+      return images.sort((a, b) => (a.original_filename || "").localeCompare(b.original_filename || ""))
+    case "created":
+    case "added":
+      return images.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+    default:
+      return images.sort((a, b) => (a.original_filename || "").localeCompare(b.original_filename || ""))
+  }
+}
+
 export default async function PlayerGalleryPage({ params }: PlayerGalleryPageProps) {
   const { id } = await params
   const supabase = await createClient()
@@ -79,16 +96,30 @@ export default async function PlayerGalleryPage({ params }: PlayerGalleryPagePro
       gallery: face.gallery_images.galleries,
     })) || []
 
-  images.sort((a, b) => {
-    const dateA = new Date(a.gallery?.shoot_date || 0).getTime()
-    const dateB = new Date(b.gallery?.shoot_date || 0).getTime()
-
-    if (dateA !== dateB) {
-      return dateB - dateA
+  // Group images by gallery
+  const galleryMap = new Map<string, any[]>()
+  for (const img of images) {
+    const galleryId = img.gallery_id
+    if (!galleryMap.has(galleryId)) {
+      galleryMap.set(galleryId, [])
     }
+    galleryMap.get(galleryId)!.push(img)
+  }
 
-    return (b.original_filename || "").localeCompare(a.original_filename || "")
+  // Sort galleries by shoot_date (newest first)
+  const sortedGalleries = Array.from(galleryMap.entries()).sort((a, b) => {
+    const dateA = new Date(a[1][0]?.gallery?.shoot_date || 0).getTime()
+    const dateB = new Date(b[1][0]?.gallery?.shoot_date || 0).getTime()
+    return dateB - dateA
   })
 
-  return <PlayerGalleryView player={player as Person} images={images} />
+  // Sort images within each gallery according to gallery's sort_order
+  const sortedImages: any[] = []
+  for (const [galleryId, galleryImages] of sortedGalleries) {
+    const sortOrder = galleryImages[0]?.gallery?.sort_order || "filename"
+    const sorted = sortByGalleryOrder([...galleryImages], sortOrder)
+    sortedImages.push(...sorted)
+  }
+
+  return <PlayerGalleryView player={player as Person} images={sortedImages} />
 }
