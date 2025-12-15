@@ -11,10 +11,12 @@ import { logger } from "@/lib/logger"
 
 export async function getPersonPhotosWithDetailsAction(personId: string) {
   try {
+    console.log("[getPersonPhotosWithDetailsAction] Fetching for person:", personId)
     const result = await apiFetch(`/api/people/${personId}/photos-with-details`)
+    console.log("[getPersonPhotosWithDetailsAction] Result:", result.success, "data count:", result.data?.length)
 
-    if (result.error) {
-      return { success: false, error: result.error }
+    if (!result.success) {
+      return { success: false, error: result.error || "Unknown error" }
     }
 
     return { success: true, data: result.data }
@@ -26,16 +28,19 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
 
 export async function verifyPersonOnPhotoAction(photoId: string, personId: string) {
   try {
+    console.log("[verifyPersonOnPhotoAction] Verifying:", { photoId, personId })
     const result = await apiFetch(`/api/people/${personId}/verify-on-photo?photo_id=${photoId}`, {
       method: "POST",
     })
+    console.log("[verifyPersonOnPhotoAction] Result:", result)
 
-    if (result.error) {
-      return { success: false, error: result.error }
+    if (!result.success) {
+      console.error("[verifyPersonOnPhotoAction] Failed:", result.error)
+      return { success: false, error: result.error || "Unknown error" }
     }
 
     revalidatePath("/admin")
-    return { success: true }
+    return { success: true, data: result.data }
   } catch (error: any) {
     console.error("[verifyPersonOnPhotoAction] Error:", error)
     return { success: false, error: error.message || "Failed to verify person" }
@@ -44,16 +49,23 @@ export async function verifyPersonOnPhotoAction(photoId: string, personId: strin
 
 export async function unlinkPersonFromPhotoAction(photoId: string, personId: string) {
   try {
+    console.log("[unlinkPersonFromPhotoAction] Unlinking:", { photoId, personId })
     const result = await apiFetch(`/api/people/${personId}/unlink-from-photo?photo_id=${photoId}`, {
       method: "POST",
     })
+    console.log("[unlinkPersonFromPhotoAction] Result:", result)
 
-    if (result.error) {
-      return { success: false, error: result.error }
+    if (!result.success) {
+      console.error("[unlinkPersonFromPhotoAction] Failed:", result.error)
+      return { success: false, error: result.error || "Unknown error" }
     }
 
+    // Check if anything was actually unlinked
+    const unlinkedCount = result.data?.unlinked_count ?? 0
+    console.log("[unlinkPersonFromPhotoAction] Unlinked count:", unlinkedCount)
+
     revalidatePath("/admin")
-    return { success: true }
+    return { success: true, data: { unlinked_count: unlinkedCount } }
   } catch (error: any) {
     console.error("[unlinkPersonFromPhotoAction] Error:", error)
     return { success: false, error: error.message || "Failed to unlink person from photo" }
