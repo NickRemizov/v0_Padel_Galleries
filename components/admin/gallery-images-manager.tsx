@@ -407,7 +407,7 @@ export function GalleryImagesManager({
         sorted = imagesCopy
     }
 
-    // Apply hide verified filter only when data is loaded
+    // Apply hide verified filter
     if (hideFullyVerified && photoFacesLoaded) {
       return sorted.filter(shouldShowPhoto)
     }
@@ -751,21 +751,24 @@ export function GalleryImagesManager({
                   </SelectContent>
                 </Select>
               )}
-              {images.length > 0 && (
+              {images.length > 0 && photoFacesLoaded && (
                 <Button
                   variant={hideFullyVerified ? "default" : "outline"}
                   onClick={() => setHideFullyVerified(!hideFullyVerified)}
                   disabled={uploading}
-                  className={`w-[240px] justify-start ${hideFullyVerified ? "bg-purple-600 hover:bg-purple-700" : ""}`}
+                  className={hideFullyVerified ? "bg-purple-600 hover:bg-purple-700" : ""}
                 >
                   {hideFullyVerified ? (
-                    <Eye className="h-4 w-4 mr-2 flex-shrink-0" />
+                    <>
+                      <Eye className="h-4 w-4 mr-2" />
+                      Показать все ({hiddenCount} скрыто)
+                    </>
                   ) : (
-                    <EyeOff className="h-4 w-4 mr-2 flex-shrink-0" />
+                    <>
+                      <EyeOff className="h-4 w-4 mr-2" />
+                      Скрыть верифицированные
+                    </>
                   )}
-                  <span className="truncate">
-                    {hideFullyVerified ? "Скрыто верифицированных" : "Скрыть верифицированные"}
-                  </span>
                 </Button>
               )}
               {images.length > 0 && (
@@ -855,15 +858,10 @@ export function GalleryImagesManager({
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-4">
-            {hideFullyVerified && photoFacesLoaded && hiddenCount > 0 && (
-              <p className="text-sm text-purple-600 font-medium">
-                Скрыто: {hiddenCount}
-              </p>
-            )}
+          <div className="flex items-center justify-end">
             <p className="text-sm text-muted-foreground">
               Всего фотографий: {images.length}
-              {hideFullyVerified && photoFacesLoaded && hiddenCount > 0 && ` (показано: ${sortedImages.length})`}
+              {hideFullyVerified && hiddenCount > 0 && ` (показано: ${sortedImages.length})`}
             </p>
           </div>
         </DialogContent>
