@@ -70,6 +70,7 @@ export function GalleriesManager() {
         locations={locations}
         organizers={organizers}
         onDelete={loadData}
+        onUpdate={loadData}
       />
     </div>
   )
