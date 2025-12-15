@@ -91,7 +91,12 @@ async def load_all_photo_faces(client, select_fields: str, filters: Optional[Dic
                     query = query.is_(key, "null")
                 elif isinstance(value, dict):
                     if "neq" in value:
-                        query = query.neq(key, value["neq"])
+                        neq_value = value["neq"]
+                        if neq_value is None:
+                            # For "not null" comparisons, use not_.is_() instead of neq()
+                            query = query.not_.is_(key, "null")
+                        else:
+                            query = query.neq(key, neq_value)
                     elif "eq" in value:
                         query = query.eq(key, value["eq"])
                 else:
