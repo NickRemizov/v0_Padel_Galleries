@@ -764,7 +764,7 @@ export function GalleryImagesManager({
                     <EyeOff className="h-4 w-4 mr-2 flex-shrink-0" />
                   )}
                   <span className="truncate">
-                    {hideFullyVerified ? "Скрыто верифицированных" : "Скрыть верифицированные"}
+                    {hideFullyVerified ? "Верифицированные скрыты" : "Скрыть верифицированные"}
                   </span>
                 </Button>
               )}
