@@ -27,9 +27,10 @@ interface EditGalleryDialogProps {
   photographers: Photographer[]
   locations: Location[]
   organizers: Organizer[]
+  onSuccess?: () => void
 }
 
-export function EditGalleryDialog({ gallery, photographers, locations, organizers }: EditGalleryDialogProps) {
+export function EditGalleryDialog({ gallery, photographers, locations, organizers, onSuccess }: EditGalleryDialogProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -152,6 +153,7 @@ export function EditGalleryDialog({ gallery, photographers, locations, organizer
 
     if (result.success) {
       setOpen(false)
+      onSuccess?.()
     }
   }
 
