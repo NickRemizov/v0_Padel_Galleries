@@ -149,7 +149,6 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
                   shootDate={gallery.shoot_date}
                   initialSortOrder={gallery.sort_order || undefined}
                   isFullyVerified={isFullyVerified}
-                  onImagesChange={onUpdate}
                   data-gallery-id={gallery.id}
                 />
                 <EditGalleryDialog
