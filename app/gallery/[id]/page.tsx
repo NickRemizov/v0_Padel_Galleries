@@ -5,6 +5,9 @@ import type { Gallery } from "@/lib/types"
 
 export const revalidate = 60
 
+// Default confidence threshold for showing names in public gallery
+const DEFAULT_CONFIDENCE_THRESHOLD = 0.8
+
 export default async function GalleryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
@@ -43,7 +46,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
   if (gallery.gallery_images && gallery.gallery_images.length > 0) {
     const imageIds = gallery.gallery_images.map((img: any) => img.id)
 
-    // Get photo faces for filtering (high confidence or verified)
+    // Get photo faces for filtering (confidence >= threshold)
     const { data: photoFaces } = await supabase
       .from("photo_faces")
       .select(`
@@ -52,7 +55,7 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
         people!inner(show_photos_in_galleries)
       `)
       .in("photo_id", imageIds)
-      .or("verified.eq.true,confidence.gte.0.8")
+      .gte("recognition_confidence", DEFAULT_CONFIDENCE_THRESHOLD)
 
     // Find photo IDs that should be hidden (have people with show_photos_in_galleries = false)
     const hiddenPhotoIds = new Set(
@@ -64,7 +67,8 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
     // Filter out hidden photos
     gallery.gallery_images = gallery.gallery_images.filter((img: any) => !hiddenPhotoIds.has(img.id))
 
-    const { data: verifiedFaces } = await supabase
+    // Get faces with confidence >= threshold for showing names
+    const { data: recognizedFaces } = await supabase
       .from("photo_faces")
       .select(`
         photo_id,
@@ -74,11 +78,11 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
         "photo_id",
         gallery.gallery_images.map((img: any) => img.id),
       )
-      .eq("verified", true)
+      .gte("recognition_confidence", DEFAULT_CONFIDENCE_THRESHOLD)
 
     // Group people by photo_id
     const peopleByPhoto = new Map<string, Array<{ id: string; name: string }>>()
-    verifiedFaces?.forEach((face: any) => {
+    recognizedFaces?.forEach((face: any) => {
       if (!peopleByPhoto.has(face.photo_id)) {
         peopleByPhoto.set(face.photo_id, [])
       }
