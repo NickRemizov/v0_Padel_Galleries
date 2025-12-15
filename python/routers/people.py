@@ -293,7 +293,18 @@ async def unlink_person_from_photo(identifier: str, photo_id: str = Query(...)):
         
         logger.info(f"Unlinking person {person_id} from photo {photo_id}")
         
-        result = supabase_db_instance.client.table("photo_faces")\
+        # First, count how many faces will be affected
+        count_result = supabase_db_instance.client.table("photo_faces")\
+            .select("id", count="exact")\
+            .eq("photo_id", photo_id)\
+            .eq("person_id", person_id)\
+            .execute()
+        
+        faces_count = count_result.count if hasattr(count_result, 'count') else len(count_result.data or [])
+        logger.info(f"Found {faces_count} faces to unlink")
+        
+        # Then update (without .select() which doesn't work in sync client)
+        supabase_db_instance.client.table("photo_faces")\
             .update({
                 "person_id": None,
                 "verified": False,
@@ -303,11 +314,10 @@ async def unlink_person_from_photo(identifier: str, photo_id: str = Query(...)):
             })\
             .eq("photo_id", photo_id)\
             .eq("person_id", person_id)\
-            .select()\
             .execute()
         
-        logger.info(f"Unlinked {len(result.data or [])} faces")
-        return ApiResponse.ok({"unlinked_count": len(result.data or [])})
+        logger.info(f"Unlinked {faces_count} faces")
+        return ApiResponse.ok({"unlinked_count": faces_count})
     except NotFoundError:
         raise
     except Exception as e:
