@@ -1,4 +1,17 @@
-import { createClient } from "@/lib/supabase/server"
+/**
+ * Check Gallery API Route
+ * 
+ * Proxies to FastAPI: GET /api/admin/check-gallery
+ * 
+ * Query params:
+ * - all: "true" to list all galleries with photo counts
+ * - id: Gallery UUID for detailed stats
+ * - search: Search term for gallery title
+ * 
+ * @migrated 2025-12-15 - Removed direct Supabase access
+ */
+
+import { apiFetch } from "@/lib/apiClient"
 import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
@@ -7,113 +20,24 @@ export async function GET(request: Request) {
   const searchTerm = searchParams.get("search")
   const showAll = searchParams.get("all") === "true"
 
-  const supabase = await createClient()
+  // Build query string
+  const params = new URLSearchParams()
+  if (showAll) params.set("all", "true")
+  if (galleryId) params.set("id", galleryId)
+  if (searchTerm) params.set("search", searchTerm)
+  
+  const queryString = params.toString()
+  const url = `/api/admin/check-gallery${queryString ? `?${queryString}` : ""}`
 
-  try {
-    if (showAll) {
-      const { data: allGalleries } = await supabase
-        .from("galleries")
-        .select("id, title, shoot_date, created_at")
-        .order("shoot_date", { ascending: false })
-        .limit(50)
+  const result = await apiFetch(url)
 
-      console.log("[v0] Found galleries:", allGalleries?.length)
-
-      const galleriesWithCounts = await Promise.all(
-        (allGalleries || []).map(async (g) => {
-          const { count } = await supabase
-            .from("gallery_images")
-            .select("*", { count: "exact", head: true })
-            .eq("gallery_id", g.id)
-
-          return { ...g, photo_count: count || 0 }
-        }),
-      )
-
-      return NextResponse.json({ galleries: galleriesWithCounts, total: galleriesWithCounts.length })
-    }
-
-    // Если передан ID - проверяем конкретную галерею
-    if (galleryId) {
-      const { data: gallery } = await supabase
-        .from("galleries")
-        .select("id, title, shoot_date")
-        .eq("id", galleryId)
-        .single()
-
-      if (!gallery) {
-        return NextResponse.json({ error: "Gallery not found" }, { status: 404 })
-      }
-
-      // Получаем статистику по галерее
-      const { data: images } = await supabase
-        .from("gallery_images")
-        .select("id, has_been_processed")
-        .eq("gallery_id", galleryId)
-
-      const imageIds = images?.map((img) => img.id) || []
-
-      let faces: any[] = []
-      if (imageIds.length > 0) {
-        const { data: facesData } = await supabase
-          .from("photo_faces")
-          .select("photo_id, person_id, recognition_confidence, verified")
-          .in("photo_id", imageIds)
-
-        faces = facesData || []
-      }
-
-      const stats = {
-        total_photos: images?.length || 0,
-        processed_photos: images?.filter((img) => img.has_been_processed).length || 0,
-        total_faces: faces.length,
-        faces_with_person: faces.filter((f) => f.person_id !== null).length,
-        faces_conf_1: faces.filter((f) => f.recognition_confidence === 1).length,
-        faces_conf_null: faces.filter((f) => f.recognition_confidence === null).length,
-        faces_conf_null_with_person: faces.filter((f) => f.recognition_confidence === null && f.person_id !== null)
-          .length,
-      }
-
-      return NextResponse.json({ gallery, stats })
-    }
-
-    const search = searchTerm || "дружеск"
-    console.log("[v0] Searching galleries with term:", search)
-
-    // Пробуем несколько вариантов поиска
-    const { data: galleries, error } = await supabase
-      .from("galleries")
-      .select("id, title, shoot_date, created_at")
-      .or(`title.ilike.%${search}%,title.ilike.%Дружеск%,title.ilike.%дружеск%`)
-      .order("shoot_date", { ascending: false })
-      .limit(20)
-
-    console.log("[v0] Search error:", error)
-    console.log("[v0] Found galleries:", galleries?.length)
-    console.log(
-      "[v0] Gallery titles:",
-      galleries?.map((g) => g.title),
+  if (!result.success) {
+    const status = result.code === "NOT_FOUND" ? 404 : 500
+    return NextResponse.json(
+      { error: result.error || "Check failed" },
+      { status }
     )
-
-    // Добавляем количество фото для каждой галереи
-    const galleriesWithCounts = await Promise.all(
-      (galleries || []).map(async (g) => {
-        const { count } = await supabase
-          .from("gallery_images")
-          .select("*", { count: "exact", head: true })
-          .eq("gallery_id", g.id)
-
-        return { ...g, photo_count: count || 0 }
-      }),
-    )
-
-    return NextResponse.json({
-      galleries: galleriesWithCounts,
-      searchTerm: search,
-      found: galleriesWithCounts.length,
-    })
-  } catch (error: any) {
-    console.error("[v0] Gallery check error:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  return NextResponse.json(result.data)
 }
