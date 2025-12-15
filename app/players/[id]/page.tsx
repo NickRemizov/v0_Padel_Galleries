@@ -1,65 +1,13 @@
-import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import { PlayerGalleryView } from "@/components/player-gallery-view"
 import type { Person } from "@/lib/types"
+import { apiFetch } from "@/lib/apiClient"
 
 interface PlayerGalleryPageProps {
   params: Promise<{ id: string }>
 }
 
 export const revalidate = 300
-
-/**
- * Helper: загрузить все photo_faces для игрока с пагинацией
- */
-async function loadPlayerPhotoFaces(supabase: any, personId: string) {
-  let allFaces: any[] = []
-  let offset = 0
-  const pageSize = 1000
-
-  while (true) {
-    const { data: batch, error } = await supabase
-      .from("photo_faces")
-      .select(
-        `
-        id,
-        confidence,
-        verified,
-        gallery_images!inner (
-          id,
-          image_url,
-          original_url,
-          original_filename,
-          file_size,
-          width,
-          height,
-          gallery_id,
-          created_at,
-          galleries!inner (
-            id,
-            title,
-            shoot_date,
-            sort_order
-          )
-        )
-      `
-      )
-      .eq("person_id", personId)
-      .range(offset, offset + pageSize - 1)
-
-    if (error) {
-      console.error("[v0] Error fetching player photos batch:", error)
-      break
-    }
-
-    if (!batch || batch.length === 0) break
-    allFaces = allFaces.concat(batch)
-    if (batch.length < pageSize) break
-    offset += pageSize
-  }
-
-  return allFaces
-}
 
 /**
  * Sort images by gallery sort_order setting
@@ -78,22 +26,49 @@ function sortByGalleryOrder(images: any[], sortOrder: string): any[] {
 
 export default async function PlayerGalleryPage({ params }: PlayerGalleryPageProps) {
   const { id } = await params
-  const supabase = await createClient()
 
-  const { data: player, error: playerError } = await supabase.from("people").select("*").eq("id", id).single()
+  // Get player from FastAPI
+  const playerResponse = await apiFetch<any>(`/api/people/${id}`, {
+    method: "GET",
+  })
 
-  if (playerError || !player) {
+  // Handle response format
+  const player = playerResponse.success !== undefined 
+    ? (playerResponse.success ? playerResponse.data || playerResponse : null)
+    : playerResponse
+
+  if (!player || playerResponse.error) {
     notFound()
   }
 
-  // С ПАГИНАЦИЕЙ: загружаем все фото игрока (без фильтра по verified/confidence)
-  const photoFaces = await loadPlayerPhotoFaces(supabase, id)
+  // Get player photos from FastAPI
+  const photosResponse = await apiFetch<any>(`/api/people/${id}/photos`, {
+    method: "GET",
+  })
 
-  const images: any[] =
-    photoFaces?.map((face: any) => ({
-      ...face.gallery_images,
-      gallery: face.gallery_images.galleries,
-    })) || []
+  console.log("[v0] /api/people/{id}/photos response:", JSON.stringify(photosResponse, null, 2).slice(0, 500))
+
+  // Extract photos from response
+  const photos = photosResponse.photos || photosResponse.data || []
+
+  // Transform photos to expected format
+  const images: any[] = photos.map((photo: any) => ({
+    id: photo.id,
+    image_url: photo.image_url,
+    original_url: photo.original_url,
+    original_filename: photo.original_filename,
+    file_size: photo.file_size,
+    width: photo.width,
+    height: photo.height,
+    gallery_id: photo.gallery_id,
+    created_at: photo.created_at,
+    gallery: {
+      id: photo.gallery_id,
+      title: photo.gallery_title,
+      shoot_date: photo.gallery_shoot_date,
+      sort_order: photo.sort_order || "filename",
+    },
+  }))
 
   // Group images by gallery
   const galleryMap = new Map<string, any[]>()
