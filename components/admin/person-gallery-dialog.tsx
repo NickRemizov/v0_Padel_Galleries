@@ -596,15 +596,15 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                 })}
               </div>
             )}
+          </div>
 
-            <div className="flex items-center justify-end gap-4">
-              {showUnverifiedFirst && unverifiedCount > 0 && (
-                <p className="text-sm text-blue-600 font-medium">
-                  Неподтверждённых: {unverifiedCount}
-                </p>
-              )}
-              <p className="text-sm text-muted-foreground">Всего фотографий: {photos.length}</p>
-            </div>
+          <div className="flex items-center justify-end gap-4 pt-4 border-t">
+            {unverifiedCount > 0 && (
+              <p className="text-sm text-pink-600 font-medium">
+                Неподтверждённых: {unverifiedCount}
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground">Всего фотографий: {photos.length}</p>
           </div>
         </DialogContent>
       </Dialog>
