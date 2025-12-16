@@ -1,4 +1,7 @@
-# PROJECT FLOW - Galeries v0.8.2
+# PROJECT FLOW — Потоки данных Padel Galleries
+
+> **Обновлено:** 16 декабря 2025
+> **Полная схема БД:** `docs/DATABASE_SCHEMA.md`
 
 Полная документация по потокам данных в системе распознавания лиц для фотогалерей.
 
@@ -76,11 +79,11 @@ AutoRecognitionDialog открывается
     │   │   InsightFace детекция:
     │   │       • app.get(image) → находит лица
     │   │       • Для каждого лица:
-    │   │           ├─ bbox (координаты)
-    │   │           ├─ det_score (уверенность детекции)
+    │   │           ├─ insightface_bbox (координаты)
+    │   │           ├─ insightface_confidence (уверенность детекции)
     │   │           ├─ blur_score (резкость, Laplacian)
     │   │           ├─ face_size (ширина bbox)
-    │   │           └─ embedding (512-мерный вектор)
+    │   │           └─ insightface_descriptor (512-мерный вектор)
     │   │       ↓
     │   │   Фильтрация (если apply_quality_filters=true):
     │   │       Загрузка настроек из face_recognition_config:
@@ -91,15 +94,15 @@ AutoRecognitionDialog открывается
     │   │       Отбрасывание лиц:
     │   │           ✗ face_size < min_face_size
     │   │           ✗ blur_score < min_blur_score
-    │   │           ✗ det_score < min_detection_score
+    │   │           ✗ insightface_confidence < min_detection_score
     │   │       ↓
     │   │   Сохранение в БД:
-    │   │       face_descriptors {
-    │   │           gallery_image_id: uuid
+    │   │       photo_faces {
+    │   │           photo_id: uuid (FK → gallery_images)
     │   │           person_id: NULL
-    │   │           embedding: vector(512)
-    │   │           bbox: jsonb
-    │   │           det_score: float
+    │   │           insightface_descriptor: vector(512)
+    │   │           insightface_bbox: jsonb
+    │   │           insightface_confidence: float
     │   │           blur_score: float
     │   │           verified: false
     │   │       }
@@ -118,17 +121,17 @@ AutoRecognitionDialog открывается
         │       3. Порог для verified: 0.6
         │       4. Порог для unverified: 0.75
         │       ↓
-        │   Если найдено совпадение (confidence >= порог):
+        │   Если найдено совпадение (similarity >= порог):
         │       ├─ person_id = найденный игрок
-        │       └─ confidence = similarity
+        │       └─ recognition_confidence = similarity
         │   Если НЕ найдено:
         │       ├─ person_id = NULL (неизвестное лицо)
-        │       └─ confidence = 0
+        │       └─ recognition_confidence = 0
         │       ↓
-        │   Обновление face_descriptors:
-        │       UPDATE face_descriptors SET
+        │   Обновление photo_faces:
+        │       UPDATE photo_faces SET
         │           person_id = ?,
-        │           confidence = ?,
+        │           recognition_confidence = ?,
         │           verified = false
 ```
 
@@ -143,7 +146,7 @@ AutoRecognitionDialog открывается
 - `components/admin/auto-recognition-dialog.tsx` → UI автораспознавания
 - `app/api/face-detection/detect/route.ts` → API детекции
 - `app/api/face-detection/recognize/route.ts` → API распознавания
-- `python/routers/recognition.py` → FastAPI endpoints
+- `python/routers/recognition/` → FastAPI endpoints
 - `python/services/face_recognition.py` → Логика InsightFace
 
 ## 3. КЛАСТЕРИЗАЦИЯ НЕИЗВЕСТНЫХ ЛИЦ
@@ -159,8 +162,8 @@ Next.js API: /training/cluster-unverified-faces
 FastAPI: POST /api/v2/training/cluster-unverified-faces
     ↓
 Загрузка неизвестных лиц:
-    SELECT * FROM face_descriptors
-    WHERE gallery_image_id IN (
+    SELECT * FROM photo_faces
+    WHERE photo_id IN (
         SELECT id FROM gallery_images 
         WHERE gallery_id = ?
     )
@@ -182,7 +185,7 @@ HDBSCAN кластеризация:
 UI показывает кластеры:
     • Сетка фото с синими рамками
     • Статистика: "Всего: X | Активных: Y"
-    • Кнопки: "Создать игрока", "Выбрать игрока", "Удалить"
+    • Кнопки: "Создать игрока", "Выбрать игрока", "Зрители"
 ```
 
 ### Файлы
@@ -233,15 +236,15 @@ assignClusterToPersonAction(cluster, person_id):
     ↓
 Для каждого АКТИВНОГО фото в кластере:
     ↓
-    UPDATE face_descriptors SET
+    UPDATE photo_faces SET
         person_id = ?,
-        confidence = 1.0,
+        recognition_confidence = 1.0,
         verified = [ЛОГИКА]
     ↓
     ЛОГИКА verified:
         IF (на фото только 1 лицо):
             verified = true
-        ELSE IF (все остальные лица verified=true OR confidence=1.0):
+        ELSE IF (все остальные лица verified=true OR recognition_confidence=1.0):
             verified = true
         ELSE:
             verified = false
@@ -273,7 +276,7 @@ FaceTaggingDialog открывается
     │       ↓
     │       Кнопка "Распознать заново без настроек"
     │           ↓
-    │           Удалить все face_descriptors для этого фото
+    │           Удалить все photo_faces для этого фото
     │           ↓
     │           /detect-faces с apply_quality_filters=false
     │           ↓
@@ -299,9 +302,9 @@ UI показывает все лица на фото:
 Кнопка "Сохранить" активна (когда все назначены)
     ↓
 saveFaceTagsAction():
-    UPDATE face_descriptors SET
+    UPDATE photo_faces SET
         person_id = выбранный игрок,
-        confidence = 1.0,
+        recognition_confidence = 1.0,
         verified = true  (РУЧНАЯ ВЕРИФИКАЦИЯ)
     ↓
 Перестроение индекса
@@ -324,7 +327,7 @@ Next.js SSR: app/page.tsx
 Supabase запрос:
     SELECT galleries.*, 
            locations.name,
-           COUNT(DISTINCT face_descriptors.person_id) as players,
+           COUNT(DISTINCT photo_faces.person_id) as players,
            COUNT(gallery_images.id) as photos
     FROM galleries
     WHERE galleries.published = true
@@ -364,12 +367,12 @@ Next.js SSR: app/players/[id]/page.tsx
     ↓
 Supabase запрос:
     SELECT gallery_images.*
-    FROM face_descriptors
-    JOIN gallery_images ON face_descriptors.gallery_image_id = gallery_images.id
-    WHERE face_descriptors.person_id = ?
+    FROM photo_faces
+    JOIN gallery_images ON photo_faces.photo_id = gallery_images.id
+    WHERE photo_faces.person_id = ?
     AND (
-        face_descriptors.verified = true
-        OR face_descriptors.confidence >= 0.80
+        photo_faces.verified = true
+        OR photo_faces.recognition_confidence >= 0.80
     )
     ↓
 Отображение всех фото игрока
@@ -418,7 +421,7 @@ Telegram отправляет webhook → /api/telegram/webhook
 
 ## Ключевые настройки
 
-### Quality Filters (из БД)
+### Quality Filters (из БД: face_recognition_config)
 ```javascript
 {
     min_face_size: 80,           // пиксели
@@ -427,12 +430,12 @@ Telegram отправляет webhook → /api/telegram/webhook
 }
 ```
 
-### Recognition Thresholds (жестко в коде)
+### Recognition Thresholds (в коде)
 ```javascript
 {
     verified_threshold: 0.6,     // для verified лиц
     unverified_threshold: 0.75,  // для unverified
-    context_weight: 0.1          // бонус за контекст
+    context_weight: 0.1          // бонус за контекст (не реализован)
 }
 ```
 
@@ -451,13 +454,20 @@ Telegram отправляет webhook → /api/telegram/webhook
 | **NFD** | серый | Нет лиц ИЛИ все отфильтрованы | No Faces Detected |
 | **XX/YY** | оранжевый | Есть `person_id = NULL` | XX неопознанных из YY |
 | **XX%** | синий | Все назначены, но `verified = false` | Минимальная уверенность |
-| **✓** | зеленый | Все `verified = true` ИЛИ `confidence = 1.0` | Верифицировано |
+| **✓** | зеленый | Все `verified = true` ИЛИ `recognition_confidence = 1.0` | Верифицировано |
 
 ## Технологии
 
-- **Frontend**: Next.js 15, React 19, TailwindCSS v4, shadcn/ui
+- **Frontend**: Next.js 15, React 19, TailwindCSS, shadcn/ui
 - **Backend**: FastAPI, Python 3.11
-- **ML**: InsightFace, HNSWLIB, HDBSCAN
+- **ML**: InsightFace (antelopev2), HNSWLIB, HDBSCAN
 - **Database**: Supabase (PostgreSQL с pgvector)
 - **Storage**: Vercel Blob
 - **Deployment**: Vercel (frontend), Hetzner (backend)
+
+---
+
+**Связанные документы:**
+- `docs/DATABASE_SCHEMA.md` — полная схема БД
+- `docs/PROJECT_CONTEXT.md` — общий контекст проекта
+- `RECOGNITION_PROCESS_DOCUMENTATION.md` — детали распознавания
