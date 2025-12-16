@@ -130,15 +130,18 @@ async def get_person(identifier: str):
 
 @router.get("/{identifier}/photos")
 async def get_person_photos(identifier: str):
-    """Get all photos containing this person."""
+    """Get all photos containing this person with gallery info for sorting."""
     try:
         person_id = _get_person_id(identifier)
         
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
+        # Include galleries join for title, shoot_date, sort_order
         result = supabase_db_instance.client.table("photo_faces").select(
-            "id, photo_id, verified, recognition_confidence, gallery_images!inner(id, image_url, original_filename, gallery_id)"
+            "id, photo_id, verified, recognition_confidence, "
+            "gallery_images!inner(id, image_url, original_filename, gallery_id, created_at, "
+            "galleries(id, title, shoot_date, sort_order))"
         ).eq("person_id", person_id).or_(f"verified.eq.true,recognition_confidence.gte.{confidence_threshold}").execute()
         return ApiResponse.ok(result.data or [])
     except NotFoundError:
