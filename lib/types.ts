@@ -66,6 +66,7 @@ export interface User {
   first_name: string | null
   last_name: string | null
   photo_url: string | null
+  person_id: string | null  // Link to people table (matched player)
   created_at: string
   updated_at: string
 }
