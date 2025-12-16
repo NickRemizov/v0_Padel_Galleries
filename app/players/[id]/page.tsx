@@ -47,13 +47,14 @@ export default async function PlayerGalleryPage({ params }: PlayerGalleryPagePro
   })
 
   // Extract photos from response - API returns {success, data: [...]}
-  // Each item has nested gallery_images object
+  // Each item has nested gallery_images object with galleries inside
   const rawPhotos = photosResponse.data || photosResponse.photos || []
 
   // Transform photos to expected format
-  // API format: { id, photo_id, gallery_images: { id, image_url, gallery_id, original_filename } }
+  // API format: { id, photo_id, gallery_images: { id, image_url, gallery_id, original_filename, galleries: { title, shoot_date, sort_order } } }
   const images: any[] = rawPhotos.map((face: any) => {
     const gi = face.gallery_images || {}
+    const gallery = gi.galleries || {}
     return {
       id: gi.id || face.photo_id,
       image_url: gi.image_url,
@@ -65,10 +66,10 @@ export default async function PlayerGalleryPage({ params }: PlayerGalleryPagePro
       gallery_id: gi.gallery_id,
       created_at: gi.created_at,
       gallery: {
-        id: gi.gallery_id,
-        title: gi.gallery_title || face.gallery_title,
-        shoot_date: gi.gallery_shoot_date || face.gallery_shoot_date,
-        sort_order: gi.sort_order || face.sort_order || "filename",
+        id: gi.gallery_id || gallery.id,
+        title: gallery.title,
+        shoot_date: gallery.shoot_date,
+        sort_order: gallery.sort_order || "filename",
       },
     }
   })
