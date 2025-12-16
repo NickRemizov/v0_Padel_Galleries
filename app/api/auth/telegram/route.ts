@@ -2,6 +2,49 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { verifyTelegramAuth, isTelegramAuthDataValid } from "@/lib/telegram-auth"
 
+// Try to find matching person by Telegram name/nickname
+async function findMatchingPerson(
+  supabase: any,
+  username: string | null,
+  firstName: string | null,
+  lastName: string | null
+): Promise<string | null> {
+  if (!username && !firstName) return null
+
+  // Build search queries
+  const searchTerms: string[] = []
+  if (username) searchTerms.push(username.toLowerCase())
+  if (firstName) searchTerms.push(firstName.toLowerCase())
+  if (firstName && lastName) searchTerms.push(`${firstName} ${lastName}`.toLowerCase())
+
+  // Search in people table
+  const { data: people } = await supabase
+    .from("people")
+    .select("id, telegram_name, telegram_nickname, real_name")
+
+  if (!people || people.length === 0) return null
+
+  // Find match by telegram_name, telegram_nickname, or real_name
+  for (const person of people) {
+    const telegramName = person.telegram_name?.toLowerCase()
+    const telegramNickname = person.telegram_nickname?.toLowerCase()
+    const realName = person.real_name?.toLowerCase()
+
+    for (const term of searchTerms) {
+      if (
+        (telegramName && telegramName === term) ||
+        (telegramNickname && telegramNickname === term) ||
+        (telegramNickname && telegramNickname === `@${term}`) ||
+        (realName && realName === term)
+      ) {
+        return person.id
+      }
+    }
+  }
+
+  return null
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -36,15 +79,25 @@ export async function POST(request: NextRequest) {
     let user
     if (existingUser) {
       // Update existing user
+      const updateData: any = {
+        username,
+        first_name,
+        last_name,
+        photo_url,
+        updated_at: new Date().toISOString(),
+      }
+
+      // Try to link to person if not already linked
+      if (!existingUser.person_id) {
+        const personId = await findMatchingPerson(supabase, username, first_name, last_name)
+        if (personId) {
+          updateData.person_id = personId
+        }
+      }
+
       const { data, error } = await supabase
         .from("users")
-        .update({
-          username,
-          first_name,
-          last_name,
-          photo_url,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("telegram_id", id)
         .select()
         .single()
@@ -52,6 +105,9 @@ export async function POST(request: NextRequest) {
       if (error) throw error
       user = data
     } else {
+      // Try to find matching person for new user
+      const personId = await findMatchingPerson(supabase, username, first_name, last_name)
+
       // Create new user
       const { data, error } = await supabase
         .from("users")
@@ -61,6 +117,7 @@ export async function POST(request: NextRequest) {
           first_name,
           last_name,
           photo_url,
+          person_id: personId,
         })
         .select()
         .single()

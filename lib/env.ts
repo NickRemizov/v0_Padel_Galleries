@@ -40,6 +40,9 @@ const envSchema = z.object({
   // OAuth
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+
+  // Admin whitelist (comma-separated emails)
+  ADMIN_ALLOWED_EMAILS: z.string().optional(),
 })
 
 function validateEnv() {
