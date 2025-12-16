@@ -600,7 +600,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
 
           <div className="flex items-center justify-end gap-4 pt-4 border-t">
             {unverifiedCount > 0 && (
-              <p className="text-sm text-pink-600 font-medium">
+              <p className="text-sm text-blue-600 font-medium">
                 Неподтверждённых: {unverifiedCount}
               </p>
             )}
