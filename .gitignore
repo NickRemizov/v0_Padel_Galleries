@@ -70,3 +70,7 @@ python/*.sqlite3
 *.tmp
 *.temp
 .cache/
+
+# TypeScript
+tsconfig.tsbuildinfo
+*.tsbuildinfo
