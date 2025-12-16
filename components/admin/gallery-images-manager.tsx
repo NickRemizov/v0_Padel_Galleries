@@ -51,6 +51,14 @@ interface GalleryImagesManagerProps {
   isFullyVerified?: boolean
 }
 
+// Type for face data in photoFacesMap
+interface FaceData {
+  verified: boolean
+  confidence: number
+  person_id: string | null
+  bbox: { x: number; y: number; width: number; height: number } | null
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "N/A"
   const kb = bytes / 1024
@@ -65,6 +73,50 @@ function formatShortDate(dateString: string | null | undefined): string {
   return `${day}.${month}`
 }
 
+/**
+ * Calculate object-position for image preview based on face bounding boxes
+ * Centers the preview on detected faces
+ * @param imageWidth - Original image width in pixels
+ * @param imageHeight - Original image height in pixels
+ * @param bboxes - Array of face bounding boxes in [x1, y1, x2, y2] format
+ * @returns CSS object-position value (e.g., "50% 30%" or "center")
+ */
+function calculateFacePosition(
+  imageWidth: number | null,
+  imageHeight: number | null,
+  bboxes: number[][] | null
+): string {
+  if (!imageWidth || !imageHeight || !bboxes || bboxes.length === 0) return "center"
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const bbox of bboxes) {
+    if (bbox.length >= 4) {
+      minX = Math.min(minX, bbox[0])
+      minY = Math.min(minY, bbox[1])
+      maxX = Math.max(maxX, bbox[2])
+      maxY = Math.max(maxY, bbox[3])
+    }
+  }
+  if (minX === Infinity) return "center"
+
+  const faceCenterX = (minX + maxX) / 2
+  const faceCenterY = (minY + maxY) / 2
+  const isHorizontal = imageWidth > imageHeight
+  const shortSide = Math.min(imageWidth, imageHeight)
+
+  if (isHorizontal) {
+    const maxOffset = imageWidth - shortSide
+    if (maxOffset <= 0) return "center"
+    const offset = Math.max(0, Math.min(faceCenterX - shortSide / 2, maxOffset))
+    return `${(offset / maxOffset * 100).toFixed(1)}% 50%`
+  } else {
+    const maxOffset = imageHeight - shortSide
+    if (maxOffset <= 0) return "center"
+    const offset = Math.max(0, Math.min(faceCenterY - shortSide / 2, maxOffset))
+    return `50% ${(offset / maxOffset * 100).toFixed(1)}%`
+  }
+}
+
 const GalleryImageCard = memo(function GalleryImageCard({
   image,
   photoFacesMap,
@@ -76,7 +128,7 @@ const GalleryImageCard = memo(function GalleryImageCard({
   onToggleSelect,
 }: {
   image: GalleryImage
-  photoFacesMap: Record<string, { verified: boolean; confidence: number; person_id: string | null }[]>
+  photoFacesMap: Record<string, FaceData[]>
   photoFacesLoaded: boolean
   recognitionStats: Record<string, { total: number; recognized: number; fullyRecognized: boolean }>
   onTag: (id: string, url: string) => void
@@ -103,6 +155,15 @@ const GalleryImageCard = memo(function GalleryImageCard({
   const recognizedCount = faces?.filter((f) => f.person_id !== null).length || 0
   const totalCount = faces?.length || 0
 
+  // Calculate object-position for centering on faces
+  const bboxes = faces?.map((f) => {
+    if (!f.bbox) return null
+    // Convert {x, y, width, height} to [x1, y1, x2, y2]
+    return [f.bbox.x, f.bbox.y, f.bbox.x + f.bbox.width, f.bbox.y + f.bbox.height]
+  }).filter((b): b is number[] => b !== null) || []
+
+  const objectPosition = calculateFacePosition(image.width, image.height, bboxes)
+
   return (
     <div
       className="group relative overflow-hidden rounded-lg border cursor-pointer"
@@ -115,6 +176,7 @@ const GalleryImageCard = memo(function GalleryImageCard({
           fill
           className="object-cover"
           sizes="250px"
+          style={{ objectPosition }}
         />
         <div
           className="absolute left-2 top-2 z-20"
@@ -210,9 +272,7 @@ export function GalleryImagesManager({
   const [recognitionStats, setRecognitionStats] = useState<
     Record<string, { total: number; recognized: number; fullyRecognized: boolean }>
   >({})
-  const [photoFacesMap, setPhotoFacesMap] = useState<
-    Record<string, { verified: boolean; confidence: number; person_id: string | null }[]>
-  >({})
+  const [photoFacesMap, setPhotoFacesMap] = useState<Record<string, FaceData[]>>({})
   const [photoFacesLoaded, setPhotoFacesLoaded] = useState(false) // Add photoFacesLoaded state to track when data is ready
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
@@ -279,7 +339,7 @@ export function GalleryImagesManager({
     })
 
     if (result.success && result.data) {
-      const facesMap: Record<string, { verified: boolean; confidence: number; person_id: string | null }[]> = {}
+      const facesMap: Record<string, FaceData[]> = {}
 
       for (const face of result.data) {
         console.log("[v0] [GalleryImagesManager] Face from DB:", {
@@ -287,6 +347,7 @@ export function GalleryImagesManager({
           person_id: face.person_id,
           recognition_confidence: face.recognition_confidence,
           verified: face.verified,
+          insightface_bbox: face.insightface_bbox,
         })
 
         if (!facesMap[face.photo_id]) {
@@ -296,6 +357,7 @@ export function GalleryImagesManager({
           verified: face.verified,
           confidence: face.recognition_confidence || 0,
           person_id: face.person_id || null,
+          bbox: face.insightface_bbox || null,
         })
       }
 
