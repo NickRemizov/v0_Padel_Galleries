@@ -3,7 +3,10 @@ Face detection endpoints.
 - POST /detect-faces
 - POST /process-photo
 
-v3.4: Fixed quality filters to use config from DB, prioritize verified matches
+v4.0: New recognition algorithm with adaptive early exit
+- Formula: final_confidence = source_confidence × similarity
+- Early exit when similarity < best_final_confidence
+- Quality filters from DB config
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -85,13 +88,11 @@ async def detect_faces(
     supabase_client = get_supabase_client()
     try:
         logger.info("=" * 80)
-        logger.info("[v3.4] ===== DETECT FACES REQUEST START =====")
-        logger.info(f"[v3.4] Image URL: {request.image_url}")
-        logger.info(f"[v3.4] Apply quality filters: {request.apply_quality_filters}")
-        logger.info(f"[v3.4] Request timestamp: {__import__('datetime').datetime.now()}")
+        logger.info("[v4.0] ===== DETECT FACES REQUEST START =====")
+        logger.info(f"[v4.0] Image URL: {request.image_url}")
+        logger.info(f"[v4.0] Apply quality filters: {request.apply_quality_filters}")
         
         # Detect faces
-        logger.info(f"[v3.4] Calling face_service.detect_faces()...")
         detected_faces = await face_service.detect_faces(
             request.image_url, 
             apply_quality_filters=request.apply_quality_filters,
@@ -100,22 +101,16 @@ async def detect_faces(
             min_blur_score=request.min_blur_score
         )
         
-        logger.info(f"[v3.4] ✓ Detected {len(detected_faces)} faces")
+        logger.info(f"[v4.0] ✓ Detected {len(detected_faces)} faces")
         
         # Debug: Check index status
         has_index = hasattr(face_service, 'players_index') and face_service.players_index is not None
         index_count = face_service.players_index.get_current_count() if has_index else 0
-        logger.info(f"[v3.4] Index status: has_index={has_index}, index_count={index_count}")
+        logger.info(f"[v4.0] Index status: has_index={has_index}, index_count={index_count}")
         
         # Format response
         faces_data = []
         for idx, face in enumerate(detected_faces):
-            logger.info(f"[v3.4] Processing face {idx + 1}/{len(detected_faces)}")
-            logger.info(f"[v3.4]   - BBox: {face['bbox']}")
-            logger.info(f"[v3.4]   - Det score: {face['det_score']}")
-            logger.info(f"[v3.4]   - Blur score: {face.get('blur_score', 0)}")
-            logger.info(f"[v3.4]   - Embedding shape: {face['embedding'].shape}")
-            
             embedding = face["embedding"]
             
             # recognize_face returns 2-tuple: (person_id, final_confidence)
@@ -123,10 +118,6 @@ async def detect_faces(
             
             # Get metrics from HNSWLIB index
             distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
-            
-            if distance_to_nearest is not None:
-                logger.info(f"[v3.4]   - Distance to nearest: {distance_to_nearest:.4f}")
-                logger.info(f"[v3.4]   - Top matches: {len(top_matches)}")
             
             face_data = {
                 "insightface_bbox": {
@@ -143,18 +134,13 @@ async def detect_faces(
             }
             faces_data.append(face_data)
         
-        logger.info(f"[v3.4] ✓ Returning {len(faces_data)} faces to frontend")
-        logger.info("[v3.4] ===== DETECT FACES REQUEST END =====")
+        logger.info(f"[v4.0] ✓ Returning {len(faces_data)} faces")
+        logger.info("[v4.0] ===== DETECT FACES REQUEST END =====")
         logger.info("=" * 80)
         return {"faces": faces_data}
         
     except Exception as e:
-        logger.error("=" * 80)
-        logger.error(f"[v3.4] ❌ ERROR in detect_faces")
-        logger.error(f"[v3.4] Error type: {type(e).__name__}")
-        logger.error(f"[v3.4] Error message: {str(e)}")
-        logger.error(f"[v3.4] Traceback:", exc_info=True)
-        logger.error("=" * 80)
+        logger.error(f"[v4.0] ❌ ERROR in detect_faces: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -174,45 +160,36 @@ async def process_photo(
     4. If faces exist → recognize unassigned + UPDATE + REBUILD INDEX (if changed)
     5. Return all faces (WITHOUT embeddings) + metrics for details dialog
     
-    Confidence chain decay is correct behavior:
-    - Verified match: confidence = similarity
-    - Non-verified match: confidence = similarity × source_confidence (decays)
+    Recognition algorithm (v4.0):
+    - final_confidence = source_confidence × similarity
+    - Natural confidence decay through multiplication
     """
     try:
-        # Load quality filters from database config FIRST
+        # Load config from database
         config = await supabase_client.get_recognition_config()
         quality_filters_config = config.get('quality_filters', {})
+        confidence_thresholds = config.get('confidence_thresholds', {})
+        db_confidence_threshold = confidence_thresholds.get('high_data', 0.60)
         
-        logger.info(f"[v3.4] Quality filters from DB config: {quality_filters_config}")
+        logger.info(f"[v4.0] Config from DB: quality_filters={quality_filters_config}, threshold={db_confidence_threshold}")
         
-        # Use DB config as base, only override if request explicitly provides different values
-        # Note: request values of 0.7, 80, 80 are defaults from frontend - we should use DB config instead
+        # Use DB config for quality filters
         if request.apply_quality_filters:
-            # Always use DB config - frontend sends defaults which we ignore
             face_service.quality_filters = {
                 "min_detection_score": quality_filters_config.get('min_detection_score', 0.7),
                 "min_face_size": quality_filters_config.get('min_face_size', 80),
                 "min_blur_score": quality_filters_config.get('min_blur_score', 100)
             }
-            logger.info(f"[v3.4] Quality filters (from DB): det={face_service.quality_filters['min_detection_score']}, size={face_service.quality_filters['min_face_size']}, blur={face_service.quality_filters['min_blur_score']}")
-        else:
-            logger.info(f"[v3.4] Quality filters DISABLED - all faces will be detected")
-        
-        # Get confidence threshold from DB config
-        confidence_thresholds = config.get('confidence_thresholds', {})
-        db_confidence_threshold = confidence_thresholds.get('high_data', 0.60)
+            logger.info(f"[v4.0] Quality filters: {face_service.quality_filters}")
         
         logger.info("=" * 80)
-        logger.info("[v3.4] ===== PROCESS PHOTO REQUEST START =====")
-        logger.info(f"[v3.4] Photo ID: {request.photo_id}")
-        logger.info(f"[v3.4] Force redetect: {request.force_redetect}")
-        logger.info(f"[v3.4] Apply quality filters: {request.apply_quality_filters}")
-        logger.info(f"[v3.4] Confidence threshold from DB: {db_confidence_threshold}")
+        logger.info("[v4.0] ===== PROCESS PHOTO REQUEST START =====")
+        logger.info(f"[v4.0] Photo ID: {request.photo_id}")
+        logger.info(f"[v4.0] Force redetect: {request.force_redetect}")
         
         if request.force_redetect:
-            logger.info("[v3.4] Force redetect requested - deleting existing faces")
+            logger.info("[v4.0] Force redetect - deleting existing faces")
             supabase_client.client.table("photo_faces").delete().eq("photo_id", request.photo_id).execute()
-            logger.info("[v3.4] ✓ Existing faces deleted")
         
         # Check existing faces in database
         existing_result = supabase_client.client.table("photo_faces").select(
@@ -220,13 +197,12 @@ async def process_photo(
         ).eq("photo_id", request.photo_id).execute()
         
         existing_faces = existing_result.data or []
-        logger.info(f"[v3.4] Found {len(existing_faces)} existing faces in DB")
+        logger.info(f"[v4.0] Found {len(existing_faces)} existing faces in DB")
         
-        # Track if we need to rebuild index
         index_rebuilt = False
         
         if len(existing_faces) == 0:
-            logger.info("[v3.4] Case 1: New photo - detecting faces")
+            logger.info("[v4.0] Case 1: New photo - detecting faces")
             
             # Get image URL
             photo_response = supabase_client.client.table("gallery_images").select("image_url").eq("id", request.photo_id).execute()
@@ -234,18 +210,15 @@ async def process_photo(
                 raise HTTPException(status_code=404, detail="Photo not found")
             
             image_url = photo_response.data[0]["image_url"]
-            logger.info(f"[v3.4] Image URL: {image_url}")
             
-            # Detect faces - use quality_filters already set on face_service
+            # Detect faces
             detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=request.apply_quality_filters)
-            logger.info(f"[v3.4] ✓ Detected {len(detected_faces)} faces")
+            logger.info(f"[v4.0] ✓ Detected {len(detected_faces)} faces")
             
             saved_faces = []
-            face_metrics = {}  # Store blur_score, distance_to_nearest, top_matches per face
+            face_metrics = {}
             
             for idx, face in enumerate(detected_faces):
-                logger.info(f"[v3.4] Processing face {idx + 1}/{len(detected_faces)}")
-                
                 embedding = face["embedding"]
                 bbox = {
                     "x": float(face["bbox"][0]),
@@ -256,19 +229,18 @@ async def process_photo(
                 det_confidence = float(face["det_score"])
                 blur_score = float(face.get("blur_score", 0))
                 
-                # recognize_face returns 2-tuple: (person_id, final_confidence)
-                # Use DB confidence threshold
+                # recognize_face v4.0: returns (person_id, final_confidence)
                 person_id, rec_confidence = await face_service.recognize_face(
                     embedding, 
                     confidence_threshold=db_confidence_threshold
                 )
                 
-                logger.info(f"[v3.4]   Recognition: person_id={person_id}, confidence={rec_confidence}")
+                logger.info(f"[v4.0] Face {idx+1}: person={person_id}, confidence={rec_confidence}")
                 
-                # Get metrics for details dialog
+                # Get metrics
                 distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
                 
-                # Save final_confidence to DB (includes chain decay - this is correct!)
+                # Save to DB
                 insert_data = {
                     "photo_id": request.photo_id,
                     "person_id": person_id,
@@ -283,33 +255,27 @@ async def process_photo(
                 
                 if save_response.data:
                     saved_face = save_response.data[0]
-                    logger.info(f"[v3.4]   ✓ Saved with ID: {saved_face['id']}, confidence={rec_confidence}")
                     saved_faces.append(saved_face)
                     face_metrics[saved_face['id']] = {
                         "blur_score": blur_score,
                         "distance_to_nearest": distance_to_nearest,
                         "top_matches": top_matches,
                     }
-                else:
-                    logger.error(f"[v3.4]   ❌ Failed to save face")
             
-            logger.info(f"[v3.4] ✓ Saved {len(saved_faces)} faces to database")
+            logger.info(f"[v4.0] ✓ Saved {len(saved_faces)} faces")
             
-            # REBUILD INDEX only if any face has person_id (otherwise nothing to add to index)
+            # Rebuild index if any face has person_id
             faces_with_person = [f for f in saved_faces if f.get("person_id")]
             if len(faces_with_person) > 0:
                 try:
-                    logger.info(f"[v3.4] Rebuilding index after saving {len(faces_with_person)} recognized faces...")
                     rebuild_result = await face_service.rebuild_players_index()
                     if rebuild_result.get("success"):
                         index_rebuilt = True
-                        logger.info(f"[v3.4] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                        logger.info(f"[v4.0] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
                 except Exception as index_error:
-                    logger.error(f"[v3.4] Error rebuilding index: {index_error}")
-            else:
-                logger.info("[v3.4] No recognized faces - skipping index rebuild")
+                    logger.error(f"[v4.0] Error rebuilding index: {index_error}")
             
-            # Load people info and build response
+            # Build response
             response_faces = []
             for face in saved_faces:
                 if face["person_id"]:
@@ -333,28 +299,24 @@ async def process_photo(
                     "index_rebuilt": index_rebuilt,
                 })
             
-            logger.info("[v3.4] ===== PROCESS PHOTO REQUEST END =====")
+            logger.info("[v4.0] ===== PROCESS PHOTO REQUEST END =====")
             logger.info("=" * 80)
             
             return {"success": True, "data": response_faces, "error": None, "index_rebuilt": index_rebuilt}
         
-        logger.info(f"[v3.4] Case 2: Existing faces - checking for unverified")
+        # Case 2: Existing faces
+        logger.info(f"[v4.0] Case 2: Existing faces - checking for unverified")
         
         unverified_faces = [f for f in existing_faces if not f["person_id"] or not f["verified"]]
-        logger.info(f"[v3.4] Found {len(unverified_faces)} unverified faces")
+        logger.info(f"[v4.0] Found {len(unverified_faces)} unverified faces")
         
-        # Store metrics for all faces
         face_metrics = {}
         faces_updated = False
         
         if len(unverified_faces) > 0:
-            logger.info(f"[v3.4] Recognizing {len(unverified_faces)} unverified faces")
-            
             for face in unverified_faces:
-                # Read embedding from DB
                 descriptor = face["insightface_descriptor"]
                 if not descriptor:
-                    logger.warning(f"[v3.4] Face {face['id']} has no descriptor - skipping")
                     continue
                 
                 if isinstance(descriptor, str):
@@ -362,36 +324,32 @@ async def process_photo(
                 elif isinstance(descriptor, list):
                     embedding = np.array(descriptor, dtype=np.float32)
                 else:
-                    logger.warning(f"[v3.4] Unknown descriptor type: {type(descriptor)}")
                     continue
                 
-                # Get metrics for this face
+                # Get metrics
                 distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
                 face_metrics[face["id"]] = {
                     "distance_to_nearest": distance_to_nearest,
                     "top_matches": top_matches,
                 }
                 
-                # recognize_face returns 2-tuple: (person_id, final_confidence)
-                # Use DB confidence threshold
+                # recognize_face v4.0
                 person_id, rec_confidence = await face_service.recognize_face(
                     embedding, 
                     confidence_threshold=db_confidence_threshold
                 )
                 
                 if person_id and rec_confidence:
-                    logger.info(f"[v3.4]   Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")
+                    logger.info(f"[v4.0] Face {face['id']}: person={person_id}, confidence={rec_confidence}")
                     
-                    # UPDATE database with final_confidence (includes chain decay)
                     supabase_client.client.table("photo_faces").update({
                         "person_id": person_id,
                         "recognition_confidence": rec_confidence,
                     }).eq("id", face["id"]).execute()
                     
                     faces_updated = True
-                    logger.info(f"[v3.4]   ✓ Updated face {face['id']}")
         
-        # Also get metrics for verified faces that weren't processed above
+        # Get metrics for verified faces too
         for face in existing_faces:
             if face["id"] not in face_metrics:
                 descriptor = face.get("insightface_descriptor")
@@ -409,18 +367,17 @@ async def process_photo(
                         "top_matches": top_matches,
                     }
         
-        # REBUILD INDEX if faces were updated (so updated recognition affects future photos)
+        # Rebuild index if updated
         if faces_updated:
             try:
-                logger.info("[v3.4] Rebuilding index after updating faces...")
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
                     index_rebuilt = True
-                    logger.info(f"[v3.4] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                    logger.info(f"[v4.0] ✓ Index rebuilt")
             except Exception as index_error:
-                logger.error(f"[v3.4] Error rebuilding index: {index_error}")
+                logger.error(f"[v4.0] Error rebuilding index: {index_error}")
         
-        # Load all faces (updated)
+        # Load final data
         final_result = supabase_client.client.table("photo_faces").select(
             "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, people(id, real_name, telegram_name)"
         ).eq("photo_id", request.photo_id).execute()
@@ -436,23 +393,15 @@ async def process_photo(
                 "index_rebuilt": index_rebuilt,
             })
         
-        logger.info(f"[v3.4] ✓ Returning {len(response_faces)} faces with metrics, index_rebuilt={index_rebuilt}")
-        logger.info("[v3.4] ===== PROCESS PHOTO REQUEST END =====")
+        logger.info(f"[v4.0] ✓ Returning {len(response_faces)} faces")
+        logger.info("[v4.0] ===== PROCESS PHOTO REQUEST END =====")
         logger.info("=" * 80)
         
         return {"success": True, "data": response_faces, "error": None, "index_rebuilt": index_rebuilt}
         
     except Exception as e:
-        logger.error("=" * 80)
-        logger.error(f"[v3.4] ❌ ERROR in process_photo")
-        logger.error(f"[v3.4] Photo ID: {request.photo_id}")
-        logger.error(f"[v3.4] Apply quality filters: {request.apply_quality_filters}")
-        logger.error(f"[v3.4] Error type: {type(e).__name__}")
-        logger.error(f"[v3.4] Error message: {str(e)}")
-        logger.error(f"[v3.4] Full traceback:", exc_info=True)
-        logger.error("=" * 80)
+        logger.error(f"[v4.0] ❌ ERROR in process_photo: {e}", exc_info=True)
         
-        # Сериализация ошибки для frontend
         error_message = str(e)
         if hasattr(e, '__dict__'):
             try:
