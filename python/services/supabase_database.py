@@ -16,18 +16,20 @@ class SupabaseDatabase:
             raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
         
         self.client: Client = create_client(supabase_url, supabase_key)
-        print("[v2.5] SupabaseDatabase initialized")
+        print("[v3.0] SupabaseDatabase initialized")
     
-    def get_all_player_embeddings(self) -> Tuple[List[str], List[np.ndarray]]:
+    def get_all_player_embeddings(self) -> Tuple[List[str], List[np.ndarray], List[bool], List[float]]:
         """
-        Load all verified InsightFace embeddings from photo_faces table
+        Load ALL InsightFace embeddings from photo_faces table (verified AND non-verified).
         
         Returns:
-            Tuple of (person_ids, embeddings) where:
+            Tuple of (person_ids, embeddings, verified_flags, confidences) where:
             - person_ids: List of person IDs (one per embedding)
             - embeddings: List of 512-dim numpy arrays
+            - verified_flags: List of booleans (True if verified)
+            - confidences: List of recognition_confidence values (1.0 for verified)
         """
-        print("[v2.5] Loading embeddings from Supabase photo_faces table...")
+        print("[v3.0] Loading ALL embeddings from Supabase photo_faces table...")
         
         try:
             all_data = []
@@ -35,11 +37,9 @@ class SupabaseDatabase:
             offset = 0
             
             while True:
-                # Query photo_faces table with pagination
+                # Query photo_faces table with pagination - NO verified filter!
                 response = self.client.table("photo_faces").select(
-                    "id, person_id, insightface_descriptor, created_at"
-                ).eq(
-                    "verified", True
+                    "id, person_id, insightface_descriptor, verified, recognition_confidence, created_at"
                 ).not_.is_(
                     "insightface_descriptor", "null"
                 ).not_.is_(
@@ -50,7 +50,7 @@ class SupabaseDatabase:
                     break  # No more data
                 
                 all_data.extend(response.data)
-                print(f"[v2.5] Loaded page: offset={offset}, count={len(response.data)}, total so far={len(all_data)}")
+                print(f"[v3.0] Loaded page: offset={offset}, count={len(response.data)}, total so far={len(all_data)}")
                 
                 # If we got less than page_size, we've reached the end
                 if len(response.data) < page_size:
@@ -59,29 +59,29 @@ class SupabaseDatabase:
                 offset += page_size
             
             if not all_data:
-                print("[v2.5] No verified embeddings found in database")
-                return [], []
+                print("[v3.0] No embeddings found in database")
+                return [], [], [], []
             
             total_rows = len(all_data)
-            print(f"[v2.5] ✓ Loaded ALL {total_rows} verified faces with embeddings from database (paginated)")
-            print(f"[v2.5] First 3 IDs from DB: {[row['id'] for row in all_data[:3]]}")
-            print(f"[v2.5] Last 3 IDs from DB: {[row['id'] for row in all_data[-3:]]}")
-            print(f"[v2.5] First 3 person_ids from DB: {[row['person_id'] for row in all_data[:3]]}")
-            print(f"[v2.5] Last 3 person_ids from DB: {[row['person_id'] for row in all_data[-3:]]}")
+            verified_count = sum(1 for row in all_data if row.get("verified"))
+            non_verified_count = total_rows - verified_count
+            print(f"[v3.0] ✓ Loaded ALL {total_rows} faces ({verified_count} verified, {non_verified_count} non-verified)")
             
             person_ids = []
             embeddings = []
+            verified_flags = []
+            confidences = []
             skipped_count = 0
             
             person_id_counts = {}
-            face_id_list = []
             
             for row in all_data:
                 face_id = row["id"]
                 person_id = row["person_id"]
                 descriptor = row["insightface_descriptor"]
+                verified = row.get("verified", False) or False
+                confidence = row.get("recognition_confidence") or (1.0 if verified else 0.0)
                 
-                face_id_list.append(face_id)
                 person_id_counts[person_id] = person_id_counts.get(person_id, 0) + 1
                 
                 # Convert descriptor to numpy array
@@ -91,36 +91,36 @@ class SupabaseDatabase:
                     import json
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
                 else:
-                    print(f"[v2.5] WARNING: Unknown descriptor type for face_id={face_id}: {type(descriptor)}")
+                    print(f"[v3.0] WARNING: Unknown descriptor type for face_id={face_id}: {type(descriptor)}")
                     skipped_count += 1
                     continue
                 
                 # Validate embedding dimension
                 if len(embedding) != 512:
-                    print(f"[v2.5] WARNING: Invalid embedding dimension {len(embedding)} for face_id={face_id}, expected 512")
+                    print(f"[v3.0] WARNING: Invalid embedding dimension {len(embedding)} for face_id={face_id}, expected 512")
                     skipped_count += 1
                     continue
                 
                 person_ids.append(str(person_id))
                 embeddings.append(embedding)
+                verified_flags.append(verified)
+                confidences.append(float(confidence))
             
             unique_people = len(set(person_ids))
-            print(f"[v2.5] ✓ Loaded {len(embeddings)} valid embeddings for {unique_people} unique people")
+            print(f"[v3.0] ✓ Loaded {len(embeddings)} valid embeddings for {unique_people} unique people")
             if skipped_count > 0:
-                print(f"[v2.5] Skipped {skipped_count} invalid embeddings")
+                print(f"[v3.0] Skipped {skipped_count} invalid embeddings")
             
             top_people = sorted(person_id_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-            print(f"[v2.5] Top 5 people by descriptor count: {top_people}")
-            print(f"[v2.5] First 3 loaded face IDs: {face_id_list[:3]}")
-            print(f"[v2.5] Last 3 loaded face IDs: {face_id_list[-3:]}")
+            print(f"[v3.0] Top 5 people by descriptor count: {top_people}")
             
-            return person_ids, embeddings
+            return person_ids, embeddings, verified_flags, confidences
             
         except Exception as e:
-            print(f"[v2.5] ERROR loading embeddings from Supabase: {type(e).__name__}: {str(e)}")
+            print(f"[v3.0] ERROR loading embeddings from Supabase: {type(e).__name__}: {str(e)}")
             import traceback
-            print(f"[v2.5] Traceback:\n{traceback.format_exc()}")
-            return [], []
+            print(f"[v3.0] Traceback:\n{traceback.format_exc()}")
+            return [], [], [], []
     
     async def find_verified_face_by_embedding(
         self, 
@@ -141,7 +141,7 @@ class SupabaseDatabase:
         
         try:
             # Load all verified embeddings
-            person_ids, embeddings = self.get_all_player_embeddings()
+            person_ids, embeddings, verified_flags, confidences = self.get_all_player_embeddings()
             
             if len(embeddings) == 0:
                 print("[v3.22] No verified embeddings to search")
@@ -153,7 +153,11 @@ class SupabaseDatabase:
             best_similarity = 0.0
             best_person_id = None
             
-            for person_id, verified_embedding in zip(person_ids, embeddings):
+            for i, (person_id, verified_embedding) in enumerate(zip(person_ids, embeddings)):
+                # Only search verified faces for this method
+                if not verified_flags[i]:
+                    continue
+                    
                 verified_norm = verified_embedding / np.linalg.norm(verified_embedding)
                 similarity = float(np.dot(embedding_norm, verified_norm))
                 
@@ -327,7 +331,7 @@ class SupabaseDatabase:
             return None
             
         except Exception as e:
-            print(f"[v2.5] ERROR getting person info: {str(e)}")
+            print(f"[v3.0] ERROR getting person info: {str(e)}")
             return None
     
     def get_config(self) -> Dict:
@@ -420,3 +424,7 @@ class SupabaseDatabase:
                     'min_blur_score': 80
                 }
             }
+    
+    def get_recognition_config_sync(self) -> Dict:
+        """Synchronous version of get_recognition_config"""
+        return self.get_recognition_config()
