@@ -87,7 +87,8 @@ export async function batchVerifyFacesAction(
       revalidatePath("/admin")
       return {
         success: true,
-        verified: result.verified,
+        verified: result.data?.verified ?? result.verified,
+        index_rebuilt: result.data?.index_rebuilt ?? result.index_rebuilt ?? false,
       }
     } else {
       return {
@@ -192,8 +193,9 @@ export async function batchDeleteGalleryImagesAction(imageIds: string[], gallery
 
     console.log(`[batchDeleteGalleryImagesAction] Deleting ${imageIds.length} images from gallery ${galleryId}`)
 
+    // Use POST instead of DELETE - DELETE with body is unreliable
     const result = await apiFetch("/api/galleries/batch-delete-images", {
-      method: "DELETE",
+      method: "POST",
       body: JSON.stringify({
         image_ids: imageIds,
         gallery_id: galleryId,
@@ -204,14 +206,14 @@ export async function batchDeleteGalleryImagesAction(imageIds: string[], gallery
       revalidatePath("/admin")
       return {
         success: true,
-        deleted_count: result.deleted_count,
-        had_verified_faces: result.had_verified_faces,
-        index_rebuilt: result.index_rebuilt,
+        deleted_count: result.data?.deleted_count ?? result.deleted_count,
+        had_verified_faces: result.data?.had_verified_faces ?? result.had_verified_faces,
+        index_rebuilt: result.data?.index_rebuilt ?? result.index_rebuilt,
       }
     } else {
       return {
         success: false,
-        error: result.detail || result.message || "Failed to delete images",
+        error: result.detail || result.error || result.message || "Failed to delete images",
       }
     }
   } catch (error) {
