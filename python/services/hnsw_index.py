@@ -15,11 +15,16 @@ class HNSWIndex:
     """
     Wrapper for HNSWLIB index operations.
     Manages the players index for face recognition.
+    
+    Stores verified status and confidence for each embedding to support
+    confidence chain multiplication for non-verified matches.
     """
     
     def __init__(self):
         self.index: Optional[hnswlib.Index] = None
         self.ids_map: List[str] = []  # Maps index positions to person IDs
+        self.verified_map: List[bool] = []  # Maps index positions to verified status
+        self.confidence_map: List[float] = []  # Maps index positions to recognition_confidence
         self.dim: int = 512  # InsightFace embedding dimension
     
     def is_loaded(self) -> bool:
@@ -36,10 +41,16 @@ class HNSWIndex:
         """Get number of unique people in index"""
         return len(set(self.ids_map)) if self.ids_map else 0
     
+    def get_verified_count(self) -> int:
+        """Get number of verified embeddings in index"""
+        return sum(1 for v in self.verified_map if v)
+    
     def load_from_embeddings(
         self,
         person_ids: List[str],
         embeddings: List[np.ndarray],
+        verified_flags: List[bool] = None,
+        confidences: List[float] = None,
         ef_construction: int = 200,
         M: int = 16,
         ef_search: int = 50
@@ -50,6 +61,8 @@ class HNSWIndex:
         Args:
             person_ids: List of person IDs corresponding to embeddings
             embeddings: List of 512-dim embeddings
+            verified_flags: List of verified status (True/False) for each embedding
+            confidences: List of recognition_confidence for each embedding
             ef_construction: HNSW construction parameter
             M: HNSW M parameter (number of connections)
             ef_search: HNSW search parameter
@@ -60,6 +73,12 @@ class HNSWIndex:
         if len(embeddings) == 0:
             logger.warning("No embeddings provided for index")
             return False
+        
+        # Default to all verified with confidence 1.0 if not provided (backward compatibility)
+        if verified_flags is None:
+            verified_flags = [True] * len(embeddings)
+        if confidences is None:
+            confidences = [1.0] * len(embeddings)
         
         try:
             dim = len(embeddings[0])
@@ -78,11 +97,14 @@ class HNSWIndex:
             self.index.add_items(embeddings_array, np.arange(len(embeddings)))
             self.index.set_ef(ef_search)
             
-            # Store ID mapping
+            # Store mappings
             self.ids_map = person_ids
+            self.verified_map = verified_flags
+            self.confidence_map = confidences
             
             unique_people = len(set(person_ids))
-            logger.info(f"HNSW index built: {len(embeddings)} embeddings for {unique_people} unique people")
+            verified_count = sum(1 for v in verified_flags if v)
+            logger.info(f"HNSW index built: {len(embeddings)} embeddings ({verified_count} verified) for {unique_people} unique people")
             
             return True
             
@@ -94,7 +116,7 @@ class HNSWIndex:
         self,
         embedding: np.ndarray,
         k: int = 1
-    ) -> Tuple[List[str], List[float]]:
+    ) -> Tuple[List[str], List[float], List[bool], List[float]]:
         """
         Query index for nearest neighbors.
         
@@ -103,12 +125,12 @@ class HNSWIndex:
             k: Number of neighbors to return
             
         Returns:
-            Tuple of (person_ids, similarities)
+            Tuple of (person_ids, similarities, verified_flags, source_confidences)
             Similarities are converted from cosine distance (1 - distance)
         """
         if not self.is_loaded():
             logger.warning("Index not loaded, cannot query")
-            return [], []
+            return [], [], [], []
         
         try:
             # Ensure k doesn't exceed index size
@@ -119,15 +141,17 @@ class HNSWIndex:
                 k=k
             )
             
-            # Convert to person IDs and similarities
+            # Convert to person IDs, similarities, and metadata
             person_ids = [self.ids_map[int(idx)] for idx in labels[0]]
             similarities = [1.0 - float(d) for d in distances[0]]
+            verified_flags = [self.verified_map[int(idx)] for idx in labels[0]]
+            source_confidences = [self.confidence_map[int(idx)] for idx in labels[0]]
             
-            return person_ids, similarities
+            return person_ids, similarities, verified_flags, source_confidences
             
         except Exception as e:
             logger.error(f"Error querying HNSW index: {e}")
-            return [], []
+            return [], [], [], []
     
     def query_raw(
         self,
