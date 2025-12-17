@@ -15,7 +15,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.6" // Added indexRebuilt flag to onSave callback
+const VERSION = "v6.7" // Update badges on dialog close
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -63,11 +63,17 @@ export function FaceTaggingDialog({
   // Track which imageId data was loaded for
   const loadedForImageIdRef = useRef<string | null>(null)
   const currentImageIdRef = useRef<string>(imageId)
+  // Track faces for the current image (to update badges on close)
+  const taggedFacesRef = useRef<TaggedFace[]>([])
 
-  // Update ref when imageId changes
+  // Update refs when state changes
   useEffect(() => {
     currentImageIdRef.current = imageId
   }, [imageId])
+  
+  useEffect(() => {
+    taggedFacesRef.current = taggedFaces
+  }, [taggedFaces])
 
   const getDisplayFileName = useCallback(() => {
     try {
@@ -103,6 +109,16 @@ export function FaceTaggingDialog({
     if (!ctx) return
     ctx.clearRect(0, 0, canvas.width, canvas.height)
   }, [])
+
+  // Handle dialog close - update badges with loaded faces
+  const handleOpenChange = useCallback((newOpen: boolean) => {
+    if (!newOpen && loadedForImageIdRef.current === currentImageIdRef.current) {
+      // Dialog closing and we have loaded faces for this image - update badges
+      console.log(`[${VERSION}] Dialog closing, updating badges with ${taggedFacesRef.current.length} faces`)
+      onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
+    }
+    onOpenChange(newOpen)
+  }, [onOpenChange, onSave])
 
   // INSTANT reset when imageId changes
   useEffect(() => {
@@ -463,7 +479,7 @@ export function FaceTaggingDialog({
   const isLoading = loadingFaces || !imageLoaded
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-[90vw] h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Тегирование лиц {VERSION}</DialogTitle>
@@ -736,7 +752,7 @@ export function FaceTaggingDialog({
             </div>
 
             <div className="flex gap-2 ml-auto">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Отмена
               </Button>
               <TooltipProvider>
