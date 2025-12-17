@@ -1,7 +1,7 @@
 # Схема базы данных Padel Galleries
 
 **Дата обновления:** 17.12.2025  
-**Версия:** 3.5 (Полная синхронизация со схемой БД)
+**Версия:** 3.6 (Связь users → people)
 
 ---
 
@@ -54,6 +54,7 @@ cities
               └── gallery_images (фото)
                     └── photo_faces (лица на фото + эмбеддинги)
                           └── people (игроки)
+                                └── users (Telegram-аккаунты)
 ```
 
 ---
@@ -316,12 +317,17 @@ WHERE person_id = 'xxx'
 | `first_name` | text | YES | Имя |
 | `last_name` | text | YES | Фамилия |
 | `photo_url` | text | YES | URL фото профиля |
+| `person_id` | uuid | YES | FK → people.id (ON DELETE SET NULL) |
 | `created_at` | timestamptz | YES | Дата создания |
 | `updated_at` | timestamptz | YES | Дата обновления |
+
+**Связи:**
+- `person_id` → `people.id` — связь пользователя с игроком
 
 **Индексы:**
 - PRIMARY KEY (id)
 - UNIQUE (telegram_id)
+- INDEX idx_users_person_id (person_id)
 
 ---
 
@@ -583,7 +589,12 @@ generate_unique_slug(
        ▼                                               │
 ┌─────────────┐     ┌─────────────────┐                │
 │   people    │◄───►│person_city_cache│◄───────────────┘
-└─────────────┘     └─────────────────┘   (🔜 person_id)
+└──────┬──────┘     └─────────────────┘   (🔜 person_id)
+       │ 1:N
+       ▼
+┌─────────────┐
+│    users    │ (Telegram-аккаунты)
+└─────────────┘
 ```
 
 ---
@@ -626,6 +637,13 @@ SELECT * FROM people WHERE slug = 'ivan-petrov';
 ### Найти игрока по Gmail (для OAuth)
 ```sql
 SELECT * FROM people WHERE gmail = 'user@gmail.com';
+```
+
+### Найти игрока по Telegram-пользователю
+```sql
+SELECT p.* FROM people p
+JOIN users u ON u.person_id = p.id
+WHERE u.telegram_id = 123456789;
 ```
 
 ### Пересчитать кеш person_city_cache
@@ -684,6 +702,13 @@ ALTER TABLE photo_faces DROP COLUMN confidence_DEPRECATED;
 
 ## Миграции (выполненные)
 
+### 17.12.2025 — Связь users → people ✅
+```sql
+ALTER TABLE public.users 
+ADD COLUMN person_id uuid REFERENCES public.people(id) ON DELETE SET NULL;
+CREATE INDEX idx_users_person_id ON public.users(person_id);
+```
+
 ### 14.12.2025 — Gmail и Telegram поля ✅
 ```sql
 -- Файл: migrations/20241214_people_gmail_telegram.sql
@@ -725,6 +750,12 @@ VALUES
 ---
 
 ## История изменений
+
+### v3.6 (17.12.2025) — Связь users → people ✅
+- **ДОБАВЛЕНО:** `users.person_id` — FK → people.id (ON DELETE SET NULL)
+- **ДОБАВЛЕНО:** Индекс `idx_users_person_id`
+- **ДОБАВЛЕН запрос:** Найти игрока по Telegram-пользователю
+- Обновлена ER-диаграмма
 
 ### v3.5 (17.12.2025) — Полная синхронизация со схемой БД ✅
 - **ДОБАВЛЕНЫ enum типы:** `person_category`, `face_category`
