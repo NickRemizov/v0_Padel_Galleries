@@ -36,6 +36,10 @@ from services.quality_filters import (
 from services.grouping import group_tournament_faces
 from services.supabase_database import SupabaseDatabase
 
+# Non-verified threshold penalty (hardcoded)
+# For non-verified faces, threshold = base_threshold + this value
+NON_VERIFIED_THRESHOLD_PENALTY = 0.05
+
 
 class FaceRecognitionService:
     """
@@ -101,10 +105,16 @@ class FaceRecognitionService:
         logger.info("[FaceRecognition] Loading players index...")
         
         try:
-            player_ids, embeddings = self.supabase_db.get_all_player_embeddings()
+            # Get ALL embeddings (verified and non-verified) with metadata
+            person_ids, embeddings, verified_flags, confidences = self.supabase_db.get_all_player_embeddings()
             
             if len(embeddings) > 0:
-                success = self._players_index.load_from_embeddings(player_ids, embeddings)
+                success = self._players_index.load_from_embeddings(
+                    person_ids, 
+                    embeddings,
+                    verified_flags,
+                    confidences
+                )
                 
                 if success:
                     # Legacy compatibility
@@ -112,7 +122,9 @@ class FaceRecognitionService:
                     self.player_ids_map = self._players_index.ids_map
                     
                     unique_count = self._players_index.get_unique_people_count()
-                    logger.info(f"[FaceRecognition] Index loaded: {len(embeddings)} embeddings for {unique_count} people")
+                    verified_count = self._players_index.get_verified_count()
+                    total_count = len(embeddings)
+                    logger.info(f"[FaceRecognition] Index loaded: {total_count} embeddings ({verified_count} verified) for {unique_count} people")
                 else:
                     raise ValueError("Failed to build HNSW index")
             else:
@@ -134,13 +146,15 @@ class FaceRecognitionService:
             
             new_count = len(self.player_ids_map) if self.player_ids_map else 0
             unique_people = self._players_index.get_unique_people_count()
+            verified_count = self._players_index.get_verified_count()
             
-            logger.info(f"[FaceRecognition] Index rebuilt: {old_count} -> {new_count} descriptors")
+            logger.info(f"[FaceRecognition] Index rebuilt: {old_count} -> {new_count} descriptors ({verified_count} verified)")
             
             return {
                 "success": True,
                 "old_descriptor_count": old_count,
                 "new_descriptor_count": new_count,
+                "verified_count": verified_count,
                 "unique_people_count": unique_people
             }
             
@@ -247,8 +261,12 @@ class FaceRecognitionService:
         """
         Recognize face by embedding.
         
+        For verified faces: uses base threshold
+        For non-verified faces: uses base threshold + 0.05, and multiplies
+        the similarity by source confidence to prevent error propagation.
+        
         Returns:
-            Tuple of (person_id, confidence) or (None, None) if below threshold
+            Tuple of (person_id, final_confidence) or (None, None) if below threshold
         """
         self._ensure_initialized()
         
@@ -256,7 +274,7 @@ class FaceRecognitionService:
             config = self.supabase_db.get_recognition_config_sync()
             confidence_threshold = config.get('recognition_threshold', 0.60)
         
-        logger.info(f"[FaceRecognition] Recognizing face (threshold={confidence_threshold:.2f})")
+        logger.info(f"[FaceRecognition] Recognizing face (base threshold={confidence_threshold:.2f})")
         
         # Safety check
         if not self._players_index.is_loaded():
@@ -267,20 +285,34 @@ class FaceRecognitionService:
                 logger.error(f"[FaceRecognition] Cannot initialize index: {e}")
                 return None, None
         
-        # Query index
-        person_ids, similarities = self._players_index.query(embedding, k=1)
+        # Query index - now returns verified status and source confidence
+        person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=1)
         
         if not person_ids:
             return None, None
         
         person_id = person_ids[0]
-        confidence = similarities[0]
+        similarity = similarities[0]
+        is_verified = verified_flags[0]
+        source_confidence = source_confidences[0]
         
-        if confidence >= confidence_threshold:
-            logger.info(f"[FaceRecognition] Match: person_id={person_id}, confidence={confidence:.3f}")
-            return person_id, confidence
+        # Calculate effective threshold and final confidence
+        if is_verified:
+            # Verified face: use base threshold, similarity is the confidence
+            effective_threshold = confidence_threshold
+            final_confidence = similarity
+            logger.info(f"[FaceRecognition] Matched VERIFIED face: person_id={person_id}, similarity={similarity:.3f}, threshold={effective_threshold:.3f}")
         else:
-            logger.info(f"[FaceRecognition] Confidence {confidence:.3f} < {confidence_threshold:.2f}")
+            # Non-verified face: stricter threshold, multiply confidences
+            effective_threshold = confidence_threshold + NON_VERIFIED_THRESHOLD_PENALTY
+            final_confidence = similarity * source_confidence
+            logger.info(f"[FaceRecognition] Matched NON-VERIFIED face: person_id={person_id}, similarity={similarity:.3f} x source_conf={source_confidence:.3f} = {final_confidence:.3f}, threshold={effective_threshold:.3f}")
+        
+        if final_confidence >= effective_threshold:
+            logger.info(f"[FaceRecognition] ✓ Match accepted: person_id={person_id}, final_confidence={final_confidence:.3f}")
+            return person_id, final_confidence
+        else:
+            logger.info(f"[FaceRecognition] ✗ Match rejected: {final_confidence:.3f} < {effective_threshold:.3f}")
             return None, None
     
     # ==================== Quality Filters ====================
@@ -413,24 +445,15 @@ class FaceRecognitionService:
                     embedding = face.embedding
                     bbox = [float(x) for x in face.bbox]
                     
-                    player_id = None
-                    confidence = 0.0
+                    # Use the new recognize_face method that handles verified/non-verified
+                    person_id, confidence = await self.recognize_face(embedding)
                     
-                    if self._players_index.is_loaded():
-                        person_ids, similarities = self._players_index.query(embedding, k=1)
-                        
-                        if person_ids:
-                            config = self.supabase_db.get_recognition_config_sync()
-                            min_similarity = config.get('recognition_threshold', 0.60)
-                            
-                            if similarities[0] > min_similarity:
-                                player_id = person_ids[0]
-                                confidence = similarities[0]
-                                recognized_faces += 1
+                    if person_id:
+                        recognized_faces += 1
                     
                     self.supabase_db.add_gallery_face(
                         face_id, gallery_id, file.filename,
-                        bbox, embedding, player_id, confidence
+                        bbox, embedding, person_id, confidence or 0.0
                     )
             
             logger.info(f"[FaceRecognition] Processed {min(i + batch_size, len(files))}/{len(files)} photos")
