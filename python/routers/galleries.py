@@ -73,6 +73,11 @@ class GalleryUpdate(BaseModel):
     sort_order: Optional[str] = None
 
 
+class BatchDeleteImagesRequest(BaseModel):
+    image_ids: List[str]
+    gallery_id: str
+
+
 @router.get("")
 async def get_galleries(
     sort_by: str = Query("created_at", enum=["created_at", "shoot_date"]),
@@ -419,6 +424,66 @@ async def update_sort_order(identifier: str, sort_order: str = Query(...)):
     except Exception as e:
         logger.error(f"Error updating sort order: {e}")
         raise DatabaseError(str(e), operation="update_sort_order")
+
+
+@router.delete("/batch-delete-images")
+async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
+    """
+    Batch delete multiple images from a gallery.
+    Performance: O(1) instead of O(n) - single query per operation, single index rebuild.
+    """
+    try:
+        image_ids = data.image_ids
+        gallery_id = data.gallery_id
+        
+        if not image_ids:
+            return ApiResponse.ok({
+                "deleted_count": 0,
+                "had_verified_faces": False,
+                "index_rebuilt": False
+            })
+        
+        logger.info(f"Batch deleting {len(image_ids)} images from gallery {gallery_id}")
+        
+        # Step 1: Check if ANY images have verified faces (single query)
+        verified_check = supabase_db_instance.client.table("photo_faces").select(
+            "id", count="exact"
+        ).in_("photo_id", image_ids).eq("verified", True).execute()
+        
+        had_verified_faces = (verified_check.count or 0) > 0
+        
+        # Step 2: Delete all photo_faces for these images (single query)
+        supabase_db_instance.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
+        
+        # Step 3: Delete all face_descriptors for these images (single query)
+        supabase_db_instance.client.table("face_descriptors").delete().in_("source_image_id", image_ids).execute()
+        
+        # Step 4: Delete all images (single query)
+        delete_result = supabase_db_instance.client.table("gallery_images").delete().in_(
+            "id", image_ids
+        ).eq("gallery_id", gallery_id).execute()
+        
+        deleted_count = len(delete_result.data) if delete_result.data else 0
+        logger.info(f"Deleted {deleted_count} images from gallery {gallery_id}")
+        
+        # Step 5: Rebuild index ONCE if any verified faces existed
+        index_rebuilt = False
+        if had_verified_faces and face_service_instance:
+            try:
+                await face_service_instance.rebuild_players_index()
+                index_rebuilt = True
+                logger.info(f"Rebuilt players index after batch delete")
+            except Exception as e:
+                logger.error(f"Failed to rebuild index after batch delete: {e}")
+        
+        return ApiResponse.ok({
+            "deleted_count": deleted_count,
+            "had_verified_faces": had_verified_faces,
+            "index_rebuilt": index_rebuilt
+        })
+    except Exception as e:
+        logger.error(f"Error batch deleting images: {e}")
+        raise DatabaseError(str(e), operation="batch_delete_gallery_images")
 
 
 @router.delete("/{identifier}")
