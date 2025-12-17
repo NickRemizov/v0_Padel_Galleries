@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check } from "lucide-react"
+import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check, ChevronLeft, ChevronRight } from "lucide-react"
 // import { createClient } from "@/lib/supabase/client"
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
@@ -17,7 +17,7 @@ import { debounce } from "@/lib/debounce"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities" // Add import for people action
 
-const VERSION = "v6.2" // Added: quick assign from details dialog
+const VERSION = "v6.3" // Added: navigation buttons, fixed save without close
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -26,6 +26,10 @@ interface FaceTaggingDialogProps {
   onOpenChange: (open: boolean) => void
   onSave?: () => void
   hasBeenProcessed?: boolean
+  onPrevious?: () => void
+  onNext?: () => void
+  hasPrevious?: boolean
+  hasNext?: boolean
 }
 
 export function FaceTaggingDialog({
@@ -35,6 +39,10 @@ export function FaceTaggingDialog({
   onOpenChange,
   onSave,
   hasBeenProcessed = false,
+  onPrevious,
+  onNext,
+  hasPrevious = false,
+  hasNext = false,
 }: FaceTaggingDialogProps) {
   const [people, setPeople] = useState<Person[]>([])
   const [taggedFaces, setTaggedFaces] = useState<TaggedFace[]>([])
@@ -89,7 +97,7 @@ export function FaceTaggingDialog({
     if (open) {
       loadPeopleAndExistingFaces()
     }
-  }, [open])
+  }, [open, imageId])
 
   useEffect(() => {
     if (!showAddPerson && open) {
@@ -318,6 +326,49 @@ export function FaceTaggingDialog({
     debouncedSave(updated)
   }
 
+  async function handleSaveWithoutClosing() {
+    if (saving) {
+      console.log(`[${VERSION}] Save already in progress`)
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      const keptFaces = taggedFaces.map((face) => ({
+        id: face.id,
+        person_id: face.personId,
+      }))
+
+      console.log(`[${VERSION}] Saving ${keptFaces.length} faces (without closing)`)
+
+      const result = await batchVerifyFacesAction(imageId, keptFaces)
+
+      if (!result.success) {
+        console.error(`[${VERSION}] Failed to save faces:`, result.error)
+        alert(`Ошибка сохранения: ${result.error}`)
+        setSaving(false)
+        return
+      }
+
+      // Mark photo as processed after successful save
+      await markPhotoAsProcessedAction(imageId)
+      console.log(`[${VERSION}] ✓ Photo marked as processed`)
+
+      console.log(`[${VERSION}] ✓ All faces saved successfully! Verified: ${result.verified}`)
+      
+      // Call onSave to update badges in background
+      onSave?.()
+      
+      setSaving(false)
+      // Do NOT close dialog
+    } catch (error) {
+      console.error(`[${VERSION}] Error saving faces:`, error)
+      alert(`Ошибка: ${error instanceof Error ? error.message : String(error)}`)
+      setSaving(false)
+    }
+  }
+
   async function handleSave() {
     if (saving) {
       console.log(`[${VERSION}] Save already in progress`)
@@ -376,45 +427,104 @@ export function FaceTaggingDialog({
             Файл: {displayFileName} | Обнаружено лиц: {taggedFaces.length}. Кликните на лицо, чтобы назначить человека.
           </DialogDescription>
           <div className="absolute top-4 right-12 flex gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
+            <TooltipProvider>
+              {/* Previous button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={onPrevious}
+                      disabled={!hasPrevious || saving}
+                      className="h-8 w-8 p-0 bg-white text-black hover:bg-gray-100"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Предыдущее фото</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Save without closing button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveWithoutClosing}
+                      disabled={!canSave}
+                      className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {hasUnassignedFaces ? (
+                    <p>Назначьте всех людей или удалите неизвестные лица перед сохранением</p>
+                  ) : (
+                    <p>Сохранить без закрытия окна</p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Next button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={onNext}
+                      disabled={!hasNext || saving}
+                      className="h-8 w-8 p-0 bg-white text-black hover:bg-gray-100"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Следующее фото</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Fit to window button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <Button
+                    variant={imageFitMode === "contain" ? "default" : "outline"}
                     size="sm"
-                    onClick={handleSave}
-                    disabled={!canSave}
-                    className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700 text-white"
+                    onClick={() => setImageFitMode("contain")}
+                    className="h-8 w-8 p-0"
                   >
-                    <Check className="h-4 w-4" />
+                    <Minimize2 className="h-4 w-4" />
                   </Button>
-                </span>
-              </TooltipTrigger>
-              {hasUnassignedFaces ? (
+                </TooltipTrigger>
                 <TooltipContent>
-                  <p>Назначьте всех людей или удалите неизвестные лица перед сохранением</p>
+                  <p>Вписать в окно</p>
                 </TooltipContent>
-              ) : (
+              </Tooltip>
+
+              {/* Scale by long side button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={imageFitMode === "cover" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setImageFitMode("cover")}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
                 <TooltipContent>
-                  <p>Сохранить без закрытия окна</p>
+                  <p>Масштаб по длинной стороне</p>
                 </TooltipContent>
-              )}
-            </Tooltip>
-            <Button
-              variant={imageFitMode === "contain" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setImageFitMode("contain")}
-              title="Вписать в окно"
-            >
-              <Minimize2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={imageFitMode === "cover" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setImageFitMode("cover")}
-              title="Масштаб по длинной стороне"
-            >
-              <Maximize2 className="h-4 w-4" />
-            </Button>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </DialogHeader>
 
