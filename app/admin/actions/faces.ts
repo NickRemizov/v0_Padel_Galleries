@@ -177,6 +177,52 @@ export async function deleteGalleryImageAction(photoId: string) {
   }
 }
 
+/**
+ * Batch delete multiple gallery images in one request
+ * Performance: O(1) instead of O(n) - single HTTP request, single index rebuild
+ *
+ * @param imageIds - Array of image IDs to delete
+ * @param galleryId - Gallery ID
+ */
+export async function batchDeleteGalleryImagesAction(imageIds: string[], galleryId: string) {
+  try {
+    if (imageIds.length === 0) {
+      return { success: true, deleted_count: 0 }
+    }
+
+    console.log(`[batchDeleteGalleryImagesAction] Deleting ${imageIds.length} images from gallery ${galleryId}`)
+
+    const result = await apiFetch("/api/galleries/batch-delete-images", {
+      method: "DELETE",
+      body: JSON.stringify({
+        image_ids: imageIds,
+        gallery_id: galleryId,
+      }),
+    })
+
+    if (result.success) {
+      revalidatePath("/admin")
+      return {
+        success: true,
+        deleted_count: result.deleted_count,
+        had_verified_faces: result.had_verified_faces,
+        index_rebuilt: result.index_rebuilt,
+      }
+    } else {
+      return {
+        success: false,
+        error: result.detail || result.message || "Failed to delete images",
+      }
+    }
+  } catch (error) {
+    console.error("[batchDeleteGalleryImagesAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
 export async function deleteAllGalleryImagesAction(galleryId: string) {
   try {
     const result = await apiFetch(`/api/images/gallery/${galleryId}/all`, {
