@@ -37,7 +37,7 @@ import {
   getBatchPhotoFacesAction,
   getGalleryImagesAction,
 } from "@/app/admin/actions"
-import type { GalleryImage } from "@/lib/types"
+import type { GalleryImage, TaggedFace } from "@/lib/types"
 import { FaceTaggingDialog } from "./face-tagging-dialog"
 import { AutoRecognitionDialog } from "./auto-recognition-dialog"
 import { UnknownFacesReviewDialog } from "./unknown-faces-review-dialog"
@@ -313,8 +313,6 @@ export function GalleryImagesManager({
   }
 
   async function loadPhotoFaces() {
-    console.log("[GalleryImagesManager] loadPhotoFaces START, images:", images.length)
-
     const photoIds = images.map((img) => img.id)
     const result = await getBatchPhotoFacesAction(photoIds)
 
@@ -333,22 +331,42 @@ export function GalleryImagesManager({
         })
       }
 
-      console.log("[GalleryImagesManager] Loaded faces for", Object.keys(facesMap).length, "photos")
       setPhotoFacesMap(facesMap)
       setPhotoFacesLoaded(true)
     } else {
-      console.log("[GalleryImagesManager] No faces data or error:", result.error)
       setPhotoFacesLoaded(true)
     }
   }
 
-  // Background refresh - does NOT block UI
-  function refreshBadgesInBackground() {
-    console.log("[GalleryImagesManager] Starting background refresh...")
-    // Fire and forget - no await
-    loadRecognitionStats()
-    loadPhotoFaces()
-  }
+  // Update local cache for a single photo - NO server reload!
+  const updatePhotoFacesCache = useCallback((imageId: string, faces: TaggedFace[]) => {
+    console.log(`[GalleryImagesManager] Updating cache for ${imageId} with ${faces.length} faces`)
+    
+    setPhotoFacesMap(prev => ({
+      ...prev,
+      [imageId]: faces.map(face => ({
+        verified: face.verified || false,
+        confidence: face.recognitionConfidence || 1,
+        person_id: face.personId || null,
+        bbox: face.face.boundingBox || null,
+      }))
+    }))
+    
+    // Also update recognition stats for this photo
+    setRecognitionStats(prev => ({
+      ...prev,
+      [imageId]: {
+        total: faces.length,
+        recognized: faces.filter(f => f.personId).length,
+        fullyRecognized: faces.length > 0 && faces.every(f => f.verified),
+      }
+    }))
+    
+    // Mark photo as processed in images array
+    setImages(prev => prev.map(img => 
+      img.id === imageId ? { ...img, has_been_processed: true } : img
+    ))
+  }, [])
 
   function hasVerifiedFaces(imageId: string): boolean {
     const faces = photoFacesMap[imageId]
@@ -912,20 +930,13 @@ export function GalleryImagesManager({
           imageUrl={taggingImage.url}
           hasBeenProcessed={taggingImage.hasBeenProcessed}
           open={!!taggingImage}
-          onOpenChange={async (open) => {
+          onOpenChange={(open) => {
             if (!open) {
-              console.log("[GalleryImagesManager] FaceTaggingDialog closed")
               setTaggingImage(null)
-              // Full refresh on close (blocking is OK here)
-              await loadRecognitionStats()
-              await loadPhotoFaces()
+              // NO reload on close - cache is already updated via onSave
             }
           }}
-          onSave={() => {
-            // Background refresh - NO await, NO blocking!
-            console.log("[GalleryImagesManager] onSave - background refresh")
-            refreshBadgesInBackground()
-          }}
+          onSave={updatePhotoFacesCache}
           onPrevious={handlePreviousImage}
           onNext={handleNextImage}
           hasPrevious={currentImageIndex > 0}
