@@ -15,7 +15,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.7" // Update badges on dialog close
+const VERSION = "v6.8" // Fix double onSave call
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -65,10 +65,14 @@ export function FaceTaggingDialog({
   const currentImageIdRef = useRef<string>(imageId)
   // Track faces for the current image (to update badges on close)
   const taggedFacesRef = useRef<TaggedFace[]>([])
+  // Track if we just saved (to prevent double onSave call)
+  const justSavedRef = useRef<boolean>(false)
 
   // Update refs when state changes
   useEffect(() => {
     currentImageIdRef.current = imageId
+    // Reset justSaved when imageId changes
+    justSavedRef.current = false
   }, [imageId])
   
   useEffect(() => {
@@ -110,12 +114,21 @@ export function FaceTaggingDialog({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
   }, [])
 
-  // Handle dialog close - update badges with loaded faces
+  // Handle dialog close - update badges with loaded faces (unless we just saved)
   const handleOpenChange = useCallback((newOpen: boolean) => {
     if (!newOpen && loadedForImageIdRef.current === currentImageIdRef.current) {
-      // Dialog closing and we have loaded faces for this image - update badges
-      console.log(`[${VERSION}] Dialog closing, updating badges with ${taggedFacesRef.current.length} faces`)
-      onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
+      // Dialog closing and we have loaded faces for this image
+      // Only call onSave if we didn't just save (to prevent double call)
+      if (!justSavedRef.current) {
+        console.log(`[${VERSION}] Dialog closing without save, updating badges with ${taggedFacesRef.current.length} faces`)
+        onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
+      } else {
+        console.log(`[${VERSION}] Dialog closing after save, skipping onSave (already called)`)
+      }
+    }
+    // Reset justSaved flag on close
+    if (!newOpen) {
+      justSavedRef.current = false
     }
     onOpenChange(newOpen)
   }, [onOpenChange, onSave])
@@ -134,6 +147,7 @@ export function FaceTaggingDialog({
     setImageLoaded(false)
     setLoadingFaces(true)
     loadedForImageIdRef.current = null
+    justSavedRef.current = false
     clearCanvas()
     
     // Start loading faces for this image
@@ -420,6 +434,9 @@ export function FaceTaggingDialog({
       const indexRebuilt = result.verified === true || (result as any).index_rebuilt === true
       onSave?.(imageId, updatedFaces, indexRebuilt)
       
+      // Mark as just saved (but don't set justSavedRef since dialog stays open)
+      // justSavedRef is only for when dialog closes after save
+      
       setSaving(false)
     } catch (error) {
       console.error(`[${VERSION}] Error saving:`, error)
@@ -457,6 +474,9 @@ export function FaceTaggingDialog({
       // Notify parent with indexRebuilt flag
       const indexRebuilt = result.verified === true || (result as any).index_rebuilt === true
       onSave?.(imageId, updatedFaces, indexRebuilt)
+      
+      // Mark that we just saved - this prevents handleOpenChange from calling onSave again
+      justSavedRef.current = true
       
       setSaving(false)
       onOpenChange(false)
