@@ -456,10 +456,7 @@ async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
         # Step 2: Delete all photo_faces for these images (single query)
         supabase_db_instance.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
         
-        # Step 3: Delete all face_descriptors for these images (single query)
-        supabase_db_instance.client.table("face_descriptors").delete().in_("source_image_id", image_ids).execute()
-        
-        # Step 4: Delete all images (single query)
+        # Step 3: Delete all images (single query)
         delete_result = supabase_db_instance.client.table("gallery_images").delete().in_(
             "id", image_ids
         ).eq("gallery_id", gallery_id).execute()
@@ -467,7 +464,7 @@ async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
         deleted_count = len(delete_result.data) if delete_result.data else 0
         logger.info(f"Deleted {deleted_count} images from gallery {gallery_id}")
         
-        # Step 5: Rebuild index ONCE if any verified faces existed
+        # Step 4: Rebuild index ONCE if any verified faces existed
         index_rebuilt = False
         if had_verified_faces and face_service_instance:
             try:
@@ -499,9 +496,8 @@ async def delete_gallery(identifier: str, delete_images: bool = Query(True)):
             image_ids = [img["id"] for img in (images.data or [])]
             
             if image_ids:
-                # Delete photo_faces for all images
-                for img_id in image_ids:
-                    supabase_db_instance.client.table("photo_faces").delete().eq("photo_id", img_id).execute()
+                # Delete photo_faces for all images (single query)
+                supabase_db_instance.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
                 
                 # Delete all images
                 supabase_db_instance.client.table("gallery_images").delete().eq("gallery_id", gallery_id).execute()
