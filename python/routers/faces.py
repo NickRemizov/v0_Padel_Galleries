@@ -76,21 +76,17 @@ async def get_batch_photo_faces(
     request: BatchPhotoIdsRequest,
     supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
 ):
-    """Get all faces for multiple photos in a single request.
-    
-    OPTIMIZED: Only selects fields needed for UI display.
-    Does NOT include insightface_descriptor (512 floats per face = huge payload).
-    """
+    """Get all faces for multiple photos in a single request."""
     try:
         logger.info(f"Getting faces for {len(request.photo_ids)} photos")
         
         if not request.photo_ids:
             return ApiResponse.ok([])
         
-        # OPTIMIZATION: Select only fields needed for badges and preview positioning
-        # Excludes insightface_descriptor which is 512 floats (~2KB) per face
+        # Use SELECT * to ensure all fields are returned correctly
+        # The descriptor field adds some overhead but ensures compatibility
         result = supabase_db.client.table("photo_faces") \
-            .select("id,photo_id,person_id,verified,confidence,recognition_confidence,insightface_bbox,people(id,real_name,telegram_name)") \
+            .select("*, people(id, real_name, telegram_name)") \
             .in_("photo_id", request.photo_ids) \
             .execute()
         
