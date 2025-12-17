@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useMemo, memo, useRef } from "react"
+import { useState, useEffect, useMemo, memo, useRef, useCallback } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -482,6 +482,35 @@ export function GalleryImagesManager({
     if (!hideFullyVerified || !photoFacesLoaded) return 0
     return images.filter((img) => !shouldShowPhoto(img)).length
   }, [images, hideFullyVerified, photoFacesMap, photoFacesLoaded])
+
+  // Get current image index in sortedImages for navigation
+  const currentImageIndex = useMemo(() => {
+    if (!taggingImage) return -1
+    return sortedImages.findIndex((img) => img.id === taggingImage.id)
+  }, [taggingImage, sortedImages])
+
+  // Navigation handlers
+  const handlePreviousImage = useCallback(() => {
+    if (currentImageIndex > 0) {
+      const prevImage = sortedImages[currentImageIndex - 1]
+      setTaggingImage({
+        id: prevImage.id,
+        url: prevImage.image_url,
+        hasBeenProcessed: prevImage.has_been_processed || false,
+      })
+    }
+  }, [currentImageIndex, sortedImages])
+
+  const handleNextImage = useCallback(() => {
+    if (currentImageIndex < sortedImages.length - 1) {
+      const nextImage = sortedImages[currentImageIndex + 1]
+      setTaggingImage({
+        id: nextImage.id,
+        url: nextImage.image_url,
+        hasBeenProcessed: nextImage.has_been_processed || false,
+      })
+    }
+  }, [currentImageIndex, sortedImages])
 
   function handleDragEnter(e: React.DragEvent) {
     e.preventDefault()
@@ -992,7 +1021,7 @@ export function GalleryImagesManager({
           open={!!taggingImage}
           onOpenChange={async (open) => {
             if (!open) {
-              console.log("[v4.8] GalleryImagesManager: FaceTaggingDialog closed")
+              console.log("[v4.9] GalleryImagesManager: FaceTaggingDialog closed")
               setTaggingImage(null)
               // Всегда обновляем бейджи при закрытии
               await loadRecognitionStats()
@@ -1000,10 +1029,15 @@ export function GalleryImagesManager({
             }
           }}
           onSave={async () => {
-            console.log("[v4.8] GalleryImagesManager: FaceTaggingDialog onSave called")
-            // onSave теперь только для промежуточных сохранений
-            // Основное обновление в onOpenChange
+            console.log("[v4.9] GalleryImagesManager: FaceTaggingDialog onSave called (background update)")
+            // Обновляем бейджи в фоне при сохранении без закрытия
+            await loadRecognitionStats()
+            await loadPhotoFaces()
           }}
+          onPrevious={handlePreviousImage}
+          onNext={handleNextImage}
+          hasPrevious={currentImageIndex > 0}
+          hasNext={currentImageIndex < sortedImages.length - 1}
         />
       )}
 
