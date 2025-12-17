@@ -261,6 +261,9 @@ class FaceRecognitionService:
         """
         Recognize face by embedding.
         
+        IMPORTANT: When multiple embeddings match with same similarity (e.g., identical
+        descriptors), we prioritize VERIFIED matches over non-verified ones.
+        
         For verified faces: uses base threshold, returns similarity as confidence
         For non-verified faces: uses base threshold + 0.05, returns 
         similarity × source_confidence as final confidence.
@@ -288,36 +291,59 @@ class FaceRecognitionService:
                 logger.error(f"[FaceRecognition] Cannot initialize index: {e}")
                 return None, None
         
-        # Query index - returns verified status and source confidence
-        person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=1)
+        # Query index for TOP 10 candidates to find best match
+        # This is important when identical descriptors exist (verified vs non-verified)
+        k = min(10, self._players_index.get_count())
+        person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=k)
         
         if not person_ids:
             return None, None
         
-        person_id = person_ids[0]
-        similarity = similarities[0]
-        is_verified = verified_flags[0]
-        source_confidence = source_confidences[0]
+        # Find the best match, prioritizing VERIFIED faces with same similarity
+        best_match = None
+        best_score = -1.0
         
-        # Calculate effective threshold and final confidence
-        if is_verified:
-            # Verified face: use base threshold, similarity is the confidence
-            effective_threshold = confidence_threshold
-            final_confidence = similarity
-            logger.info(f"[FaceRecognition] Matched VERIFIED face: person_id={person_id}, similarity={similarity:.3f}, threshold={effective_threshold:.3f}")
-        else:
-            # Non-verified face: stricter threshold, multiply confidences
-            # This creates natural decay in confidence chains
-            effective_threshold = confidence_threshold + NON_VERIFIED_THRESHOLD_PENALTY
-            final_confidence = similarity * source_confidence
-            logger.info(f"[FaceRecognition] Matched NON-VERIFIED face: person_id={person_id}, similarity={similarity:.3f} x source_conf={source_confidence:.3f} = {final_confidence:.3f}, threshold={effective_threshold:.3f}")
+        for i in range(len(person_ids)):
+            person_id = person_ids[i]
+            similarity = similarities[i]
+            is_verified = verified_flags[i]
+            source_confidence = source_confidences[i]
+            
+            # Calculate effective threshold and score for this candidate
+            if is_verified:
+                effective_threshold = confidence_threshold
+                final_confidence = similarity
+                # For scoring: verified gets priority (multiply by 2 to always beat non-verified with same similarity)
+                score = similarity * 2.0 if similarity >= effective_threshold else -1.0
+            else:
+                effective_threshold = confidence_threshold + NON_VERIFIED_THRESHOLD_PENALTY
+                final_confidence = similarity * source_confidence
+                score = final_confidence if final_confidence >= effective_threshold else -1.0
+            
+            # Update best match if this is better
+            if score > best_score:
+                best_score = score
+                best_match = {
+                    "person_id": person_id,
+                    "similarity": similarity,
+                    "is_verified": is_verified,
+                    "source_confidence": source_confidence,
+                    "final_confidence": final_confidence,
+                    "effective_threshold": effective_threshold
+                }
         
-        if final_confidence >= effective_threshold:
-            logger.info(f"[FaceRecognition] ✓ Match accepted: person_id={person_id}, final_confidence={final_confidence:.3f}")
-            return person_id, final_confidence
-        else:
-            logger.info(f"[FaceRecognition] ✗ Match rejected: {final_confidence:.3f} < {effective_threshold:.3f}")
+        if best_match is None or best_score < 0:
+            logger.info(f"[FaceRecognition] ✗ No match above threshold in top {k} candidates")
             return None, None
+        
+        # Log the result
+        if best_match["is_verified"]:
+            logger.info(f"[FaceRecognition] Matched VERIFIED face: person_id={best_match['person_id']}, similarity={best_match['similarity']:.3f}, threshold={best_match['effective_threshold']:.3f}")
+        else:
+            logger.info(f"[FaceRecognition] Matched NON-VERIFIED face: person_id={best_match['person_id']}, similarity={best_match['similarity']:.3f} x source_conf={best_match['source_confidence']:.3f} = {best_match['final_confidence']:.3f}, threshold={best_match['effective_threshold']:.3f}")
+        
+        logger.info(f"[FaceRecognition] ✓ Match accepted: person_id={best_match['person_id']}, final_confidence={best_match['final_confidence']:.3f}")
+        return best_match["person_id"], best_match["final_confidence"]
     
     # ==================== Quality Filters ====================
     
