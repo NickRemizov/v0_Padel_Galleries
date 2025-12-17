@@ -3,21 +3,19 @@
 import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { FaceRecognitionDetailsDialog, type DetailedFace } from "./face-recognition-details-dialog"
 import type { TaggedFace } from "@/lib/types"
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check, ChevronLeft, ChevronRight } from "lucide-react"
-// import { createClient } from "@/lib/supabase/client"
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
-import { debounce } from "@/lib/debounce"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
-import { getPeopleAction } from "@/app/admin/actions/entities" // Add import for people action
+import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.3" // Added: navigation buttons, fixed save without close
+const VERSION = "v6.4" // Fixed: instant canvas clear on image change, show ✓ for verified
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -49,6 +47,7 @@ export function FaceTaggingDialog({
   const [selectedFaceIndex, setSelectedFaceIndex] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [detecting, setDetecting] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [showAddPerson, setShowAddPerson] = useState(false)
   const [imageFitMode, setImageFitMode] = useState<"contain" | "cover">("contain")
   const [redetecting, setRedetecting] = useState(false)
@@ -58,16 +57,9 @@ export function FaceTaggingDialog({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const prevImageIdRef = useRef<string | null>(null)
 
-  const debouncedSave = useMemo(
-    () =>
-      debounce((faces: TaggedFace[]) => {
-        console.log(`[${VERSION}] Debounced save triggered for`, faces.length, "faces")
-      }, 500),
-    [],
-  )
-
-  const getDisplayFileName = () => {
+  const getDisplayFileName = useCallback(() => {
     try {
       const rawFileName = imageUrl.split("/").pop()?.split("?")[0] || "unknown"
       const decodedFileName = decodeURIComponent(rawFileName)
@@ -80,10 +72,10 @@ export function FaceTaggingDialog({
     } catch (error) {
       return imageUrl.split("/").pop()?.split("?")[0] || "unknown"
     }
-  }
+  }, [imageUrl])
 
   const displayFileName = getDisplayFileName()
-  const fullFileName = (() => {
+  const fullFileName = useMemo(() => {
     try {
       const rawFileName = imageUrl.split("/").pop()?.split("?")[0] || "unknown"
       const decodedFileName = decodeURIComponent(rawFileName)
@@ -91,10 +83,35 @@ export function FaceTaggingDialog({
     } catch {
       return imageUrl.split("/").pop()?.split("?")[0] || "unknown"
     }
-  })()
+  }, [imageUrl])
 
+  // Clear canvas immediately
+  const clearCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+  }, [])
+
+  // Reset state when imageId changes - INSTANT, before async loading
   useEffect(() => {
-    if (open) {
+    if (imageId !== prevImageIdRef.current) {
+      console.log(`[${VERSION}] Image changed: ${prevImageIdRef.current} -> ${imageId}, clearing state immediately`)
+      prevImageIdRef.current = imageId
+      
+      // Instant state reset
+      setTaggedFaces([])
+      setDetailedFaces([])
+      setSelectedFaceIndex(null)
+      setHasRedetectedData(false)
+      clearCanvas()
+    }
+  }, [imageId, clearCanvas])
+
+  // Load data when dialog opens or imageId changes
+  useEffect(() => {
+    if (open && imageId) {
       loadPeopleAndExistingFaces()
     }
   }, [open, imageId])
@@ -113,7 +130,8 @@ export function FaceTaggingDialog({
   }
 
   async function loadPeopleAndExistingFaces() {
-    console.log(`[${VERSION}] loadPeopleAndExistingFaces called`)
+    console.log(`[${VERSION}] loadPeopleAndExistingFaces called for ${imageId}`)
+    setLoading(true)
 
     await loadPeople()
 
@@ -123,6 +141,7 @@ export function FaceTaggingDialog({
       if (!result.success || !result.faces) {
         console.log(`[${VERSION}] No faces returned from process-photo`)
         setTaggedFaces([])
+        setLoading(false)
         return
       }
 
@@ -134,7 +153,7 @@ export function FaceTaggingDialog({
           boundingBox: f.insightface_bbox,
           confidence: f.insightface_confidence,
           blur_score: 0,
-          embedding: null, // Backend manages embeddings
+          embedding: null,
         },
         personId: f.person_id,
         personName: f.people?.real_name || f.people?.telegram_name || null,
@@ -142,12 +161,12 @@ export function FaceTaggingDialog({
         verified: f.verified,
       }))
 
-      console.log(`[${VERSION}] Tagged faces:`, tagged)
-
       setTaggedFaces(tagged)
-      drawFaces(tagged)
+      // drawFaces will be called by onLoad of the image
     } catch (error) {
       console.error(`[${VERSION}] Error loading faces:`, error)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -166,7 +185,6 @@ export function FaceTaggingDialog({
 
       console.log(`[${VERSION}] Redetect successful, found ${result.faces.length} faces`)
 
-      // Map to TaggedFace format
       const tagged: TaggedFace[] = result.faces.map((f: any) => ({
         id: f.id,
         face: {
@@ -194,7 +212,7 @@ export function FaceTaggingDialog({
       }))
 
       setTaggedFaces(tagged)
-      setDetailedFaces(detailed) // Set detailed faces for metrics dialog
+      setDetailedFaces(detailed)
       drawFaces(tagged)
       setHasRedetectedData(true)
     } catch (error) {
@@ -219,6 +237,17 @@ export function FaceTaggingDialog({
     return colors[index % colors.length]
   }
 
+  // Get display text for confidence/verification
+  function getConfidenceDisplay(face: TaggedFace): string {
+    if (face.verified) {
+      return " ✓"
+    }
+    if (face.recognitionConfidence) {
+      return ` (${Math.round(face.recognitionConfidence * 100)}%)`
+    }
+    return ""
+  }
+
   function drawFaces(faces: TaggedFace[]) {
     const canvas = canvasRef.current
     const image = imageRef.current
@@ -238,16 +267,17 @@ export function FaceTaggingDialog({
       if (!boundingBox) return
 
       const isSelected = index === selectedFaceIndex
-
       const faceColor = getFaceColor(index)
-      ctx.strokeStyle = isSelected ? "#3b82f6" : faceColor
+      
+      // Use green border for verified faces
+      const borderColor = taggedFace.verified ? "#22c55e" : faceColor
+      
+      ctx.strokeStyle = isSelected ? "#3b82f6" : borderColor
       ctx.lineWidth = isSelected ? 8 : 4
       ctx.strokeRect(boundingBox.x, boundingBox.y, boundingBox.width, boundingBox.height)
 
       if (taggedFace.personName) {
-        const confidenceText = taggedFace.recognitionConfidence
-          ? ` (${Math.round(taggedFace.recognitionConfidence * 100)}%)`
-          : ""
+        const confidenceText = getConfidenceDisplay(taggedFace)
         const label = `${taggedFace.personName}${confidenceText}`
 
         ctx.font = "bold 20px sans-serif"
@@ -258,7 +288,9 @@ export function FaceTaggingDialog({
         const labelX = boundingBox.x
         const labelY = boundingBox.y - labelHeight - 5
 
-        ctx.fillStyle = isSelected ? "#3b82f6" : faceColor
+        // Use green background for verified
+        const bgColor = taggedFace.verified ? "#22c55e" : (isSelected ? "#3b82f6" : faceColor)
+        ctx.fillStyle = bgColor
         ctx.fillRect(labelX, labelY, textWidth + padding * 2, labelHeight)
 
         ctx.fillStyle = "#ffffff"
@@ -286,11 +318,8 @@ export function FaceTaggingDialog({
     }
     setTaggedFaces(updated)
     drawFaces(updated)
-
-    debouncedSave(updated)
   }
 
-  // Handler for quick assign from details dialog
   function handleAssignFromDetails(faceIndex: number, personId: string, personName: string) {
     console.log(`[${VERSION}] Quick assign: face ${faceIndex} -> ${personName} (${personId})`)
     
@@ -305,7 +334,6 @@ export function FaceTaggingDialog({
       setTaggedFaces(updated)
       drawFaces(updated)
       
-      // Also update detailedFaces to reflect the assignment
       const updatedDetailed = [...detailedFaces]
       if (faceIndex < updatedDetailed.length) {
         updatedDetailed[faceIndex] = {
@@ -322,15 +350,10 @@ export function FaceTaggingDialog({
     setTaggedFaces(updated)
     setSelectedFaceIndex(null)
     drawFaces(updated)
-
-    debouncedSave(updated)
   }
 
   async function handleSaveWithoutClosing() {
-    if (saving) {
-      console.log(`[${VERSION}] Save already in progress`)
-      return
-    }
+    if (saving) return
 
     setSaving(true)
 
@@ -351,17 +374,23 @@ export function FaceTaggingDialog({
         return
       }
 
-      // Mark photo as processed after successful save
       await markPhotoAsProcessedAction(imageId)
-      console.log(`[${VERSION}] ✓ Photo marked as processed`)
+      console.log(`[${VERSION}] ✓ Saved successfully`)
 
-      console.log(`[${VERSION}] ✓ All faces saved successfully! Verified: ${result.verified}`)
+      // Update local state to reflect verification
+      setTaggedFaces(prev => prev.map(face => ({
+        ...face,
+        verified: face.personId ? true : face.verified
+      })))
       
-      // Call onSave to update badges in background
+      // Redraw with verified status
+      drawFaces(taggedFaces.map(face => ({
+        ...face,
+        verified: face.personId ? true : face.verified
+      })))
+      
       onSave?.()
-      
       setSaving(false)
-      // Do NOT close dialog
     } catch (error) {
       console.error(`[${VERSION}] Error saving faces:`, error)
       alert(`Ошибка: ${error instanceof Error ? error.message : String(error)}`)
@@ -370,10 +399,7 @@ export function FaceTaggingDialog({
   }
 
   async function handleSave() {
-    if (saving) {
-      console.log(`[${VERSION}] Save already in progress`)
-      return
-    }
+    if (saving) return
 
     setSaving(true)
 
@@ -394,11 +420,9 @@ export function FaceTaggingDialog({
         return
       }
 
-      // Mark photo as processed after successful save
       await markPhotoAsProcessedAction(imageId)
-      console.log(`[${VERSION}] ✓ Photo marked as processed`)
-
-      console.log(`[${VERSION}] ✓ All faces saved successfully! Verified: ${result.verified}`)
+      console.log(`[${VERSION}] ✓ Saved successfully`)
+      
       setSaving(false)
       onSave?.()
       onOpenChange(false)
@@ -409,11 +433,12 @@ export function FaceTaggingDialog({
     }
   }
 
+  // Redraw when imageFitMode changes
   useEffect(() => {
     if (taggedFaces.length > 0 && imageRef.current?.complete) {
       drawFaces(taggedFaces)
     }
-  }, [imageFitMode])
+  }, [imageFitMode, selectedFaceIndex])
 
   const hasUnassignedFaces = taggedFaces.some((face) => !face.personId)
   const canSave = !saving
@@ -428,7 +453,6 @@ export function FaceTaggingDialog({
           </DialogDescription>
           <div className="absolute top-4 right-12 flex gap-2">
             <TooltipProvider>
-              {/* Previous button */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span>
@@ -448,7 +472,6 @@ export function FaceTaggingDialog({
                 </TooltipContent>
               </Tooltip>
 
-              {/* Save without closing button */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span>
@@ -471,7 +494,6 @@ export function FaceTaggingDialog({
                 </TooltipContent>
               </Tooltip>
 
-              {/* Next button */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span>
@@ -491,7 +513,6 @@ export function FaceTaggingDialog({
                 </TooltipContent>
               </Tooltip>
 
-              {/* Fit to window button */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -508,7 +529,6 @@ export function FaceTaggingDialog({
                 </TooltipContent>
               </Tooltip>
 
-              {/* Scale by long side button */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -529,10 +549,10 @@ export function FaceTaggingDialog({
         </DialogHeader>
 
         <div className="flex-1 flex flex-col gap-4 min-h-0">
-          {detecting ? (
+          {detecting || loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="ml-2">Обнаружение лиц с помощью InsightFace...</span>
+              <span className="ml-2">{detecting ? "Обнаружение лиц..." : "Загрузка..."}</span>
             </div>
           ) : (
             <>
@@ -547,6 +567,7 @@ export function FaceTaggingDialog({
                   className="hidden"
                   crossOrigin="anonymous"
                   onLoad={() => {
+                    console.log(`[${VERSION}] Image loaded, drawing ${taggedFaces.length} faces`)
                     drawFaces(taggedFaces)
                   }}
                 />
@@ -560,7 +581,6 @@ export function FaceTaggingDialog({
                     if (!canvas) return
 
                     const rect = canvas.getBoundingClientRect()
-
                     const { renderedWidth, renderedHeight, offsetX, offsetY } = getRenderedImageDimensions(
                       canvas,
                       imageFitMode,
@@ -606,13 +626,13 @@ export function FaceTaggingDialog({
                       if (!taggedFace.personName) return null
                       const faceColor = getFaceColor(index)
                       const isSelected = index === selectedFaceIndex
-                      const confidenceText = taggedFace.recognitionConfidence
-                        ? ` (${Math.round(taggedFace.recognitionConfidence * 100)}%)`
-                        : ""
+                      const confidenceText = getConfidenceDisplay(taggedFace)
+                      // Green background for verified
+                      const bgColor = taggedFace.verified ? "#22c55e" : faceColor
                       return (
                         <Badge
                           key={index}
-                          style={{ backgroundColor: faceColor, color: "#ffffff" }}
+                          style={{ backgroundColor: bgColor, color: "#ffffff" }}
                           className={`text-sm px-3 py-1.5 cursor-pointer transition-all ${
                             isSelected ? "ring-2 ring-offset-2 ring-blue-500 scale-110" : "hover:scale-105"
                           }`}
@@ -626,7 +646,7 @@ export function FaceTaggingDialog({
                   </div>
                 )}
 
-                {selectedFaceIndex !== null && (
+                {selectedFaceIndex !== null && taggedFaces[selectedFaceIndex] && (
                   <div className="flex items-center gap-2 ml-auto">
                     <Select value={taggedFaces[selectedFaceIndex].personId || ""} onValueChange={handlePersonSelect}>
                       <SelectTrigger className="w-[250px]">
@@ -641,14 +661,17 @@ export function FaceTaggingDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    {taggedFaces[selectedFaceIndex].personId &&
-                      taggedFaces[selectedFaceIndex].recognitionConfidence !== null &&
-                      !isNaN(taggedFaces[selectedFaceIndex].recognitionConfidence!) &&
-                      taggedFaces[selectedFaceIndex].recognitionConfidence! > 0 && (
-                        <Badge variant="secondary" className="whitespace-nowrap">
-                          {Math.round(taggedFaces[selectedFaceIndex].recognitionConfidence! * 100)}%
-                        </Badge>
-                      )}
+                    {taggedFaces[selectedFaceIndex].personId && (
+                      <Badge 
+                        variant="secondary" 
+                        className={`whitespace-nowrap ${taggedFaces[selectedFaceIndex].verified ? "bg-green-500 text-white" : ""}`}
+                      >
+                        {taggedFaces[selectedFaceIndex].verified 
+                          ? "✓ Подтверждено" 
+                          : `${Math.round((taggedFaces[selectedFaceIndex].recognitionConfidence || 0) * 100)}%`
+                        }
+                      </Badge>
+                    )}
                     <Button variant="destructive" size="icon" onClick={() => handleRemoveFace(selectedFaceIndex)}>
                       <X className="h-4 w-4" />
                     </Button>
