@@ -151,28 +151,31 @@ const GalleryImageCard = memo(function GalleryImageCard({
   const totalCount = faces?.length || 0
 
   // Calculate object position only when face data is loaded
-  // This prevents the "jump" effect when faces load after images
   const bboxes = photoFacesLoaded ? (faces?.map((f) => {
     if (!f.bbox) return null
     return [f.bbox.x, f.bbox.y, f.bbox.x + f.bbox.width, f.bbox.y + f.bbox.height]
   }).filter((b): b is number[] => b !== null) || []) : []
 
-  // Use center position until face data is loaded to prevent jumping
-  const objectPosition = photoFacesLoaded 
-    ? calculateFacePosition(image.width, image.height, bboxes)
-    : "center"
+  // Calculate position - always compute it, but image will be hidden until loaded
+  const objectPosition = calculateFacePosition(image.width, image.height, bboxes)
 
   return (
     <div
       className="group relative overflow-hidden rounded-lg border cursor-pointer"
       onClick={() => onTag(image.id, image.image_url)}
     >
-      <div className="relative aspect-square">
+      <div className="relative aspect-square bg-muted">
+        {/* Skeleton placeholder while face data loads */}
+        {!photoFacesLoaded && (
+          <div className="absolute inset-0 bg-muted animate-pulse z-5" />
+        )}
         <Image
           src={image.image_url || "/placeholder.svg"}
           alt={image.original_filename}
           fill
-          className="object-cover transition-[object-position] duration-300"
+          className={`object-cover transition-opacity duration-300 ${
+            photoFacesLoaded ? "opacity-100" : "opacity-0"
+          }`}
           sizes="250px"
           style={{ objectPosition }}
         />
@@ -223,17 +226,17 @@ const GalleryImageCard = memo(function GalleryImageCard({
             NFD
           </div>
         )}
-        {hasDetected && hasUnknown && !isFullyRecognized && !hasVerified && (
+        {photoFacesLoaded && hasDetected && hasUnknown && !isFullyRecognized && !hasVerified && (
           <div className="absolute left-2 bottom-2 bg-orange-500 text-white rounded px-2 py-1 text-xs font-semibold shadow-lg z-10">
             {unknownCount}/{recognizedCount}/{totalCount}
           </div>
         )}
-        {confidence !== null && !hasUnknown && !hasVerified && (
+        {photoFacesLoaded && confidence !== null && !hasUnknown && !hasVerified && (
           <div className="absolute left-2 bottom-2 bg-blue-500 text-white rounded px-2 py-1 text-xs font-semibold shadow-lg z-10">
             {confidence}%
           </div>
         )}
-        {hasVerified && (
+        {photoFacesLoaded && hasVerified && (
           <div className="absolute left-2 bottom-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm shadow-lg z-10">
             ✓
           </div>
@@ -301,35 +304,35 @@ export function GalleryImagesManager({
   async function loadAllData() {
     setLoading(true)
     
-    // Start loading images
+    // Start all requests in parallel
     const imagesPromise = getGalleryImagesAction(galleryId)
     const statsPromise = getGalleryFaceRecognitionStatsAction(galleryId)
     
-    // Wait for images first
+    // Wait for images first to show layout
     const imagesResult = await imagesPromise
     if (imagesResult.success && imagesResult.data) {
       setImages(imagesResult.data)
+      setLoading(false) // Show layout immediately
       
-      // NOW start loading faces (needs photo IDs)
+      // Load faces in parallel (needs photo IDs)
       const photoIds = imagesResult.data.map((img: GalleryImage) => img.id)
       if (photoIds.length > 0) {
-        // Don't await - let it load in background
-        loadPhotoFacesForIds(photoIds)
+        // Await this - images will fade in after
+        await loadPhotoFacesForIds(photoIds)
       } else {
         setPhotoFacesLoaded(true)
       }
     } else {
       console.error("[GalleryImagesManager] Error loading images:", imagesResult.error)
       setPhotoFacesLoaded(true)
+      setLoading(false)
     }
     
-    // Stats can load in parallel
+    // Stats can load in parallel (already started)
     const statsResult = await statsPromise
     if (statsResult.success && statsResult.data) {
       setRecognitionStats(statsResult.data)
     }
-    
-    setLoading(false)
   }
 
   async function loadImages() {
