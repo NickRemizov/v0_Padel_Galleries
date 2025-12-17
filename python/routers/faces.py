@@ -90,10 +90,7 @@ async def get_batch_photo_faces(
         # OPTIMIZATION: Select only fields needed for badges and preview positioning
         # Excludes insightface_descriptor which is 512 floats (~2KB) per face
         result = supabase_db.client.table("photo_faces") \
-            .select(
-                "id, photo_id, person_id, verified, confidence, recognition_confidence, "
-                "insightface_bbox, people(id, real_name, telegram_name)"
-            ) \
+            .select("id,photo_id,person_id,verified,confidence,recognition_confidence,insightface_bbox,people(id,real_name,telegram_name)") \
             .in_("photo_id", request.photo_ids) \
             .execute()
         
@@ -383,7 +380,7 @@ async def batch_verify_faces(
         
         return ApiResponse.ok({
             "verified": all_have_person_id,
-            "index_rebuilt": index_rebuilt  # IMPORTANT: frontend uses this to refresh badges
+            "index_rebuilt": index_rebuilt
         })
         
     except Exception as e:
