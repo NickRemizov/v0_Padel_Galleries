@@ -302,8 +302,9 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     }
   }
 
-  // FIX: Reload photos after tagging dialog saves
-  async function handleTaggingSave() {
+  // Reload photos after tagging dialog saves
+  // Parameters are optional - we just reload the full list here
+  async function handleTaggingSave(_imageId?: string, _faces?: any[]) {
     console.log("[PersonGallery] Tagging dialog saved, reloading photos...")
     await loadPhotos()
   }
