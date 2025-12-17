@@ -35,10 +35,9 @@ import {
   updateGallerySortOrderAction,
   getGalleryFaceRecognitionStatsAction,
   getBatchPhotoFacesAction,
-  getGalleryImagesAction, // Added import for new action
+  getGalleryImagesAction,
 } from "@/app/admin/actions"
 import type { GalleryImage } from "@/lib/types"
-// import { createClient } from "@/lib/supabase/client" // Removed Supabase client import - now using FastAPI
 import { FaceTaggingDialog } from "./face-tagging-dialog"
 import { AutoRecognitionDialog } from "./auto-recognition-dialog"
 import { UnknownFacesReviewDialog } from "./unknown-faces-review-dialog"
@@ -75,11 +74,6 @@ function formatShortDate(dateString: string | null | undefined): string {
 
 /**
  * Calculate object-position for image preview based on face bounding boxes
- * Centers the preview on detected faces
- * @param imageWidth - Original image width in pixels
- * @param imageHeight - Original image height in pixels
- * @param bboxes - Array of face bounding boxes in [x1, y1, x2, y2] format
- * @returns CSS object-position value (e.g., "50% 30%" or "center")
  */
 function calculateFacePosition(
   imageWidth: number | null,
@@ -155,10 +149,8 @@ const GalleryImageCard = memo(function GalleryImageCard({
   const recognizedCount = faces?.filter((f) => f.person_id !== null).length || 0
   const totalCount = faces?.length || 0
 
-  // Calculate object-position for centering on faces
   const bboxes = faces?.map((f) => {
     if (!f.bbox) return null
-    // Convert {x, y, width, height} to [x1, y1, x2, y2]
     return [f.bbox.x, f.bbox.y, f.bbox.x + f.bbox.width, f.bbox.y + f.bbox.height]
   }).filter((b): b is number[] => b !== null) || []
 
@@ -273,7 +265,7 @@ export function GalleryImagesManager({
     Record<string, { total: number; recognized: number; fullyRecognized: boolean }>
   >({})
   const [photoFacesMap, setPhotoFacesMap] = useState<Record<string, FaceData[]>>({})
-  const [photoFacesLoaded, setPhotoFacesLoaded] = useState(false) // Add photoFacesLoaded state to track when data is ready
+  const [photoFacesLoaded, setPhotoFacesLoaded] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set())
@@ -308,7 +300,7 @@ export function GalleryImagesManager({
     if (result.success && result.data) {
       setImages(result.data)
     } else if (result.error) {
-      console.error("[v0] Error loading images:", result.error)
+      console.error("[GalleryImagesManager] Error loading images:", result.error)
     }
     setLoading(false)
   }
@@ -321,35 +313,15 @@ export function GalleryImagesManager({
   }
 
   async function loadPhotoFaces() {
-    console.log("[v0] [GalleryImagesManager] loadPhotoFaces START")
-    console.log("[v0] [GalleryImagesManager] images count:", images.length)
+    console.log("[GalleryImagesManager] loadPhotoFaces START, images:", images.length)
 
     const photoIds = images.map((img) => img.id)
-
-    console.log("[v0] [GalleryImagesManager] Calling getBatchPhotoFacesAction with photoIds:", photoIds)
-
     const result = await getBatchPhotoFacesAction(photoIds)
-
-    console.log("[v0] [GalleryImagesManager] getBatchPhotoFacesAction result:", {
-      success: result.success,
-      successType: typeof result.success,
-      dataLength: result.data?.length,
-      error: result.error,
-      fullResult: result,
-    })
 
     if (result.success && result.data) {
       const facesMap: Record<string, FaceData[]> = {}
 
       for (const face of result.data) {
-        console.log("[v0] [GalleryImagesManager] Face from DB:", {
-          photo_id: face.photo_id,
-          person_id: face.person_id,
-          recognition_confidence: face.recognition_confidence,
-          verified: face.verified,
-          insightface_bbox: face.insightface_bbox,
-        })
-
         if (!facesMap[face.photo_id]) {
           facesMap[face.photo_id] = []
         }
@@ -361,95 +333,40 @@ export function GalleryImagesManager({
         })
       }
 
-      console.log("[v0] [GalleryImagesManager] Loaded photo faces map:", {
-        photosCount: Object.keys(facesMap).length,
-        photoIds: Object.keys(facesMap),
-      })
-
+      console.log("[GalleryImagesManager] Loaded faces for", Object.keys(facesMap).length, "photos")
       setPhotoFacesMap(facesMap)
-      setPhotoFacesLoaded(true) // Set photoFacesLoaded to true when data is ready
+      setPhotoFacesLoaded(true)
     } else {
-      console.log("[v0] [GalleryImagesManager] No faces data or error:", {
-        success: result.success,
-        error: result.error,
-        hasData: !!result.data,
-      })
-      setPhotoFacesLoaded(true) // Set photoFacesLoaded to true even on error/empty
+      console.log("[GalleryImagesManager] No faces data or error:", result.error)
+      setPhotoFacesLoaded(true)
     }
   }
 
-  function getPhotoConfidence(imageId: string): number | null {
-    const faces = photoFacesMap[imageId]
-
-    if (!faces || faces.length === 0) return null
-
-    const nonVerifiedFaces = faces.filter((face) => !face.verified && face.person_id !== null)
-
-    if (nonVerifiedFaces.length === 0) return null
-
-    const avgConfidence =
-      nonVerifiedFaces.reduce((sum, face) => sum + (face.confidence || 0), 0) / nonVerifiedFaces.length
-    return Math.round(avgConfidence * 100)
+  // Background refresh - does NOT block UI
+  function refreshBadgesInBackground() {
+    console.log("[GalleryImagesManager] Starting background refresh...")
+    // Fire and forget - no await
+    loadRecognitionStats()
+    loadPhotoFaces()
   }
 
   function hasVerifiedFaces(imageId: string): boolean {
     const faces = photoFacesMap[imageId]
     if (!faces || faces.length === 0) return false
-
-    const hasVerified = faces.every((face) => face.verified === true)
-    return hasVerified
-  }
-
-  function hasDetectedFaces(imageId: string): boolean {
-    const faces = photoFacesMap[imageId]
-    return faces && faces.length > 0
-  }
-
-  function hasUnknownFaces(imageId: string): boolean {
-    const faces = photoFacesMap[imageId]
-    if (!faces || faces.length === 0) return false
-
-    return faces.some((face) => face.person_id === null)
-  }
-
-  /**
-   * Check if photo is fully verified (all faces have verified=true)
-   */
-  function isPhotoFullyVerified(imageId: string): boolean {
-    const faces = photoFacesMap[imageId]
-    // No faces = not verified
-    if (!faces || faces.length === 0) return false
-    // All faces must be verified
     return faces.every((face) => face.verified === true)
   }
 
-  /**
-   * Check if photo should be shown when hideFullyVerified is enabled
-   * Show if:
-   * - Has at least one face with confidence < 1 (not verified)
-   * - Has unrecognized faces (person_id === null)
-   * - Is NFD (processed but no faces)
-   * - Not processed yet
-   */
   function shouldShowPhoto(image: GalleryImage): boolean {
     if (!hideFullyVerified) return true
 
     const faces = photoFacesMap[image.id]
     const hasBeenProcessed = image.has_been_processed || false
 
-    // Not processed yet - show
     if (!hasBeenProcessed) return true
-
-    // NFD - show
     if (hasBeenProcessed && (!faces || faces.length === 0)) return true
-
-    // Has unknown faces - show
     if (faces?.some((face) => face.person_id === null)) return true
-
-    // Has at least one non-verified face - show
     if (faces?.some((face) => !face.verified)) return true
 
-    // All faces verified - hide
     return false
   }
 
@@ -469,7 +386,6 @@ export function GalleryImagesManager({
         sorted = imagesCopy
     }
 
-    // Apply hide verified filter only when data is loaded
     if (hideFullyVerified && photoFacesLoaded) {
       return sorted.filter(shouldShowPhoto)
     }
@@ -477,19 +393,16 @@ export function GalleryImagesManager({
     return sorted
   }, [images, sortBy, hideFullyVerified, photoFacesMap, photoFacesLoaded])
 
-  // Count how many photos are hidden
   const hiddenCount = useMemo(() => {
     if (!hideFullyVerified || !photoFacesLoaded) return 0
     return images.filter((img) => !shouldShowPhoto(img)).length
   }, [images, hideFullyVerified, photoFacesMap, photoFacesLoaded])
 
-  // Get current image index in sortedImages for navigation
   const currentImageIndex = useMemo(() => {
     if (!taggingImage) return -1
     return sortedImages.findIndex((img) => img.id === taggingImage.id)
   }, [taggingImage, sortedImages])
 
-  // Navigation handlers
   const handlePreviousImage = useCallback(() => {
     if (currentImageIndex > 0) {
       const prevImage = sortedImages[currentImageIndex - 1]
@@ -542,7 +455,6 @@ export function GalleryImagesManager({
     setIsDragging(false)
 
     const files = Array.from(e.dataTransfer.files).filter((file) => file.type.startsWith("image/"))
-
     if (files.length === 0) return
 
     await processFiles(files)
@@ -573,7 +485,6 @@ export function GalleryImagesManager({
 
         try {
           const dimensions = await getImageDimensions(file)
-
           const formData = new FormData()
           formData.append("file", file)
 
@@ -584,11 +495,9 @@ export function GalleryImagesManager({
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}))
-
             if (errorData.code === "QUOTA_EXCEEDED") {
               throw new Error(errorData.error || "Квота хранилища исчерпана")
             }
-
             throw new Error(errorData.error || `Ошибка загрузки ${file.name}`)
           }
 
@@ -605,7 +514,7 @@ export function GalleryImagesManager({
           uploadResults.success.push(file)
         } catch (uploadError) {
           const errorMessage = uploadError instanceof Error ? uploadError.message : "Неизвестная ошибка"
-          console.error(`[v0.9.0] Failed to upload ${file.name}:`, errorMessage)
+          console.error(`Failed to upload ${file.name}:`, errorMessage)
           uploadResults.failed.push({ file, error: errorMessage })
         }
       }
@@ -619,7 +528,6 @@ export function GalleryImagesManager({
 
       if (uploadedImages.length > 0) {
         const result = await addGalleryImagesAction(galleryId, uploadedImages)
-
         if (result.success) {
           await loadImages()
           await loadPhotoFaces()
@@ -631,7 +539,7 @@ export function GalleryImagesManager({
         alert("Не удалось загрузить ни одного файла")
       }
     } catch (error) {
-      console.error("[v0.9.0] Error uploading images:", error)
+      console.error("Error uploading images:", error)
       const errorMessage = error instanceof Error ? error.message : "Ошибка загрузки изображений"
       alert(errorMessage)
     } finally {
@@ -665,17 +573,6 @@ export function GalleryImagesManager({
       action: "delete",
       count: images.length,
     })
-  }
-
-  async function handleDeleteSelected() {
-    if (selectedPhotos.size > 0) {
-      for (const photoId of selectedPhotos) {
-        await deleteGalleryImageAction(photoId, galleryId)
-      }
-      setSelectedPhotos(new Set())
-    }
-    await loadImages()
-    await loadPhotoFaces()
   }
 
   async function confirmBatchDelete() {
@@ -743,7 +640,6 @@ export function GalleryImagesManager({
 
   const allPhotosVerified = useMemo(() => {
     if (images.length === 0) return false
-
     return images.every((image) => {
       const stats = recognitionStats[image.id]
       const hasVerified = hasVerifiedFaces(image.id)
@@ -768,12 +664,9 @@ export function GalleryImagesManager({
   const handleTagImage = (imageId: string, imageUrl: string) => {
     const image = images.find((img) => img.id === imageId)
     const hasBeenProcessed = image?.has_been_processed || false
-    console.log("[v4.7] Opening FaceTaggingDialog for image:", imageId, "hasBeenProcessed:", hasBeenProcessed)
-
     setTaggingImage({ id: imageId, url: imageUrl, hasBeenProcessed })
   }
 
-  // Format gallery title with date
   const displayTitle = shootDate ? `${galleryTitle} ${formatShortDate(shootDate)}` : galleryTitle
 
   return (
@@ -1021,18 +914,17 @@ export function GalleryImagesManager({
           open={!!taggingImage}
           onOpenChange={async (open) => {
             if (!open) {
-              console.log("[v4.9] GalleryImagesManager: FaceTaggingDialog closed")
+              console.log("[GalleryImagesManager] FaceTaggingDialog closed")
               setTaggingImage(null)
-              // Всегда обновляем бейджи при закрытии
+              // Full refresh on close (blocking is OK here)
               await loadRecognitionStats()
               await loadPhotoFaces()
             }
           }}
-          onSave={async () => {
-            console.log("[v4.9] GalleryImagesManager: FaceTaggingDialog onSave called (background update)")
-            // Обновляем бейджи в фоне при сохранении без закрытия
-            await loadRecognitionStats()
-            await loadPhotoFaces()
+          onSave={() => {
+            // Background refresh - NO await, NO blocking!
+            console.log("[GalleryImagesManager] onSave - background refresh")
+            refreshBadgesInBackground()
           }}
           onPrevious={handlePreviousImage}
           onNext={handleNextImage}
@@ -1062,16 +954,12 @@ export function GalleryImagesManager({
           onOpenChange={(open) => {
             setShowUnknownFaces(open)
             if (!open) {
-              // Всегда обновляем при закрытии (в т.ч. досрочном)
               loadRecognitionStats()
               loadPhotoFaces()
             }
           }}
           galleryId={galleryId}
-          onComplete={() => {
-            // onComplete вызывается когда все кластеры обработаны
-            // Дополнительное обновление уже не нужно - сделано в onOpenChange
-          }}
+          onComplete={() => {}}
         />
       )}
     </>
