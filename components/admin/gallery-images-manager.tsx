@@ -32,6 +32,7 @@ import {
   addGalleryImagesAction,
   deleteGalleryImageAction,
   deleteAllGalleryImagesAction,
+  batchDeleteGalleryImagesAction,
   updateGallerySortOrderAction,
   getGalleryFaceRecognitionStatsAction,
   getBatchPhotoFacesAction,
@@ -149,12 +150,17 @@ const GalleryImageCard = memo(function GalleryImageCard({
   const recognizedCount = faces?.filter((f) => f.person_id !== null).length || 0
   const totalCount = faces?.length || 0
 
-  const bboxes = faces?.map((f) => {
+  // Calculate object position only when face data is loaded
+  // This prevents the "jump" effect when faces load after images
+  const bboxes = photoFacesLoaded ? (faces?.map((f) => {
     if (!f.bbox) return null
     return [f.bbox.x, f.bbox.y, f.bbox.x + f.bbox.width, f.bbox.y + f.bbox.height]
-  }).filter((b): b is number[] => b !== null) || []
+  }).filter((b): b is number[] => b !== null) || []) : []
 
-  const objectPosition = calculateFacePosition(image.width, image.height, bboxes)
+  // Use center position until face data is loaded to prevent jumping
+  const objectPosition = photoFacesLoaded 
+    ? calculateFacePosition(image.width, image.height, bboxes)
+    : "center"
 
   return (
     <div
@@ -166,7 +172,7 @@ const GalleryImageCard = memo(function GalleryImageCard({
           src={image.image_url || "/placeholder.svg"}
           alt={image.original_filename}
           fill
-          className="object-cover"
+          className="object-cover transition-[object-position] duration-300"
           sizes="250px"
           style={{ objectPosition }}
         />
@@ -269,6 +275,7 @@ export function GalleryImagesManager({
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set())
+  const [isDeleting, setIsDeleting] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     action: "delete" | null
@@ -589,28 +596,43 @@ export function GalleryImagesManager({
     setConfirmDialog({
       open: true,
       action: "delete",
-      count: images.length,
+      count: selectedPhotos.size > 0 ? selectedPhotos.size : images.length,
     })
   }
 
   async function confirmBatchDelete() {
-    if (selectedPhotos.size > 0) {
-      for (const photoId of selectedPhotos) {
-        const result = await deleteGalleryImageAction(photoId, galleryId)
+    setIsDeleting(true)
+    
+    try {
+      if (selectedPhotos.size > 0) {
+        // Use batch delete for selected photos - single request!
+        const imageIds = Array.from(selectedPhotos)
+        console.log(`[GalleryImagesManager] Batch deleting ${imageIds.length} photos`)
+        
+        const result = await batchDeleteGalleryImagesAction(imageIds, galleryId)
+        
         if (result.error) {
-          console.error("Failed to delete photo:", result.error)
+          console.error("Failed to batch delete photos:", result.error)
+          alert(`Ошибка удаления: ${result.error}`)
+        } else {
+          console.log(`[GalleryImagesManager] Deleted ${result.deleted_count} photos, index_rebuilt: ${result.index_rebuilt}`)
+        }
+        
+        setSelectedPhotos(new Set())
+      } else {
+        // Delete all photos
+        const result = await deleteAllGalleryImagesAction(galleryId)
+        if (result.error) {
+          console.error("Failed to delete all photos:", result.error)
+          alert(`Ошибка удаления: ${result.error}`)
         }
       }
-      setSelectedPhotos(new Set())
-    } else {
-      const result = await deleteAllGalleryImagesAction(galleryId)
-      if (result.error) {
-        console.error("Failed to delete all photos:", result.error)
-      }
+    } finally {
+      setIsDeleting(false)
+      setConfirmDialog({ open: false, action: null, count: 0 })
+      await loadImages()
+      await loadPhotoFaces()
     }
-    setConfirmDialog({ open: false, action: null, count: 0 })
-    await loadImages()
-    await loadPhotoFaces()
   }
 
   async function handleSortChange(value: string) {
@@ -790,11 +812,15 @@ export function GalleryImagesManager({
                 <Button
                   variant="destructive"
                   onClick={handleDeleteAll}
-                  disabled={uploading}
+                  disabled={uploading || isDeleting}
                   className="min-w-[180px] justify-start"
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  {selectedPhotos.size > 0 ? `Удалить ${selectedPhotos.size} фото` : "Удалить все фото"}
+                  {isDeleting 
+                    ? "Удаление..." 
+                    : selectedPhotos.size > 0 
+                      ? `Удалить ${selectedPhotos.size} фото` 
+                      : "Удалить все фото"}
                 </Button>
               )}
               {selectedPhotos.size > 0 && (
@@ -905,7 +931,7 @@ export function GalleryImagesManager({
             <AlertDialogDescription>
               {selectedPhotos.size > 0 ? (
                 <>
-                  Вы действительно хотите удалить выбранные фотографии из галереи{" "}
+                  Вы действительно хотите удалить выбранные фотографии ({selectedPhotos.size} шт.) из галереи{" "}
                   <span className="font-semibold">{galleryTitle}</span>? Это действие невозможно отменить!
                 </>
               ) : (
@@ -918,8 +944,10 @@ export function GalleryImagesManager({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelConfirmation}>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmAction}>Подтвердить</AlertDialogAction>
+            <AlertDialogCancel onClick={handleCancelConfirmation} disabled={isDeleting}>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmAction} disabled={isDeleting}>
+              {isDeleting ? "Удаление..." : "Подтвердить"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
