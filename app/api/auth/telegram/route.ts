@@ -2,43 +2,32 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { verifyTelegramAuth, isTelegramAuthDataValid } from "@/lib/telegram-auth"
 
-// Try to find matching person by Telegram name/nickname
+// Try to find matching person by Telegram username
 async function findMatchingPerson(
   supabase: any,
-  username: string | null,
-  firstName: string | null,
-  lastName: string | null
+  username: string | null
 ): Promise<string | null> {
-  if (!username && !firstName) return null
+  if (!username) return null
 
-  // Build search queries
-  const searchTerms: string[] = []
-  if (username) searchTerms.push(username.toLowerCase())
-  if (firstName) searchTerms.push(firstName.toLowerCase())
-  if (firstName && lastName) searchTerms.push(`${firstName} ${lastName}`.toLowerCase())
+  const searchTerm = username.toLowerCase()
 
-  // Search in people table
+  // Search in people table by telegram_nickname only
   const { data: people } = await supabase
     .from("people")
-    .select("id, telegram_name, telegram_nickname, real_name")
+    .select("id, telegram_nickname")
+    .not("telegram_nickname", "is", null)
 
   if (!people || people.length === 0) return null
 
-  // Find match by telegram_name, telegram_nickname, or real_name
+  // Find match by telegram_nickname (with or without @)
   for (const person of people) {
-    const telegramName = person.telegram_name?.toLowerCase()
-    const telegramNickname = person.telegram_nickname?.toLowerCase()
-    const realName = person.real_name?.toLowerCase()
-
-    for (const term of searchTerms) {
-      if (
-        (telegramName && telegramName === term) ||
-        (telegramNickname && telegramNickname === term) ||
-        (telegramNickname && telegramNickname === `@${term}`) ||
-        (realName && realName === term)
-      ) {
-        return person.id
-      }
+    const nickname = person.telegram_nickname?.toLowerCase()
+    if (
+      nickname === searchTerm ||
+      nickname === `@${searchTerm}` ||
+      nickname.replace("@", "") === searchTerm
+    ) {
+      return person.id
     }
   }
 
@@ -89,7 +78,7 @@ export async function POST(request: NextRequest) {
 
       // Try to link to person if not already linked
       if (!existingUser.person_id) {
-        const personId = await findMatchingPerson(supabase, username, first_name, last_name)
+        const personId = await findMatchingPerson(supabase, username)
         if (personId) {
           updateData.person_id = personId
         }
@@ -105,8 +94,8 @@ export async function POST(request: NextRequest) {
       if (error) throw error
       user = data
     } else {
-      // Try to find matching person for new user
-      const personId = await findMatchingPerson(supabase, username, first_name, last_name)
+      // Try to find matching person for new user (by telegram username only)
+      const personId = await findMatchingPerson(supabase, username)
 
       // Create new user
       const { data, error } = await supabase
