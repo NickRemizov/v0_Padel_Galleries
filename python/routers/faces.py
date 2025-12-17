@@ -332,7 +332,11 @@ async def batch_verify_faces(
 ):
     """Batch verify faces: update kept faces and delete removed ones."""
     try:
-        logger.info(f"Batch verify for photo {request.photo_id}, {len(request.kept_faces)} faces")
+        logger.info(f"[batch-verify] START photo={request.photo_id}, faces={len(request.kept_faces)}")
+        
+        # Log incoming data for debugging
+        for i, face in enumerate(request.kept_faces):
+            logger.info(f"[batch-verify] Input face[{i}]: id={face.id}, person_id={face.person_id}")
         
         existing_response = supabase_db.client.table("photo_faces").select("id").eq(
             "photo_id", request.photo_id
@@ -341,16 +345,22 @@ async def batch_verify_faces(
         existing_ids = [f["id"] for f in existing_response.data] if existing_response.data else []
         kept_ids = [f.id for f in request.kept_faces if f.id]
         
+        logger.info(f"[batch-verify] Existing IDs in DB: {existing_ids}")
+        logger.info(f"[batch-verify] Kept IDs from request: {kept_ids}")
+        
         # Delete removed faces
         to_delete = [fid for fid in existing_ids if fid not in kept_ids]
         for face_id in to_delete:
             supabase_db.client.table("photo_faces").delete().eq("id", face_id).execute()
         
         if to_delete:
-            logger.info(f"Deleted {len(to_delete)} faces")
+            logger.info(f"[batch-verify] Deleted {len(to_delete)} faces: {to_delete}")
         
-        # Update kept faces
+        # Update kept faces with detailed logging and verification
         all_have_person_id = True
+        updated_count = 0
+        failed_updates = []
+        
         for face in request.kept_faces:
             if not face.person_id:
                 all_have_person_id = False
@@ -361,26 +371,57 @@ async def batch_verify_faces(
                     "recognition_confidence": 1.0 if face.person_id else None,
                     "verified": bool(face.person_id),
                 }
-                supabase_db.client.table("photo_faces").update(update_data).eq("id", face.id).execute()
+                
+                logger.info(f"[batch-verify] Updating face {face.id} with: {update_data}")
+                
+                response = supabase_db.client.table("photo_faces").update(update_data).eq("id", face.id).execute()
+                
+                if response.data:
+                    updated_face = response.data[0]
+                    logger.info(f"[batch-verify] ✓ Face {face.id} updated: verified={updated_face.get('verified')}, confidence={updated_face.get('recognition_confidence')}, person_id={updated_face.get('person_id')}")
+                    updated_count += 1
+                else:
+                    logger.error(f"[batch-verify] ✗ Face {face.id} update FAILED - no data returned")
+                    failed_updates.append(face.id)
+        
+        logger.info(f"[batch-verify] Update summary: {updated_count} succeeded, {len(failed_updates)} failed")
+        
+        if failed_updates:
+            logger.error(f"[batch-verify] Failed face IDs: {failed_updates}")
         
         # Rebuild index if any faces have person_id
         index_rebuilt = False
-        if any(f.person_id for f in request.kept_faces):
+        faces_with_person = [f for f in request.kept_faces if f.person_id]
+        
+        if faces_with_person:
+            logger.info(f"[batch-verify] Rebuilding index for {len(faces_with_person)} faces with person_id")
             try:
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
                     index_rebuilt = True
-                    logger.info("Index rebuilt successfully")
+                    logger.info(f"[batch-verify] ✓ Index rebuilt: {rebuild_result}")
+                else:
+                    logger.error(f"[batch-verify] ✗ Index rebuild failed: {rebuild_result}")
             except Exception as index_error:
-                logger.error(f"Error rebuilding index: {index_error}")
+                logger.error(f"[batch-verify] ✗ Index rebuild exception: {index_error}")
+        else:
+            logger.info("[batch-verify] No faces with person_id, skipping index rebuild")
         
-        return ApiResponse.ok({
+        result = {
             "verified": all_have_person_id,
-            "index_rebuilt": index_rebuilt
-        })
+            "index_rebuilt": index_rebuilt,
+            "updated_count": updated_count,
+            "failed_count": len(failed_updates),
+        }
+        
+        logger.info(f"[batch-verify] END result={result}")
+        
+        return ApiResponse.ok(result)
         
     except Exception as e:
-        logger.error(f"Error in batch verify: {e}")
+        logger.error(f"[batch-verify] EXCEPTION: {e}")
+        import traceback
+        logger.error(f"[batch-verify] Traceback: {traceback.format_exc()}")
         raise DatabaseError(str(e), operation="batch_verify_faces")
 
 
