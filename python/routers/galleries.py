@@ -426,10 +426,11 @@ async def update_sort_order(identifier: str, sort_order: str = Query(...)):
         raise DatabaseError(str(e), operation="update_sort_order")
 
 
-@router.delete("/batch-delete-images")
+@router.post("/batch-delete-images")
 async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
     """
     Batch delete multiple images from a gallery.
+    Uses POST method because DELETE with body is unreliable.
     Performance: O(1) instead of O(n) - single query per operation, single index rebuild.
     """
     try:
