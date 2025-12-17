@@ -15,14 +15,14 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.5" // Optimized: sync image+data loading, no gallery reload
+const VERSION = "v6.6" // Added indexRebuilt flag to onSave callback
 
 interface FaceTaggingDialogProps {
   imageId: string
   imageUrl: string
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave?: (imageId: string, faces: TaggedFace[]) => void
+  onSave?: (imageId: string, faces: TaggedFace[], indexRebuilt?: boolean) => void
   hasBeenProcessed?: boolean
   onPrevious?: () => void
   onNext?: () => void
@@ -400,8 +400,9 @@ export function FaceTaggingDialog({
       setTaggedFaces(updatedFaces)
       drawFaces(updatedFaces)
       
-      // Notify parent to update cache (no full reload!)
-      onSave?.(imageId, updatedFaces)
+      // Notify parent with indexRebuilt flag from backend response
+      const indexRebuilt = result.verified === true || (result as any).index_rebuilt === true
+      onSave?.(imageId, updatedFaces, indexRebuilt)
       
       setSaving(false)
     } catch (error) {
@@ -437,8 +438,9 @@ export function FaceTaggingDialog({
         verified: face.personId ? true : face.verified
       }))
       
-      // Notify parent to update cache
-      onSave?.(imageId, updatedFaces)
+      // Notify parent with indexRebuilt flag
+      const indexRebuilt = result.verified === true || (result as any).index_rebuilt === true
+      onSave?.(imageId, updatedFaces, indexRebuilt)
       
       setSaving(false)
       onOpenChange(false)
