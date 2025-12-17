@@ -289,9 +289,6 @@ export function GalleryImagesManager({
     imageId: string | null
     filename: string | null
   }>({ open: false, imageId: null, filename: null })
-  
-  // Track if index was rebuilt during tagging session
-  const indexRebuiltDuringSessionRef = useRef(false)
 
   useEffect(() => {
     if (open) {
@@ -384,13 +381,8 @@ export function GalleryImagesManager({
   }
 
   // Update local cache for a single photo - NO server reload!
-  const updatePhotoFacesCache = useCallback((imageId: string, faces: TaggedFace[], indexRebuilt?: boolean) => {
-    console.log(`[GalleryImagesManager] Updating cache for ${imageId} with ${faces.length} faces, indexRebuilt=${indexRebuilt}`)
-    
-    // Track if index was rebuilt during this session
-    if (indexRebuilt) {
-      indexRebuiltDuringSessionRef.current = true
-    }
+  const updatePhotoFacesCache = useCallback((imageId: string, faces: TaggedFace[]) => {
+    console.log(`[GalleryImagesManager] Updating cache for ${imageId} with ${faces.length} faces`)
     
     setPhotoFacesMap(prev => ({
       ...prev,
@@ -747,24 +739,15 @@ export function GalleryImagesManager({
   const handleTagImage = (imageId: string, imageUrl: string) => {
     const image = images.find((img) => img.id === imageId)
     const hasBeenProcessed = image?.has_been_processed || false
-    // Reset the session flag when opening tagging dialog
-    indexRebuiltDuringSessionRef.current = false
     setTaggingImage({ id: imageId, url: imageUrl, hasBeenProcessed })
   }
 
-  // Handle tagging dialog close - refresh badges if index was rebuilt
+  // Handle tagging dialog close - just close, badge update happens via onSave callback
   const handleTaggingDialogClose = useCallback((open: boolean) => {
     if (!open) {
       setTaggingImage(null)
-      
-      // If index was rebuilt during session, refresh all badges in background
-      if (indexRebuiltDuringSessionRef.current) {
-        console.log("[GalleryImagesManager] Index was rebuilt during session, refreshing all badges...")
-        loadPhotoFaces() // Background refresh - no await
-      }
-      indexRebuiltDuringSessionRef.current = false
     }
-  }, [images])
+  }, [])
 
   const displayTitle = shootDate ? `${galleryTitle} ${formatShortDate(shootDate)}` : galleryTitle
 
