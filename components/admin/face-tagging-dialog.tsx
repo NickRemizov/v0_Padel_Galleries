@@ -15,7 +15,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.8" // Fix double onSave call
+const VERSION = "v6.9" // Update badge on prev/next navigation
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -132,6 +132,31 @@ export function FaceTaggingDialog({
     }
     onOpenChange(newOpen)
   }, [onOpenChange, onSave])
+
+  // Handle navigation - update badge for current photo before switching
+  const handlePrevious = useCallback(() => {
+    if (!onPrevious) return
+    
+    // Update badge for current photo before navigating
+    if (loadedForImageIdRef.current === currentImageIdRef.current) {
+      console.log(`[${VERSION}] Navigating to previous, updating badge for ${currentImageIdRef.current}`)
+      onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
+    }
+    
+    onPrevious()
+  }, [onPrevious, onSave])
+
+  const handleNext = useCallback(() => {
+    if (!onNext) return
+    
+    // Update badge for current photo before navigating
+    if (loadedForImageIdRef.current === currentImageIdRef.current) {
+      console.log(`[${VERSION}] Navigating to next, updating badge for ${currentImageIdRef.current}`)
+      onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
+    }
+    
+    onNext()
+  }, [onNext, onSave])
 
   // INSTANT reset when imageId changes
   useEffect(() => {
@@ -514,7 +539,7 @@ export function FaceTaggingDialog({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={onPrevious}
+                      onClick={handlePrevious}
                       disabled={!hasPrevious || saving}
                       className="h-8 w-8 p-0 bg-white text-black hover:bg-gray-100"
                     >
@@ -555,7 +580,7 @@ export function FaceTaggingDialog({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={onNext}
+                      onClick={handleNext}
                       disabled={!hasNext || saving}
                       className="h-8 w-8 p-0 bg-white text-black hover:bg-gray-100"
                     >
