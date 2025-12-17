@@ -286,20 +286,51 @@ export function GalleryImagesManager({
     imageId: string | null
     filename: string | null
   }>({ open: false, imageId: null, filename: null })
+  
+  // Track if index was rebuilt during tagging session
+  const indexRebuiltDuringSessionRef = useRef(false)
 
   useEffect(() => {
     if (open) {
       setPhotoFacesLoaded(false)
-      loadImages()
-      loadRecognitionStats()
+      loadAllData()
     }
   }, [open])
 
-  useEffect(() => {
-    if (images.length > 0) {
-      loadPhotoFaces()
+  // PARALLEL loading of images and faces for faster initial display
+  async function loadAllData() {
+    setLoading(true)
+    
+    // Start loading images
+    const imagesPromise = getGalleryImagesAction(galleryId)
+    const statsPromise = getGalleryFaceRecognitionStatsAction(galleryId)
+    
+    // Wait for images first
+    const imagesResult = await imagesPromise
+    if (imagesResult.success && imagesResult.data) {
+      setImages(imagesResult.data)
+      
+      // NOW start loading faces (needs photo IDs)
+      const photoIds = imagesResult.data.map((img: GalleryImage) => img.id)
+      if (photoIds.length > 0) {
+        // Don't await - let it load in background
+        loadPhotoFacesForIds(photoIds)
+      } else {
+        setPhotoFacesLoaded(true)
+      }
+    } else {
+      console.error("[GalleryImagesManager] Error loading images:", imagesResult.error)
+      setPhotoFacesLoaded(true)
     }
-  }, [images])
+    
+    // Stats can load in parallel
+    const statsResult = await statsPromise
+    if (statsResult.success && statsResult.data) {
+      setRecognitionStats(statsResult.data)
+    }
+    
+    setLoading(false)
+  }
 
   async function loadImages() {
     setLoading(true)
@@ -319,8 +350,7 @@ export function GalleryImagesManager({
     }
   }
 
-  async function loadPhotoFaces() {
-    const photoIds = images.map((img) => img.id)
+  async function loadPhotoFacesForIds(photoIds: string[]) {
     const result = await getBatchPhotoFacesAction(photoIds)
 
     if (result.success && result.data) {
@@ -345,9 +375,19 @@ export function GalleryImagesManager({
     }
   }
 
+  async function loadPhotoFaces() {
+    const photoIds = images.map((img) => img.id)
+    await loadPhotoFacesForIds(photoIds)
+  }
+
   // Update local cache for a single photo - NO server reload!
-  const updatePhotoFacesCache = useCallback((imageId: string, faces: TaggedFace[]) => {
-    console.log(`[GalleryImagesManager] Updating cache for ${imageId} with ${faces.length} faces`)
+  const updatePhotoFacesCache = useCallback((imageId: string, faces: TaggedFace[], indexRebuilt?: boolean) => {
+    console.log(`[GalleryImagesManager] Updating cache for ${imageId} with ${faces.length} faces, indexRebuilt=${indexRebuilt}`)
+    
+    // Track if index was rebuilt during this session
+    if (indexRebuilt) {
+      indexRebuiltDuringSessionRef.current = true
+    }
     
     setPhotoFacesMap(prev => ({
       ...prev,
@@ -704,8 +744,24 @@ export function GalleryImagesManager({
   const handleTagImage = (imageId: string, imageUrl: string) => {
     const image = images.find((img) => img.id === imageId)
     const hasBeenProcessed = image?.has_been_processed || false
+    // Reset the session flag when opening tagging dialog
+    indexRebuiltDuringSessionRef.current = false
     setTaggingImage({ id: imageId, url: imageUrl, hasBeenProcessed })
   }
+
+  // Handle tagging dialog close - refresh badges if index was rebuilt
+  const handleTaggingDialogClose = useCallback((open: boolean) => {
+    if (!open) {
+      setTaggingImage(null)
+      
+      // If index was rebuilt during session, refresh all badges in background
+      if (indexRebuiltDuringSessionRef.current) {
+        console.log("[GalleryImagesManager] Index was rebuilt during session, refreshing all badges...")
+        loadPhotoFaces() // Background refresh - no await
+      }
+      indexRebuiltDuringSessionRef.current = false
+    }
+  }, [images])
 
   const displayTitle = shootDate ? `${galleryTitle} ${formatShortDate(shootDate)}` : galleryTitle
 
@@ -958,12 +1014,7 @@ export function GalleryImagesManager({
           imageUrl={taggingImage.url}
           hasBeenProcessed={taggingImage.hasBeenProcessed}
           open={!!taggingImage}
-          onOpenChange={(open) => {
-            if (!open) {
-              setTaggingImage(null)
-              // NO reload on close - cache is already updated via onSave
-            }
-          }}
+          onOpenChange={handleTaggingDialogClose}
           onSave={updatePhotoFacesCache}
           onPrevious={handlePreviousImage}
           onNext={handleNextImage}
