@@ -1,7 +1,7 @@
 # Схема базы данных Padel Galleries
 
-**Дата обновления:** 14.12.2025  
-**Версия:** 3.4 (Gmail и Telegram поля)
+**Дата обновления:** 17.12.2025  
+**Версия:** 3.5 (Полная синхронизация со схемой БД)
 
 ---
 
@@ -16,6 +16,30 @@
 | `photo_faces.confidence` | `confidence_DEPRECATED` | `photo_faces.insightface_confidence` |
 
 **Любая попытка использовать старые имена вызовет ошибку** — это защита от случайного использования.
+
+---
+
+## Enum типы
+
+### person_category
+Категория человека в системе.
+
+| Значение | Описание |
+|----------|----------|
+| `player` | Игрок (default) |
+| `photographer` | Фотограф |
+| `organizer` | Организатор |
+| `other` | Другое |
+
+### face_category
+Категория лица для фильтрации.
+
+| Значение | Описание |
+|----------|----------|
+| `unknown` | Неизвестное лицо (default) |
+| `player` | Игрок |
+| `staff` | Персонал |
+| `spectator` | Зритель |
 
 ---
 
@@ -91,7 +115,7 @@ cities
 | `photographer_id` | uuid | YES | FK → photographers.id |
 | `location_id` | uuid | YES | FK → locations.id |
 | `organizer_id` | uuid | YES | FK → organizers.id |
-| `sort_order` | text | YES | Порядок сортировки фото |
+| `sort_order` | text | YES | Порядок сортировки фото (default: 'filename') |
 | `external_gallery_url` | text | YES | Внешняя ссылка на галерею |
 | `created_at` | timestamptz | YES | Дата создания |
 | `updated_at` | timestamptz | YES | Дата обновления |
@@ -117,13 +141,19 @@ WHERE g.id = 'gallery_uuid';
 | Поле | Тип | NULL | Описание |
 |------|-----|------|----------|
 | `id` | uuid | NO | Первичный ключ |
-| `original_filename` | text | NO | Оригинальное имя файла |
-| `image_url` | text | NO | URL в Vercel Blob |
 | `gallery_id` | uuid | NO | FK → galleries.id |
-| `width` | int | YES | Ширина изображения |
-| `height` | int | YES | Высота изображения |
+| `image_url` | text | NO | URL в Vercel Blob |
+| `original_url` | text | NO | Оригинальный URL |
+| `original_filename` | text | YES | Оригинальное имя файла |
+| `file_size` | integer | YES | Размер файла в байтах |
+| `width` | integer | YES | Ширина изображения |
+| `height` | integer | YES | Высота изображения |
+| `display_order` | integer | NO | Порядок отображения (default: 0) |
+| `download_count` | integer | NO | Счётчик скачиваний (default: 0) |
+| `has_been_processed` | boolean | YES | Обработано ли распознаванием (default: false) |
 | `slug` | varchar(255) | YES | URL-slug фото (🔜 планируется NOT NULL) |
 | `is_featured` | boolean | YES | Избранное фото для карусели (default: false) |
+| `created_at` | timestamptz | YES | Дата создания |
 
 **Связи:**
 - `gallery_id` → `galleries.id`
@@ -144,16 +174,20 @@ WHERE g.id = 'gallery_uuid';
 | `id` | uuid | NO | Первичный ключ |
 | `photo_id` | uuid | NO | FK → gallery_images.id |
 | `person_id` | uuid | YES | FK → people.id |
-| `verified` | boolean | YES | Подтверждено вручную |
+| `verified` | boolean | YES | Подтверждено вручную (default: false) |
 | `recognition_confidence` | double precision | YES | Уверенность распознавания (0-1) |
 | `insightface_descriptor` | vector(512) | YES | **512-мерный эмбеддинг InsightFace** |
 | `insightface_bbox` | jsonb | YES | **Координаты лица {x, y, width, height}** |
 | `insightface_confidence` | double precision | YES | **Уверенность детекции InsightFace** |
+| `insightface_det_score` | double precision | YES | **Оценка качества детекции InsightFace** |
 | `blur_score` | double precision | YES | Оценка размытия (0-1) |
+| `face_category` | face_category | YES | Категория лица (default: 'unknown') |
 | `verified_at` | timestamptz | YES | Дата верификации |
-| `verified_by` | text | YES | Кто верифицировал |
-| `training_used` | boolean | YES | Использовано в обучении |
+| `verified_by` | uuid | YES | UUID верифицировавшего пользователя |
+| `training_used` | boolean | YES | Использовано в обучении (default: false) |
 | `training_context` | jsonb | YES | Контекст обучения |
+| `created_at` | timestamptz | YES | Дата создания |
+| `updated_at` | timestamptz | YES | Дата обновления |
 | `bounding_box_DEPRECATED` | jsonb | YES | ⛔ НЕ ИСПОЛЬЗОВАТЬ → `insightface_bbox` |
 | `confidence_DEPRECATED` | double | YES | ⛔ НЕ ИСПОЛЬЗОВАТЬ → `insightface_confidence` |
 
@@ -193,9 +227,10 @@ WHERE person_id = 'xxx'
 | Поле | Тип | NULL | Описание |
 |------|-----|------|----------|
 | `id` | uuid | NO | Первичный ключ |
-| `source_image_id` | uuid | NO | FK → photo_faces.id |
-| `person_id` | uuid | YES | FK → people.id |
+| `source_image_id` | uuid | YES | FK → gallery_images.id |
+| `person_id` | uuid | NO | FK → people.id |
 | `descriptor` | jsonb | NO | ~~512-мерный вектор~~ DEPRECATED |
+| `created_at` | timestamptz | YES | Дата создания |
 
 ---
 
@@ -207,6 +242,7 @@ WHERE person_id = 'xxx'
 | `id` | uuid | NO | Первичный ключ |
 | `real_name` | text | NO | Имя игрока |
 | `slug` | varchar(255) | YES | URL-slug (🔜 планируется NOT NULL) |
+| `category` | person_category | YES | Категория (default: 'player') |
 | `gmail` | text | YES | **Gmail для OAuth авторизации** (формат: user@gmail.com) |
 | `telegram_name` | text | YES | Имя в Telegram (отображаемое) |
 | `telegram_nickname` | text | YES | **Ник в Telegram** (формат: @username), используется для ссылок |
@@ -215,8 +251,13 @@ WHERE person_id = 'xxx'
 | `instagram_profile_url` | text | YES | URL Instagram профиля |
 | `avatar_url` | text | YES | URL аватара |
 | `paddle_ranking` | numeric | YES | Уровень в падел (0-10, шаг 0.25) |
-| `show_in_players_gallery` | boolean | YES | Показывать в галерее игроков |
-| `show_photos_in_galleries` | boolean | YES | Показывать фото в галереях |
+| `tournament_results` | jsonb | YES | Результаты турниров (default: '[]') |
+| `show_in_players_gallery` | boolean | YES | Показывать в галерее игроков (default: true) |
+| `show_photos_in_galleries` | boolean | YES | Показывать фото в галереях (default: true) |
+| `custom_confidence_threshold` | double precision | YES | Индивидуальный порог уверенности |
+| `use_custom_confidence` | boolean | YES | Использовать индивидуальный порог (default: false) |
+| `created_at` | timestamptz | YES | Дата создания |
+| `updated_at` | timestamptz | YES | Дата обновления |
 
 **Telegram поля:**
 - `telegram_name` — отображаемое имя (например "Иван Петров"), не трогаем
@@ -259,6 +300,174 @@ WHERE person_id = 'xxx'
 
 **Связь с городами:** через `photographer_cities` (many-to-many)
 **Связь с игроком:** опциональная, если фотограф также является игроком
+
+---
+
+## Социальные функции
+
+### users (Пользователи)
+Пользователи, авторизованные через Telegram.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `telegram_id` | bigint | NO | ID в Telegram, UNIQUE |
+| `username` | text | YES | Username в Telegram |
+| `first_name` | text | YES | Имя |
+| `last_name` | text | YES | Фамилия |
+| `photo_url` | text | YES | URL фото профиля |
+| `created_at` | timestamptz | YES | Дата создания |
+| `updated_at` | timestamptz | YES | Дата обновления |
+
+**Индексы:**
+- PRIMARY KEY (id)
+- UNIQUE (telegram_id)
+
+---
+
+### comments (Комментарии)
+Комментарии к фотографиям.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `gallery_image_id` | uuid | NO | FK → gallery_images.id |
+| `user_id` | uuid | NO | FK → users.id |
+| `content` | text | NO | Текст комментария (1-1000 символов) |
+| `created_at` | timestamptz | YES | Дата создания |
+| `updated_at` | timestamptz | YES | Дата обновления |
+
+**Связи:**
+- `gallery_image_id` → `gallery_images.id`
+- `user_id` → `users.id`
+
+**Ограничения:**
+- CHECK (char_length(content) >= 1 AND char_length(content) <= 1000)
+
+---
+
+### likes (Лайки)
+Лайки к фотографиям.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `user_id` | uuid | NO | FK → users.id |
+| `image_id` | uuid | NO | FK → gallery_images.id |
+| `created_at` | timestamptz | YES | Дата создания |
+
+**Связи:**
+- `user_id` → `users.id`
+- `image_id` → `gallery_images.id`
+
+---
+
+### favorites (Избранное)
+Избранные фотографии пользователей.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `user_id` | uuid | NO | FK → users.id |
+| `gallery_image_id` | uuid | NO | FK → gallery_images.id |
+| `created_at` | timestamptz | YES | Дата создания |
+
+**Связи:**
+- `user_id` → `users.id`
+- `gallery_image_id` → `gallery_images.id`
+
+---
+
+## Распознавание лиц (служебные таблицы)
+
+### face_recognition_config (Конфигурация)
+Конфигурация системы распознавания лиц.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `key` | text | NO | Ключ параметра, UNIQUE |
+| `value` | jsonb | NO | Значение параметра |
+| `updated_at` | timestamptz | YES | Дата обновления |
+
+---
+
+### face_training_sessions (Сессии обучения)
+История сессий обучения модели распознавания.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `created_at` | timestamptz | YES | Дата создания |
+| `completed_at` | timestamptz | YES | Дата завершения |
+| `model_version` | text | NO | Версия модели |
+| `training_mode` | text | NO | Режим: 'full' или 'incremental' |
+| `faces_count` | integer | NO | Количество лиц |
+| `people_count` | integer | NO | Количество людей |
+| `context_weight` | double precision | YES | Вес контекста (default: 0.1) |
+| `min_faces_per_person` | integer | YES | Минимум лиц на человека (default: 3) |
+| `metrics` | jsonb | YES | Метрики обучения |
+| `status` | text | NO | Статус: 'running', 'completed', 'failed' |
+| `error_message` | text | YES | Сообщение об ошибке |
+
+**Ограничения:**
+- CHECK (training_mode IN ('full', 'incremental'))
+- CHECK (status IN ('running', 'completed', 'failed'))
+
+---
+
+### rejected_faces (Отклонённые лица)
+Лица, отклонённые при модерации.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `descriptor` | vector(512) | NO | Эмбеддинг лица |
+| `gallery_id` | uuid | YES | FK → galleries.id |
+| `photo_id` | uuid | YES | ID фото (не FK) |
+| `rejected_by` | uuid | YES | FK → auth.users.id |
+| `rejected_at` | timestamptz | YES | Дата отклонения |
+| `reason` | text | YES | Причина отклонения |
+
+**Ограничения:**
+- CHECK (vector_dims(descriptor) = 512)
+
+---
+
+### gallery_co_occurrence (Совместные появления)
+Статистика совместных появлений людей в галереях.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `person_id_1` | uuid | NO | FK → people.id |
+| `person_id_2` | uuid | NO | FK → people.id |
+| `gallery_id` | uuid | NO | FK → galleries.id |
+| `co_occurrence_count` | integer | YES | Счётчик (default: 1) |
+| `last_seen_at` | timestamptz | YES | Последнее появление |
+
+**Связи:**
+- `person_id_1` → `people.id`
+- `person_id_2` → `people.id`
+- `gallery_id` → `galleries.id`
+
+---
+
+### tournament_results (Результаты турниров)
+Результаты турниров (отдельная таблица).
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `person_id` | uuid | YES | FK → people.id |
+| `gallery_id` | uuid | YES | FK → galleries.id |
+| `place` | integer | NO | Занятое место |
+| `notes` | text | YES | Примечания |
+| `created_at` | timestamptz | YES | Дата создания |
+
+**Связи:**
+- `gallery_id` → `galleries.id`
+- `person_id` → `people.id` (не задан FK в БД)
 
 ---
 
@@ -363,8 +572,8 @@ generate_unique_slug(
        │ 1:N                                           │
        ▼                                               │
 ┌─────────────┐                                        │
-│gallery_image│                                        │
-└──────┬──────┘                                        │
+│gallery_image│◄──── comments, likes, favorites        │
+└──────┬──────┘      (via users)                       │
        │ 1:N                                           │
        ▼                                               │
 ┌─────────────────────────────────────┐                │
@@ -516,6 +725,24 @@ VALUES
 ---
 
 ## История изменений
+
+### v3.5 (17.12.2025) — Полная синхронизация со схемой БД ✅
+- **ДОБАВЛЕНЫ enum типы:** `person_category`, `face_category`
+- **ДОБАВЛЕНЫ таблицы:**
+  - `users` — пользователи Telegram
+  - `comments` — комментарии к фото
+  - `likes` — лайки
+  - `favorites` — избранное
+  - `face_recognition_config` — конфигурация распознавания
+  - `face_training_sessions` — сессии обучения
+  - `rejected_faces` — отклонённые лица
+  - `gallery_co_occurrence` — совместные появления
+  - `tournament_results` — результаты турниров
+- **ДОБАВЛЕНЫ поля в `people`:** `category`, `custom_confidence_threshold`, `use_custom_confidence`
+- **ДОБАВЛЕНЫ поля в `photo_faces`:** `insightface_det_score`, `face_category`
+- **ДОБАВЛЕНО поле в `gallery_images`:** `has_been_processed`
+- **ИСПРАВЛЕНО:** `photo_faces.verified_by` теперь uuid (было text)
+- **ИСПРАВЛЕНО:** `face_descriptors_deprecated.source_image_id` FK → gallery_images.id
 
 ### v3.4 (14.12.2025) — Gmail и Telegram поля ✅
 - **ДОБАВЛЕНО:** `people.gmail` для OAuth авторизации
