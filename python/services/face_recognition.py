@@ -257,7 +257,7 @@ class FaceRecognitionService:
         self,
         embedding: np.ndarray,
         confidence_threshold: Optional[float] = None
-    ) -> Tuple[Optional[str], Optional[float]]:
+    ) -> Tuple[Optional[str], Optional[float], Optional[float]]:
         """
         Recognize face by embedding.
         
@@ -265,8 +265,15 @@ class FaceRecognitionService:
         For non-verified faces: uses base threshold + 0.05, and multiplies
         the similarity by source confidence to prevent error propagation.
         
+        IMPORTANT: Returns raw_similarity separately for DB storage.
+        The index should store raw_similarity, NOT final_confidence,
+        to prevent double-multiplication in confidence chains.
+        
         Returns:
-            Tuple of (person_id, final_confidence) or (None, None) if below threshold
+            Tuple of (person_id, final_confidence, raw_similarity) or (None, None, None) if below threshold
+            - person_id: matched person or None
+            - final_confidence: for display/threshold check (may be multiplied for non-verified)
+            - raw_similarity: for storing in DB (never multiplied, always raw cosine similarity)
         """
         self._ensure_initialized()
         
@@ -283,16 +290,16 @@ class FaceRecognitionService:
                 self._load_players_index()
             except Exception as e:
                 logger.error(f"[FaceRecognition] Cannot initialize index: {e}")
-                return None, None
+                return None, None, None
         
         # Query index - now returns verified status and source confidence
         person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=1)
         
         if not person_ids:
-            return None, None
+            return None, None, None
         
         person_id = person_ids[0]
-        similarity = similarities[0]
+        similarity = similarities[0]  # Raw cosine similarity - THIS is what we save to DB
         is_verified = verified_flags[0]
         source_confidence = source_confidences[0]
         
@@ -303,17 +310,18 @@ class FaceRecognitionService:
             final_confidence = similarity
             logger.info(f"[FaceRecognition] Matched VERIFIED face: person_id={person_id}, similarity={similarity:.3f}, threshold={effective_threshold:.3f}")
         else:
-            # Non-verified face: stricter threshold, multiply confidences
+            # Non-verified face: stricter threshold, multiply confidences for CHECKING ONLY
             effective_threshold = confidence_threshold + NON_VERIFIED_THRESHOLD_PENALTY
             final_confidence = similarity * source_confidence
             logger.info(f"[FaceRecognition] Matched NON-VERIFIED face: person_id={person_id}, similarity={similarity:.3f} x source_conf={source_confidence:.3f} = {final_confidence:.3f}, threshold={effective_threshold:.3f}")
         
         if final_confidence >= effective_threshold:
-            logger.info(f"[FaceRecognition] ✓ Match accepted: person_id={person_id}, final_confidence={final_confidence:.3f}")
-            return person_id, final_confidence
+            logger.info(f"[FaceRecognition] ✓ Match accepted: person_id={person_id}, final_confidence={final_confidence:.3f}, raw_similarity={similarity:.3f}")
+            # Return BOTH final_confidence (for display) AND raw similarity (for DB storage)
+            return person_id, final_confidence, similarity
         else:
             logger.info(f"[FaceRecognition] ✗ Match rejected: {final_confidence:.3f} < {effective_threshold:.3f}")
-            return None, None
+            return None, None, None
     
     # ==================== Quality Filters ====================
     
@@ -446,14 +454,15 @@ class FaceRecognitionService:
                     bbox = [float(x) for x in face.bbox]
                     
                     # Use the new recognize_face method that handles verified/non-verified
-                    person_id, confidence = await self.recognize_face(embedding)
+                    person_id, confidence, raw_similarity = await self.recognize_face(embedding)
                     
                     if person_id:
                         recognized_faces += 1
                     
+                    # Save raw_similarity to DB, not final confidence
                     self.supabase_db.add_gallery_face(
                         face_id, gallery_id, file.filename,
-                        bbox, embedding, person_id, confidence or 0.0
+                        bbox, embedding, person_id, raw_similarity or 0.0
                     )
             
             logger.info(f"[FaceRecognition] Processed {min(i + batch_size, len(files))}/{len(files)} photos")
