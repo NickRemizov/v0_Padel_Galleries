@@ -76,15 +76,24 @@ async def get_batch_photo_faces(
     request: BatchPhotoIdsRequest,
     supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
 ):
-    """Get all faces for multiple photos in a single request."""
+    """Get all faces for multiple photos in a single request.
+    
+    OPTIMIZED: Only selects fields needed for UI display.
+    Does NOT include insightface_descriptor (512 floats per face = huge payload).
+    """
     try:
         logger.info(f"Getting faces for {len(request.photo_ids)} photos")
         
         if not request.photo_ids:
             return ApiResponse.ok([])
         
+        # OPTIMIZATION: Select only fields needed for badges and preview positioning
+        # Excludes insightface_descriptor which is 512 floats (~2KB) per face
         result = supabase_db.client.table("photo_faces") \
-            .select("*, people(id, real_name, telegram_name)") \
+            .select(
+                "id, photo_id, person_id, verified, confidence, recognition_confidence, "
+                "insightface_bbox, people(id, real_name, telegram_name)"
+            ) \
             .in_("photo_id", request.photo_ids) \
             .execute()
         
@@ -362,19 +371,19 @@ async def batch_verify_faces(
                 supabase_db.client.table("photo_faces").update(update_data).eq("id", face.id).execute()
         
         # Rebuild index if any faces have person_id
-        index_updated = False
+        index_rebuilt = False
         if any(f.person_id for f in request.kept_faces):
             try:
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
-                    index_updated = True
+                    index_rebuilt = True
                     logger.info("Index rebuilt successfully")
             except Exception as index_error:
                 logger.error(f"Error rebuilding index: {index_error}")
         
         return ApiResponse.ok({
             "verified": all_have_person_id,
-            "index_updated": index_updated
+            "index_rebuilt": index_rebuilt  # IMPORTANT: frontend uses this to refresh badges
         })
         
     except Exception as e:
