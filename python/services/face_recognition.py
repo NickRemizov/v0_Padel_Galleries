@@ -7,6 +7,11 @@ This is a facade that delegates to specialized modules:
 - hnsw_index.py - HNSW index operations
 - quality_filters.py - Quality filtering
 - grouping.py - Face clustering
+
+v4.0: New recognition algorithm with adaptive early exit
+- Formula: final_confidence = source_confidence × similarity
+- Early exit when similarity < best_final_confidence
+- No separate penalty for non-verified faces
 """
 
 import os
@@ -35,10 +40,6 @@ from services.quality_filters import (
 )
 from services.grouping import group_tournament_faces
 from services.supabase_database import SupabaseDatabase
-
-# Non-verified threshold penalty (hardcoded)
-# For non-verified faces, threshold = base_threshold + this value
-NON_VERIFIED_THRESHOLD_PENALTY = 0.05
 
 
 class FaceRecognitionService:
@@ -259,17 +260,20 @@ class FaceRecognitionService:
         confidence_threshold: Optional[float] = None
     ) -> Tuple[Optional[str], Optional[float]]:
         """
-        Recognize face by embedding.
+        Recognize face by embedding using adaptive early exit algorithm.
         
-        IMPORTANT: When multiple embeddings match with same similarity (e.g., identical
-        descriptors), we prioritize VERIFIED matches over non-verified ones.
+        Algorithm (v4.0):
+        1. Query HNSW for candidates sorted by similarity (descending)
+        2. For each candidate: final_confidence = source_confidence × similarity
+        3. Track best_final_confidence
+        4. Early exit when: similarity < best_final_confidence
+           (no subsequent candidate can improve the result)
         
-        For verified faces: uses base threshold, returns similarity as confidence
-        For non-verified faces: uses base threshold + 0.05, returns 
-        similarity × source_confidence as final confidence.
-        
-        The confidence chain naturally decays through non-verified matches,
-        which is the correct behavior to prevent error propagation.
+        This naturally handles:
+        - Verified faces (source_conf=1.0) get higher scores
+        - Non-verified faces get proportionally lower scores
+        - Identical descriptors: iterates until finds best (e.g., verified)
+        - Confidence chains decay naturally through multiplication
         
         Returns:
             Tuple of (person_id, final_confidence) or (None, None) if below threshold
@@ -278,72 +282,65 @@ class FaceRecognitionService:
         
         if confidence_threshold is None:
             config = self.supabase_db.get_recognition_config_sync()
-            confidence_threshold = config.get('recognition_threshold', 0.60)
+            confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
-        logger.info(f"[FaceRecognition] Recognizing face (base threshold={confidence_threshold:.2f})")
+        logger.info(f"[v4.0] Recognizing face (threshold={confidence_threshold:.2f})")
         
         # Safety check
         if not self._players_index.is_loaded():
-            logger.warning("[FaceRecognition] Index not loaded, attempting to initialize...")
+            logger.warning("[v4.0] Index not loaded, attempting to initialize...")
             try:
                 self._load_players_index()
             except Exception as e:
-                logger.error(f"[FaceRecognition] Cannot initialize index: {e}")
+                logger.error(f"[v4.0] Cannot initialize index: {e}")
                 return None, None
         
-        # Query index for TOP 10 candidates to find best match
-        # This is important when identical descriptors exist (verified vs non-verified)
-        k = min(10, self._players_index.get_count())
-        person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=k)
+        # Query with safety margin - we'll exit early anyway
+        max_k = min(50, self._players_index.get_count())
+        person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=max_k)
         
         if not person_ids:
+            logger.info("[v4.0] No candidates found in index")
             return None, None
         
-        # Find the best match, prioritizing VERIFIED faces with same similarity
-        best_match = None
-        best_score = -1.0
+        # Adaptive search with early exit
+        best_person_id = None
+        best_final_confidence = 0.0
+        iterations = 0
         
         for i in range(len(person_ids)):
             person_id = person_ids[i]
             similarity = similarities[i]
+            source_conf = source_confidences[i]
             is_verified = verified_flags[i]
-            source_confidence = source_confidences[i]
             
-            # Calculate effective threshold and score for this candidate
-            if is_verified:
-                effective_threshold = confidence_threshold
-                final_confidence = similarity
-                # For scoring: verified gets priority (multiply by 2 to always beat non-verified with same similarity)
-                score = similarity * 2.0 if similarity >= effective_threshold else -1.0
-            else:
-                effective_threshold = confidence_threshold + NON_VERIFIED_THRESHOLD_PENALTY
-                final_confidence = similarity * source_confidence
-                score = final_confidence if final_confidence >= effective_threshold else -1.0
+            iterations += 1
             
-            # Update best match if this is better
-            if score > best_score:
-                best_score = score
-                best_match = {
-                    "person_id": person_id,
-                    "similarity": similarity,
-                    "is_verified": is_verified,
-                    "source_confidence": source_confidence,
-                    "final_confidence": final_confidence,
-                    "effective_threshold": effective_threshold
-                }
+            # Early exit condition: similarity < best means no future candidate can win
+            # Because: future_final = future_conf × future_sim ≤ 1.0 × future_sim ≤ similarity < best
+            if similarity < best_final_confidence:
+                logger.info(f"[v4.0] Early exit at iteration {iterations}: sim={similarity:.3f} < best={best_final_confidence:.3f}")
+                break
+            
+            # Calculate final confidence
+            final_confidence = source_conf * similarity
+            
+            # Update best if improved
+            if final_confidence > best_final_confidence:
+                best_final_confidence = final_confidence
+                best_person_id = person_id
+                v_marker = "✓" if is_verified else "○"
+                logger.info(f"[v4.0] [{iterations}] {v_marker} New best: person={person_id[:8]}..., sim={similarity:.3f} × conf={source_conf:.3f} = {final_confidence:.3f}")
         
-        if best_match is None or best_score < 0:
-            logger.info(f"[FaceRecognition] ✗ No match above threshold in top {k} candidates")
-            return None, None
+        logger.info(f"[v4.0] Search complete: {iterations} iterations, best={best_final_confidence:.3f}")
         
-        # Log the result
-        if best_match["is_verified"]:
-            logger.info(f"[FaceRecognition] Matched VERIFIED face: person_id={best_match['person_id']}, similarity={best_match['similarity']:.3f}, threshold={best_match['effective_threshold']:.3f}")
+        # Check threshold
+        if best_final_confidence >= confidence_threshold:
+            logger.info(f"[v4.0] ✓ Match accepted: person={best_person_id}, confidence={best_final_confidence:.3f}")
+            return best_person_id, best_final_confidence
         else:
-            logger.info(f"[FaceRecognition] Matched NON-VERIFIED face: person_id={best_match['person_id']}, similarity={best_match['similarity']:.3f} x source_conf={best_match['source_confidence']:.3f} = {best_match['final_confidence']:.3f}, threshold={best_match['effective_threshold']:.3f}")
-        
-        logger.info(f"[FaceRecognition] ✓ Match accepted: person_id={best_match['person_id']}, final_confidence={best_match['final_confidence']:.3f}")
-        return best_match["person_id"], best_match["final_confidence"]
+            logger.info(f"[v4.0] ✗ Below threshold: {best_final_confidence:.3f} < {confidence_threshold:.3f}")
+            return None, None
     
     # ==================== Quality Filters ====================
     
