@@ -502,3 +502,48 @@ export async function assignFacesToPersonAction(faceIds: string[], personId: str
     }
   }
 }
+
+/**
+ * Recognize all unknown faces by running them through the recognition algorithm.
+ * Useful after manually assigning photos to a new player.
+ *
+ * @param galleryId - Optional gallery ID to filter faces
+ * @param confidenceThreshold - Optional confidence threshold (uses config default if not provided)
+ */
+export async function recognizeUnknownFacesAction(galleryId?: string, confidenceThreshold?: number) {
+  try {
+    console.log("[recognizeUnknownFacesAction] START - Gallery ID:", galleryId)
+
+    const result = await apiFetch("/api/faces/recognize-unknown", {
+      method: "POST",
+      body: JSON.stringify({
+        gallery_id: galleryId || null,
+        confidence_threshold: confidenceThreshold || null,
+      }),
+    })
+
+    console.log("[recognizeUnknownFacesAction] Response:", JSON.stringify(result, null, 2))
+
+    if (result.success) {
+      revalidatePath("/admin")
+      return {
+        success: true,
+        total_unknown: result.data?.total_unknown ?? 0,
+        recognized_count: result.data?.recognized_count ?? 0,
+        by_person: result.data?.by_person ?? [],
+        index_rebuilt: result.data?.index_rebuilt ?? false,
+      }
+    } else {
+      return {
+        success: false,
+        error: result.error || "Failed to recognize unknown faces",
+      }
+    }
+  } catch (error) {
+    console.error("[recognizeUnknownFacesAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
