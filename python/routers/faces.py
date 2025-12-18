@@ -3,6 +3,7 @@ Faces API Router
 Face detection, recognition and management endpoints
 
 v4.0: Fixed index rebuild on face deletion
+v4.1: Added recognize-unknown endpoint
 """
 
 from fastapi import APIRouter, Depends
@@ -69,6 +70,11 @@ class KeptFace(BaseModel):
 class BatchVerifyRequest(BaseModel):
     photo_id: str
     kept_faces: List[KeptFace]
+
+
+class RecognizeUnknownRequest(BaseModel):
+    gallery_id: Optional[str] = None
+    confidence_threshold: Optional[float] = None
 
 
 # Endpoints
@@ -444,6 +450,137 @@ async def batch_verify_faces(
     except Exception as e:
         logger.error(f"[batch-verify] ERROR: {e}", exc_info=True)
         raise DatabaseError(str(e), operation="batch_verify_faces")
+
+
+@router.post("/recognize-unknown")
+async def recognize_unknown_faces(
+    request: RecognizeUnknownRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Recognize all unknown faces by running them through the recognition algorithm.
+    
+    This is useful after manually assigning a few photos to a new player -
+    the algorithm can then find other photos of the same player automatically.
+    
+    Returns statistics by person: how many faces were recognized for each person.
+    """
+    try:
+        logger.info(f"[recognize-unknown] START gallery_id={request.gallery_id}, threshold={request.confidence_threshold}")
+        
+        # Build query for unknown faces with descriptors
+        query = supabase_db.client.table("photo_faces").select(
+            "id, photo_id, insightface_descriptor"
+        ).is_("person_id", "null").not_.is_("insightface_descriptor", "null")
+        
+        # Optional gallery filter
+        if request.gallery_id:
+            # Need to join with gallery_images to filter by gallery
+            query = supabase_db.client.table("photo_faces").select(
+                "id, photo_id, insightface_descriptor, gallery_images!inner(gallery_id)"
+            ).is_("person_id", "null").not_.is_("insightface_descriptor", "null").eq(
+                "gallery_images.gallery_id", request.gallery_id
+            )
+        
+        result = query.execute()
+        unknown_faces = result.data or []
+        
+        logger.info(f"[recognize-unknown] Found {len(unknown_faces)} unknown faces with descriptors")
+        
+        if not unknown_faces:
+            return ApiResponse.ok({
+                "total_unknown": 0,
+                "recognized_count": 0,
+                "by_person": {}
+            })
+        
+        # Get threshold from config if not provided
+        threshold = request.confidence_threshold
+        if threshold is None:
+            config = supabase_db.get_recognition_config_sync()
+            threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
+        
+        # Process each face
+        recognized_count = 0
+        by_person = {}  # person_id -> {name, count}
+        
+        for face in unknown_faces:
+            face_id = face["id"]
+            descriptor_str = face.get("insightface_descriptor")
+            
+            if not descriptor_str:
+                continue
+            
+            # Parse descriptor from string "[0.1, 0.2, ...]" to numpy array
+            try:
+                # Remove brackets and split
+                descriptor_str = descriptor_str.strip("[]")
+                embedding = np.array([float(x) for x in descriptor_str.split(",")])
+            except Exception as parse_error:
+                logger.warning(f"[recognize-unknown] Failed to parse descriptor for face {face_id}: {parse_error}")
+                continue
+            
+            # Run recognition
+            person_id, confidence = await face_service.recognize_face(embedding, threshold)
+            
+            if person_id and confidence:
+                # Update face in database
+                supabase_db.client.table("photo_faces").update({
+                    "person_id": person_id,
+                    "recognition_confidence": confidence,
+                    "verified": False  # Auto-recognized, not manually verified
+                }).eq("id", face_id).execute()
+                
+                recognized_count += 1
+                
+                # Track by person
+                if person_id not in by_person:
+                    # Get person name
+                    person_result = supabase_db.client.table("people").select(
+                        "real_name, telegram_name"
+                    ).eq("id", person_id).execute()
+                    
+                    person_name = "Unknown"
+                    if person_result.data:
+                        p = person_result.data[0]
+                        person_name = p.get("real_name") or p.get("telegram_name") or "Unknown"
+                    
+                    by_person[person_id] = {"name": person_name, "count": 0}
+                
+                by_person[person_id]["count"] += 1
+                
+                logger.info(f"[recognize-unknown] ✓ Face {face_id[:8]}... -> {by_person[person_id]['name']} ({confidence:.2f})")
+        
+        # Rebuild index if any faces were recognized (they now have person_id)
+        index_rebuilt = False
+        if recognized_count > 0:
+            try:
+                rebuild_result = await face_service.rebuild_players_index()
+                if rebuild_result.get("success"):
+                    index_rebuilt = True
+                    logger.info(f"[recognize-unknown] Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+            except Exception as index_error:
+                logger.error(f"[recognize-unknown] Error rebuilding index: {index_error}")
+        
+        # Format by_person for response
+        by_person_list = [
+            {"person_id": pid, "name": data["name"], "count": data["count"]}
+            for pid, data in sorted(by_person.items(), key=lambda x: x[1]["count"], reverse=True)
+        ]
+        
+        logger.info(f"[recognize-unknown] END: {recognized_count}/{len(unknown_faces)} recognized, {len(by_person)} unique people")
+        
+        return ApiResponse.ok({
+            "total_unknown": len(unknown_faces),
+            "recognized_count": recognized_count,
+            "by_person": by_person_list,
+            "index_rebuilt": index_rebuilt
+        })
+        
+    except Exception as e:
+        logger.error(f"[recognize-unknown] ERROR: {e}", exc_info=True)
+        raise DatabaseError(str(e), operation="recognize_unknown_faces")
 
 
 @router.get("/statistics")
