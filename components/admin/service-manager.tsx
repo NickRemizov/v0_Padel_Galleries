@@ -11,15 +11,55 @@ import { RegenerateDescriptorsDialog } from "@/components/admin/regenerate-descr
 import { BatchRecognitionDialog } from "@/components/admin/batch-recognition-dialog"
 import { GlobalUnknownFacesDialog } from "@/components/admin/global-unknown-faces-dialog"
 import { Button } from "@/components/ui/button"
-import { Database, Bug, Wrench, Shield, RefreshCw, Scan, Users, Images } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Database, Bug, Wrench, Shield, RefreshCw, Scan, Users, Images, Search, Loader2 } from "lucide-react"
+import { recognizeUnknownFacesAction } from "@/app/admin/actions/faces"
+
+interface RecognizeResult {
+  total_unknown: number
+  recognized_count: number
+  by_person: Array<{ person_id: string; name: string; count: number }>
+  index_rebuilt: boolean
+}
 
 export function ServiceManager() {
   const [showRegenerateDescriptors, setShowRegenerateDescriptors] = useState(false)
   const [showBatchRecognition, setShowBatchRecognition] = useState(false)
   const [showGlobalUnknownFaces, setShowGlobalUnknownFaces] = useState(false)
+  const [recognizing, setRecognizing] = useState(false)
+  const [recognizeResult, setRecognizeResult] = useState<RecognizeResult | null>(null)
+  const [showRecognizeResult, setShowRecognizeResult] = useState(false)
 
   const handleComingSoon = (feature: string) => {
     alert(`${feature} - в разработке`)
+  }
+
+  const handleRecognizeUnknown = async () => {
+    setRecognizing(true)
+    try {
+      const result = await recognizeUnknownFacesAction()
+      if (result.success) {
+        setRecognizeResult({
+          total_unknown: result.total_unknown ?? 0,
+          recognized_count: result.recognized_count ?? 0,
+          by_person: result.by_person ?? [],
+          index_rebuilt: result.index_rebuilt ?? false,
+        })
+        setShowRecognizeResult(true)
+      } else {
+        alert(`Ошибка: ${result.error}`)
+      }
+    } catch (error) {
+      alert(`Ошибка: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setRecognizing(false)
+    }
   }
 
   return (
@@ -47,6 +87,35 @@ export function ServiceManager() {
               <Button variant="outline" size="sm" onClick={() => setShowBatchRecognition(true)}>
                 <Images className="mr-2 h-4 w-4" />
                 Распознать
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Найти известные лица</div>
+                <div className="text-sm text-muted-foreground">
+                  Прогнать все неизвестные лица через алгоритм распознавания (полезно после добавления нового игрока)
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRecognizeUnknown}
+                disabled={recognizing}
+              >
+                {recognizing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Поиск...
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-2 h-4 w-4" />
+                    Найти
+                  </>
+                )}
               </Button>
             </div>
 
@@ -224,6 +293,64 @@ export function ServiceManager() {
         open={showGlobalUnknownFaces}
         onOpenChange={setShowGlobalUnknownFaces}
       />
+
+      {/* Recognize Unknown Result Dialog */}
+      <Dialog open={showRecognizeResult} onOpenChange={setShowRecognizeResult}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Результаты поиска известных лиц</DialogTitle>
+            <DialogDescription>
+              Проверено {recognizeResult?.total_unknown ?? 0} неизвестных лиц
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div className="p-4 bg-muted rounded-lg">
+                <div className="text-3xl font-bold text-primary">
+                  {recognizeResult?.recognized_count ?? 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Распознано</div>
+              </div>
+              <div className="p-4 bg-muted rounded-lg">
+                <div className="text-3xl font-bold">
+                  {(recognizeResult?.total_unknown ?? 0) - (recognizeResult?.recognized_count ?? 0)}
+                </div>
+                <div className="text-sm text-muted-foreground">Осталось неизвестных</div>
+              </div>
+            </div>
+
+            {recognizeResult?.by_person && recognizeResult.by_person.length > 0 && (
+              <div>
+                <div className="font-medium mb-2">По игрокам:</div>
+                <div className="max-h-[200px] overflow-y-auto space-y-1">
+                  {recognizeResult.by_person.map((item) => (
+                    <div 
+                      key={item.person_id} 
+                      className="flex justify-between items-center py-1 px-2 bg-muted/50 rounded"
+                    >
+                      <span className="truncate">{item.name}</span>
+                      <span className="font-medium text-primary ml-2">{item.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {recognizeResult?.recognized_count === 0 && (
+              <div className="text-center text-muted-foreground py-4">
+                Новых совпадений не найдено
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={() => setShowRecognizeResult(false)}>
+              Закрыть
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
