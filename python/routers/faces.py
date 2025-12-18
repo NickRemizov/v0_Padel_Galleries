@@ -5,6 +5,7 @@ Face detection, recognition and management endpoints
 v4.0: Fixed index rebuild on face deletion
 v4.1: Added recognize-unknown endpoint
 v4.2: Fixed descriptor parsing in recognize-unknown
+v4.3: Added pagination to recognize-unknown (Supabase limit is 1000)
 """
 
 from fastapi import APIRouter, Depends
@@ -489,6 +490,60 @@ def parse_descriptor(descriptor) -> Optional[np.ndarray]:
         return None
 
 
+async def get_all_unknown_faces_paginated(
+    supabase_db: SupabaseDatabase,
+    gallery_id: Optional[str] = None
+) -> List[dict]:
+    """
+    Get ALL unknown faces with pagination (Supabase limit is 1000).
+    
+    Args:
+        supabase_db: Database client
+        gallery_id: Optional gallery filter
+        
+    Returns:
+        List of all unknown faces with descriptors
+    """
+    all_faces = []
+    page_size = 1000
+    offset = 0
+    
+    while True:
+        if gallery_id:
+            # With gallery filter - need join
+            response = supabase_db.client.table("photo_faces").select(
+                "id, photo_id, insightface_descriptor, gallery_images!inner(gallery_id)"
+            ).is_(
+                "person_id", "null"
+            ).not_.is_(
+                "insightface_descriptor", "null"
+            ).eq(
+                "gallery_images.gallery_id", gallery_id
+            ).order("created_at", desc=False).range(offset, offset + page_size - 1).execute()
+        else:
+            # All faces - no join needed
+            response = supabase_db.client.table("photo_faces").select(
+                "id, photo_id, insightface_descriptor"
+            ).is_(
+                "person_id", "null"
+            ).not_.is_(
+                "insightface_descriptor", "null"
+            ).order("created_at", desc=False).range(offset, offset + page_size - 1).execute()
+        
+        if not response.data or len(response.data) == 0:
+            break
+        
+        all_faces.extend(response.data)
+        logger.info(f"[recognize-unknown] Loaded page: offset={offset}, count={len(response.data)}, total={len(all_faces)}")
+        
+        if len(response.data) < page_size:
+            break
+        
+        offset += page_size
+    
+    return all_faces
+
+
 @router.post("/recognize-unknown")
 async def recognize_unknown_faces(
     request: RecognizeUnknownRequest,
@@ -498,6 +553,8 @@ async def recognize_unknown_faces(
     """
     Recognize all unknown faces by running them through the recognition algorithm.
     
+    v4.3: Added pagination to handle >1000 faces (Supabase limit)
+    
     This is useful after manually assigning a few photos to a new player -
     the algorithm can then find other photos of the same player automatically.
     
@@ -506,24 +563,10 @@ async def recognize_unknown_faces(
     try:
         logger.info(f"[recognize-unknown] START gallery_id={request.gallery_id}, threshold={request.confidence_threshold}")
         
-        # Build query for unknown faces with descriptors
-        query = supabase_db.client.table("photo_faces").select(
-            "id, photo_id, insightface_descriptor"
-        ).is_("person_id", "null").not_.is_("insightface_descriptor", "null")
+        # Get ALL unknown faces with pagination
+        unknown_faces = await get_all_unknown_faces_paginated(supabase_db, request.gallery_id)
         
-        # Optional gallery filter
-        if request.gallery_id:
-            # Need to join with gallery_images to filter by gallery
-            query = supabase_db.client.table("photo_faces").select(
-                "id, photo_id, insightface_descriptor, gallery_images!inner(gallery_id)"
-            ).is_("person_id", "null").not_.is_("insightface_descriptor", "null").eq(
-                "gallery_images.gallery_id", request.gallery_id
-            )
-        
-        result = query.execute()
-        unknown_faces = result.data or []
-        
-        logger.info(f"[recognize-unknown] Found {len(unknown_faces)} unknown faces with descriptors")
+        logger.info(f"[recognize-unknown] Total unknown faces with descriptors: {len(unknown_faces)}")
         
         if not unknown_faces:
             return ApiResponse.ok({
@@ -545,7 +588,7 @@ async def recognize_unknown_faces(
         skipped_count = 0
         by_person = {}  # person_id -> {name, count}
         
-        for face in unknown_faces:
+        for i, face in enumerate(unknown_faces):
             face_id = face["id"]
             descriptor = face.get("insightface_descriptor")
             
@@ -585,7 +628,12 @@ async def recognize_unknown_faces(
                 
                 by_person[person_id]["count"] += 1
                 
-                logger.info(f"[recognize-unknown] ✓ Face {face_id[:8]}... -> {by_person[person_id]['name']} ({confidence:.3f})")
+                if recognized_count <= 10 or recognized_count % 50 == 0:
+                    logger.info(f"[recognize-unknown] ✓ Face {face_id[:8]}... -> {by_person[person_id]['name']} ({confidence:.3f})")
+            
+            # Progress log every 100 faces
+            if (i + 1) % 100 == 0:
+                logger.info(f"[recognize-unknown] Progress: {i + 1}/{len(unknown_faces)} processed, {recognized_count} recognized")
         
         if skipped_count > 0:
             logger.warning(f"[recognize-unknown] Skipped {skipped_count} faces with invalid descriptors")
