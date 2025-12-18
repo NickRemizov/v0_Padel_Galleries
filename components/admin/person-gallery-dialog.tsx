@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -57,6 +57,14 @@ interface PersonPhoto {
   shootDate?: string
   sort_order?: string
   created_at?: string
+}
+
+// Type for tagging image state with neighbor IDs
+interface TaggingImageState {
+  id: string
+  url: string
+  prevId: string | null
+  nextId: string | null
 }
 
 /**
@@ -185,7 +193,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   const router = useRouter()
   const [photos, setPhotos] = useState<PersonPhoto[]>([])
   const [loading, setLoading] = useState(false)
-  const [taggingImage, setTaggingImage] = useState<{ id: string; url: string } | null>(null)
+  const [taggingImage, setTaggingImage] = useState<TaggingImageState | null>(null)
   const [avatarSelectorOpen, setAvatarSelectorOpen] = useState(false)
   const [selectedPhotoForAvatar, setSelectedPhotoForAvatar] = useState<string | null>(null)
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set())
@@ -266,6 +274,51 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     return photos.filter((p) => !p.verified).length
   }, [photos])
 
+  // Helper to find neighbors in current sortedPhotos
+  const findNeighbors = useCallback((photoId: string): { prevId: string | null; nextId: string | null } => {
+    const index = sortedPhotos.findIndex((p) => p.id === photoId)
+    return {
+      prevId: index > 0 ? sortedPhotos[index - 1].id : null,
+      nextId: index < sortedPhotos.length - 1 ? sortedPhotos[index + 1].id : null,
+    }
+  }, [sortedPhotos])
+
+  // Navigate to previous image using saved prevId
+  const handlePreviousImage = useCallback(() => {
+    if (!taggingImage?.prevId) return
+    
+    const prevPhoto = photos.find((p) => p.id === taggingImage.prevId)
+    if (!prevPhoto) return
+    
+    // Find neighbors for the new image
+    const neighbors = findNeighbors(prevPhoto.id)
+    
+    setTaggingImage({
+      id: prevPhoto.id,
+      url: prevPhoto.image_url,
+      prevId: neighbors.prevId,
+      nextId: neighbors.nextId,
+    })
+  }, [taggingImage, photos, findNeighbors])
+
+  // Navigate to next image using saved nextId
+  const handleNextImage = useCallback(() => {
+    if (!taggingImage?.nextId) return
+    
+    const nextPhoto = photos.find((p) => p.id === taggingImage.nextId)
+    if (!nextPhoto) return
+    
+    // Find neighbors for the new image
+    const neighbors = findNeighbors(nextPhoto.id)
+    
+    setTaggingImage({
+      id: nextPhoto.id,
+      url: nextPhoto.image_url,
+      prevId: neighbors.prevId,
+      nextId: neighbors.nextId,
+    })
+  }, [taggingImage, photos, findNeighbors])
+
   async function handleDeleteDescriptors(photoId: string) {
     const photo = photos.find((p) => p.id === photoId)
     if (!photo) return
@@ -309,9 +362,18 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     await loadPhotos()
   }
 
-  function handleOpenTaggingDialog(imageId: string, imageUrl: string) {
-    setTaggingImage({ id: imageId, url: imageUrl })
-  }
+  // Open tagging dialog with neighbor IDs saved
+  const handleOpenTaggingDialog = useCallback((photoId: string, imageUrl: string) => {
+    // Find neighbors at the moment of opening
+    const neighbors = findNeighbors(photoId)
+    
+    setTaggingImage({
+      id: photoId,
+      url: imageUrl,
+      prevId: neighbors.prevId,
+      nextId: neighbors.nextId,
+    })
+  }, [findNeighbors])
 
   function togglePhotoSelection(photoId: string) {
     setSelectedPhotos((prev) => {
@@ -663,6 +725,10 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
           open={!!taggingImage}
           onOpenChange={handleTaggingDialogClose}
           onSave={handleTaggingSave}
+          onPrevious={handlePreviousImage}
+          onNext={handleNextImage}
+          hasPrevious={!!taggingImage.prevId}
+          hasNext={!!taggingImage.nextId}
         />
       )}
 
