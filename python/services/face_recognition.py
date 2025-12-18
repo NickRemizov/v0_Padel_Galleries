@@ -7,6 +7,11 @@ This is a facade that delegates to specialized modules:
 - hnsw_index.py - HNSW index operations
 - quality_filters.py - Quality filtering
 - grouping.py - Face clustering
+
+v4.0: New recognition algorithm with adaptive early exit
+- Formula: final_confidence = source_confidence × similarity
+- Early exit when similarity < best_final_confidence
+- No separate penalty for non-verified faces
 """
 
 import os
@@ -35,10 +40,6 @@ from services.quality_filters import (
 )
 from services.grouping import group_tournament_faces
 from services.supabase_database import SupabaseDatabase
-
-# Non-verified threshold penalty (hardcoded)
-# For non-verified faces, threshold = base_threshold + this value
-NON_VERIFIED_THRESHOLD_PENALTY = 0.05
 
 
 class FaceRecognitionService:
@@ -259,14 +260,20 @@ class FaceRecognitionService:
         confidence_threshold: Optional[float] = None
     ) -> Tuple[Optional[str], Optional[float]]:
         """
-        Recognize face by embedding.
+        Recognize face by embedding using adaptive early exit algorithm.
         
-        For verified faces: uses base threshold, returns similarity as confidence
-        For non-verified faces: uses base threshold + 0.05, returns 
-        similarity × source_confidence as final confidence.
+        Algorithm (v4.0):
+        1. Query HNSW for candidates sorted by similarity (descending)
+        2. For each candidate: final_confidence = source_confidence × similarity
+        3. Track best_final_confidence
+        4. Early exit when: similarity < best_final_confidence
+           (no subsequent candidate can improve the result)
         
-        The confidence chain naturally decays through non-verified matches,
-        which is the correct behavior to prevent error propagation.
+        This naturally handles:
+        - Verified faces (source_conf=1.0) get higher scores
+        - Non-verified faces get proportionally lower scores
+        - Identical descriptors: iterates until finds best (e.g., verified)
+        - Confidence chains decay naturally through multiplication
         
         Returns:
             Tuple of (person_id, final_confidence) or (None, None) if below threshold
@@ -275,48 +282,64 @@ class FaceRecognitionService:
         
         if confidence_threshold is None:
             config = self.supabase_db.get_recognition_config_sync()
-            confidence_threshold = config.get('recognition_threshold', 0.60)
+            confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
-        logger.info(f"[FaceRecognition] Recognizing face (base threshold={confidence_threshold:.2f})")
+        logger.info(f"[v4.0] Recognizing face (threshold={confidence_threshold:.2f})")
         
         # Safety check
         if not self._players_index.is_loaded():
-            logger.warning("[FaceRecognition] Index not loaded, attempting to initialize...")
+            logger.warning("[v4.0] Index not loaded, attempting to initialize...")
             try:
                 self._load_players_index()
             except Exception as e:
-                logger.error(f"[FaceRecognition] Cannot initialize index: {e}")
+                logger.error(f"[v4.0] Cannot initialize index: {e}")
                 return None, None
         
-        # Query index - returns verified status and source confidence
-        person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=1)
+        # Query with safety margin - we'll exit early anyway
+        max_k = min(50, self._players_index.get_count())
+        person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=max_k)
         
         if not person_ids:
+            logger.info("[v4.0] No candidates found in index")
             return None, None
         
-        person_id = person_ids[0]
-        similarity = similarities[0]
-        is_verified = verified_flags[0]
-        source_confidence = source_confidences[0]
+        # Adaptive search with early exit
+        best_person_id = None
+        best_final_confidence = 0.0
+        iterations = 0
         
-        # Calculate effective threshold and final confidence
-        if is_verified:
-            # Verified face: use base threshold, similarity is the confidence
-            effective_threshold = confidence_threshold
-            final_confidence = similarity
-            logger.info(f"[FaceRecognition] Matched VERIFIED face: person_id={person_id}, similarity={similarity:.3f}, threshold={effective_threshold:.3f}")
-        else:
-            # Non-verified face: stricter threshold, multiply confidences
-            # This creates natural decay in confidence chains
-            effective_threshold = confidence_threshold + NON_VERIFIED_THRESHOLD_PENALTY
-            final_confidence = similarity * source_confidence
-            logger.info(f"[FaceRecognition] Matched NON-VERIFIED face: person_id={person_id}, similarity={similarity:.3f} x source_conf={source_confidence:.3f} = {final_confidence:.3f}, threshold={effective_threshold:.3f}")
+        for i in range(len(person_ids)):
+            person_id = person_ids[i]
+            similarity = similarities[i]
+            source_conf = source_confidences[i]
+            is_verified = verified_flags[i]
+            
+            iterations += 1
+            
+            # Early exit condition: similarity < best means no future candidate can win
+            # Because: future_final = future_conf × future_sim ≤ 1.0 × future_sim ≤ similarity < best
+            if similarity < best_final_confidence:
+                logger.info(f"[v4.0] Early exit at iteration {iterations}: sim={similarity:.3f} < best={best_final_confidence:.3f}")
+                break
+            
+            # Calculate final confidence
+            final_confidence = source_conf * similarity
+            
+            # Update best if improved
+            if final_confidence > best_final_confidence:
+                best_final_confidence = final_confidence
+                best_person_id = person_id
+                v_marker = "✓" if is_verified else "○"
+                logger.info(f"[v4.0] [{iterations}] {v_marker} New best: person={person_id[:8]}..., sim={similarity:.3f} × conf={source_conf:.3f} = {final_confidence:.3f}")
         
-        if final_confidence >= effective_threshold:
-            logger.info(f"[FaceRecognition] ✓ Match accepted: person_id={person_id}, final_confidence={final_confidence:.3f}")
-            return person_id, final_confidence
+        logger.info(f"[v4.0] Search complete: {iterations} iterations, best={best_final_confidence:.3f}")
+        
+        # Check threshold
+        if best_final_confidence >= confidence_threshold:
+            logger.info(f"[v4.0] ✓ Match accepted: person={best_person_id}, confidence={best_final_confidence:.3f}")
+            return best_person_id, best_final_confidence
         else:
-            logger.info(f"[FaceRecognition] ✗ Match rejected: {final_confidence:.3f} < {effective_threshold:.3f}")
+            logger.info(f"[v4.0] ✗ Below threshold: {best_final_confidence:.3f} < {confidence_threshold:.3f}")
             return None, None
     
     # ==================== Quality Filters ====================
