@@ -2,6 +2,7 @@ import os
 import numpy as np
 from typing import List, Tuple, Optional, Dict
 from supabase import create_client, Client
+import json
 
 
 class SupabaseDatabase:
@@ -88,7 +89,6 @@ class SupabaseDatabase:
                 if isinstance(descriptor, list):
                     embedding = np.array(descriptor, dtype=np.float32)
                 elif isinstance(descriptor, str):
-                    import json
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
                 else:
                     print(f"[v3.0] WARNING: Unknown descriptor type for face_id={face_id}: {type(descriptor)}")
@@ -121,6 +121,70 @@ class SupabaseDatabase:
             import traceback
             print(f"[v3.0] Traceback:\n{traceback.format_exc()}")
             return [], [], [], []
+    
+    async def get_all_unknown_faces(self) -> List[dict]:
+        """
+        Get ALL unrecognized faces from the entire database with pagination.
+        
+        Returns:
+            List of dicts with id, photo_id, insightface_descriptor, insightface_bbox,
+            photo_url, gallery_id, gallery_title, shoot_date
+        """
+        print("[v4.2] Getting ALL unknown faces from database with pagination...")
+        
+        try:
+            all_faces = []
+            page_size = 1000
+            offset = 0
+            
+            while True:
+                # Query with join to get photo URL and gallery info
+                response = self.client.table("photo_faces").select(
+                    "id, photo_id, insightface_descriptor, insightface_bbox, "
+                    "gallery_images!inner(id, image_url, gallery_id, galleries(id, title, shoot_date))"
+                ).is_(
+                    "person_id", "null"
+                ).eq(
+                    "verified", False
+                ).not_.is_(
+                    "insightface_descriptor", "null"
+                ).order("created_at", desc=False).range(offset, offset + page_size - 1).execute()
+                
+                if not response.data or len(response.data) == 0:
+                    break
+                
+                # Normalize the nested data
+                for face in response.data:
+                    gallery_images = face.get("gallery_images", {})
+                    galleries = gallery_images.get("galleries", {}) if gallery_images else {}
+                    
+                    normalized = {
+                        "id": face["id"],
+                        "photo_id": face["photo_id"],
+                        "insightface_descriptor": face["insightface_descriptor"],
+                        "insightface_bbox": face.get("insightface_bbox"),
+                        "photo_url": gallery_images.get("image_url") if gallery_images else None,
+                        "gallery_id": gallery_images.get("gallery_id") if gallery_images else None,
+                        "gallery_title": galleries.get("title") if galleries else None,
+                        "shoot_date": galleries.get("shoot_date") if galleries else None,
+                    }
+                    all_faces.append(normalized)
+                
+                print(f"[v4.2] Loaded page: offset={offset}, count={len(response.data)}, total so far={len(all_faces)}")
+                
+                if len(response.data) < page_size:
+                    break
+                
+                offset += page_size
+            
+            print(f"[v4.2] ✓ Total unknown faces loaded: {len(all_faces)}")
+            return all_faces
+            
+        except Exception as e:
+            print(f"[v4.2] ERROR getting all unknown faces: {str(e)}")
+            import traceback
+            print(f"[v4.2] Traceback:\n{traceback.format_exc()}")
+            return []
     
     async def find_verified_face_by_embedding(
         self, 
@@ -214,7 +278,6 @@ class SupabaseDatabase:
                 if isinstance(descriptor, list):
                     rejected_embedding = np.array(descriptor, dtype=np.float32)
                 elif isinstance(descriptor, str):
-                    import json
                     rejected_embedding = np.array(json.loads(descriptor), dtype=np.float32)
                 else:
                     continue
@@ -280,45 +343,74 @@ class SupabaseDatabase:
         gallery_id: str
     ) -> List[dict]:
         """
-        Get all unrecognized faces from a gallery
+        Get all unrecognized faces from a gallery with pagination.
         
         Returns:
             List of dicts with photo_id, insightface_descriptor, insightface_bbox
         """
-        print(f"[v3.23] Getting unknown faces from gallery {gallery_id}")
+        print(f"[v4.2] Getting unknown faces from gallery {gallery_id} with pagination...")
         
         try:
-            # Get all photos from gallery
-            photos_response = self.client.table("gallery_images").select(
-                "id"
-            ).eq(
-                "gallery_id", gallery_id
-            ).execute()
+            # Get all photos from gallery with pagination
+            all_photo_ids = []
+            page_size = 1000
+            offset = 0
             
-            if not photos_response.data:
-                print("[v3.23] No photos in gallery")
+            while True:
+                photos_response = self.client.table("gallery_images").select(
+                    "id"
+                ).eq(
+                    "gallery_id", gallery_id
+                ).range(offset, offset + page_size - 1).execute()
+                
+                if not photos_response.data or len(photos_response.data) == 0:
+                    break
+                
+                all_photo_ids.extend([p["id"] for p in photos_response.data])
+                
+                if len(photos_response.data) < page_size:
+                    break
+                    
+                offset += page_size
+            
+            if not all_photo_ids:
+                print("[v4.2] No photos in gallery")
                 return []
             
-            photo_ids = [p["id"] for p in photos_response.data]
+            print(f"[v4.2] Found {len(all_photo_ids)} photos in gallery")
             
-            # Get unverified faces without person_id
-            faces_response = self.client.table("photo_faces").select(
-                "id, photo_id, insightface_descriptor, insightface_bbox, insightface_confidence"
-            ).in_(
-                "photo_id", photo_ids
-            ).is_(
-                "person_id", "null"
-            ).eq(
-                "verified", False
-            ).not_.is_(
-                "insightface_descriptor", "null"
-            ).execute()
+            # Get unverified faces without person_id - with pagination
+            # Process in batches of 100 photo_ids to avoid query limits
+            all_faces = []
+            batch_size = 100
             
-            print(f"[v3.23] Found {len(faces_response.data)} unknown faces")
-            return faces_response.data
+            for i in range(0, len(all_photo_ids), batch_size):
+                batch_photo_ids = all_photo_ids[i:i + batch_size]
+                
+                faces_response = self.client.table("photo_faces").select(
+                    "id, photo_id, insightface_descriptor, insightface_bbox, insightface_confidence"
+                ).in_(
+                    "photo_id", batch_photo_ids
+                ).is_(
+                    "person_id", "null"
+                ).eq(
+                    "verified", False
+                ).not_.is_(
+                    "insightface_descriptor", "null"
+                ).execute()
+                
+                if faces_response.data:
+                    all_faces.extend(faces_response.data)
+                
+                print(f"[v4.2] Processed photo batch {i//batch_size + 1}, faces so far: {len(all_faces)}")
+            
+            print(f"[v4.2] ✓ Found {len(all_faces)} unknown faces in gallery")
+            return all_faces
             
         except Exception as e:
-            print(f"[v3.23] ERROR getting unknown faces: {str(e)}")
+            print(f"[v4.2] ERROR getting unknown faces: {str(e)}")
+            import traceback
+            print(f"[v4.2] Traceback:\n{traceback.format_exc()}")
             return []
 
     def get_person_info(self, person_id: str) -> Optional[dict]:
