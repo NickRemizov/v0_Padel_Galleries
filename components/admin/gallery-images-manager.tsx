@@ -59,6 +59,15 @@ interface FaceData {
   bbox: { x: number; y: number; width: number; height: number } | null
 }
 
+// Type for tagging image state with neighbor IDs
+interface TaggingImageState {
+  id: string
+  url: string
+  hasBeenProcessed: boolean
+  prevId: string | null  // ID of previous photo at moment of opening
+  nextId: string | null  // ID of next photo at moment of opening
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "N/A"
   const kb = bytes / 1024
@@ -267,7 +276,7 @@ export function GalleryImagesManager({
   const [uploadProgress, setUploadProgress] = useState("")
   const [sortBy, setSortBy] = useState<SortOption>((initialSortOrder as SortOption) || "filename")
   const [hideFullyVerified, setHideFullyVerified] = useState(false)
-  const [taggingImage, setTaggingImage] = useState<{ id: string; url: string; hasBeenProcessed: boolean } | null>(null)
+  const [taggingImage, setTaggingImage] = useState<TaggingImageState | null>(null)
   const [autoRecognitionMode, setAutoRecognitionMode] = useState<"all" | "remaining" | null>(null)
   const [showUnknownFaces, setShowUnknownFaces] = useState(false)
   const [recognitionStats, setRecognitionStats] = useState<
@@ -458,32 +467,52 @@ export function GalleryImagesManager({
     return images.filter((img) => !shouldShowPhoto(img)).length
   }, [images, hideFullyVerified, photoFacesMap, photoFacesLoaded])
 
-  const currentImageIndex = useMemo(() => {
-    if (!taggingImage) return -1
-    return sortedImages.findIndex((img) => img.id === taggingImage.id)
-  }, [taggingImage, sortedImages])
+  // Helper to find neighbors in current sortedImages
+  const findNeighbors = useCallback((imageId: string): { prevId: string | null; nextId: string | null } => {
+    const index = sortedImages.findIndex((img) => img.id === imageId)
+    return {
+      prevId: index > 0 ? sortedImages[index - 1].id : null,
+      nextId: index < sortedImages.length - 1 ? sortedImages[index + 1].id : null,
+    }
+  }, [sortedImages])
 
+  // Navigate to previous image using saved prevId
   const handlePreviousImage = useCallback(() => {
-    if (currentImageIndex > 0) {
-      const prevImage = sortedImages[currentImageIndex - 1]
-      setTaggingImage({
-        id: prevImage.id,
-        url: prevImage.image_url,
-        hasBeenProcessed: prevImage.has_been_processed || false,
-      })
-    }
-  }, [currentImageIndex, sortedImages])
+    if (!taggingImage?.prevId) return
+    
+    const prevImage = images.find((img) => img.id === taggingImage.prevId)
+    if (!prevImage) return
+    
+    // Find neighbors for the new image
+    const neighbors = findNeighbors(prevImage.id)
+    
+    setTaggingImage({
+      id: prevImage.id,
+      url: prevImage.image_url,
+      hasBeenProcessed: prevImage.has_been_processed || false,
+      prevId: neighbors.prevId,
+      nextId: neighbors.nextId,
+    })
+  }, [taggingImage, images, findNeighbors])
 
+  // Navigate to next image using saved nextId
   const handleNextImage = useCallback(() => {
-    if (currentImageIndex < sortedImages.length - 1) {
-      const nextImage = sortedImages[currentImageIndex + 1]
-      setTaggingImage({
-        id: nextImage.id,
-        url: nextImage.image_url,
-        hasBeenProcessed: nextImage.has_been_processed || false,
-      })
-    }
-  }, [currentImageIndex, sortedImages])
+    if (!taggingImage?.nextId) return
+    
+    const nextImage = images.find((img) => img.id === taggingImage.nextId)
+    if (!nextImage) return
+    
+    // Find neighbors for the new image
+    const neighbors = findNeighbors(nextImage.id)
+    
+    setTaggingImage({
+      id: nextImage.id,
+      url: nextImage.image_url,
+      hasBeenProcessed: nextImage.has_been_processed || false,
+      prevId: neighbors.prevId,
+      nextId: neighbors.nextId,
+    })
+  }, [taggingImage, images, findNeighbors])
 
   function handleDragEnter(e: React.DragEvent) {
     e.preventDefault()
@@ -736,11 +765,22 @@ export function GalleryImagesManager({
     setSingleDeleteDialog({ open: false, imageId: null, filename: null })
   }
 
-  const handleTagImage = (imageId: string, imageUrl: string) => {
+  // Open tagging dialog with neighbor IDs saved
+  const handleTagImage = useCallback((imageId: string, imageUrl: string) => {
     const image = images.find((img) => img.id === imageId)
     const hasBeenProcessed = image?.has_been_processed || false
-    setTaggingImage({ id: imageId, url: imageUrl, hasBeenProcessed })
-  }
+    
+    // Find neighbors at the moment of opening
+    const neighbors = findNeighbors(imageId)
+    
+    setTaggingImage({ 
+      id: imageId, 
+      url: imageUrl, 
+      hasBeenProcessed,
+      prevId: neighbors.prevId,
+      nextId: neighbors.nextId,
+    })
+  }, [images, findNeighbors])
 
   // Handle tagging dialog close - just close, badge update happens via onSave callback
   const handleTaggingDialogClose = useCallback((open: boolean) => {
@@ -1004,8 +1044,8 @@ export function GalleryImagesManager({
           onSave={updatePhotoFacesCache}
           onPrevious={handlePreviousImage}
           onNext={handleNextImage}
-          hasPrevious={currentImageIndex > 0}
-          hasNext={currentImageIndex < sortedImages.length - 1}
+          hasPrevious={!!taggingImage.prevId}
+          hasNext={!!taggingImage.nextId}
         />
       )}
 
