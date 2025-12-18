@@ -4,12 +4,14 @@ Face detection, recognition and management endpoints
 
 v4.0: Fixed index rebuild on face deletion
 v4.1: Added recognize-unknown endpoint
+v4.2: Fixed descriptor parsing in recognize-unknown
 """
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 import numpy as np
+import json
 
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
@@ -452,6 +454,41 @@ async def batch_verify_faces(
         raise DatabaseError(str(e), operation="batch_verify_faces")
 
 
+def parse_descriptor(descriptor) -> Optional[np.ndarray]:
+    """
+    Parse descriptor from database to numpy array.
+    Same method as supabase_database.py for consistency.
+    
+    Args:
+        descriptor: Can be list, string (JSON), or None
+        
+    Returns:
+        numpy array of float32 or None if invalid
+    """
+    if descriptor is None:
+        return None
+    
+    try:
+        if isinstance(descriptor, list):
+            embedding = np.array(descriptor, dtype=np.float32)
+        elif isinstance(descriptor, str):
+            embedding = np.array(json.loads(descriptor), dtype=np.float32)
+        else:
+            logger.warning(f"[parse_descriptor] Unknown type: {type(descriptor)}")
+            return None
+        
+        # Validate dimension
+        if len(embedding) != 512:
+            logger.warning(f"[parse_descriptor] Invalid dimension: {len(embedding)}, expected 512")
+            return None
+        
+        return embedding
+        
+    except Exception as e:
+        logger.warning(f"[parse_descriptor] Failed to parse: {e}")
+        return None
+
+
 @router.post("/recognize-unknown")
 async def recognize_unknown_faces(
     request: RecognizeUnknownRequest,
@@ -492,7 +529,7 @@ async def recognize_unknown_faces(
             return ApiResponse.ok({
                 "total_unknown": 0,
                 "recognized_count": 0,
-                "by_person": {}
+                "by_person": []
             })
         
         # Get threshold from config if not provided
@@ -501,24 +538,22 @@ async def recognize_unknown_faces(
             config = supabase_db.get_recognition_config_sync()
             threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
+        logger.info(f"[recognize-unknown] Using threshold: {threshold}")
+        
         # Process each face
         recognized_count = 0
+        skipped_count = 0
         by_person = {}  # person_id -> {name, count}
         
         for face in unknown_faces:
             face_id = face["id"]
-            descriptor_str = face.get("insightface_descriptor")
+            descriptor = face.get("insightface_descriptor")
             
-            if not descriptor_str:
-                continue
+            # Parse descriptor using same method as supabase_database.py
+            embedding = parse_descriptor(descriptor)
             
-            # Parse descriptor from string "[0.1, 0.2, ...]" to numpy array
-            try:
-                # Remove brackets and split
-                descriptor_str = descriptor_str.strip("[]")
-                embedding = np.array([float(x) for x in descriptor_str.split(",")])
-            except Exception as parse_error:
-                logger.warning(f"[recognize-unknown] Failed to parse descriptor for face {face_id}: {parse_error}")
+            if embedding is None:
+                skipped_count += 1
                 continue
             
             # Run recognition
@@ -550,7 +585,10 @@ async def recognize_unknown_faces(
                 
                 by_person[person_id]["count"] += 1
                 
-                logger.info(f"[recognize-unknown] ✓ Face {face_id[:8]}... -> {by_person[person_id]['name']} ({confidence:.2f})")
+                logger.info(f"[recognize-unknown] ✓ Face {face_id[:8]}... -> {by_person[person_id]['name']} ({confidence:.3f})")
+        
+        if skipped_count > 0:
+            logger.warning(f"[recognize-unknown] Skipped {skipped_count} faces with invalid descriptors")
         
         # Rebuild index if any faces were recognized (they now have person_id)
         index_rebuilt = False
