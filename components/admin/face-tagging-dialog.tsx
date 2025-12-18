@@ -15,7 +15,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.9" // Update badge on prev/next navigation
+const VERSION = "v6.10" // Simplified tooltips
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -519,7 +519,6 @@ export function FaceTaggingDialog({
     }
   }, [imageFitMode, selectedFaceIndex])
 
-  const hasUnassignedFaces = taggedFaces.some((face) => !face.personId)
   const canSave = !saving
   const isLoading = loadingFaces || !imageLoaded
 
@@ -566,11 +565,7 @@ export function FaceTaggingDialog({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {hasUnassignedFaces ? (
-                    <p>Назначьте всех людей или удалите неизвестные лица перед сохранением</p>
-                  ) : (
-                    <p>Сохранить без закрытия окна</p>
-                  )}
+                  <p>Сохранить без закрытия окна</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -800,32 +795,19 @@ export function FaceTaggingDialog({
               <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Отмена
               </Button>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <Button onClick={handleSave} disabled={!canSave}>
-                        {saving ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Сохранение...
-                          </>
-                        ) : (
-                          <>
-                            <Save className="mr-2 h-4 w-4" />
-                            Сохранить
-                          </>
-                        )}
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {hasUnassignedFaces && (
-                    <TooltipContent>
-                      <p>Назначьте всех людей или удалите неизвестные лица перед сохранением</p>
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
+              <Button onClick={handleSave} disabled={!canSave}>
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Сохранение...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Сохранить
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </div>
