@@ -1,6 +1,8 @@
 """
 Faces API Router
 Face detection, recognition and management endpoints
+
+v4.0: Fixed index rebuild on face deletion
 """
 
 from fastapi import APIRouter, Depends
@@ -224,7 +226,7 @@ async def delete_face(
 ):
     """Delete a face record and rebuild recognition index if needed."""
     try:
-        logger.info(f"Deleting face {request.face_id}")
+        logger.info(f"[v4.0] Deleting face {request.face_id}")
         
         check_response = supabase_db.client.table("photo_faces").select(
             "id, person_id, verified, insightface_descriptor"
@@ -235,19 +237,26 @@ async def delete_face(
         
         face_data = check_response.data[0]
         had_descriptor = face_data.get('insightface_descriptor') is not None
+        had_person_id = face_data.get('person_id') is not None
+        
+        logger.info(f"[v4.0] Face has descriptor: {had_descriptor}, person_id: {had_person_id}")
         
         supabase_db.client.table("photo_faces").delete().eq("id", request.face_id).execute()
-        logger.info(f"Face deleted: {request.face_id}")
+        logger.info(f"[v4.0] Face deleted from DB: {request.face_id}")
         
+        # Rebuild index if face had descriptor (was in index)
         index_updated = False
         if had_descriptor:
             try:
+                logger.info("[v4.0] Rebuilding index after face deletion...")
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
                     index_updated = True
-                    logger.info("Index rebuilt successfully")
+                    logger.info(f"[v4.0] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                else:
+                    logger.error(f"[v4.0] ✗ Index rebuild failed: {rebuild_result}")
             except Exception as index_error:
-                logger.error(f"Error rebuilding index: {index_error}")
+                logger.error(f"[v4.0] Error rebuilding index: {index_error}")
         
         return ApiResponse.ok({"deleted": True, "index_updated": index_updated})
         
@@ -330,57 +339,110 @@ async def batch_verify_faces(
     face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
     supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
 ):
-    """Batch verify faces: update kept faces and delete removed ones."""
+    """
+    Batch verify faces: update kept faces and delete removed ones.
+    
+    v4.0: Always rebuild index if faces were deleted OR updated with person_id
+    """
     try:
-        logger.info(f"Batch verify for photo {request.photo_id}, {len(request.kept_faces)} faces")
+        logger.info(f"[batch-verify] START photo={request.photo_id}, faces={len(request.kept_faces)}")
         
-        existing_response = supabase_db.client.table("photo_faces").select("id").eq(
-            "photo_id", request.photo_id
-        ).execute()
+        # Log input faces
+        for i, face in enumerate(request.kept_faces):
+            logger.info(f"[batch-verify] Input face[{i}]: id={face.id}, person_id={face.person_id}")
         
-        existing_ids = [f["id"] for f in existing_response.data] if existing_response.data else []
+        # Get existing faces with their descriptors
+        existing_response = supabase_db.client.table("photo_faces").select(
+            "id, person_id, insightface_descriptor"
+        ).eq("photo_id", request.photo_id).execute()
+        
+        existing_faces = existing_response.data or []
+        existing_ids = [f["id"] for f in existing_faces]
         kept_ids = [f.id for f in request.kept_faces if f.id]
         
-        # Delete removed faces
+        logger.info(f"[batch-verify] Existing IDs in DB: {existing_ids}")
+        logger.info(f"[batch-verify] Kept IDs from request: {kept_ids}")
+        
+        # Check if any deleted faces had descriptors (were in index)
+        deleted_faces_had_descriptors = False
         to_delete = [fid for fid in existing_ids if fid not in kept_ids]
+        
         for face_id in to_delete:
+            face_data = next((f for f in existing_faces if f["id"] == face_id), None)
+            if face_data and face_data.get("insightface_descriptor"):
+                deleted_faces_had_descriptors = True
+                logger.info(f"[batch-verify] Deleting face {face_id} (had descriptor)")
             supabase_db.client.table("photo_faces").delete().eq("id", face_id).execute()
         
         if to_delete:
-            logger.info(f"Deleted {len(to_delete)} faces")
+            logger.info(f"[batch-verify] Deleted {len(to_delete)} faces, had_descriptors={deleted_faces_had_descriptors}")
         
         # Update kept faces
-        all_have_person_id = True
-        for face in request.kept_faces:
-            if not face.person_id:
-                all_have_person_id = False
-            
-            if face.id:
-                update_data = {
-                    "person_id": face.person_id,
-                    "recognition_confidence": 1.0 if face.person_id else None,
-                    "verified": bool(face.person_id),
-                }
-                supabase_db.client.table("photo_faces").update(update_data).eq("id", face.id).execute()
+        updated_count = 0
+        failed_count = 0
+        any_has_person_id = False
         
-        # Rebuild index if any faces have person_id
+        for face in request.kept_faces:
+            if not face.id:
+                continue
+                
+            if face.person_id:
+                any_has_person_id = True
+            
+            update_data = {
+                "person_id": face.person_id,
+                "recognition_confidence": 1.0 if face.person_id else None,
+                "verified": bool(face.person_id),
+            }
+            
+            logger.info(f"[batch-verify] Updating face {face.id} with: {update_data}")
+            
+            response = supabase_db.client.table("photo_faces").update(update_data).eq("id", face.id).execute()
+            
+            if response.data:
+                updated_count += 1
+                logger.info(f"[batch-verify] ✓ Face {face.id} updated: verified={update_data['verified']}, confidence={update_data['recognition_confidence']}, person_id={face.person_id}")
+            else:
+                failed_count += 1
+                logger.error(f"[batch-verify] ✗ Face {face.id} update FAILED - no data returned")
+        
+        logger.info(f"[batch-verify] Update summary: {updated_count} succeeded, {failed_count} failed")
+        
+        # Rebuild index if:
+        # 1. Any deleted faces had descriptors (need to remove from index)
+        # 2. Any kept faces have person_id (need to update in index)
+        need_rebuild = deleted_faces_had_descriptors or any_has_person_id
+        
         index_rebuilt = False
-        if any(f.person_id for f in request.kept_faces):
+        if need_rebuild:
+            faces_with_person = [f for f in request.kept_faces if f.person_id]
+            logger.info(f"[batch-verify] Rebuilding index: deleted_had_descriptors={deleted_faces_had_descriptors}, faces_with_person={len(faces_with_person)}")
             try:
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
                     index_rebuilt = True
-                    logger.info("Index rebuilt successfully")
+                    logger.info(f"[batch-verify] ✓ Index rebuilt: {rebuild_result}")
+                else:
+                    logger.error(f"[batch-verify] ✗ Index rebuild failed: {rebuild_result}")
             except Exception as index_error:
-                logger.error(f"Error rebuilding index: {index_error}")
+                logger.error(f"[batch-verify] ✗ Index rebuild exception: {index_error}")
+        else:
+            logger.info("[batch-verify] No index rebuild needed")
         
-        return ApiResponse.ok({
-            "verified": all_have_person_id,
-            "index_rebuilt": index_rebuilt
-        })
+        result = {
+            "verified": all(f.person_id for f in request.kept_faces) if request.kept_faces else False,
+            "index_rebuilt": index_rebuilt,
+            "updated_count": updated_count,
+            "failed_count": failed_count,
+            "deleted_count": len(to_delete)
+        }
+        
+        logger.info(f"[batch-verify] END result={result}")
+        
+        return ApiResponse.ok(result)
         
     except Exception as e:
-        logger.error(f"Error in batch verify: {e}")
+        logger.error(f"[batch-verify] ERROR: {e}", exc_info=True)
         raise DatabaseError(str(e), operation="batch_verify_faces")
 
 
