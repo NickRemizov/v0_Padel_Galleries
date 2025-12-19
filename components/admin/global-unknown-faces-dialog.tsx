@@ -97,12 +97,10 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
 
   async function handlePersonCreated(personId: string, personName: string) {
     setShowAddPerson(false)
-    // Reload people list to include newly created person
     await loadPeople()
     await assignClusterToPerson(personId)
   }
 
-  // FIX: Accept personId directly instead of using stale state
   async function handleSelectPerson(personId: string) {
     if (!personId) return
     setShowSelectPerson(false)
@@ -120,7 +118,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     try {
       const result = await assignFacesToPersonAction(faceIds, personId)
       if (result.success) {
-        // Mark all unique photos as processed
         const uniquePhotoIds = [...new Set(facesToAssign.map((f) => f.photo_id))]
         console.log("[GlobalUnknownFaces] Marking", uniquePhotoIds.length, "photos as processed")
 
@@ -185,15 +182,15 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Неизвестные лица - кластеризация</DialogTitle>
             <DialogDescription>
               {loading
                 ? "Загрузка кластеров по всей базе..."
                 : clusters.length === 0
                   ? "Нет неизвестных лиц для кластеризации"
-                  : `Кластер ${currentClusterIndex + 1} из ${clusters.length} (${currentCluster?.size || 0} фото)`}
+                  : "Выберите действие для каждого кластера похожих лиц"}
             </DialogDescription>
           </DialogHeader>
 
@@ -206,82 +203,84 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
               <p>Все лица распознаны!</p>
             </div>
           ) : currentCluster ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-4">
-                {visibleFaces.map((face) => (
-                  <div key={face.id} className="relative">
-                    <div className="aspect-square rounded-lg overflow-hidden border">
-                      <FaceCropPreview
-                        imageUrl={face.image_url || "/placeholder.svg"}
-                        bbox={face.bbox}
-                      />
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-2 right-2 h-8 w-8"
-                      onClick={() => handleRemoveFace(face.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    {(face.gallery_title || face.shoot_date) && (
-                      <div className="mt-1 text-xs text-muted-foreground truncate text-center">
-                        {face.gallery_title}
-                        {face.shoot_date && ` ${formatDate(face.shoot_date)}`}
+            <>
+              <div className="flex-1 overflow-y-auto pr-2">
+                <div className="grid grid-cols-4 gap-4">
+                  {visibleFaces.map((face) => (
+                    <div key={face.id} className="relative">
+                      <div className="aspect-square rounded-lg overflow-hidden border">
+                        <FaceCropPreview
+                          imageUrl={face.image_url || "/placeholder.svg"}
+                          bbox={face.bbox}
+                        />
                       </div>
-                    )}
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2 h-8 w-8"
+                        onClick={() => handleRemoveFace(face.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                      {(face.gallery_title || face.shoot_date) && (
+                        <div className="mt-1 text-xs text-muted-foreground truncate text-center">
+                          {face.gallery_title}
+                          {face.shoot_date && ` ${formatDate(face.shoot_date)}`}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {visibleFaces.length === 0 && (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p>Все лица в кластере удалены</p>
+                    <Button variant="outline" className="mt-2" onClick={handleNextCluster} disabled={!hasNextCluster}>
+                      Перейти к следующему кластеру
+                    </Button>
                   </div>
-                ))}
+                )}
               </div>
 
-              {visibleFaces.length === 0 && (
-                <div className="text-center py-4 text-muted-foreground">
-                  <p>Все лица в кластере удалены</p>
-                  <Button variant="outline" className="mt-2" onClick={handleNextCluster} disabled={!hasNextCluster}>
-                    Перейти к следующему кластеру
-                  </Button>
-                </div>
-              )}
-
               {visibleFaces.length > 0 && (
-                <div className="flex gap-2 justify-center items-center">
-                  <Button variant="outline" onClick={handleCreatePerson} disabled={processing}>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Создать игрока
-                  </Button>
+                <div className="flex-shrink-0 flex items-center justify-between pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Кластер {currentClusterIndex + 1} из {clusters.length} (всего {currentCluster?.size || 0} фото)
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleCreatePerson} disabled={processing}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Создать игрока
+                    </Button>
 
-                  <Popover open={showSelectPerson} onOpenChange={setShowSelectPerson}>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" disabled={processing}>
-                        <Users className="h-4 w-4 mr-2" />
-                        Выбрать игрока
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[300px] p-0">
-                      <Command>
-                        <CommandInput placeholder="Поиск игрока..." />
-                        <CommandList>
-                          <CommandEmpty>Игрок не найден</CommandEmpty>
-                          <CommandGroup className="max-h-[300px] overflow-y-auto">
-                            {people.map((person) => (
-                              <CommandItem
-                                key={person.id}
-                                onSelect={() => {
-                                  // FIX: Pass person.id directly instead of using setState + stale closure
-                                  handleSelectPerson(person.id)
-                                }}
-                              >
-                                {person.real_name}
-                                {person.telegram_name && ` (${person.telegram_name})`}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                    <Popover open={showSelectPerson} onOpenChange={setShowSelectPerson}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" disabled={processing}>
+                          <Users className="h-4 w-4 mr-2" />
+                          Выбрать игрока
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[300px] p-0">
+                        <Command>
+                          <CommandInput placeholder="Поиск игрока..." />
+                          <CommandList>
+                            <CommandEmpty>Игрок не найден</CommandEmpty>
+                            <CommandGroup className="max-h-[300px] overflow-y-auto">
+                              {people.map((person) => (
+                                <CommandItem
+                                  key={person.id}
+                                  onSelect={() => handleSelectPerson(person.id)}
+                                >
+                                  {person.real_name}
+                                  {person.telegram_name && ` (${person.telegram_name})`}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
 
-                  <div className="flex gap-1 ml-4">
                     <Button
                       variant="outline"
                       size="icon"
@@ -303,13 +302,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                   </div>
                 </div>
               )}
-
-              {hasNextCluster && (
-                <p className="text-sm text-muted-foreground text-center">
-                  Еще {clusters.length - currentClusterIndex - 1} кластер(ов) после этого
-                </p>
-              )}
-            </div>
+            </>
           ) : null}
         </DialogContent>
       </Dialog>
