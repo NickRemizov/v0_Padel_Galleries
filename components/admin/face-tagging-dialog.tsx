@@ -15,7 +15,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.11" // Delete key to remove face
+const VERSION = "v6.12" // Show names for faces >30% confidence after redetect
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -271,31 +271,83 @@ export function FaceTaggingDialog({
         throw new Error(result.error || "Failed to redetect faces")
       }
 
-      const tagged: TaggedFace[] = result.faces.map((f: any) => ({
-        id: f.id,
-        face: {
-          boundingBox: f.insightface_bbox,
-          confidence: f.insightface_confidence,
-          blur_score: 0,
-          embedding: null,
-        },
-        personId: f.person_id,
-        personName: f.people?.real_name || f.people?.telegram_name || null,
-        recognitionConfidence: f.recognition_confidence,
-        verified: f.verified,
-      }))
+      // For redetect: show names for faces with >30% confidence from top_matches
+      const tagged: TaggedFace[] = result.faces.map((f: any) => {
+        // If already assigned to person, use that
+        if (f.person_id && f.people) {
+          return {
+            id: f.id,
+            face: {
+              boundingBox: f.insightface_bbox,
+              confidence: f.insightface_confidence,
+              blur_score: 0,
+              embedding: null,
+            },
+            personId: f.person_id,
+            personName: f.people.real_name || f.people.telegram_name || null,
+            recognitionConfidence: f.recognition_confidence,
+            verified: f.verified,
+          }
+        }
+        
+        // If not assigned but has recognition with >30% confidence, show candidate name
+        const confidence = f.recognition_confidence || 0
+        const topMatch = f.top_matches?.[0]
+        
+        if (confidence > 0.3 && topMatch) {
+          return {
+            id: f.id,
+            face: {
+              boundingBox: f.insightface_bbox,
+              confidence: f.insightface_confidence,
+              blur_score: 0,
+              embedding: null,
+            },
+            personId: topMatch.person_id || null, // candidate person_id (not verified)
+            personName: topMatch.person_name || topMatch.real_name || null,
+            recognitionConfidence: confidence,
+            verified: false, // not verified - just a candidate
+          }
+        }
+        
+        // No match or low confidence
+        return {
+          id: f.id,
+          face: {
+            boundingBox: f.insightface_bbox,
+            confidence: f.insightface_confidence,
+            blur_score: 0,
+            embedding: null,
+          },
+          personId: null,
+          personName: null,
+          recognitionConfidence: confidence,
+          verified: false,
+        }
+      })
 
-      const detailed: DetailedFace[] = result.faces.map((f: any) => ({
-        boundingBox: f.insightface_bbox,
-        size: Math.max(f.insightface_bbox.width, f.insightface_bbox.height),
-        blur_score: f.blur_score,
-        detection_score: f.insightface_confidence,
-        recognition_confidence: f.recognition_confidence,
-        embedding_quality: f.embedding_quality,
-        distance_to_nearest: f.distance_to_nearest,
-        top_matches: f.top_matches,
-        person_name: f.people?.real_name || f.people?.telegram_name || null,
-      }))
+      const detailed: DetailedFace[] = result.faces.map((f: any) => {
+        const confidence = f.recognition_confidence || 0
+        const topMatch = f.top_matches?.[0]
+        
+        // For detailed view, also show candidate name if >30%
+        let personName = f.people?.real_name || f.people?.telegram_name || null
+        if (!personName && confidence > 0.3 && topMatch) {
+          personName = topMatch.person_name || topMatch.real_name || null
+        }
+        
+        return {
+          boundingBox: f.insightface_bbox,
+          size: Math.max(f.insightface_bbox.width, f.insightface_bbox.height),
+          blur_score: f.blur_score,
+          detection_score: f.insightface_confidence,
+          recognition_confidence: f.recognition_confidence,
+          embedding_quality: f.embedding_quality,
+          distance_to_nearest: f.distance_to_nearest,
+          top_matches: f.top_matches,
+          person_name: personName,
+        }
+      })
 
       setTaggedFaces(tagged)
       setDetailedFaces(detailed)
