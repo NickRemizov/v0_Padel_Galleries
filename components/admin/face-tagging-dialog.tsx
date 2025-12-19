@@ -15,7 +15,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.13" // Fix: use similarity from top_matches instead of recognition_confidence
+const VERSION = "v6.14" // Fix: use topMatch.name (not person_name)
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -304,7 +304,7 @@ export function FaceTaggingDialog({
               embedding: null,
             },
             personId: topMatch.person_id || null, // candidate person_id (not verified)
-            personName: topMatch.person_name || topMatch.real_name || null,
+            personName: topMatch.name || null, // FIXED: use 'name' field
             recognitionConfidence: similarity, // use similarity from top_match
             verified: false, // not verified - just a candidate
           }
@@ -333,7 +333,7 @@ export function FaceTaggingDialog({
         // For detailed view, also show candidate name if >30%
         let personName = f.people?.real_name || f.people?.telegram_name || null
         if (!personName && similarity > 0.3 && topMatch) {
-          personName = topMatch.person_name || topMatch.real_name || null
+          personName = topMatch.name || null // FIXED: use 'name' field
         }
         
         return {
