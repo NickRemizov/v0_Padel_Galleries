@@ -37,46 +37,35 @@ interface EmbeddingConsistencyDialogProps {
 }
 
 /**
- * Calculate CSS for face crop with padding.
- * bbox format: [x1, y1, x2, y2] in pixels
- * Returns object-position and object-fit values for the Image component
+ * Parse bbox from various formats to [x1, y1, x2, y2] array.
+ * Handles both array format and object format {x, y, width, height}.
  */
-function calculateFaceCrop(
-  bbox: number[] | null,
-  imageWidth: number | null,
-  imageHeight: number | null,
-  containerSize: number = 80,
-  padding: number = 1.0 // 100% padding around face
-): { objectFit: "cover" | "none"; objectPosition: string; transform?: string } {
-  if (!bbox || bbox.length !== 4 || !imageWidth || !imageHeight) {
-    return { objectFit: "cover", objectPosition: "center" }
+function parseBbox(bbox: unknown): number[] | null {
+  if (!bbox) return null
+  
+  // Already an array [x1, y1, x2, y2]
+  if (Array.isArray(bbox) && bbox.length === 4) {
+    const nums = bbox.map(Number)
+    if (nums.every(n => !isNaN(n))) {
+      return nums
+    }
+    return null
   }
-
-  const [x1, y1, x2, y2] = bbox
-  const faceWidth = x2 - x1
-  const faceHeight = y2 - y1
-  const faceCenterX = x1 + faceWidth / 2
-  const faceCenterY = y1 + faceHeight / 2
-
-  // Add padding
-  const paddedWidth = faceWidth * (1 + padding * 2)
-  const paddedHeight = faceHeight * (1 + padding * 2)
   
-  // Use the larger dimension to ensure face fits
-  const cropSize = Math.max(paddedWidth, paddedHeight)
-  
-  // Calculate scale to fit cropSize into containerSize
-  const scale = containerSize / cropSize
-  
-  // Calculate offset to center the face
-  const offsetX = -(faceCenterX * scale - containerSize / 2)
-  const offsetY = -(faceCenterY * scale - containerSize / 2)
-
-  return {
-    objectFit: "none",
-    objectPosition: `${offsetX}px ${offsetY}px`,
-    transform: `scale(${scale})`
+  // Object format {x, y, width, height}
+  if (typeof bbox === "object" && bbox !== null) {
+    const obj = bbox as Record<string, unknown>
+    const x = Number(obj.x)
+    const y = Number(obj.y)
+    const width = Number(obj.width)
+    const height = Number(obj.height)
+    
+    if (!isNaN(x) && !isNaN(y) && !isNaN(width) && !isNaN(height)) {
+      return [x, y, x + width, y + height]
+    }
   }
+  
+  return null
 }
 
 export function EmbeddingConsistencyDialog({
@@ -177,9 +166,12 @@ export function EmbeddingConsistencyDialog({
       )
     }
 
-    // If we have bbox, show cropped face
-    if (emb.bbox && emb.image_width && emb.image_height) {
-      const [x1, y1, x2, y2] = emb.bbox
+    // Parse bbox safely
+    const bboxArray = parseBbox(emb.bbox)
+
+    // If we have valid bbox and image dimensions, show cropped face
+    if (bboxArray && emb.image_width && emb.image_height) {
+      const [x1, y1, x2, y2] = bboxArray
       const faceWidth = x2 - x1
       const faceHeight = y2 - y1
       const faceCenterX = x1 + faceWidth / 2
