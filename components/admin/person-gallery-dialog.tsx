@@ -274,6 +274,14 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     return photos.filter((p) => !p.verified).length
   }, [photos])
 
+  // Count selected unverified photos
+  const selectedUnverifiedCount = useMemo(() => {
+    return Array.from(selectedPhotos).filter((photoId) => {
+      const photo = photos.find((p) => p.id === photoId)
+      return photo && !photo.verified
+    }).length
+  }, [selectedPhotos, photos])
+
   // Helper to find neighbors in current sortedPhotos
   const findNeighbors = useCallback((photoId: string): { prevId: string | null; nextId: string | null } => {
     const index = sortedPhotos.findIndex((p) => p.id === photoId)
@@ -387,20 +395,41 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     })
   }
 
-  function canVerifySelected(): boolean {
-    if (selectedPhotos.size === 0) return false
-    return Array.from(selectedPhotos).some((photoId) => {
-      const photo = photos.find((p) => p.id === photoId)
-      return photo && !photo.verified
-    })
+  // Get verify button state and text
+  function getVerifyButtonState(): { disabled: boolean; text: string; count: number } {
+    // No unverified photos at all
+    if (unverifiedCount === 0) {
+      return { disabled: true, text: "Все фото подтверждены", count: 0 }
+    }
+    
+    // Some photos selected
+    if (selectedPhotos.size > 0) {
+      if (selectedUnverifiedCount > 0) {
+        return { disabled: false, text: `Подтвердить ${selectedUnverifiedCount} фото`, count: selectedUnverifiedCount }
+      } else {
+        // All selected photos are already verified
+        return { disabled: true, text: "Все фото подтверждены", count: 0 }
+      }
+    }
+    
+    // No photos selected, but have unverified
+    return { disabled: false, text: `Подтвердить все фото (${unverifiedCount})`, count: unverifiedCount }
   }
 
   function handleBatchVerify() {
-    const verifiablePhotos = Array.from(selectedPhotos).filter((photoId) => {
-      const photo = photos.find((p) => p.id === photoId)
-      return photo && !photo.verified
-    })
-    setConfirmDialog({ open: true, action: "verify", count: verifiablePhotos.length })
+    const verifyState = getVerifyButtonState()
+    if (verifyState.disabled) return
+    
+    // If photos selected - verify only selected unverified
+    // If no photos selected - verify all unverified
+    const photosToVerify = selectedPhotos.size > 0
+      ? Array.from(selectedPhotos).filter((photoId) => {
+          const photo = photos.find((p) => p.id === photoId)
+          return photo && !photo.verified
+        })
+      : photos.filter((p) => !p.verified).map((p) => p.id)
+    
+    setConfirmDialog({ open: true, action: "verify", count: photosToVerify.length })
   }
 
   function handleBatchDelete() {
@@ -409,11 +438,16 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
 
   async function confirmBatchAction() {
     if (confirmDialog.action === "verify") {
-      const verifiablePhotos = Array.from(selectedPhotos).filter((photoId) => {
-        const photo = photos.find((p) => p.id === photoId)
-        return photo && !photo.verified
-      })
-      for (const photoId of verifiablePhotos) {
+      // If photos selected - verify only selected unverified
+      // If no photos selected - verify all unverified
+      const photosToVerify = selectedPhotos.size > 0
+        ? Array.from(selectedPhotos).filter((photoId) => {
+            const photo = photos.find((p) => p.id === photoId)
+            return photo && !photo.verified
+          })
+        : photos.filter((p) => !p.verified).map((p) => p.id)
+      
+      for (const photoId of photosToVerify) {
         await verifyPersonOnPhotoAction(photoId, personId)
       }
     } else if (confirmDialog.action === "delete") {
@@ -463,6 +497,8 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     return `${day}.${month}`
   }
 
+  const verifyButtonState = getVerifyButtonState()
+
   return (
     <>
       <Dialog
@@ -511,12 +547,12 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                     <Button
                       variant="default"
                       size="sm"
-                      disabled={!canVerifySelected()}
+                      disabled={verifyButtonState.disabled}
                       onClick={handleBatchVerify}
-                      className="bg-green-500 hover:bg-green-600 text-white disabled:bg-gray-300"
+                      className="w-[220px] justify-start bg-green-500 hover:bg-green-600 text-white disabled:bg-gray-300 disabled:text-gray-500"
                     >
-                      <Check className="h-4 w-4 mr-2" />
-                      Подтвердить фото
+                      <Check className="h-4 w-4 mr-2 flex-shrink-0" />
+                      <span className="truncate">{verifyButtonState.text}</span>
                     </Button>
                     <Button
                       variant="destructive"
