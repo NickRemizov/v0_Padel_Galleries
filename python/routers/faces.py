@@ -7,9 +7,10 @@ v4.1: Added recognize-unknown endpoint
 v4.2: Fixed descriptor parsing in recognize-unknown
 v4.3: Added pagination to recognize-unknown (Supabase limit is 1000)
 v4.4: Added clear-descriptor endpoint for outlier removal
+v4.5: Added set-excluded endpoint for excluded_from_index flag
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from typing import List, Optional
 import numpy as np
@@ -738,6 +739,74 @@ async def clear_face_descriptor(
         raise DatabaseError(str(e), operation="clear_face_descriptor")
 
 
+@router.post("/{face_id}/set-excluded")
+async def set_face_excluded(
+    face_id: str,
+    excluded: bool = Query(True, description="Set to True to exclude from index, False to include"),
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Set excluded_from_index flag for a face.
+    
+    When excluded=True, the face won't be used in HNSW index for recognition,
+    but the descriptor is preserved (unlike clear-descriptor which deletes it).
+    
+    Use case: Exclude outlier embeddings without losing the data.
+    """
+    try:
+        logger.info(f"[set-excluded] Setting excluded_from_index={excluded} for face {face_id}")
+        
+        # Check if face exists
+        check_response = supabase_db.client.table("photo_faces").select(
+            "id, person_id, excluded_from_index"
+        ).eq("id", face_id).execute()
+        
+        if not check_response.data:
+            raise NotFoundError("Face", face_id)
+        
+        face_data = check_response.data[0]
+        current_excluded = face_data.get("excluded_from_index", False)
+        
+        if current_excluded == excluded:
+            logger.info(f"[set-excluded] Face {face_id} already has excluded_from_index={excluded}")
+            return ApiResponse.ok({
+                "updated": False,
+                "message": f"Face already has excluded_from_index={excluded}",
+                "index_rebuilt": False
+            })
+        
+        # Update the flag
+        supabase_db.client.table("photo_faces").update({
+            "excluded_from_index": excluded
+        }).eq("id", face_id).execute()
+        
+        logger.info(f"[set-excluded] Updated face {face_id}: excluded_from_index={excluded}")
+        
+        # Rebuild index
+        index_rebuilt = False
+        try:
+            rebuild_result = await face_service.rebuild_players_index()
+            if rebuild_result.get("success"):
+                index_rebuilt = True
+                logger.info(f"[set-excluded] Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+        except Exception as index_error:
+            logger.error(f"[set-excluded] Error rebuilding index: {index_error}")
+        
+        return ApiResponse.ok({
+            "updated": True,
+            "face_id": face_id,
+            "excluded_from_index": excluded,
+            "index_rebuilt": index_rebuilt
+        })
+        
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"[set-excluded] Error: {e}", exc_info=True)
+        raise DatabaseError(str(e), operation="set_face_excluded")
+
+
 @router.get("/statistics")
 async def get_face_statistics(
     confidence_threshold: Optional[float] = None,
@@ -747,7 +816,7 @@ async def get_face_statistics(
     try:
         logger.info(f"Getting face statistics")
         
-        config = await supabase_db.get_recognition_config()
+        config = supabase_db.get_recognition_config()
         threshold = confidence_threshold or config.get('recognition_threshold', 0.60)
         
         people_response = supabase_db.client.table("people").select("id", count="exact").execute()
