@@ -21,7 +21,8 @@ class SupabaseDatabase:
     
     def get_all_player_embeddings(self) -> Tuple[List[str], List[np.ndarray], List[bool], List[float]]:
         """
-        Load ALL InsightFace embeddings from photo_faces table (verified AND non-verified).
+        Load InsightFace embeddings from photo_faces table for HNSW index.
+        Only loads embeddings where excluded_from_index = FALSE.
         
         Returns:
             Tuple of (person_ids, embeddings, verified_flags, confidences) where:
@@ -30,7 +31,7 @@ class SupabaseDatabase:
             - verified_flags: List of booleans (True if verified)
             - confidences: List of recognition_confidence values (1.0 for verified)
         """
-        print("[v3.0] Loading ALL embeddings from Supabase photo_faces table...")
+        print("[v3.0] Loading embeddings from Supabase (excluded_from_index=FALSE)...")
         
         try:
             all_data = []
@@ -38,13 +39,16 @@ class SupabaseDatabase:
             offset = 0
             
             while True:
-                # Query photo_faces table with pagination - NO verified filter!
+                # Query photo_faces table with pagination
+                # Filter: excluded_from_index = FALSE (only include valid descriptors)
                 response = self.client.table("photo_faces").select(
                     "id, person_id, insightface_descriptor, verified, recognition_confidence, created_at"
                 ).not_.is_(
                     "insightface_descriptor", "null"
                 ).not_.is_(
                     "person_id", "null"
+                ).eq(
+                    "excluded_from_index", False
                 ).order("created_at", desc=False).range(offset, offset + page_size - 1).execute()
                 
                 if not response.data or len(response.data) == 0:
@@ -66,7 +70,7 @@ class SupabaseDatabase:
             total_rows = len(all_data)
             verified_count = sum(1 for row in all_data if row.get("verified"))
             non_verified_count = total_rows - verified_count
-            print(f"[v3.0] ✓ Loaded ALL {total_rows} faces ({verified_count} verified, {non_verified_count} non-verified)")
+            print(f"[v3.0] ✓ Loaded {total_rows} faces ({verified_count} verified, {non_verified_count} non-verified)")
             
             person_ids = []
             embeddings = []
@@ -121,6 +125,138 @@ class SupabaseDatabase:
             import traceback
             print(f"[v3.0] Traceback:\n{traceback.format_exc()}")
             return [], [], [], []
+    
+    def get_person_embeddings_for_audit(self, person_id: str) -> List[dict]:
+        """
+        Get ALL embeddings for a person (including excluded) for audit purposes.
+        
+        Returns:
+            List of dicts with id, insightface_descriptor, excluded_from_index, 
+            recognition_confidence, verified
+        """
+        print(f"[Audit] Getting all embeddings for person {person_id}...")
+        
+        try:
+            response = self.client.table("photo_faces").select(
+                "id, insightface_descriptor, excluded_from_index, recognition_confidence, verified"
+            ).eq(
+                "person_id", person_id
+            ).not_.is_(
+                "insightface_descriptor", "null"
+            ).execute()
+            
+            if not response.data:
+                return []
+            
+            print(f"[Audit] Found {len(response.data)} embeddings for person")
+            return response.data
+            
+        except Exception as e:
+            print(f"[Audit] ERROR getting person embeddings: {str(e)}")
+            return []
+    
+    def set_excluded_from_index(self, face_ids: List[str], excluded: bool = True) -> int:
+        """
+        Set excluded_from_index flag for multiple faces.
+        
+        Args:
+            face_ids: List of photo_faces IDs to update
+            excluded: True to exclude from index, False to include
+            
+        Returns:
+            Number of faces updated
+        """
+        if not face_ids:
+            return 0
+        
+        print(f"[Audit] Setting excluded_from_index={excluded} for {len(face_ids)} faces...")
+        
+        try:
+            # Update in batches to avoid query limits
+            batch_size = 100
+            updated_count = 0
+            
+            for i in range(0, len(face_ids), batch_size):
+                batch = face_ids[i:i + batch_size]
+                
+                response = self.client.table("photo_faces").update({
+                    "excluded_from_index": excluded
+                }).in_("id", batch).execute()
+                
+                if response.data:
+                    updated_count += len(response.data)
+            
+            print(f"[Audit] ✓ Updated {updated_count} faces")
+            return updated_count
+            
+        except Exception as e:
+            print(f"[Audit] ERROR setting excluded_from_index: {str(e)}")
+            return 0
+    
+    def get_excluded_stats_by_person(self) -> List[dict]:
+        """
+        Get exclusion statistics grouped by person.
+        
+        Returns:
+            List of dicts with person_id, name, total_count, excluded_count
+        """
+        print("[Audit] Getting excluded stats by person...")
+        
+        try:
+            # Get all people with their face counts
+            response = self.client.rpc(
+                "get_excluded_stats_by_person"
+            ).execute()
+            
+            if response.data:
+                return response.data
+            
+            # Fallback: manual aggregation if RPC doesn't exist
+            # Get all faces grouped by person
+            faces_response = self.client.table("photo_faces").select(
+                "person_id, excluded_from_index"
+            ).not_.is_(
+                "person_id", "null"
+            ).not_.is_(
+                "insightface_descriptor", "null"
+            ).execute()
+            
+            if not faces_response.data:
+                return []
+            
+            # Aggregate manually
+            stats = {}
+            for face in faces_response.data:
+                pid = face["person_id"]
+                if pid not in stats:
+                    stats[pid] = {"total": 0, "excluded": 0}
+                stats[pid]["total"] += 1
+                if face.get("excluded_from_index"):
+                    stats[pid]["excluded"] += 1
+            
+            # Get person names
+            person_ids = list(stats.keys())
+            people_response = self.client.table("people").select(
+                "id, name"
+            ).in_("id", person_ids).execute()
+            
+            names = {p["id"]: p["name"] for p in (people_response.data or [])}
+            
+            result = []
+            for pid, counts in stats.items():
+                if counts["excluded"] > 0:  # Only return people with excluded faces
+                    result.append({
+                        "person_id": pid,
+                        "name": names.get(pid, "Unknown"),
+                        "total_count": counts["total"],
+                        "excluded_count": counts["excluded"]
+                    })
+            
+            return sorted(result, key=lambda x: x["excluded_count"], reverse=True)
+            
+        except Exception as e:
+            print(f"[Audit] ERROR getting excluded stats: {str(e)}")
+            return []
     
     async def get_all_unknown_faces(self) -> List[dict]:
         """
