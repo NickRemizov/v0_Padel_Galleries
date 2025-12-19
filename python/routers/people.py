@@ -157,6 +157,8 @@ async def consistency_audit(
     
     Returns list of people with their consistency metrics, sorted by outlier count (worst first).
     Use this to find players with problematic embeddings.
+    
+    Now includes excluded_count for each person.
     """
     import numpy as np
     import json
@@ -182,7 +184,7 @@ async def consistency_audit(
         page_size = 1000
         while True:
             faces_result = supabase_db_instance.client.table("photo_faces").select(
-                "id, person_id, photo_id, verified, recognition_confidence, insightface_descriptor"
+                "id, person_id, photo_id, verified, recognition_confidence, insightface_descriptor, excluded_from_index"
             ).not_.is_("person_id", "null").not_.is_("insightface_descriptor", "null").range(
                 offset, offset + page_size - 1
             ).execute()
@@ -223,12 +225,16 @@ async def consistency_audit(
             
             descriptor_count = len(person_faces)
             
+            # Count already excluded
+            excluded_count = sum(1 for f in person_faces if f.get("excluded_from_index"))
+            
             # Skip if too few descriptors
             if descriptor_count < min_descriptors:
                 continue
             
-            # Parse embeddings
+            # Parse embeddings (only non-excluded for centroid calculation)
             embeddings = []
+            all_embeddings_with_faces = []
             for face in person_faces:
                 descriptor = face.get("insightface_descriptor")
                 try:
@@ -240,38 +246,55 @@ async def consistency_audit(
                         continue
                     
                     if len(emb) == 512:
-                        embeddings.append(emb)
+                        all_embeddings_with_faces.append((emb, face))
+                        # Only use non-excluded for centroid
+                        if not face.get("excluded_from_index"):
+                            embeddings.append(emb)
                 except Exception:
                     continue
             
             if len(embeddings) < 2:
+                # If all are excluded or too few, still report
+                results.append({
+                    "person_id": person_id,
+                    "person_name": person_name,
+                    "photo_count": photo_count,
+                    "descriptor_count": descriptor_count,
+                    "excluded_count": excluded_count,
+                    "outlier_count": 0,
+                    "overall_consistency": 1.0,
+                    "has_problems": excluded_count > 0
+                })
                 continue
             
-            # Calculate centroid
+            # Calculate centroid from non-excluded embeddings
             embeddings_array = np.array(embeddings)
             centroid = np.mean(embeddings_array, axis=0)
             centroid = centroid / np.linalg.norm(centroid)
             
-            # Calculate similarities
-            similarities = []
+            # Calculate similarities for ALL embeddings (to find new outliers)
             outlier_count = 0
-            for emb in embeddings:
+            similarities = []
+            for emb, face in all_embeddings_with_faces:
+                if face.get("excluded_from_index"):
+                    continue  # Skip already excluded from outlier count
                 emb_norm = emb / np.linalg.norm(emb)
                 sim = float(np.dot(emb_norm, centroid))
                 similarities.append(sim)
                 if sim < outlier_threshold:
                     outlier_count += 1
             
-            overall_consistency = float(np.mean(similarities))
+            overall_consistency = float(np.mean(similarities)) if similarities else 1.0
             
             results.append({
                 "person_id": person_id,
                 "person_name": person_name,
                 "photo_count": photo_count,
                 "descriptor_count": descriptor_count,
+                "excluded_count": excluded_count,
                 "outlier_count": outlier_count,
                 "overall_consistency": round(overall_consistency, 4),
-                "has_problems": outlier_count > 0
+                "has_problems": outlier_count > 0 or excluded_count > 0
             })
             
             processed += 1
@@ -279,18 +302,20 @@ async def consistency_audit(
                 logger.info(f"[consistency-audit] Processed {processed} people...")
         
         # Sort by outlier count (most problems first), then by consistency (lowest first)
-        results.sort(key=lambda x: (-x["outlier_count"], x["overall_consistency"]))
+        results.sort(key=lambda x: (-x["outlier_count"], -x["excluded_count"], x["overall_consistency"]))
         
         # Summary
         total_with_problems = sum(1 for r in results if r["has_problems"])
         total_outliers = sum(r["outlier_count"] for r in results)
+        total_excluded = sum(r["excluded_count"] for r in results)
         
-        logger.info(f"[consistency-audit] Done. {len(results)} people checked, {total_with_problems} have problems, {total_outliers} total outliers")
+        logger.info(f"[consistency-audit] Done. {len(results)} people checked, {total_with_problems} have problems, {total_outliers} outliers, {total_excluded} excluded")
         
         return ApiResponse.ok({
             "total_people": len(results),
             "people_with_problems": total_with_problems,
             "total_outliers": total_outliers,
+            "total_excluded": total_excluded,
             "outlier_threshold": outlier_threshold,
             "results": results
         })
@@ -300,7 +325,157 @@ async def consistency_audit(
         raise DatabaseError(str(e), operation="consistency_audit")
 
 
-# ============ CLEAR PERSON OUTLIERS ============
+# ============ AUDIT ALL EMBEDDINGS (mark outliers as excluded) ============
+
+@router.post("/audit-all-embeddings")
+async def audit_all_embeddings(
+    outlier_threshold: float = Query(0.5, description="Similarity below this = outlier"),
+    min_descriptors: int = Query(3, description="Skip people with fewer descriptors")
+):
+    """
+    Audit ALL people and mark outliers as excluded_from_index = TRUE.
+    
+    This is the mass audit function that:
+    1. For each person with >= min_descriptors
+    2. Calculates centroid from non-excluded embeddings
+    3. Marks embeddings with similarity < threshold as excluded
+    4. Rebuilds HNSW index at the end
+    
+    Returns summary of changes per person.
+    """
+    import numpy as np
+    import json
+    
+    try:
+        logger.info(f"[audit-all] Starting mass audit, threshold={outlier_threshold}, min_descriptors={min_descriptors}")
+        
+        # Get all people
+        people_result = supabase_db_instance.client.table("people").select(
+            "id, real_name, telegram_name"
+        ).execute()
+        
+        people = people_result.data or []
+        logger.info(f"[audit-all] Processing {len(people)} people")
+        
+        # Load ALL photo_faces with embeddings
+        all_faces = []
+        offset = 0
+        page_size = 1000
+        while True:
+            faces_result = supabase_db_instance.client.table("photo_faces").select(
+                "id, person_id, insightface_descriptor, excluded_from_index"
+            ).not_.is_("person_id", "null").not_.is_("insightface_descriptor", "null").range(
+                offset, offset + page_size - 1
+            ).execute()
+            
+            batch = faces_result.data or []
+            all_faces.extend(batch)
+            
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        
+        logger.info(f"[audit-all] Loaded {len(all_faces)} faces")
+        
+        # Group by person
+        faces_by_person = {}
+        for face in all_faces:
+            pid = face.get("person_id")
+            if pid:
+                if pid not in faces_by_person:
+                    faces_by_person[pid] = []
+                faces_by_person[pid].append(face)
+        
+        # Process each person
+        audit_results = []
+        total_newly_excluded = 0
+        
+        for person in people:
+            person_id = person["id"]
+            person_name = person.get("real_name") or person.get("telegram_name") or "Unknown"
+            person_faces = faces_by_person.get(person_id, [])
+            
+            if len(person_faces) < min_descriptors:
+                continue
+            
+            # Parse embeddings
+            embeddings_data = []  # [(embedding, face, is_excluded)]
+            for face in person_faces:
+                descriptor = face.get("insightface_descriptor")
+                try:
+                    if isinstance(descriptor, list):
+                        emb = np.array(descriptor, dtype=np.float32)
+                    elif isinstance(descriptor, str):
+                        emb = np.array(json.loads(descriptor), dtype=np.float32)
+                    else:
+                        continue
+                    
+                    if len(emb) == 512:
+                        embeddings_data.append((emb, face, face.get("excluded_from_index", False)))
+                except Exception:
+                    continue
+            
+            # Get non-excluded embeddings for centroid
+            non_excluded = [(e, f) for e, f, ex in embeddings_data if not ex]
+            
+            if len(non_excluded) < 2:
+                continue  # Can't calculate centroid
+            
+            # Calculate centroid
+            embeddings_array = np.array([e for e, f in non_excluded])
+            centroid = np.mean(embeddings_array, axis=0)
+            centroid = centroid / np.linalg.norm(centroid)
+            
+            # Find new outliers (not already excluded)
+            new_outlier_ids = []
+            for emb, face, is_excluded in embeddings_data:
+                if is_excluded:
+                    continue  # Already excluded
+                
+                emb_norm = emb / np.linalg.norm(emb)
+                similarity = float(np.dot(emb_norm, centroid))
+                
+                if similarity < outlier_threshold:
+                    new_outlier_ids.append(face["id"])
+            
+            # Mark new outliers as excluded
+            if new_outlier_ids:
+                updated = supabase_db_instance.set_excluded_from_index(new_outlier_ids, excluded=True)
+                total_newly_excluded += updated
+                
+                # Count total excluded for this person
+                total_excluded = sum(1 for _, _, ex in embeddings_data if ex) + len(new_outlier_ids)
+                
+                audit_results.append({
+                    "person_id": person_id,
+                    "person_name": person_name,
+                    "newly_excluded": len(new_outlier_ids),
+                    "total_excluded": total_excluded,
+                    "total_descriptors": len(embeddings_data)
+                })
+        
+        # Rebuild index
+        index_rebuilt = False
+        if total_newly_excluded > 0 and face_service_instance:
+            await face_service_instance.rebuild_players_index()
+            index_rebuilt = True
+        
+        logger.info(f"[audit-all] Done. {len(audit_results)} people affected, {total_newly_excluded} newly excluded")
+        
+        return ApiResponse.ok({
+            "people_processed": len(people),
+            "people_affected": len(audit_results),
+            "total_newly_excluded": total_newly_excluded,
+            "index_rebuilt": index_rebuilt,
+            "results": audit_results
+        })
+        
+    except Exception as e:
+        logger.error(f"[audit-all] Error: {e}", exc_info=True)
+        raise DatabaseError(str(e), operation="audit_all_embeddings")
+
+
+# ============ CLEAR PERSON OUTLIERS (mark as excluded, not delete) ============
 
 @router.post("/{identifier}/clear-outliers")
 async def clear_person_outliers(
@@ -308,10 +483,9 @@ async def clear_person_outliers(
     outlier_threshold: float = Query(0.5, description="Similarity below this = outlier")
 ):
     """
-    Clear all outlier embeddings for a person.
+    Mark outlier embeddings for a person as excluded_from_index = TRUE.
     
-    Sets insightface_descriptor to NULL for faces that are outliers
-    (similarity to centroid below threshold).
+    Does NOT delete the descriptor, just excludes from HNSW index.
     """
     import numpy as np
     import json
@@ -319,11 +493,11 @@ async def clear_person_outliers(
     try:
         person_id = _get_person_id(identifier)
         
-        logger.info(f"[clear-outliers] Clearing outliers for person {person_id}, threshold={outlier_threshold}")
+        logger.info(f"[clear-outliers] Marking outliers for person {person_id}, threshold={outlier_threshold}")
         
         # Get all faces with embeddings for this person
         result = supabase_db_instance.client.table("photo_faces").select(
-            "id, insightface_descriptor"
+            "id, insightface_descriptor, excluded_from_index"
         ).eq("person_id", person_id).not_.is_("insightface_descriptor", "null").execute()
         
         faces = result.data or []
@@ -335,8 +509,7 @@ async def clear_person_outliers(
             })
         
         # Parse embeddings
-        embeddings = []
-        valid_faces = []
+        embeddings_data = []  # [(embedding, face)]
         for face in faces:
             descriptor = face["insightface_descriptor"]
             try:
@@ -348,26 +521,33 @@ async def clear_person_outliers(
                     continue
                 
                 if len(emb) == 512:
-                    embeddings.append(emb)
-                    valid_faces.append(face)
+                    embeddings_data.append((emb, face))
             except Exception:
                 continue
         
-        if len(embeddings) < 2:
+        if len(embeddings_data) < 2:
             return ApiResponse.ok({
                 "cleared_count": 0,
                 "message": "Not enough valid embeddings"
             })
         
-        # Calculate centroid
-        embeddings_array = np.array(embeddings)
+        # Get non-excluded for centroid
+        non_excluded = [(e, f) for e, f in embeddings_data if not f.get("excluded_from_index")]
+        
+        if len(non_excluded) < 2:
+            return ApiResponse.ok({
+                "cleared_count": 0,
+                "message": "Not enough non-excluded embeddings for centroid"
+            })
+        
+        # Calculate centroid from non-excluded
+        embeddings_array = np.array([e for e, f in non_excluded])
         centroid = np.mean(embeddings_array, axis=0)
         centroid = centroid / np.linalg.norm(centroid)
         
-        # Find outliers
+        # Find outliers (among non-excluded)
         outlier_face_ids = []
-        for i, face in enumerate(valid_faces):
-            emb = embeddings[i]
+        for emb, face in non_excluded:
             emb_norm = emb / np.linalg.norm(emb)
             similarity = float(np.dot(emb_norm, centroid))
             
@@ -380,11 +560,8 @@ async def clear_person_outliers(
                 "message": "No outliers found"
             })
         
-        # Clear descriptors for outliers
-        for face_id in outlier_face_ids:
-            supabase_db_instance.client.table("photo_faces").update({
-                "insightface_descriptor": None
-            }).eq("id", face_id).execute()
+        # Mark as excluded (not delete!)
+        updated = supabase_db_instance.set_excluded_from_index(outlier_face_ids, excluded=True)
         
         # Rebuild index
         index_rebuilt = False
@@ -392,10 +569,10 @@ async def clear_person_outliers(
             await face_service_instance.rebuild_players_index()
             index_rebuilt = True
         
-        logger.info(f"[clear-outliers] Cleared {len(outlier_face_ids)} outliers for person {person_id}")
+        logger.info(f"[clear-outliers] Excluded {updated} outliers for person {person_id}")
         
         return ApiResponse.ok({
-            "cleared_count": len(outlier_face_ids),
+            "cleared_count": updated,
             "index_rebuilt": index_rebuilt
         })
         
@@ -733,6 +910,8 @@ async def get_embedding_consistency(
     
     Returns embeddings sorted by similarity to centroid (worst first).
     Outliers are embeddings that don't match the person's "average" face.
+    
+    Now includes excluded_from_index status.
     """
     import numpy as np
     import json
@@ -744,7 +923,7 @@ async def get_embedding_consistency(
         
         # Get all faces with embeddings for this person (include bbox and image dimensions)
         result = supabase_db_instance.client.table("photo_faces").select(
-            "id, photo_id, verified, recognition_confidence, insightface_descriptor, insightface_bbox, "
+            "id, photo_id, verified, recognition_confidence, insightface_descriptor, insightface_bbox, excluded_from_index, "
             "gallery_images(id, image_url, original_filename, width, height)"
         ).eq("person_id", person_id).not_.is_("insightface_descriptor", "null").execute()
         
@@ -755,6 +934,8 @@ async def get_embedding_consistency(
                 "total_embeddings": len(faces),
                 "overall_consistency": 1.0 if faces else 0.0,
                 "outlier_threshold": outlier_threshold,
+                "outlier_count": 0,
+                "excluded_count": 0,
                 "embeddings": [],
                 "message": "Need at least 2 embeddings to analyze consistency"
             })
@@ -762,8 +943,7 @@ async def get_embedding_consistency(
         logger.info(f"[consistency] Found {len(faces)} faces with embeddings")
         
         # Parse embeddings
-        embeddings = []
-        valid_faces = []
+        embeddings_data = []  # [(embedding, face)]
         for face in faces:
             descriptor = face["insightface_descriptor"]
             if isinstance(descriptor, list):
@@ -774,34 +954,50 @@ async def get_embedding_consistency(
                 continue
             
             if len(emb) == 512:
-                embeddings.append(emb)
-                valid_faces.append(face)
+                embeddings_data.append((emb, face))
             else:
                 logger.warning(f"[consistency] Invalid embedding dim {len(emb)} for face {face['id']}")
         
-        if len(embeddings) < 2:
+        if len(embeddings_data) < 2:
             return ApiResponse.ok({
-                "total_embeddings": len(embeddings),
+                "total_embeddings": len(embeddings_data),
                 "overall_consistency": 1.0,
                 "outlier_threshold": outlier_threshold,
+                "outlier_count": 0,
+                "excluded_count": 0,
                 "embeddings": [],
                 "message": "Not enough valid embeddings"
             })
         
+        # Get non-excluded for centroid calculation
+        non_excluded = [(e, f) for e, f in embeddings_data if not f.get("excluded_from_index")]
+        
+        if len(non_excluded) < 2:
+            # Use all if not enough non-excluded
+            centroid_embeddings = [e for e, f in embeddings_data]
+        else:
+            centroid_embeddings = [e for e, f in non_excluded]
+        
         # Calculate centroid (normalized mean)
-        embeddings_array = np.array(embeddings)
+        embeddings_array = np.array(centroid_embeddings)
         centroid = np.mean(embeddings_array, axis=0)
         centroid = centroid / np.linalg.norm(centroid)
         
         # Calculate similarity to centroid for each embedding
         results = []
         similarities = []
+        excluded_count = 0
         
-        for i, face in enumerate(valid_faces):
-            emb = embeddings[i]
+        for emb, face in embeddings_data:
             emb_norm = emb / np.linalg.norm(emb)
             similarity = float(np.dot(emb_norm, centroid))
-            similarities.append(similarity)
+            
+            is_excluded = face.get("excluded_from_index", False)
+            if is_excluded:
+                excluded_count += 1
+            
+            if not is_excluded:
+                similarities.append(similarity)
             
             gi = face.get("gallery_images") or {}
             
@@ -819,23 +1015,25 @@ async def get_embedding_consistency(
                 "verified": face.get("verified", False),
                 "recognition_confidence": face.get("recognition_confidence"),
                 "similarity_to_centroid": round(similarity, 4),
-                "is_outlier": similarity < outlier_threshold
+                "is_outlier": similarity < outlier_threshold and not is_excluded,
+                "is_excluded": is_excluded
             })
         
         # Sort by similarity (worst first)
-        results.sort(key=lambda x: x["similarity_to_centroid"])
+        results.sort(key=lambda x: (0 if x["is_excluded"] else 1, x["similarity_to_centroid"]))
         
-        # Calculate overall consistency
+        # Calculate overall consistency (only from non-excluded)
         overall_consistency = float(np.mean(similarities)) if similarities else 0.0
         outlier_count = sum(1 for r in results if r["is_outlier"])
         
-        logger.info(f"[consistency] Overall: {overall_consistency:.3f}, outliers: {outlier_count}/{len(results)}")
+        logger.info(f"[consistency] Overall: {overall_consistency:.3f}, outliers: {outlier_count}, excluded: {excluded_count}")
         
         return ApiResponse.ok({
             "total_embeddings": len(results),
             "overall_consistency": round(overall_consistency, 4),
             "outlier_threshold": outlier_threshold,
             "outlier_count": outlier_count,
+            "excluded_count": excluded_count,
             "embeddings": results
         })
         
@@ -853,6 +1051,7 @@ async def _calculate_people_stats(people: list) -> list:
     - verified_photos_count: photos where person is verified
     - high_confidence_photos_count: photos with high confidence (not verified)
     - descriptor_count: total photo_faces with embeddings for this person
+    - excluded_count: descriptors excluded from index
     """
     try:
         config = supabase_db_instance.get_recognition_config()
@@ -864,7 +1063,7 @@ async def _calculate_people_stats(people: list) -> list:
         page_size = 1000
         while True:
             faces_result = supabase_db_instance.client.table("photo_faces").select(
-                "person_id, photo_id, verified, recognition_confidence"
+                "person_id, photo_id, verified, recognition_confidence, excluded_from_index"
             ).not_.is_("insightface_descriptor", "null").range(offset, offset + page_size - 1).execute()
             
             batch = faces_result.data or []
@@ -878,10 +1077,13 @@ async def _calculate_people_stats(people: list) -> list:
         
         # Count descriptors (faces with embeddings) per person
         descriptor_counts = {}
+        excluded_counts = {}
         for f in all_faces:
             pid = f.get("person_id")
             if pid:
                 descriptor_counts[pid] = descriptor_counts.get(pid, 0) + 1
+                if f.get("excluded_from_index"):
+                    excluded_counts[pid] = excluded_counts.get(pid, 0) + 1
         
         # Calculate stats for each person
         result = []
@@ -906,7 +1108,8 @@ async def _calculate_people_stats(people: list) -> list:
                 **person,
                 "verified_photos_count": len(verified_photos),
                 "high_confidence_photos_count": len(high_conf_photos),
-                "descriptor_count": descriptor_counts.get(person_id, 0)
+                "descriptor_count": descriptor_counts.get(person_id, 0),
+                "excluded_count": excluded_counts.get(person_id, 0)
             })
         
         return result
