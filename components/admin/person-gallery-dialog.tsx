@@ -447,19 +447,35 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
           })
         : photos.filter((p) => !p.verified).map((p) => p.id)
       
+      // Call API for each photo
       for (const photoId of photosToVerify) {
         await verifyPersonOnPhotoAction(photoId, personId)
       }
+      
+      // Update local state (like handleVerify does) - NO reload!
+      setPhotos((prev) =>
+        prev.map((photo) => 
+          photosToVerify.includes(photo.id) 
+            ? { ...photo, verified: true, confidence: 1 } 
+            : photo
+        ),
+      )
+      
+      setConfirmDialog({ open: false, action: null, count: 0 })
+      setSelectedPhotos(new Set())
+      // Don't reload - just update local state
+      
     } else if (confirmDialog.action === "delete") {
       for (const photoId of selectedPhotos) {
         console.log("[PersonGallery] Batch unlink photo:", photoId, "person:", personId)
         const result = await unlinkPersonFromPhotoAction(photoId, personId)
         console.log("[PersonGallery] Batch unlink result:", result)
       }
+      
+      setConfirmDialog({ open: false, action: null, count: 0 })
+      setSelectedPhotos(new Set())
+      await loadPhotos() // Delete requires reload (photos removed from list)
     }
-    setConfirmDialog({ open: false, action: null, count: 0 })
-    setSelectedPhotos(new Set())
-    await loadPhotos()
   }
 
   function handleCancelConfirmation(e: React.MouseEvent) {
