@@ -25,6 +25,7 @@ import {
   getEmbeddingConsistencyAction,
   clearFaceDescriptorAction,
   type ConsistencyData,
+  type EmbeddingResult,
 } from "@/app/admin/actions/people"
 
 interface EmbeddingConsistencyDialogProps {
@@ -33,6 +34,49 @@ interface EmbeddingConsistencyDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onDescriptorCleared?: () => void
+}
+
+/**
+ * Calculate CSS for face crop with padding.
+ * bbox format: [x1, y1, x2, y2] in pixels
+ * Returns object-position and object-fit values for the Image component
+ */
+function calculateFaceCrop(
+  bbox: number[] | null,
+  imageWidth: number | null,
+  imageHeight: number | null,
+  containerSize: number = 80,
+  padding: number = 1.0 // 100% padding around face
+): { objectFit: "cover" | "none"; objectPosition: string; transform?: string } {
+  if (!bbox || bbox.length !== 4 || !imageWidth || !imageHeight) {
+    return { objectFit: "cover", objectPosition: "center" }
+  }
+
+  const [x1, y1, x2, y2] = bbox
+  const faceWidth = x2 - x1
+  const faceHeight = y2 - y1
+  const faceCenterX = x1 + faceWidth / 2
+  const faceCenterY = y1 + faceHeight / 2
+
+  // Add padding
+  const paddedWidth = faceWidth * (1 + padding * 2)
+  const paddedHeight = faceHeight * (1 + padding * 2)
+  
+  // Use the larger dimension to ensure face fits
+  const cropSize = Math.max(paddedWidth, paddedHeight)
+  
+  // Calculate scale to fit cropSize into containerSize
+  const scale = containerSize / cropSize
+  
+  // Calculate offset to center the face
+  const offsetX = -(faceCenterX * scale - containerSize / 2)
+  const offsetY = -(faceCenterY * scale - containerSize / 2)
+
+  return {
+    objectFit: "none",
+    objectPosition: `${offsetX}px ${offsetY}px`,
+    transform: `scale(${scale})`
+  }
 }
 
 export function EmbeddingConsistencyDialog({
@@ -118,6 +162,91 @@ export function EmbeddingConsistencyDialog({
     return "bg-orange-100 text-orange-800"
   }
 
+  // Render face thumbnail with bbox crop
+  function FaceThumbnail({ emb }: { emb: EmbeddingResult }) {
+    const containerSize = 80
+    
+    if (!emb.image_url) {
+      return (
+        <div 
+          className="flex items-center justify-center bg-gray-100 rounded text-muted-foreground text-xs"
+          style={{ width: containerSize, height: containerSize }}
+        >
+          No img
+        </div>
+      )
+    }
+
+    // If we have bbox, show cropped face
+    if (emb.bbox && emb.image_width && emb.image_height) {
+      const [x1, y1, x2, y2] = emb.bbox
+      const faceWidth = x2 - x1
+      const faceHeight = y2 - y1
+      const faceCenterX = x1 + faceWidth / 2
+      const faceCenterY = y1 + faceHeight / 2
+      
+      // Add 100% padding
+      const padding = 1.0
+      const paddedSize = Math.max(faceWidth, faceHeight) * (1 + padding * 2)
+      
+      // Calculate crop region
+      const cropX = Math.max(0, faceCenterX - paddedSize / 2)
+      const cropY = Math.max(0, faceCenterY - paddedSize / 2)
+      const cropRight = Math.min(emb.image_width, faceCenterX + paddedSize / 2)
+      const cropBottom = Math.min(emb.image_height, faceCenterY + paddedSize / 2)
+      const actualCropWidth = cropRight - cropX
+      const actualCropHeight = cropBottom - cropY
+      
+      // Scale factor
+      const scale = containerSize / Math.max(actualCropWidth, actualCropHeight)
+      const scaledWidth = emb.image_width * scale
+      const scaledHeight = emb.image_height * scale
+      
+      // Position to center the crop region
+      const offsetX = -(cropX * scale) + (containerSize - actualCropWidth * scale) / 2
+      const offsetY = -(cropY * scale) + (containerSize - actualCropHeight * scale) / 2
+
+      return (
+        <div 
+          className="relative rounded overflow-hidden bg-gray-100 flex-shrink-0"
+          style={{ width: containerSize, height: containerSize }}
+        >
+          <Image
+            src={emb.image_url}
+            alt="Face"
+            width={scaledWidth}
+            height={scaledHeight}
+            style={{
+              position: 'absolute',
+              left: offsetX,
+              top: offsetY,
+              width: scaledWidth,
+              height: scaledHeight,
+              maxWidth: 'none'
+            }}
+            unoptimized
+          />
+        </div>
+      )
+    }
+
+    // Fallback: show full image with cover
+    return (
+      <div 
+        className="relative rounded overflow-hidden bg-gray-100 flex-shrink-0"
+        style={{ width: containerSize, height: containerSize }}
+      >
+        <Image
+          src={emb.image_url}
+          alt="Face"
+          fill
+          style={{ objectFit: "cover" }}
+          sizes="80px"
+        />
+      </div>
+    )
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -182,22 +311,8 @@ export function EmbeddingConsistencyDialog({
                           emb.is_outlier ? "border-red-300 bg-red-50" : "border-gray-200"
                         }`}
                       >
-                        {/* Thumbnail */}
-                        <div className="relative w-16 h-16 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                          {emb.image_url ? (
-                            <Image
-                              src={emb.image_url}
-                              alt="Face"
-                              fill
-                              style={{ objectFit: "cover" }}
-                              sizes="64px"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
-                              No img
-                            </div>
-                          )}
-                        </div>
+                        {/* Face Thumbnail with bbox crop */}
+                        <FaceThumbnail emb={emb} />
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">

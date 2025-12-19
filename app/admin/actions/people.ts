@@ -79,6 +79,9 @@ export interface EmbeddingResult {
   photo_id: string
   image_url: string | null
   filename: string | null
+  image_width: number | null
+  image_height: number | null
+  bbox: number[] | null  // [x1, y1, x2, y2] from insightface
   verified: boolean
   recognition_confidence: number | null
   similarity_to_centroid: number

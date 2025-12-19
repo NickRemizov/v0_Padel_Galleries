@@ -604,10 +604,10 @@ async def get_embedding_consistency(
         
         logger.info(f"[consistency] Analyzing embeddings for person {person_id}")
         
-        # Get all faces with embeddings for this person
+        # Get all faces with embeddings for this person (include bbox and image dimensions)
         result = supabase_db_instance.client.table("photo_faces").select(
-            "id, photo_id, verified, recognition_confidence, insightface_descriptor, "
-            "gallery_images(id, image_url, original_filename)"
+            "id, photo_id, verified, recognition_confidence, insightface_descriptor, insightface_bbox, "
+            "gallery_images(id, image_url, original_filename, width, height)"
         ).eq("person_id", person_id).not_.is_("insightface_descriptor", "null").execute()
         
         faces = result.data or []
@@ -672,6 +672,9 @@ async def get_embedding_consistency(
                 "photo_id": face["photo_id"],
                 "image_url": gi.get("image_url"),
                 "filename": gi.get("original_filename"),
+                "image_width": gi.get("width"),
+                "image_height": gi.get("height"),
+                "bbox": face.get("insightface_bbox"),
                 "verified": face.get("verified", False),
                 "recognition_confidence": face.get("recognition_confidence"),
                 "similarity_to_centroid": round(similarity, 4),
