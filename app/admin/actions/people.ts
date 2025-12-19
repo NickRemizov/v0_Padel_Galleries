@@ -145,51 +145,6 @@ export async function clearFaceDescriptorAction(faceId: string): Promise<{
   }
 }
 
-// ========== CONSISTENCY AUDIT (all players) ==========
-
-export interface ConsistencyAuditResult {
-  person_id: string
-  person_name: string
-  photo_count: number
-  descriptor_count: number
-  outlier_count: number
-  overall_consistency: number
-  has_problems: boolean
-}
-
-export interface ConsistencyAuditData {
-  total_people: number
-  people_with_problems: number
-  total_outliers: number
-  outlier_threshold: number
-  results: ConsistencyAuditResult[]
-}
-
-/**
- * Run consistency audit for all players
- */
-export async function runConsistencyAuditAction(
-  outlierThreshold: number = 0.5,
-  minDescriptors: number = 2
-): Promise<{ success: boolean; data?: ConsistencyAuditData; error?: string }> {
-  try {
-    console.log("[runConsistencyAuditAction] Starting audit...")
-    const result = await apiFetch(
-      `/api/people/consistency-audit?outlier_threshold=${outlierThreshold}&min_descriptors=${minDescriptors}`
-    )
-    console.log("[runConsistencyAuditAction] Result:", result.success)
-
-    if (!result.success) {
-      return { success: false, error: result.error || "Unknown error" }
-    }
-
-    return { success: true, data: result.data }
-  } catch (error: any) {
-    console.error("[runConsistencyAuditAction] Error:", error)
-    return { success: false, error: error.message || "Failed to run consistency audit" }
-  }
-}
-
 // ========== DUPLICATE PEOPLE DETECTION ==========
 
 /**
