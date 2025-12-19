@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, UserPlus, Users, X, Trash2 } from "lucide-react"
+import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -12,7 +12,6 @@ import { getPeopleAction } from "@/app/admin/actions/entities"
 import { clusterAllUnknownFacesAction } from "@/app/admin/actions/recognition"
 import type { Person } from "@/lib/types"
 import FaceCropPreview from "@/components/FaceCropPreview"
-import { Badge } from "@/components/ui/badge"
 
 interface GlobalUnknownFacesDialogProps {
   open: boolean
@@ -138,8 +137,18 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     }
   }
 
-  async function handleRejectCluster() {
-    moveToNextCluster()
+  function handlePreviousCluster() {
+    if (currentClusterIndex > 0) {
+      setRemovedFaces(new Set())
+      setCurrentClusterIndex(currentClusterIndex - 1)
+    }
+  }
+
+  function handleNextCluster() {
+    if (currentClusterIndex + 1 < clusters.length) {
+      setRemovedFaces(new Set())
+      setCurrentClusterIndex(currentClusterIndex + 1)
+    }
   }
 
   function moveToNextCluster() {
@@ -169,7 +178,8 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   }
 
   const currentCluster = clusters[currentClusterIndex]
-  const hasMoreClusters = currentClusterIndex + 1 < clusters.length
+  const hasPreviousCluster = currentClusterIndex > 0
+  const hasNextCluster = currentClusterIndex + 1 < clusters.length
   const visibleFaces = currentCluster?.faces.filter((f) => !removedFaces.has(f.id)) || []
 
   return (
@@ -177,13 +187,13 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Неизвестные лица — глобальная кластеризация</DialogTitle>
+            <DialogTitle>Неизвестные лица - кластеризация</DialogTitle>
             <DialogDescription>
               {loading
                 ? "Загрузка кластеров по всей базе..."
                 : clusters.length === 0
                   ? "Нет неизвестных лиц для кластеризации"
-                  : `Кластер ${currentClusterIndex + 1} из ${clusters.length} (${currentCluster?.size || 0} похожих лиц)`}
+                  : `Кластер ${currentClusterIndex + 1} из ${clusters.length} (${currentCluster?.size || 0} фото)`}
             </DialogDescription>
           </DialogHeader>
 
@@ -227,14 +237,14 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
               {visibleFaces.length === 0 && (
                 <div className="text-center py-4 text-muted-foreground">
                   <p>Все лица в кластере удалены</p>
-                  <Button variant="outline" className="mt-2" onClick={handleRejectCluster}>
+                  <Button variant="outline" className="mt-2" onClick={handleNextCluster} disabled={!hasNextCluster}>
                     Перейти к следующему кластеру
                   </Button>
                 </div>
               )}
 
               {visibleFaces.length > 0 && (
-                <div className="flex gap-2 justify-end">
+                <div className="flex gap-2 justify-center items-center">
                   <Button variant="outline" onClick={handleCreatePerson} disabled={processing}>
                     <UserPlus className="h-4 w-4 mr-2" />
                     Создать игрока
@@ -271,14 +281,30 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                     </PopoverContent>
                   </Popover>
 
-                  <Button variant="destructive" onClick={handleRejectCluster} disabled={processing}>
-                    <X className="h-4 w-4 mr-2" />
-                    Пропустить кластер
-                  </Button>
+                  <div className="flex gap-1 ml-4">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handlePreviousCluster}
+                      disabled={!hasPreviousCluster || processing}
+                      title="Предыдущий кластер"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleNextCluster}
+                      disabled={!hasNextCluster || processing}
+                      title="Следующий кластер"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               )}
 
-              {hasMoreClusters && (
+              {hasNextCluster && (
                 <p className="text-sm text-muted-foreground text-center">
                   Еще {clusters.length - currentClusterIndex - 1} кластер(ов) после этого
                 </p>
