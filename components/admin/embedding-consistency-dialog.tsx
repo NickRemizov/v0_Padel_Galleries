@@ -20,10 +20,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Trash2, AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
+import { Trash2, AlertTriangle, CheckCircle, Loader2, Ban, RotateCcw } from "lucide-react"
 import {
   getEmbeddingConsistencyAction,
   clearFaceDescriptorAction,
+  setFaceExcludedAction,
   type ConsistencyData,
   type EmbeddingResult,
 } from "@/app/admin/actions/people"
@@ -78,12 +79,13 @@ export function EmbeddingConsistencyDialog({
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<ConsistencyData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [clearingFaceId, setClearingFaceId] = useState<string | null>(null)
+  const [actionFaceId, setActionFaceId] = useState<string | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     faceId: string | null
     filename: string | null
-  }>({ open: false, faceId: null, filename: null })
+    action: "clear" | "exclude" | "include"
+  }>({ open: false, faceId: null, filename: null, action: "clear" })
   const [hasChanges, setHasChanges] = useState(false)
 
   useEffect(() => {
@@ -113,7 +115,7 @@ export function EmbeddingConsistencyDialog({
   }
 
   async function handleClearDescriptor(faceId: string) {
-    setClearingFaceId(faceId)
+    setActionFaceId(faceId)
     try {
       const result = await clearFaceDescriptorAction(faceId)
       
@@ -124,7 +126,7 @@ export function EmbeddingConsistencyDialog({
           return {
             ...prev,
             total_embeddings: prev.total_embeddings - 1,
-            outlier_count: prev.outlier_count - 1,
+            outlier_count: Math.max(0, prev.outlier_count - 1),
             embeddings: prev.embeddings.filter((e) => e.face_id !== faceId),
           }
         })
@@ -135,8 +137,52 @@ export function EmbeddingConsistencyDialog({
     } catch (e) {
       console.error("[ConsistencyDialog] Clear error:", e)
     } finally {
-      setClearingFaceId(null)
-      setConfirmDialog({ open: false, faceId: null, filename: null })
+      setActionFaceId(null)
+      setConfirmDialog({ open: false, faceId: null, filename: null, action: "clear" })
+    }
+  }
+
+  async function handleSetExcluded(faceId: string, excluded: boolean) {
+    setActionFaceId(faceId)
+    try {
+      const result = await setFaceExcludedAction(faceId, excluded)
+      
+      if (result.success) {
+        // Update in list
+        setData((prev) => {
+          if (!prev) return prev
+          
+          const newEmbeddings = prev.embeddings.map((e) => {
+            if (e.face_id === faceId) {
+              return { 
+                ...e, 
+                is_excluded: excluded,
+                is_outlier: excluded ? false : e.is_outlier // If excluded, not an outlier anymore
+              }
+            }
+            return e
+          })
+          
+          // Recalculate counts
+          const excludedCount = newEmbeddings.filter(e => e.is_excluded).length
+          const outlierCount = newEmbeddings.filter(e => e.is_outlier && !e.is_excluded).length
+          
+          return {
+            ...prev,
+            excluded_count: excludedCount,
+            outlier_count: outlierCount,
+            embeddings: newEmbeddings,
+          }
+        })
+        setHasChanges(true)
+      } else {
+        console.error("[ConsistencyDialog] Set excluded failed:", result.error)
+      }
+    } catch (e) {
+      console.error("[ConsistencyDialog] Set excluded error:", e)
+    } finally {
+      setActionFaceId(null)
+      setConfirmDialog({ open: false, faceId: null, filename: null, action: "clear" })
     }
   }
 
@@ -153,7 +199,8 @@ export function EmbeddingConsistencyDialog({
     return "text-red-600"
   }
 
-  function getSimilarityColor(value: number, isOutlier: boolean): string {
+  function getSimilarityColor(value: number, isOutlier: boolean, isExcluded: boolean): string {
+    if (isExcluded) return "bg-gray-200 text-gray-600"
     if (isOutlier) return "bg-red-100 text-red-800"
     if (value >= 0.8) return "bg-green-100 text-green-800"
     if (value >= 0.6) return "bg-yellow-100 text-yellow-800"
@@ -209,7 +256,7 @@ export function EmbeddingConsistencyDialog({
 
       return (
         <div 
-          className="relative rounded overflow-hidden bg-gray-100 flex-shrink-0"
+          className={`relative rounded overflow-hidden bg-gray-100 flex-shrink-0 ${emb.is_excluded ? "opacity-50 ring-2 ring-gray-400" : ""}`}
           style={{ width: containerSize, height: containerSize }}
         >
           <Image
@@ -234,7 +281,7 @@ export function EmbeddingConsistencyDialog({
     // Fallback: show full image with cover
     return (
       <div 
-        className="relative rounded overflow-hidden bg-gray-100 flex-shrink-0"
+        className={`relative rounded overflow-hidden bg-gray-100 flex-shrink-0 ${emb.is_excluded ? "opacity-50 ring-2 ring-gray-400" : ""}`}
         style={{ width: containerSize, height: containerSize }}
       >
         <Image
@@ -272,15 +319,15 @@ export function EmbeddingConsistencyDialog({
           ) : data ? (
             <>
               {/* Summary */}
-              <div className="flex items-center gap-6 py-4 border-b">
+              <div className="flex flex-wrap items-center gap-4 py-4 border-b">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Общая консистентность:</span>
+                  <span className="text-sm text-muted-foreground">Консистентность:</span>
                   <span className={`text-lg font-bold ${getConsistencyColor(data.overall_consistency)}`}>
                     {Math.round(data.overall_consistency * 100)}%
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Эмбеддингов:</span>
+                  <span className="text-sm text-muted-foreground">Всего:</span>
                   <span className="font-medium">{data.total_embeddings}</span>
                 </div>
                 {data.outlier_count > 0 && (
@@ -289,7 +336,13 @@ export function EmbeddingConsistencyDialog({
                     <span className="font-medium">Outliers: {data.outlier_count}</span>
                   </div>
                 )}
-                {data.outlier_count === 0 && data.total_embeddings > 0 && (
+                {(data.excluded_count || 0) > 0 && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Ban className="h-4 w-4" />
+                    <span className="font-medium">Исключено: {data.excluded_count}</span>
+                  </div>
+                )}
+                {data.outlier_count === 0 && (data.excluded_count || 0) === 0 && data.total_embeddings > 0 && (
                   <div className="flex items-center gap-2 text-green-600">
                     <CheckCircle className="h-4 w-4" />
                     <span className="font-medium">Все в норме</span>
@@ -309,7 +362,11 @@ export function EmbeddingConsistencyDialog({
                       <div
                         key={emb.face_id}
                         className={`flex items-center gap-4 p-3 rounded-lg border ${
-                          emb.is_outlier ? "border-red-300 bg-red-50" : "border-gray-200"
+                          emb.is_excluded 
+                            ? "border-gray-300 bg-gray-50" 
+                            : emb.is_outlier 
+                              ? "border-red-300 bg-red-50" 
+                              : "border-gray-200"
                         }`}
                       >
                         {/* Face Thumbnail with bbox crop */}
@@ -317,14 +374,15 @@ export function EmbeddingConsistencyDialog({
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
+                          <p className={`text-sm font-medium truncate ${emb.is_excluded ? "text-gray-500" : ""}`}>
                             {emb.filename || emb.photo_id.slice(0, 8)}
                           </p>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
                             <span
                               className={`px-2 py-0.5 rounded text-xs font-medium ${getSimilarityColor(
                                 emb.similarity_to_centroid,
-                                emb.is_outlier
+                                emb.is_outlier,
+                                emb.is_excluded
                               )}`}
                             >
                               {Math.round(emb.similarity_to_centroid * 100)}% к центру
@@ -334,7 +392,12 @@ export function EmbeddingConsistencyDialog({
                                 Verified
                               </span>
                             )}
-                            {emb.is_outlier && (
+                            {emb.is_excluded && (
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                                ИСКЛЮЧЁН
+                              </span>
+                            )}
+                            {emb.is_outlier && !emb.is_excluded && (
                               <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
                                 OUTLIER
                               </span>
@@ -343,26 +406,58 @@ export function EmbeddingConsistencyDialog({
                         </div>
 
                         {/* Actions */}
-                        <div className="flex-shrink-0">
-                          <Button
-                            variant={emb.is_outlier ? "destructive" : "outline"}
-                            size="sm"
-                            disabled={clearingFaceId === emb.face_id}
-                            onClick={() =>
-                              setConfirmDialog({
-                                open: true,
-                                faceId: emb.face_id,
-                                filename: emb.filename,
-                              })
-                            }
-                          >
-                            {clearingFaceId === emb.face_id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                            <span className="ml-1">Очистить</span>
-                          </Button>
+                        <div className="flex-shrink-0 flex gap-1">
+                          {emb.is_excluded ? (
+                            // Show "Include" button for excluded items
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={actionFaceId === emb.face_id}
+                              onClick={() => handleSetExcluded(emb.face_id, false)}
+                              title="Вернуть в индекс"
+                            >
+                              {actionFaceId === emb.face_id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-4 w-4" />
+                              )}
+                              <span className="ml-1">Вернуть</span>
+                            </Button>
+                          ) : (
+                            // Show "Exclude" and "Delete" buttons for non-excluded
+                            <>
+                              <Button
+                                variant={emb.is_outlier ? "destructive" : "outline"}
+                                size="sm"
+                                disabled={actionFaceId === emb.face_id}
+                                onClick={() => handleSetExcluded(emb.face_id, true)}
+                                title="Исключить из индекса (сохранить дескриптор)"
+                              >
+                                {actionFaceId === emb.face_id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Ban className="h-4 w-4" />
+                                )}
+                                <span className="ml-1">Исключить</span>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={actionFaceId === emb.face_id}
+                                onClick={() =>
+                                  setConfirmDialog({
+                                    open: true,
+                                    faceId: emb.face_id,
+                                    filename: emb.filename,
+                                    action: "clear"
+                                  })
+                                }
+                                title="Удалить дескриптор полностью"
+                              >
+                                <Trash2 className="h-4 w-4 text-gray-500" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -380,10 +475,12 @@ export function EmbeddingConsistencyDialog({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Очистить дескриптор?</AlertDialogTitle>
+            <AlertDialogTitle>Удалить дескриптор?</AlertDialogTitle>
             <AlertDialogDescription>
-              Дескриптор будет удалён из индекса распознавания. Фото останется привязанным к игроку,
-              но не будет использоваться для поиска похожих лиц.
+              Дескриптор будет <strong>полностью удалён</strong>. Фото останется привязанным к игроку,
+              но эмбеддинг будет потерян навсегда.
+              <br /><br />
+              <strong>Рекомендация:</strong> используйте "Исключить" вместо удаления — это сохранит дескриптор, но уберёт его из индекса.
               {confirmDialog.filename && (
                 <span className="block mt-2 font-medium">
                   Файл: {confirmDialog.filename}
@@ -394,9 +491,10 @@ export function EmbeddingConsistencyDialog({
           <AlertDialogFooter>
             <AlertDialogCancel>Отмена</AlertDialogCancel>
             <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
               onClick={() => confirmDialog.faceId && handleClearDescriptor(confirmDialog.faceId)}
             >
-              Очистить
+              Удалить навсегда
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
