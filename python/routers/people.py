@@ -428,6 +428,123 @@ async def get_person_photos_with_details(identifier: str):
         raise DatabaseError(str(e), operation="get_person_photos_with_details")
 
 
+@router.get("/{identifier}/embedding-consistency")
+async def get_embedding_consistency(
+    identifier: str,
+    outlier_threshold: float = Query(0.5, description="Similarity below this = outlier")
+):
+    """
+    Analyze consistency of person's embeddings to find outliers.
+    
+    Returns embeddings sorted by similarity to centroid (worst first).
+    Outliers are embeddings that don't match the person's "average" face.
+    """
+    import numpy as np
+    import json
+    
+    try:
+        person_id = _get_person_id(identifier)
+        
+        logger.info(f"[consistency] Analyzing embeddings for person {person_id}")
+        
+        # Get all faces with embeddings for this person
+        result = supabase_db_instance.client.table("photo_faces").select(
+            "id, photo_id, verified, recognition_confidence, insightface_descriptor, "
+            "gallery_images(id, image_url, original_filename)"
+        ).eq("person_id", person_id).not_.is_("insightface_descriptor", "null").execute()
+        
+        faces = result.data or []
+        
+        if len(faces) < 2:
+            return ApiResponse.ok({
+                "total_embeddings": len(faces),
+                "overall_consistency": 1.0 if faces else 0.0,
+                "outlier_threshold": outlier_threshold,
+                "embeddings": [],
+                "message": "Need at least 2 embeddings to analyze consistency"
+            })
+        
+        logger.info(f"[consistency] Found {len(faces)} faces with embeddings")
+        
+        # Parse embeddings
+        embeddings = []
+        valid_faces = []
+        for face in faces:
+            descriptor = face["insightface_descriptor"]
+            if isinstance(descriptor, list):
+                emb = np.array(descriptor, dtype=np.float32)
+            elif isinstance(descriptor, str):
+                emb = np.array(json.loads(descriptor), dtype=np.float32)
+            else:
+                continue
+            
+            if len(emb) == 512:
+                embeddings.append(emb)
+                valid_faces.append(face)
+            else:
+                logger.warning(f"[consistency] Invalid embedding dim {len(emb)} for face {face['id']}")
+        
+        if len(embeddings) < 2:
+            return ApiResponse.ok({
+                "total_embeddings": len(embeddings),
+                "overall_consistency": 1.0,
+                "outlier_threshold": outlier_threshold,
+                "embeddings": [],
+                "message": "Not enough valid embeddings"
+            })
+        
+        # Calculate centroid (normalized mean)
+        embeddings_array = np.array(embeddings)
+        centroid = np.mean(embeddings_array, axis=0)
+        centroid = centroid / np.linalg.norm(centroid)
+        
+        # Calculate similarity to centroid for each embedding
+        results = []
+        similarities = []
+        
+        for i, face in enumerate(valid_faces):
+            emb = embeddings[i]
+            emb_norm = emb / np.linalg.norm(emb)
+            similarity = float(np.dot(emb_norm, centroid))
+            similarities.append(similarity)
+            
+            gi = face.get("gallery_images") or {}
+            
+            results.append({
+                "face_id": face["id"],
+                "photo_id": face["photo_id"],
+                "image_url": gi.get("image_url"),
+                "filename": gi.get("original_filename"),
+                "verified": face.get("verified", False),
+                "recognition_confidence": face.get("recognition_confidence"),
+                "similarity_to_centroid": round(similarity, 4),
+                "is_outlier": similarity < outlier_threshold
+            })
+        
+        # Sort by similarity (worst first)
+        results.sort(key=lambda x: x["similarity_to_centroid"])
+        
+        # Calculate overall consistency
+        overall_consistency = float(np.mean(similarities)) if similarities else 0.0
+        outlier_count = sum(1 for r in results if r["is_outlier"])
+        
+        logger.info(f"[consistency] Overall: {overall_consistency:.3f}, outliers: {outlier_count}/{len(results)}")
+        
+        return ApiResponse.ok({
+            "total_embeddings": len(results),
+            "overall_consistency": round(overall_consistency, 4),
+            "outlier_threshold": outlier_threshold,
+            "outlier_count": outlier_count,
+            "embeddings": results
+        })
+        
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"[consistency] Error: {e}", exc_info=True)
+        raise DatabaseError(str(e), operation="get_embedding_consistency")
+
+
 async def _calculate_people_stats(people: list) -> list:
     """Calculate face statistics for all people.
     
