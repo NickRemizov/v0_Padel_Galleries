@@ -15,7 +15,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.12" // Show names for faces >30% confidence after redetect
+const VERSION = "v6.13" // Fix: use similarity from top_matches instead of recognition_confidence
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -271,7 +271,7 @@ export function FaceTaggingDialog({
         throw new Error(result.error || "Failed to redetect faces")
       }
 
-      // For redetect: show names for faces with >30% confidence from top_matches
+      // For redetect: show names for faces with >30% similarity from top_matches
       const tagged: TaggedFace[] = result.faces.map((f: any) => {
         // If already assigned to person, use that
         if (f.person_id && f.people) {
@@ -290,11 +290,11 @@ export function FaceTaggingDialog({
           }
         }
         
-        // If not assigned but has recognition with >30% confidence, show candidate name
-        const confidence = f.recognition_confidence || 0
+        // If not assigned but has top match with >30% similarity, show candidate name
         const topMatch = f.top_matches?.[0]
+        const similarity = topMatch?.similarity || 0
         
-        if (confidence > 0.3 && topMatch) {
+        if (similarity > 0.3 && topMatch) {
           return {
             id: f.id,
             face: {
@@ -305,12 +305,12 @@ export function FaceTaggingDialog({
             },
             personId: topMatch.person_id || null, // candidate person_id (not verified)
             personName: topMatch.person_name || topMatch.real_name || null,
-            recognitionConfidence: confidence,
+            recognitionConfidence: similarity, // use similarity from top_match
             verified: false, // not verified - just a candidate
           }
         }
         
-        // No match or low confidence
+        // No match or low similarity
         return {
           id: f.id,
           face: {
@@ -321,18 +321,18 @@ export function FaceTaggingDialog({
           },
           personId: null,
           personName: null,
-          recognitionConfidence: confidence,
+          recognitionConfidence: similarity,
           verified: false,
         }
       })
 
       const detailed: DetailedFace[] = result.faces.map((f: any) => {
-        const confidence = f.recognition_confidence || 0
         const topMatch = f.top_matches?.[0]
+        const similarity = topMatch?.similarity || 0
         
         // For detailed view, also show candidate name if >30%
         let personName = f.people?.real_name || f.people?.telegram_name || null
-        if (!personName && confidence > 0.3 && topMatch) {
+        if (!personName && similarity > 0.3 && topMatch) {
           personName = topMatch.person_name || topMatch.real_name || null
         }
         
