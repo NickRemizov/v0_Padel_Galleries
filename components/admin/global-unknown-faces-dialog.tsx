@@ -244,7 +244,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
               )}
 
               {visibleFaces.length > 0 && (
-                <div className="flex gap-2 justify-center items-center">
+                <div className="flex gap-2 justify-end">
                   <Button variant="outline" onClick={handleCreatePerson} disabled={processing}>
                     <UserPlus className="h-4 w-4 mr-2" />
                     Создать игрока
@@ -281,26 +281,24 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                     </PopoverContent>
                   </Popover>
 
-                  <div className="flex gap-1 ml-4">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={handlePreviousCluster}
-                      disabled={!hasPreviousCluster || processing}
-                      title="Предыдущий кластер"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={handleNextCluster}
-                      disabled={!hasNextCluster || processing}
-                      title="Следующий кластер"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handlePreviousCluster}
+                    disabled={!hasPreviousCluster || processing}
+                    title="Предыдущий кластер"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleNextCluster}
+                    disabled={!hasNextCluster || processing}
+                    title="Следующий кластер"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
 
