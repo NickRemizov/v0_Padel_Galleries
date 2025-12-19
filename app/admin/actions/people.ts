@@ -86,6 +86,7 @@ export interface EmbeddingResult {
   recognition_confidence: number | null
   similarity_to_centroid: number
   is_outlier: boolean
+  is_excluded: boolean  // NEW: excluded from index
 }
 
 export interface ConsistencyData {
@@ -93,6 +94,7 @@ export interface ConsistencyData {
   overall_consistency: number
   outlier_threshold: number
   outlier_count: number
+  excluded_count: number  // NEW: count of excluded embeddings
   embeddings: EmbeddingResult[]
   message?: string
 }
@@ -149,7 +151,36 @@ export async function clearFaceDescriptorAction(faceId: string): Promise<{
 }
 
 /**
- * Clear all outlier descriptors for a person
+ * Exclude/include a face from recognition index
+ */
+export async function setFaceExcludedAction(
+  faceId: string,
+  excluded: boolean
+): Promise<{
+  success: boolean
+  data?: { updated: boolean }
+  error?: string
+}> {
+  try {
+    console.log("[setFaceExcludedAction] Setting excluded:", faceId, excluded)
+    const result = await apiFetch(`/api/faces/${faceId}/set-excluded?excluded=${excluded}`, {
+      method: "POST",
+    })
+    console.log("[setFaceExcludedAction] Result:", result)
+
+    if (!result.success) {
+      return { success: false, error: result.error || "Unknown error" }
+    }
+
+    return { success: true, data: result.data }
+  } catch (error: any) {
+    console.error("[setFaceExcludedAction] Error:", error)
+    return { success: false, error: error.message || "Failed to set excluded status" }
+  }
+}
+
+/**
+ * Clear all outlier descriptors for a person (marks as excluded, not deleted)
  */
 export async function clearPersonOutliersAction(
   personId: string,
@@ -186,6 +217,7 @@ export interface ConsistencyAuditResult {
   photo_count: number
   descriptor_count: number
   outlier_count: number
+  excluded_count: number  // NEW
   overall_consistency: number
   has_problems: boolean
 }
@@ -194,6 +226,7 @@ export interface ConsistencyAuditData {
   total_people: number
   people_with_problems: number
   total_outliers: number
+  total_excluded: number  // NEW
   outlier_threshold: number
   results: ConsistencyAuditResult[]
 }
@@ -220,6 +253,50 @@ export async function runConsistencyAuditAction(
   } catch (error: any) {
     console.error("[runConsistencyAuditAction] Error:", error)
     return { success: false, error: error.message || "Failed to run consistency audit" }
+  }
+}
+
+// ========== MASS AUDIT (mark outliers as excluded) ==========
+
+export interface MassAuditPersonResult {
+  person_id: string
+  person_name: string
+  newly_excluded: number
+  total_excluded: number
+  total_descriptors: number
+}
+
+export interface MassAuditData {
+  people_processed: number
+  people_affected: number
+  total_newly_excluded: number
+  index_rebuilt: boolean
+  results: MassAuditPersonResult[]
+}
+
+/**
+ * Run mass audit and mark all outliers as excluded
+ */
+export async function auditAllEmbeddingsAction(
+  outlierThreshold: number = 0.5,
+  minDescriptors: number = 3
+): Promise<{ success: boolean; data?: MassAuditData; error?: string }> {
+  try {
+    console.log("[auditAllEmbeddingsAction] Starting mass audit...")
+    const result = await apiFetch(
+      `/api/people/audit-all-embeddings?outlier_threshold=${outlierThreshold}&min_descriptors=${minDescriptors}`,
+      { method: "POST" }
+    )
+    console.log("[auditAllEmbeddingsAction] Result:", result.success)
+
+    if (!result.success) {
+      return { success: false, error: result.error || "Unknown error" }
+    }
+
+    return { success: true, data: result.data }
+  } catch (error: any) {
+    console.error("[auditAllEmbeddingsAction] Error:", error)
+    return { success: false, error: error.message || "Failed to run mass audit" }
   }
 }
 
