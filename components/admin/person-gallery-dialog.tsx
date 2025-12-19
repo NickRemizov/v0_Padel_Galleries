@@ -363,11 +363,29 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     }
   }
 
-  // Reload photos after tagging dialog saves
-  // Parameters are optional - we just reload the full list here
-  async function handleTaggingSave(_imageId?: string, _faces?: any[]) {
-    console.log("[PersonGallery] Tagging dialog saved, reloading photos...")
-    await loadPhotos()
+  // Update local state after tagging dialog closes
+  // Only reload if person was removed from photo, otherwise update locally
+  function handleTaggingSave(imageId?: string, faces?: any[]) {
+    if (!imageId || !faces) return
+    
+    // Find if this person is still on the photo
+    const personFace = faces.find((f: any) => f.personId === personId)
+    
+    if (personFace) {
+      // Person still on photo - update verified/confidence locally
+      setPhotos((prev) =>
+        prev.map((photo) =>
+          photo.id === imageId
+            ? { ...photo, verified: personFace.verified, confidence: personFace.recognitionConfidence }
+            : photo
+        ),
+      )
+      console.log("[PersonGallery] Updated photo locally:", imageId, "verified:", personFace.verified)
+    } else {
+      // Person was removed from photo - remove from list
+      setPhotos((prev) => prev.filter((photo) => photo.id !== imageId))
+      console.log("[PersonGallery] Removed photo from list:", imageId)
+    }
   }
 
   // Open tagging dialog with neighbor IDs saved
@@ -496,8 +514,8 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     console.log("[PersonGallery] Single unlink result:", result)
     
     if (result.success) {
-      router.refresh()
-      await loadPhotos()
+      // Remove photo from local state - no reload needed
+      setPhotos((prev) => prev.filter((photo) => photo.id !== singleDeleteDialog.photoId))
     } else {
       console.error("[PersonGallery] Unlink failed:", result.error)
       alert(`Ошибка удаления: ${result.error}`)
