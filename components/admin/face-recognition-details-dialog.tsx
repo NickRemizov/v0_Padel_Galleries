@@ -77,12 +77,12 @@ export function FaceRecognitionDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[80vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Детальная информация о распознавании</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="flex-1 overflow-y-auto space-y-6 pr-2">
           {faces.map((face, index) => {
             // Determine if this is a recognized face (exact match)
             const isExactMatch = face.recognition_confidence !== undefined && face.recognition_confidence >= 0.999
