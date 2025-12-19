@@ -84,10 +84,12 @@ export function EmbeddingConsistencyDialog({
     faceId: string | null
     filename: string | null
   }>({ open: false, faceId: null, filename: null })
+  const [hasChanges, setHasChanges] = useState(false)
 
   useEffect(() => {
     if (open) {
       loadConsistency()
+      setHasChanges(false)
     }
   }, [open, personId])
 
@@ -126,7 +128,7 @@ export function EmbeddingConsistencyDialog({
             embeddings: prev.embeddings.filter((e) => e.face_id !== faceId),
           }
         })
-        onDescriptorCleared?.()
+        setHasChanges(true)
       } else {
         console.error("[ConsistencyDialog] Clear failed:", result.error)
       }
@@ -136,6 +138,13 @@ export function EmbeddingConsistencyDialog({
       setClearingFaceId(null)
       setConfirmDialog({ open: false, faceId: null, filename: null })
     }
+  }
+
+  function handleDialogClose(next: boolean) {
+    if (!next && hasChanges) {
+      onDescriptorCleared?.()
+    }
+    onOpenChange(next)
   }
 
   function getConsistencyColor(value: number): string {
@@ -241,7 +250,7 @@ export function EmbeddingConsistencyDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleDialogClose}>
         <DialogContent className="sm:max-w-[800px] max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
