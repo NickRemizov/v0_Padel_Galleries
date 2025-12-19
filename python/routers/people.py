@@ -47,6 +47,38 @@ def _get_person_id(identifier: str) -> str:
     return person["id"]
 
 
+def _convert_bbox_to_array(bbox) -> Optional[List[float]]:
+    """
+    Convert bbox from various formats to [x1, y1, x2, y2] array.
+    
+    Supports:
+    - Already array [x1, y1, x2, y2] -> return as is
+    - Object {x, y, width, height} -> convert to [x, y, x+width, y+height]
+    - None -> return None
+    """
+    if bbox is None:
+        return None
+    
+    # Already an array
+    if isinstance(bbox, list):
+        if len(bbox) == 4:
+            return [float(x) for x in bbox]
+        return None
+    
+    # Object with x, y, width, height
+    if isinstance(bbox, dict):
+        try:
+            x = float(bbox.get("x", 0))
+            y = float(bbox.get("y", 0))
+            width = float(bbox.get("width", 0))
+            height = float(bbox.get("height", 0))
+            return [x, y, x + width, y + height]
+        except (TypeError, ValueError):
+            return None
+    
+    return None
+
+
 class PersonCreate(BaseModel):
     real_name: str
     gmail: Optional[str] = None
@@ -266,6 +298,112 @@ async def consistency_audit(
     except Exception as e:
         logger.error(f"[consistency-audit] Error: {e}", exc_info=True)
         raise DatabaseError(str(e), operation="consistency_audit")
+
+
+# ============ CLEAR PERSON OUTLIERS ============
+
+@router.post("/{identifier}/clear-outliers")
+async def clear_person_outliers(
+    identifier: str,
+    outlier_threshold: float = Query(0.5, description="Similarity below this = outlier")
+):
+    """
+    Clear all outlier embeddings for a person.
+    
+    Sets insightface_descriptor to NULL for faces that are outliers
+    (similarity to centroid below threshold).
+    """
+    import numpy as np
+    import json
+    
+    try:
+        person_id = _get_person_id(identifier)
+        
+        logger.info(f"[clear-outliers] Clearing outliers for person {person_id}, threshold={outlier_threshold}")
+        
+        # Get all faces with embeddings for this person
+        result = supabase_db_instance.client.table("photo_faces").select(
+            "id, insightface_descriptor"
+        ).eq("person_id", person_id).not_.is_("insightface_descriptor", "null").execute()
+        
+        faces = result.data or []
+        
+        if len(faces) < 2:
+            return ApiResponse.ok({
+                "cleared_count": 0,
+                "message": "Need at least 2 embeddings to find outliers"
+            })
+        
+        # Parse embeddings
+        embeddings = []
+        valid_faces = []
+        for face in faces:
+            descriptor = face["insightface_descriptor"]
+            try:
+                if isinstance(descriptor, list):
+                    emb = np.array(descriptor, dtype=np.float32)
+                elif isinstance(descriptor, str):
+                    emb = np.array(json.loads(descriptor), dtype=np.float32)
+                else:
+                    continue
+                
+                if len(emb) == 512:
+                    embeddings.append(emb)
+                    valid_faces.append(face)
+            except Exception:
+                continue
+        
+        if len(embeddings) < 2:
+            return ApiResponse.ok({
+                "cleared_count": 0,
+                "message": "Not enough valid embeddings"
+            })
+        
+        # Calculate centroid
+        embeddings_array = np.array(embeddings)
+        centroid = np.mean(embeddings_array, axis=0)
+        centroid = centroid / np.linalg.norm(centroid)
+        
+        # Find outliers
+        outlier_face_ids = []
+        for i, face in enumerate(valid_faces):
+            emb = embeddings[i]
+            emb_norm = emb / np.linalg.norm(emb)
+            similarity = float(np.dot(emb_norm, centroid))
+            
+            if similarity < outlier_threshold:
+                outlier_face_ids.append(face["id"])
+        
+        if not outlier_face_ids:
+            return ApiResponse.ok({
+                "cleared_count": 0,
+                "message": "No outliers found"
+            })
+        
+        # Clear descriptors for outliers
+        for face_id in outlier_face_ids:
+            supabase_db_instance.client.table("photo_faces").update({
+                "insightface_descriptor": None
+            }).eq("id", face_id).execute()
+        
+        # Rebuild index
+        index_rebuilt = False
+        if face_service_instance:
+            await face_service_instance.rebuild_players_index()
+            index_rebuilt = True
+        
+        logger.info(f"[clear-outliers] Cleared {len(outlier_face_ids)} outliers for person {person_id}")
+        
+        return ApiResponse.ok({
+            "cleared_count": len(outlier_face_ids),
+            "index_rebuilt": index_rebuilt
+        })
+        
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"[clear-outliers] Error: {e}", exc_info=True)
+        raise DatabaseError(str(e), operation="clear_person_outliers")
 
 
 # ============ CRUD ENDPOINTS ============
@@ -667,6 +805,9 @@ async def get_embedding_consistency(
             
             gi = face.get("gallery_images") or {}
             
+            # Convert bbox to array format [x1, y1, x2, y2]
+            bbox_array = _convert_bbox_to_array(face.get("insightface_bbox"))
+            
             results.append({
                 "face_id": face["id"],
                 "photo_id": face["photo_id"],
@@ -674,7 +815,7 @@ async def get_embedding_consistency(
                 "filename": gi.get("original_filename"),
                 "image_width": gi.get("width"),
                 "image_height": gi.get("height"),
-                "bbox": face.get("insightface_bbox"),
+                "bbox": bbox_array,
                 "verified": face.get("verified", False),
                 "recognition_confidence": face.get("recognition_confidence"),
                 "similarity_to_centroid": round(similarity, 4),
