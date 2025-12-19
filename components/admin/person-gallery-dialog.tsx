@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Check, Trash2, User, ArrowUpDown, ArrowUp, Search } from "lucide-react"
+import { Check, Trash2, User, ArrowUpDown, ArrowUp } from "lucide-react"
 import {
   getPersonPhotosWithDetailsAction,
   unlinkPersonFromPhotoAction,
@@ -26,7 +26,6 @@ import {
 } from "@/app/admin/actions"
 import { FaceTaggingDialog } from "./face-tagging-dialog"
 import { AvatarSelector } from "./avatar-selector"
-import { EmbeddingConsistencyDialog } from "./embedding-consistency-dialog"
 
 interface PersonGalleryDialogProps {
   personId: string
@@ -199,7 +198,6 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
   const [selectedPhotoForAvatar, setSelectedPhotoForAvatar] = useState<string | null>(null)
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set())
   const [showUnverifiedFirst, setShowUnverifiedFirst] = useState(false)
-  const [consistencyDialogOpen, setConsistencyDialogOpen] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     action: "verify" | "delete" | null
@@ -565,15 +563,6 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                 {photos.length > 0 && (
                   <div className="flex gap-2 shrink-0 mr-12">
                     <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setConsistencyDialogOpen(true)}
-                      className="w-[180px] justify-start"
-                    >
-                      <Search className="h-4 w-4 mr-2 flex-shrink-0" />
-                      <span className="truncate">Проверить эмбеддинги</span>
-                    </Button>
-                    <Button
                       variant={showUnverifiedFirst ? "default" : "outline"}
                       size="sm"
                       onClick={() => setShowUnverifiedFirst(!showUnverifiedFirst)}
@@ -832,17 +821,6 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
           preselectedPhotoId={selectedPhotoForAvatar}
         />
       )}
-
-      <EmbeddingConsistencyDialog
-        personId={personId}
-        personName={personName}
-        open={consistencyDialogOpen}
-        onOpenChange={setConsistencyDialogOpen}
-        onDescriptorCleared={() => {
-          // Optionally reload photos after clearing descriptor
-          loadPhotos()
-        }}
-      />
     </>
   )
 }
