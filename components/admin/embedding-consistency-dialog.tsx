@@ -21,8 +21,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Trash2, AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://vlcpadel.com:8001"
+import {
+  getEmbeddingConsistencyAction,
+  clearFaceDescriptorAction,
+  type ConsistencyData,
+} from "@/app/admin/actions/people"
 
 interface EmbeddingConsistencyDialogProps {
   personId: string
@@ -30,26 +33,6 @@ interface EmbeddingConsistencyDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onDescriptorCleared?: () => void
-}
-
-interface EmbeddingResult {
-  face_id: string
-  photo_id: string
-  image_url: string | null
-  filename: string | null
-  verified: boolean
-  recognition_confidence: number | null
-  similarity_to_centroid: number
-  is_outlier: boolean
-}
-
-interface ConsistencyData {
-  total_embeddings: number
-  overall_consistency: number
-  outlier_threshold: number
-  outlier_count: number
-  embeddings: EmbeddingResult[]
-  message?: string
 }
 
 export function EmbeddingConsistencyDialog({
@@ -79,18 +62,15 @@ export function EmbeddingConsistencyDialog({
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/people/${personId}/embedding-consistency?outlier_threshold=0.5`
-      )
-      const result = await response.json()
+      const result = await getEmbeddingConsistencyAction(personId, 0.5)
       
-      if (result.success) {
+      if (result.success && result.data) {
         setData(result.data)
       } else {
         setError(result.error || "Ошибка загрузки")
       }
-    } catch (e) {
-      setError("Ошибка соединения с сервером")
+    } catch (e: any) {
+      setError(e.message || "Ошибка соединения с сервером")
       console.error("[ConsistencyDialog] Error:", e)
     } finally {
       setLoading(false)
@@ -100,10 +80,7 @@ export function EmbeddingConsistencyDialog({
   async function handleClearDescriptor(faceId: string) {
     setClearingFaceId(faceId)
     try {
-      const response = await fetch(`${BACKEND_URL}/api/faces/${faceId}/clear-descriptor`, {
-        method: "POST",
-      })
-      const result = await response.json()
+      const result = await clearFaceDescriptorAction(faceId)
       
       if (result.success && result.data?.cleared) {
         // Remove from list
@@ -118,7 +95,7 @@ export function EmbeddingConsistencyDialog({
         })
         onDescriptorCleared?.()
       } else {
-        console.error("[ConsistencyDialog] Clear failed:", result)
+        console.error("[ConsistencyDialog] Clear failed:", result.error)
       }
     } catch (e) {
       console.error("[ConsistencyDialog] Clear error:", e)
