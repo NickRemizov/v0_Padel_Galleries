@@ -6,6 +6,7 @@ v4.0: Fixed index rebuild on face deletion
 v4.1: Added recognize-unknown endpoint
 v4.2: Fixed descriptor parsing in recognize-unknown
 v4.3: Added pagination to recognize-unknown (Supabase limit is 1000)
+v4.4: Added clear-descriptor endpoint for outlier removal
 """
 
 from fastapi import APIRouter, Depends
@@ -667,6 +668,74 @@ async def recognize_unknown_faces(
     except Exception as e:
         logger.error(f"[recognize-unknown] ERROR: {e}", exc_info=True)
         raise DatabaseError(str(e), operation="recognize_unknown_faces")
+
+
+@router.post("/{face_id}/clear-descriptor")
+async def clear_face_descriptor(
+    face_id: str,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Clear the descriptor of a face (set to NULL).
+    
+    Use case: Remove "bad" embeddings that cause wrong recognitions,
+    while keeping the face-person link intact.
+    
+    The face will remain linked to the person, but won't be used
+    for recognition (won't be in the HNSW index).
+    """
+    try:
+        logger.info(f"[clear-descriptor] Clearing descriptor for face {face_id}")
+        
+        # Check if face exists and has descriptor
+        check_response = supabase_db.client.table("photo_faces").select(
+            "id, person_id, insightface_descriptor"
+        ).eq("id", face_id).execute()
+        
+        if not check_response.data:
+            raise NotFoundError("Face", face_id)
+        
+        face_data = check_response.data[0]
+        had_descriptor = face_data.get("insightface_descriptor") is not None
+        
+        if not had_descriptor:
+            logger.info(f"[clear-descriptor] Face {face_id} already has no descriptor")
+            return ApiResponse.ok({
+                "cleared": False,
+                "message": "Face already has no descriptor",
+                "index_rebuilt": False
+            })
+        
+        # Clear the descriptor
+        supabase_db.client.table("photo_faces").update({
+            "insightface_descriptor": None
+        }).eq("id", face_id).execute()
+        
+        logger.info(f"[clear-descriptor] Descriptor cleared for face {face_id}")
+        
+        # Rebuild index to remove this face
+        index_rebuilt = False
+        try:
+            rebuild_result = await face_service.rebuild_players_index()
+            if rebuild_result.get("success"):
+                index_rebuilt = True
+                logger.info(f"[clear-descriptor] Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+        except Exception as index_error:
+            logger.error(f"[clear-descriptor] Error rebuilding index: {index_error}")
+        
+        return ApiResponse.ok({
+            "cleared": True,
+            "face_id": face_id,
+            "person_id": face_data.get("person_id"),
+            "index_rebuilt": index_rebuilt
+        })
+        
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"[clear-descriptor] Error: {e}", exc_info=True)
+        raise DatabaseError(str(e), operation="clear_face_descriptor")
 
 
 @router.get("/statistics")
