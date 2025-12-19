@@ -148,6 +148,36 @@ export async function clearFaceDescriptorAction(faceId: string): Promise<{
   }
 }
 
+/**
+ * Clear all outlier descriptors for a person
+ */
+export async function clearPersonOutliersAction(
+  personId: string,
+  outlierThreshold: number = 0.5
+): Promise<{
+  success: boolean
+  data?: { cleared_count: number; index_rebuilt: boolean; message?: string }
+  error?: string
+}> {
+  try {
+    console.log("[clearPersonOutliersAction] Clearing outliers for:", personId)
+    const result = await apiFetch(
+      `/api/people/${personId}/clear-outliers?outlier_threshold=${outlierThreshold}`,
+      { method: "POST" }
+    )
+    console.log("[clearPersonOutliersAction] Result:", result)
+
+    if (!result.success) {
+      return { success: false, error: result.error || "Unknown error" }
+    }
+
+    return { success: true, data: result.data }
+  } catch (error: any) {
+    console.error("[clearPersonOutliersAction] Error:", error)
+    return { success: false, error: error.message || "Failed to clear outliers" }
+  }
+}
+
 // ========== CONSISTENCY AUDIT (all players) ==========
 
 export interface ConsistencyAuditResult {
