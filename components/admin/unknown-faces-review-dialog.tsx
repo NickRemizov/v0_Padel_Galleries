@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, UserPlus, Users, X, Trash2 } from "lucide-react"
+import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -62,20 +62,16 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
   async function loadClusters() {
     setLoading(true)
     try {
-      console.log("[v0] [UnknownFacesDialog] Loading clusters for gallery:", galleryId)
+      console.log("[UnknownFacesDialog] Loading clusters for gallery:", galleryId)
 
       const result = await clusterUnknownFacesAction(galleryId)
 
-      console.log("[v0] [UnknownFacesDialog] Action result:", result)
-      console.log("[v0] [UnknownFacesDialog] Result success:", result.success)
-      console.log("[v0] [UnknownFacesDialog] Result data:", result.data)
-      console.log("[v0] [UnknownFacesDialog] Clusters array:", result.data?.clusters)
-      console.log("[v0] [UnknownFacesDialog] Clusters length:", result.data?.clusters?.length)
+      console.log("[UnknownFacesDialog] Result:", result)
 
       if (result.success && result.data) {
         setClusters(result.data.clusters || [])
         setCurrentClusterIndex(0)
-        console.log("[v0] [UnknownFacesDialog] Set clusters state:", result.data.clusters?.length || 0, "clusters")
+        console.log("[UnknownFacesDialog] Loaded", result.data.clusters?.length || 0, "clusters")
       }
     } catch (error) {
       console.error("[UnknownFacesReview] Error loading clusters:", error)
@@ -97,12 +93,10 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
 
   async function handlePersonCreated(personId: string, personName: string) {
     setShowAddPerson(false)
-    // Reload people list to include newly created person
     await loadPeople()
     await assignClusterToPerson(personId)
   }
 
-  // FIX: Accept personId directly instead of using stale state
   async function handleSelectPerson(personId: string) {
     if (!personId) return
     setShowSelectPerson(false)
@@ -120,7 +114,6 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
     try {
       const result = await assignFacesToPersonAction(faceIds, personId)
       if (result.success) {
-        // Mark all unique photos as processed
         const uniquePhotoIds = [...new Set(facesToAssign.map((f) => f.photo_id))]
         console.log("[UnknownFacesReview] Marking", uniquePhotoIds.length, "photos as processed")
         
@@ -137,8 +130,18 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
     }
   }
 
-  async function handleRejectCluster() {
-    moveToNextCluster()
+  function handlePreviousCluster() {
+    if (currentClusterIndex > 0) {
+      setRemovedFaces(new Set())
+      setCurrentClusterIndex(currentClusterIndex - 1)
+    }
+  }
+
+  function handleNextCluster() {
+    if (currentClusterIndex + 1 < clusters.length) {
+      setRemovedFaces(new Set())
+      setCurrentClusterIndex(currentClusterIndex + 1)
+    }
   }
 
   function moveToNextCluster() {
@@ -156,20 +159,22 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
   }
 
   const currentCluster = clusters[currentClusterIndex]
-  const hasMoreClusters = currentClusterIndex + 1 < clusters.length
+  const hasPreviousCluster = currentClusterIndex > 0
+  const hasNextCluster = currentClusterIndex + 1 < clusters.length
+  const visibleFaces = currentCluster?.faces.filter((f) => !removedFaces.has(f.id)) || []
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Неизвестные лица - кластеризация</DialogTitle>
             <DialogDescription>
               {loading
                 ? "Загрузка кластеров..."
                 : clusters.length === 0
                   ? "Нет неизвестных лиц для кластеризации"
-                  : `Кластер ${currentClusterIndex + 1} из ${clusters.length} (${currentCluster?.size || 0} фото)`}
+                  : "Выберите действие для каждого кластера похожих лиц"}
             </DialogDescription>
           </DialogHeader>
 
@@ -182,11 +187,10 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
               <p>Все лица распознаны!</p>
             </div>
           ) : currentCluster ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-4">
-                {currentCluster.faces
-                  .filter((face) => !removedFaces.has(face.id))
-                  .map((face, index) => (
+            <>
+              <div className="flex-1 overflow-y-auto pr-2">
+                <div className="grid grid-cols-4 gap-4">
+                  {visibleFaces.map((face) => (
                     <div key={face.id} className="relative aspect-square">
                       <FaceCropPreview imageUrl={face.image_url || "/placeholder.svg"} bbox={face.bbox} />
                       <Button
@@ -199,57 +203,79 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
                       </Button>
                     </div>
                   ))}
-              </div>
+                </div>
 
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={handleCreatePerson} disabled={processing}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Создать игрока
-                </Button>
-
-                <Popover open={showSelectPerson} onOpenChange={setShowSelectPerson}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" disabled={processing}>
-                      <Users className="h-4 w-4 mr-2" />
-                      Выбрать игрока
+                {visibleFaces.length === 0 && (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p>Все лица в кластере удалены</p>
+                    <Button variant="outline" className="mt-2" onClick={handleNextCluster} disabled={!hasNextCluster}>
+                      Перейти к следующему кластеру
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[300px] p-0">
-                    <Command>
-                      <CommandInput placeholder="Поиск игрока..." />
-                      <CommandList>
-                        <CommandEmpty>Игрок не найден</CommandEmpty>
-                        <CommandGroup className="max-h-[300px] overflow-y-auto">
-                          {people.map((person) => (
-                            <CommandItem
-                              key={person.id}
-                              onSelect={() => {
-                                // FIX: Pass person.id directly instead of using setState + stale closure
-                                handleSelectPerson(person.id)
-                              }}
-                            >
-                              {person.real_name}
-                              {person.telegram_name && ` (${person.telegram_name})`}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-
-                <Button variant="destructive" onClick={handleRejectCluster} disabled={processing}>
-                  <X className="h-4 w-4 mr-2" />
-                  Отклонить кластер
-                </Button>
+                  </div>
+                )}
               </div>
 
-              {hasMoreClusters && (
-                <p className="text-sm text-muted-foreground text-center">
-                  Еще {clusters.length - currentClusterIndex - 1} кластер(ов) после этого
-                </p>
+              {visibleFaces.length > 0 && (
+                <div className="flex-shrink-0 flex items-center justify-between pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Кластер {currentClusterIndex + 1} из {clusters.length} (всего {currentCluster?.size || 0} фото)
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleCreatePerson} disabled={processing}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Создать игрока
+                    </Button>
+
+                    <Popover open={showSelectPerson} onOpenChange={setShowSelectPerson}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" disabled={processing}>
+                          <Users className="h-4 w-4 mr-2" />
+                          Выбрать игрока
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[300px] p-0">
+                        <Command>
+                          <CommandInput placeholder="Поиск игрока..." />
+                          <CommandList>
+                            <CommandEmpty>Игрок не найден</CommandEmpty>
+                            <CommandGroup className="max-h-[300px] overflow-y-auto">
+                              {people.map((person) => (
+                                <CommandItem
+                                  key={person.id}
+                                  onSelect={() => handleSelectPerson(person.id)}
+                                >
+                                  {person.real_name}
+                                  {person.telegram_name && ` (${person.telegram_name})`}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handlePreviousCluster}
+                      disabled={!hasPreviousCluster || processing}
+                      title="Предыдущий кластер"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleNextCluster}
+                      disabled={!hasNextCluster || processing}
+                      title="Следующий кластер"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               )}
-            </div>
+            </>
           ) : null}
         </DialogContent>
       </Dialog>
