@@ -77,18 +77,6 @@ export function AddPersonDialog({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="gmail">Gmail (для авторизации)</Label>
-            <Input
-              id="gmail"
-              name="gmail"
-              type="email"
-              placeholder="user@gmail.com"
-              pattern="[a-zA-Z0-9._%+-]+@gmail\.com$"
-              title="Введите адрес Gmail (example@gmail.com)"
-            />
-          </div>
-
-          <div className="grid gap-2">
             <Label htmlFor="telegram_name">Имя в Telegram</Label>
             <Input id="telegram_name" name="telegram_name" />
           </div>
@@ -99,20 +87,15 @@ export function AddPersonDialog({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="telegram_profile_url" className="text-muted-foreground">
-              Ссылка на профиль Telegram (заполняется автоматически)
-            </Label>
+            <Label htmlFor="gmail">Gmail (для авторизации)</Label>
             <Input
-              id="telegram_profile_url"
-              name="telegram_profile_url"
-              type="url"
-              placeholder="tg://user?id=..."
-              disabled
-              className="bg-muted"
+              id="gmail"
+              name="gmail"
+              type="email"
+              placeholder="user@gmail.com"
+              pattern="[a-zA-Z0-9._%+-]+@gmail\.com$"
+              title="Введите адрес Gmail (example@gmail.com)"
             />
-            <p className="text-xs text-muted-foreground">
-              Заполняется автоматически после авторизации игрока через Telegram-бота
-            </p>
           </div>
 
           <div className="grid gap-2">
