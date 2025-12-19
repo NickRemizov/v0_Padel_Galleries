@@ -27,14 +27,14 @@
    - Попробуйте отключить фильтры качества
 
 **Отладка:**
-```typescript
+\`\`\`typescript
 // В FaceTaggingDialog смотрите детальные метрики:
 console.log("[v0] Face metrics:", {
   face_size,
   blur_score,
   det_score
 });
-```
+\`\`\`
 
 ---
 
@@ -59,9 +59,9 @@ console.log("[v0] Face metrics:", {
 3. **Индекс HNSWLIB не обновлен**
    - После назначения лиц нужно пересобрать индекс
    - Это должно происходить автоматически, но можно вручную:
-   ```bash
+   \`\`\`bash
    curl -X POST http://your-server:8001/rebuild-index
-   ```
+   \`\`\`
 
 ---
 
@@ -83,11 +83,11 @@ console.log("[v0] Face metrics:", {
 
 3. **Ошибка в обучении**
    - Найдите неправильно верифицированные лица:
-   ```sql
+   \`\`\`sql
    SELECT * FROM face_descriptors
    WHERE person_id = 'wrong-person-id'
    AND verified = true;
-   ```
+   \`\`\`
    - Исправьте вручную и пересоберите индекс
 
 ---
@@ -103,11 +103,11 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Проверьте переменные окружения:**
-   ```bash
+   \`\`\`bash
    POSTGRES_URL="postgresql://..."
    SUPABASE_URL="https://..."
    SUPABASE_ANON_KEY="..."
-   ```
+   \`\`\`
 
 2. **Проверьте RLS (Row Level Security):**
    - Убедитесь, что политики настроены правильно
@@ -128,10 +128,10 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Добавьте индексы:**
-   ```sql
+   \`\`\`sql
    CREATE INDEX IF NOT EXISTS idx_face_descriptors_embedding 
    ON face_descriptors USING ivfflat (embedding vector_cosine_ops);
-   ```
+   \`\`\`
 
 2. **Оптимизируйте запросы:**
    - Используйте `EXPLAIN ANALYZE` для анализа
@@ -154,28 +154,28 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Проверьте, запущен ли сервер:**
-   ```bash
+   \`\`\`bash
    ssh your-server
    cd /home/nickr/python
    ./start.sh
-   ```
+   \`\`\`
 
 2. **Проверьте переменные окружения:**
-   ```bash
+   \`\`\`bash
    FASTAPI_URL="http://your-server-ip:8001"
    NEXT_PUBLIC_FASTAPI_URL="http://your-server-ip:8001"
-   ```
+   \`\`\`
 
 3. **Проверьте логи:**
-   ```bash
+   \`\`\`bash
    tail -f /home/nickr/python/app.log
-   ```
+   \`\`\`
 
 4. **Проверьте firewall:**
-   ```bash
+   \`\`\`bash
    sudo ufw status
    sudo ufw allow 8001
-   ```
+   \`\`\`
 
 ---
 
@@ -188,22 +188,22 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Переустановите модель:**
-   ```bash
+   \`\`\`bash
    cd /home/nickr/python
    python3 -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(); app.prepare(ctx_id=0)"
-   ```
+   \`\`\`
 
 2. **Проверьте зависимости:**
-   ```bash
+   \`\`\`bash
    pip install -r requirements.txt
-   ```
+   \`\`\`
 
 3. **Проверьте память сервера:**
-   ```bash
+   \`\`\`bash
    free -h
    # Если мало памяти, перезапустите сервер
    sudo reboot
-   ```
+   \`\`\`
 
 ---
 
@@ -216,19 +216,19 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Пересоберите индекс:**
-   ```bash
+   \`\`\`bash
    curl -X POST http://your-server:8001/rebuild-index
-   ```
+   \`\`\`
 
 2. **Проверьте логи:**
-   ```bash
+   \`\`\`bash
    tail -f /home/nickr/python/app.log | grep "index"
-   ```
+   \`\`\`
 
 3. **Проверьте, есть ли верифицированные лица:**
-   ```sql
+   \`\`\`sql
    SELECT COUNT(*) FROM face_descriptors WHERE verified = true;
-   ```
+   \`\`\`
    - Если 0, нужно сначала верифицировать несколько лиц
 
 ---
@@ -244,9 +244,9 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Проверьте токен:**
-   ```bash
+   \`\`\`bash
    BLOB_READ_WRITE_TOKEN="..."
-   ```
+   \`\`\`
 
 2. **Проверьте лимиты Vercel Blob:**
    - Бесплатный план: 1GB
@@ -255,13 +255,13 @@ console.log("[v0] Face metrics:", {
 3. **Проверьте размер файлов:**
    - Максимальный размер файла: 4.5MB (Next.js default)
    - Увеличьте в `next.config.js`:
-   ```javascript
+   \`\`\`javascript
    experimental: {
      serverActions: {
        bodySizeLimit: '10mb'
      }
    }
-   ```
+   \`\`\`
 
 ---
 
@@ -276,19 +276,19 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Проверьте токен:**
-   ```bash
+   \`\`\`bash
    TELEGRAM_BOT_TOKEN="..."
-   ```
+   \`\`\`
 
 2. **Проверьте webhook:**
-   ```bash
+   \`\`\`bash
    curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
-   ```
+   \`\`\`
 
 3. **Установите webhook заново:**
-   ```bash
+   \`\`\`bash
    curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-domain.com/api/telegram/webhook"
-   ```
+   \`\`\`
 
 4. **Проверьте логи Vercel:**
    - Откройте Vercel Dashboard → Functions → Logs
@@ -305,9 +305,9 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Проверьте telegram_id игрока:**
-   ```sql
+   \`\`\`sql
    SELECT telegram_id FROM people WHERE id = 'your-person-id';
-   ```
+   \`\`\`
    - Должен быть числовой ID, не NULL
 
 2. **Проверьте, запустил ли пользователь бота:**
@@ -327,20 +327,20 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Установите зависимости:**
-   ```bash
+   \`\`\`bash
    npm install
-   ```
+   \`\`\`
 
 2. **Создайте `.env.local`:**
-   ```bash
+   \`\`\`bash
    cp .env.example .env.local
    # Заполните переменные
-   ```
+   \`\`\`
 
 3. **Запустите dev сервер:**
-   ```bash
+   \`\`\`bash
    npm run dev
-   ```
+   \`\`\`
 
 ---
 
@@ -349,9 +349,9 @@ console.log("[v0] Face metrics:", {
 **Решения:**
 
 1. **Обновите типы:**
-   ```bash
+   \`\`\`bash
    npm run build
-   ```
+   \`\`\`
 
 2. **Проверьте версии:**
    - Next.js: 15.x
@@ -378,7 +378,7 @@ console.log("[v0] Face metrics:", {
    - README.md
    - ARCHITECTURE.md
    - RECOGNITION_PROCESS_DOCUMENTATION.md
-```
+\`\`\`
 
-```md file="AUTO-DEPLOY-README.md" isDeleted="true"
+\`\`\`md file="AUTO-DEPLOY-README.md" isDeleted="true"
 ...deleted...

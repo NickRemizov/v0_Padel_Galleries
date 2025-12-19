@@ -9,7 +9,7 @@
 
 ### Целевая архитектура (к чему стремимся)
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────────────┐
 │                         Пользователь                         │
 └─────────────────────────────────────────────────────────────┘
@@ -38,7 +38,7 @@
     │  Supabase    │  │ Vercel Blob  │  │  InsightFace │
     │  PostgreSQL  │  │   Storage    │  │   + HNSWLIB  │
     └──────────────┘  └──────────────┘  └──────────────┘
-```
+\`\`\`
 
 ### ⚠️ Текущее состояние (в процессе миграции)
 
@@ -53,7 +53,7 @@
 
 ## 📁 Структура проекта
 
-```
+\`\`\`
 v0_Padel_Galleries/
 ├── app/                          # Next.js App Router
 │   ├── (public)/                # Публичные страницы
@@ -101,7 +101,7 @@ v0_Padel_Galleries/
 │   └── ...
 │
 └── migrations/                  # SQL миграции
-```
+\`\`\`
 
 ---
 
@@ -109,14 +109,14 @@ v0_Padel_Galleries/
 
 ### Ключевые таблицы
 
-```
+\`\`\`
 cities                          # Мультигородность
   └── locations                 # Площадки/клубы
         └── galleries           # Галереи событий
               └── gallery_images    # Фотографии
                     └── photo_faces # Лица + эмбеддинги ⭐
                           └── people    # Игроки
-```
+\`\`\`
 
 ### photo_faces — главная таблица распознавания
 
@@ -143,38 +143,38 @@ cities                          # Мультигородность
 
 ### 1. Загрузка фото
 
-```
+\`\`\`
 Админ → Drag&Drop → uploadAction() → Vercel Blob → URL в gallery_images
-```
+\`\`\`
 
 ### 2. Распознавание лиц
 
-```
+\`\`\`
 Кнопка "Распознать" 
     → /api/face-detection/detect (Next.js proxy)
     → FastAPI /detect-faces
     → InsightFace детекция
     → Фильтрация (size, blur, confidence)
     → Сохранение в photo_faces + insightface_descriptor
-```
+\`\`\`
 
 ### 3. Поиск похожих лиц
 
-```
+\`\`\`
 FastAPI /recognize-face
     → Загрузка эмбеддинга
     → HNSWLIB поиск в индексе верифицированных лиц
     → Возврат person_id + confidence
-```
+\`\`\`
 
 ### 4. Кластеризация неизвестных
 
-```
+\`\`\`
 Кнопка "Неизвестные лица"
     → FastAPI /training/cluster-unverified-faces
     → HDBSCAN группировка по similarity
     → Возврат кластеров в UI
-```
+\`\`\`
 
 ---
 

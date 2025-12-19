@@ -8,14 +8,14 @@
 
 ## Как это работает (простыми словами)
 
-```
+\`\`\`
 Фото загружено → InsightFace находит лица → Каждое лицо = 512 чисел (эмбеддинг)
                                                     ↓
                                     Сравниваем с известными игроками
                                                     ↓
                             Похоже на Ивана (85%)? → Присваиваем Ивану
                             Не похоже ни на кого? → "Неизвестное лицо"
-```
+\`\`\`
 
 ---
 
@@ -102,14 +102,14 @@
 
 ## Архитектура (очень кратко)
 
-```
+\`\`\`
 Frontend (Next.js)
     ↓
 /api/face-detection/detect → FastAPI → InsightFace
 /api/face-detection/recognize → FastAPI → HNSWLIB поиск
     ↓
 Supabase (photo_faces таблица)
-```
+\`\`\`
 
 **Backend:** http://vlcpadel.com:8001
 **Модель:** InsightFace antelopev2

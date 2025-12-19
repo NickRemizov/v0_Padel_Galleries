@@ -4,7 +4,7 @@
 
 Clean Architecture с разделением ответственности:
 
-```
+\`\`\`
 python/
 ├── main.py                      # Entry point, DI, exception handlers
 ├── core/                        # Foundation (no dependencies)
@@ -22,7 +22,7 @@ python/
 ├── repositories/                # Data access layer
 ├── services/                    # Business logic
 └── routers/                     # HTTP endpoints
-```
+\`\`\`
 
 ## Key Principles
 
@@ -30,7 +30,7 @@ python/
 
 Все endpoints возвращают `ApiResponse`:
 
-```python
+\`\`\`python
 from core.responses import ApiResponse
 
 @router.get("/items/{id}")
@@ -40,13 +40,13 @@ async def get_item(id: str):
 
 # Returns:
 # {"success": true, "data": {...}, "error": null, "meta": null}
-```
+\`\`\`
 
 ### 2. Custom Exceptions
 
 Исключения автоматически преобразуются в HTTP ответы:
 
-```python
+\`\`\`python
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 
 # 404
@@ -57,21 +57,21 @@ raise ValidationError("Invalid image format", field="image")
 
 # 500
 raise DatabaseError("Connection failed", operation="save")
-```
+\`\`\`
 
 ### 3. Centralized Logging
 
-```python
+\`\`\`python
 from core.logging import get_logger
 
 logger = get_logger(__name__)
 logger.info("Processing photo")
 logger.error("Failed", exc_info=True)
-```
+\`\`\`
 
 ## Exception Hierarchy
 
-```
+\`\`\`
 AppException (base, 500)
 ├── NotFoundError (404)
 ├── ValidationError (422)
@@ -79,13 +79,13 @@ AppException (base, 500)
 ├── RecognitionError (500)
 ├── AuthenticationError (401)
 └── TrainingError (500)
-```
+\`\`\`
 
 ## Configuration
 
 All settings via environment variables:
 
-```bash
+\`\`\`bash
 # Server
 SERVER_HOST=0.0.0.0
 SERVER_PORT=8001
@@ -98,24 +98,24 @@ SUPABASE_SERVICE_ROLE_KEY=xxx
 # Recognition
 DEFAULT_RECOGNITION_THRESHOLD=0.60
 DEFAULT_MIN_FACE_SIZE=80
-```
+\`\`\`
 
 ## Response Format
 
 All API responses follow this structure:
 
-```json
+\`\`\`json
 {
   "success": true,
   "data": { ... },
   "error": null,
   "meta": null
 }
-```
+\`\`\`
 
 Error response:
 
-```json
+\`\`\`json
 {
   "success": false,
   "data": null,
@@ -126,13 +126,13 @@ Error response:
   },
   "meta": null
 }
-```
+\`\`\`
 
 ## Migration Guide
 
 ### Adding ApiResponse to endpoint
 
-```python
+\`\`\`python
 # Before:
 @router.get("/faces/{id}")
 async def get_face(id: str):
@@ -151,7 +151,7 @@ async def get_face(id: str):
     if not face:
         raise NotFoundError("Face", id)
     return ApiResponse.ok(face)
-```
+\`\`\`
 
 ## Version History
 

@@ -26,11 +26,11 @@
 ### 1.1. Подтверждённые лица без игрока ⚠️
 
 **Что проверяет:**
-```sql
+\`\`\`sql
 SELECT * FROM photo_faces 
 WHERE verified = true 
 AND person_id IS NULL
-```
+\`\`\`
 
 **Что это значит:**
 - Лицо помечено как "подтверждённое" (`verified = true`)
@@ -43,12 +43,12 @@ AND person_id IS NULL
 - Баг в коде распознавания
 
 **Как исправить:**
-```typescript
+\`\`\`typescript
 // Автофикс: снять verified у лиц без person_id
 UPDATE photo_faces 
 SET verified = false, confidence = null
 WHERE verified = true AND person_id IS NULL
-```
+\`\`\`
 
 **Действие:** Кнопка "Исправить" → снимает `verified` флаг
 
@@ -57,11 +57,11 @@ WHERE verified = true AND person_id IS NULL
 ### 1.2. Подтверждённые лица с неправильной уверенностью ⚠️
 
 **Что проверяет:**
-```sql
+\`\`\`sql
 SELECT * FROM photo_faces 
 WHERE verified = true 
 AND confidence != 1.0
-```
+\`\`\`
 
 **Что это значит:**
 - Лицо подтверждено вручную (`verified = true`)
@@ -74,12 +74,12 @@ AND confidence != 1.0
 - Баг в endpoint верификации
 
 **Как исправить:**
-```typescript
+\`\`\`typescript
 // Автофикс: установить confidence = 1.0 для verified
 UPDATE photo_faces 
 SET confidence = 1.0
 WHERE verified = true AND confidence != 1.0
-```
+\`\`\`
 
 **Действие:** Кнопка "Исправить" → устанавливает `confidence = 1.0`
 
@@ -88,11 +88,11 @@ WHERE verified = true AND confidence != 1.0
 ### 1.3. Лица с игроком без уверенности ⚠️
 
 **Что проверяет:**
-```sql
+\`\`\`sql
 SELECT * FROM photo_faces 
 WHERE person_id IS NOT NULL 
 AND confidence IS NULL
-```
+\`\`\`
 
 **Что это значит:**
 - Лицо привязано к игроку (`person_id` указан)
@@ -115,12 +115,12 @@ AND confidence IS NULL
 ### 1.4. Лица с несуществующим игроком ⚠️
 
 **Что проверяет:**
-```sql
+\`\`\`sql
 SELECT pf.* FROM photo_faces pf
 LEFT JOIN people p ON pf.person_id = p.id
 WHERE pf.person_id IS NOT NULL 
 AND p.id IS NULL
-```
+\`\`\`
 
 **Что это значит:**
 - Лицо указывает на игрока (`person_id = "abc-123"`)
@@ -133,12 +133,12 @@ AND p.id IS NULL
 - Баг в каскадном удалении (ON DELETE SET NULL не сработал)
 
 **Как исправить:**
-```typescript
+\`\`\`typescript
 // Автофикс: очистить битые ссылки
 UPDATE photo_faces 
 SET person_id = NULL, verified = false, confidence = NULL
 WHERE person_id NOT IN (SELECT id FROM people)
-```
+\`\`\`
 
 **Действие:** Кнопка "Исправить" → убирает битые ссылки, превращает лица в "неизвестные"
 
@@ -147,11 +147,11 @@ WHERE person_id NOT IN (SELECT id FROM people)
 ### 1.5. Лица с несуществующей фотографией ⚠️
 
 **Что проверяет:**
-```sql
+\`\`\`sql
 SELECT pf.* FROM photo_faces pf
 LEFT JOIN gallery_images gi ON pf.photo_id = gi.id
 WHERE gi.id IS NULL
-```
+\`\`\`
 
 **Что это значит:**
 - Запись лица указывает на фото (`photo_id = "xyz-456"`)
@@ -164,11 +164,11 @@ WHERE gi.id IS NULL
 - Ручное редактирование БД
 
 **Как исправить:**
-```typescript
+\`\`\`typescript
 // Автофикс: удалить лица с битыми фото
 DELETE FROM photo_faces 
 WHERE photo_id NOT IN (SELECT id FROM gallery_images)
-```
+\`\`\`
 
 **Действие:** Кнопка "Исправить" → полностью удаляет битые записи лиц
 
@@ -179,14 +179,14 @@ WHERE photo_id NOT IN (SELECT id FROM gallery_images)
 ### 2.1. Игроки без дескрипторов 📊
 
 **Что проверяет:**
-```sql
+\`\`\`sql
 SELECT p.* FROM people p
 WHERE p.id NOT IN (
   SELECT DISTINCT person_id FROM photo_faces 
   WHERE insightface_descriptor IS NOT NULL 
   AND person_id IS NOT NULL
 )
-```
+\`\`\`
 
 **Что это значит:**
 - В базе есть игрок
@@ -211,13 +211,13 @@ WHERE p.id NOT IN (
 ### 2.2. Игроки без фото 📊
 
 **Что проверяет:**
-```sql
+\`\`\`sql
 SELECT p.* FROM people p
 WHERE p.id NOT IN (
   SELECT DISTINCT person_id FROM photo_faces
   WHERE person_id IS NOT NULL
 )
-```
+\`\`\`
 
 **Что это значит:**
 - Игрок создан в системе
@@ -235,12 +235,12 @@ WHERE p.id NOT IN (
 ### 2.3. Дубликаты имён 📊
 
 **Что проверяет:**
-```sql
+\`\`\`sql
 SELECT real_name, telegram_username, COUNT(*) 
 FROM people 
 GROUP BY real_name, telegram_username 
 HAVING COUNT(*) > 1
-```
+\`\`\`
 
 **Что это значит:**
 - Несколько записей игроков с **одинаковым** именем И telegram username
@@ -276,7 +276,7 @@ HAVING COUNT(*) > 1
 - После импорта данных из старой системы
 
 **Процесс:**
-```
+\`\`\`
 1. Получить список лиц без дескрипторов
 2. Для каждого лица:
    - Загрузить оригинальное фото
@@ -285,7 +285,7 @@ HAVING COUNT(*) > 1
    - Извлечь 512-мерный вектор
    - Сохранить в photo_faces.insightface_descriptor
 3. Показать прогресс в реальном времени
-```
+\`\`\`
 
 **UI:**
 - Progress bar с количеством обработанных лиц
@@ -307,13 +307,13 @@ HAVING COUNT(*) > 1
 ### 3.3. Очистка неподтверждённых лиц 🧹
 
 **Что делает:**
-```typescript
+\`\`\`typescript
 // Удаляет лица с низкой уверенностью, не подтверждённые вручную
 DELETE FROM photo_faces 
 WHERE verified = false 
 AND confidence < 0.5
 AND created_at < NOW() - INTERVAL '30 days'
-```
+\`\`\`
 
 **Когда использовать:**
 - Перед обучением модели (оставить только качественные данные)
@@ -324,7 +324,7 @@ AND created_at < NOW() - INTERVAL '30 days'
 ### 3.4. Синхронизация verified/confidence 🔄
 
 **Что делает:**
-```typescript
+\`\`\`typescript
 // Исправляет несоответствия verified <-> confidence
 UPDATE photo_faces 
 SET confidence = 1.0
@@ -333,7 +333,7 @@ WHERE verified = true AND confidence != 1.0
 UPDATE photo_faces 
 SET verified = false
 WHERE verified = true AND person_id IS NULL
-```
+\`\`\`
 
 **Когда использовать:**
 - Если integrity checker показывает проблемы типа 1.1 и 1.2

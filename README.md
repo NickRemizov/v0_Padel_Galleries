@@ -31,17 +31,17 @@
 
 ## 🏗️ Архитектура
 
-```
+\`\`\`
 Frontend (Next.js 15 + React 19)          → Vercel
             ↓
 Backend (FastAPI + Python)                → Hetzner (vlcpadel.com:8001)
             ↓
 Database (PostgreSQL)                     → Supabase
 Storage (Photos)                          → Vercel Blob
-```
+\`\`\`
 
 **Единственный репозиторий:**
-```
+\`\`\`
 NickRemizov/v0_Padel_Galleries
 ├── app/                    # Next.js frontend
 ├── components/             # React компоненты
@@ -49,7 +49,7 @@ NickRemizov/v0_Padel_Galleries
 ├── python/                 # FastAPI backend
 ├── docs/                   # Документация
 └── migrations/             # SQL миграции
-```
+\`\`\`
 
 ---
 
@@ -77,7 +77,7 @@ NickRemizov/v0_Padel_Galleries
 
 ### Локальная разработка
 
-```bash
+\`\`\`bash
 # 1. Клонируйте репозиторий
 git clone https://github.com/NickRemizov/v0_Padel_Galleries.git
 cd v0_Padel_Galleries
@@ -91,26 +91,26 @@ cd python && pip install -r requirements.txt && cd ..
 # 4. Запустите серверы
 npm run dev          # Terminal 1: Next.js на :3000
 cd python && python main.py  # Terminal 2: FastAPI на :8001
-```
+\`\`\`
 
 ### Переменные окружения
 
 **.env.local** (корень проекта):
-```env
+\`\`\`env
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 BLOB_READ_WRITE_TOKEN=...
 FASTAPI_URL=http://localhost:8001
 NEXT_PUBLIC_FASTAPI_URL=http://localhost:8001
-```
+\`\`\`
 
 **python/.env**:
-```env
+\`\`\`env
 SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
 ALLOWED_ORIGINS=http://localhost:3000
-```
+\`\`\`
 
 ---
 

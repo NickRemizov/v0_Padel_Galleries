@@ -27,14 +27,14 @@
 2. Загрузите на сервер в `/home/nickr/`
 3. Выполните команды:
 
-```bash
+\`\`\`bash
 cd /home/nickr
 sudo rm -rf python
 unzip -o galeries.zip
 chmod +x SETUP.sh
 sudo ./SETUP.sh
 cd python && ./start.sh
-```
+\`\`\`
 
 **Готово!** Сервер работает на `http://23.88.61.20:8001`
 
@@ -52,7 +52,7 @@ cd python && ./start.sh
 ### Recognition API (v1)
 
 #### Детекция лиц с метриками (НОВОЕ в v3.2.8)
-```bash
+\`\`\`bash
 POST /detect-faces
 Content-Type: application/json
 
@@ -77,10 +77,10 @@ Response:
     }
   ]
 }
-```
+\`\`\`
 
 #### Распознавание лица
-```bash
+\`\`\`bash
 POST /recognize-face
 Content-Type: application/json
 
@@ -88,10 +88,10 @@ Content-Type: application/json
   "embedding": [0.1, 0.2, ...],  // 512-мерный вектор
   "confidence_threshold": 0.60
 }
-```
+\`\`\`
 
 #### Пакетное распознавание
-```bash
+\`\`\`bash
 POST /batch-recognize
 Content-Type: application/json
 
@@ -99,53 +99,53 @@ Content-Type: application/json
   "gallery_ids": ["gallery1", "gallery2"],
   "confidence_threshold": 0.60
 }
-```
+\`\`\`
 
 #### Кластеризация неизвестных лиц
-```bash
+\`\`\`bash
 POST /cluster-unknown-faces?gallery_id=xxx&min_cluster_size=2
-```
+\`\`\`
 
 #### Перестроение индекса
-```bash
+\`\`\`bash
 POST /rebuild-index
-```
+\`\`\`
 
 ### Training API (v2)
 
 #### Конфигурация распознавания
-```bash
+\`\`\`bash
 GET /api/v2/config
 PUT /api/v2/config
-```
+\`\`\`
 
 #### История обучений
-```bash
+\`\`\`bash
 GET /api/v2/train/history?limit=10&offset=0
-```
+\`\`\`
 
 #### Подготовка датасета
-```bash
+\`\`\`bash
 POST /api/v2/train/prepare
-```
+\`\`\`
 
 #### Запуск обучения
-```bash
+\`\`\`bash
 POST /api/v2/train/execute
-```
+\`\`\`
 
 ## 🔗 Интеграция с Vercel (Next.js)
 
 В вашем Next.js проекте на Vercel добавьте переменную окружения:
 
-```
+\`\`\`
 FASTAPI_URL=http://23.88.61.20:8001
 NEXT_PUBLIC_FASTAPI_URL=http://23.88.61.20:8001
-```
+\`\`\`
 
 ### Пример использования новых метрик:
 
-```typescript
+\`\`\`typescript
 // Детекция лиц без фильтров качества
 const response = await fetch(`${API_URL}/detect-faces`, {
   method: 'POST',
@@ -163,7 +163,7 @@ faces.forEach(face => {
   console.log('Distance to nearest:', face.distance_to_nearest);  // Расстояние
   console.log('Top matches:', face.top_matches);  // Похожие лица
 });
-```
+\`\`\`
 
 ## 🐛 Устранение неполадок
 
@@ -198,10 +198,10 @@ faces.forEach(face => {
 
 Логи сервера сохраняются в `server.log`:
 
-```bash
+\`\`\`bash
 cd /home/nickr/python
 tail -f server.log
-```
+\`\`\`
 
 ## 🆘 Поддержка
 
@@ -244,6 +244,6 @@ tail -f server.log
 - Базовая версия с распознаванием лиц
 - Google OAuth аутентификация
 - Группировка игроков
-```
+\`\`\`
 
-```python file="" isHidden
+\`\`\`python file="" isHidden
