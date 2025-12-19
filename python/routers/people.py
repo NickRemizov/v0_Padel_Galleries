@@ -145,7 +145,7 @@ async def get_people(with_stats: bool = Query(False)):
         raise DatabaseError(str(e), operation="get_people")
 
 
-# ============ CONSISTENCY AUDIT (must be before /{identifier}) ============
+# ============ STATIC ROUTES (must be before /{identifier}) ============
 
 @router.get("/consistency-audit")
 async def consistency_audit(
@@ -325,21 +325,24 @@ async def consistency_audit(
         raise DatabaseError(str(e), operation="consistency_audit")
 
 
-# ============ AUDIT ALL EMBEDDINGS (mark outliers as excluded) ============
-
+@router.get("/audit-all-embeddings")
 @router.post("/audit-all-embeddings")
 async def audit_all_embeddings(
     outlier_threshold: float = Query(0.5, description="Similarity below this = outlier"),
-    min_descriptors: int = Query(3, description="Skip people with fewer descriptors")
+    min_descriptors: int = Query(3, description="Skip people with fewer descriptors"),
+    dry_run: bool = Query(False, description="If true, don't actually mark anything, just show what would be marked")
 ):
     """
     Audit ALL people and mark outliers as excluded_from_index = TRUE.
+    
+    Supports both GET (for browser testing) and POST.
+    Use dry_run=true to preview without making changes.
     
     This is the mass audit function that:
     1. For each person with >= min_descriptors
     2. Calculates centroid from non-excluded embeddings
     3. Marks embeddings with similarity < threshold as excluded
-    4. Rebuilds HNSW index at the end
+    4. Rebuilds HNSW index at the end (unless dry_run)
     
     Returns summary of changes per person.
     """
@@ -347,7 +350,7 @@ async def audit_all_embeddings(
     import json
     
     try:
-        logger.info(f"[audit-all] Starting mass audit, threshold={outlier_threshold}, min_descriptors={min_descriptors}")
+        logger.info(f"[audit-all] Starting mass audit, threshold={outlier_threshold}, min_descriptors={min_descriptors}, dry_run={dry_run}")
         
         # Get all people
         people_result = supabase_db_instance.client.table("people").select(
@@ -438,10 +441,13 @@ async def audit_all_embeddings(
                 if similarity < outlier_threshold:
                     new_outlier_ids.append(face["id"])
             
-            # Mark new outliers as excluded
+            # Mark new outliers as excluded (unless dry_run)
             if new_outlier_ids:
-                updated = supabase_db_instance.set_excluded_from_index(new_outlier_ids, excluded=True)
-                total_newly_excluded += updated
+                if not dry_run:
+                    updated = supabase_db_instance.set_excluded_from_index(new_outlier_ids, excluded=True)
+                    total_newly_excluded += updated
+                else:
+                    total_newly_excluded += len(new_outlier_ids)
                 
                 # Count total excluded for this person
                 total_excluded = sum(1 for _, _, ex in embeddings_data if ex) + len(new_outlier_ids)
@@ -454,19 +460,20 @@ async def audit_all_embeddings(
                     "total_descriptors": len(embeddings_data)
                 })
         
-        # Rebuild index
+        # Rebuild index (unless dry_run)
         index_rebuilt = False
-        if total_newly_excluded > 0 and face_service_instance:
+        if not dry_run and total_newly_excluded > 0 and face_service_instance:
             await face_service_instance.rebuild_players_index()
             index_rebuilt = True
         
-        logger.info(f"[audit-all] Done. {len(audit_results)} people affected, {total_newly_excluded} newly excluded")
+        logger.info(f"[audit-all] Done. {len(audit_results)} people affected, {total_newly_excluded} newly excluded, dry_run={dry_run}")
         
         return ApiResponse.ok({
             "people_processed": len(people),
             "people_affected": len(audit_results),
             "total_newly_excluded": total_newly_excluded,
             "index_rebuilt": index_rebuilt,
+            "dry_run": dry_run,
             "results": audit_results
         })
         
@@ -475,7 +482,7 @@ async def audit_all_embeddings(
         raise DatabaseError(str(e), operation="audit_all_embeddings")
 
 
-# ============ CLEAR PERSON OUTLIERS (mark as excluded, not delete) ============
+# ============ DYNAMIC ROUTES WITH {identifier} ============
 
 @router.post("/{identifier}/clear-outliers")
 async def clear_person_outliers(
@@ -582,8 +589,6 @@ async def clear_person_outliers(
         logger.error(f"[clear-outliers] Error: {e}", exc_info=True)
         raise DatabaseError(str(e), operation="clear_person_outliers")
 
-
-# ============ CRUD ENDPOINTS ============
 
 @router.get("/{identifier}")
 async def get_person(identifier: str):
