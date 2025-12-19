@@ -10,6 +10,7 @@ import { DatabaseIntegrityChecker } from "@/components/admin/database-integrity-
 import { RegenerateDescriptorsDialog } from "@/components/admin/regenerate-descriptors-dialog"
 import { BatchRecognitionDialog } from "@/components/admin/batch-recognition-dialog"
 import { GlobalUnknownFacesDialog } from "@/components/admin/global-unknown-faces-dialog"
+import { ConsistencyAuditDialog } from "@/components/admin/consistency-audit-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -18,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Database, Bug, Wrench, Shield, RefreshCw, Scan, Users, Images, Search, Loader2 } from "lucide-react"
+import { Database, Bug, Wrench, Shield, RefreshCw, Scan, Users, Images, Search, Loader2, AlertTriangle } from "lucide-react"
 import { recognizeUnknownFacesAction } from "@/app/admin/actions/faces"
 
 interface RecognizeResult {
@@ -32,6 +33,7 @@ export function ServiceManager() {
   const [showRegenerateDescriptors, setShowRegenerateDescriptors] = useState(false)
   const [showBatchRecognition, setShowBatchRecognition] = useState(false)
   const [showGlobalUnknownFaces, setShowGlobalUnknownFaces] = useState(false)
+  const [showConsistencyAudit, setShowConsistencyAudit] = useState(false)
   const [recognizing, setRecognizing] = useState(false)
   const [recognizeResult, setRecognizeResult] = useState<RecognizeResult | null>(null)
   const [showRecognizeResult, setShowRecognizeResult] = useState(false)
@@ -205,6 +207,21 @@ export function ServiceManager() {
                 Восстановить
               </Button>
             </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Аудит эмбеддингов игроков</div>
+                <div className="text-sm text-muted-foreground">
+                  Проверка консистентности дескрипторов всех игроков для поиска outliers (плохих эмбеддингов)
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowConsistencyAudit(true)}>
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                Аудит
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -292,6 +309,11 @@ export function ServiceManager() {
       <GlobalUnknownFacesDialog
         open={showGlobalUnknownFaces}
         onOpenChange={setShowGlobalUnknownFaces}
+      />
+
+      <ConsistencyAuditDialog
+        open={showConsistencyAudit}
+        onOpenChange={setShowConsistencyAudit}
       />
 
       {/* Recognize Unknown Result Dialog */}
