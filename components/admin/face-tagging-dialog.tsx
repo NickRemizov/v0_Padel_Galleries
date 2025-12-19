@@ -15,7 +15,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.10" // Simplified tooltips
+const VERSION = "v6.11" // Delete key to remove face
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -518,6 +518,27 @@ export function FaceTaggingDialog({
       drawFaces(taggedFaces)
     }
   }, [imageFitMode, selectedFaceIndex])
+
+  // Keyboard handler for Delete key
+  useEffect(() => {
+    if (!open) return
+
+    function handleKeyDown(e: KeyboardEvent) {
+      // Delete key removes selected face
+      if (e.key === "Delete" && selectedFaceIndex !== null) {
+        // Don't trigger if focus is in an input/select
+        const activeElement = document.activeElement
+        if (activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "SELECT" || activeElement.tagName === "TEXTAREA")) {
+          return
+        }
+        e.preventDefault()
+        handleRemoveFace(selectedFaceIndex)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [open, selectedFaceIndex])
 
   const canSave = !saving
   const isLoading = loadingFaces || !imageLoaded
