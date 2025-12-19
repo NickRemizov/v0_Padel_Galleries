@@ -72,6 +72,79 @@ export async function unlinkPersonFromPhotoAction(photoId: string, personId: str
   }
 }
 
+// ========== EMBEDDING CONSISTENCY ==========
+
+export interface EmbeddingResult {
+  face_id: string
+  photo_id: string
+  image_url: string | null
+  filename: string | null
+  verified: boolean
+  recognition_confidence: number | null
+  similarity_to_centroid: number
+  is_outlier: boolean
+}
+
+export interface ConsistencyData {
+  total_embeddings: number
+  overall_consistency: number
+  outlier_threshold: number
+  outlier_count: number
+  embeddings: EmbeddingResult[]
+  message?: string
+}
+
+/**
+ * Get embedding consistency analysis for a person
+ */
+export async function getEmbeddingConsistencyAction(
+  personId: string,
+  outlierThreshold: number = 0.5
+): Promise<{ success: boolean; data?: ConsistencyData; error?: string }> {
+  try {
+    console.log("[getEmbeddingConsistencyAction] Analyzing:", personId)
+    const result = await apiFetch(
+      `/api/people/${personId}/embedding-consistency?outlier_threshold=${outlierThreshold}`
+    )
+    console.log("[getEmbeddingConsistencyAction] Result:", result.success)
+
+    if (!result.success) {
+      return { success: false, error: result.error || "Unknown error" }
+    }
+
+    return { success: true, data: result.data }
+  } catch (error: any) {
+    console.error("[getEmbeddingConsistencyAction] Error:", error)
+    return { success: false, error: error.message || "Failed to get embedding consistency" }
+  }
+}
+
+/**
+ * Clear descriptor from a face (set to NULL)
+ */
+export async function clearFaceDescriptorAction(faceId: string): Promise<{
+  success: boolean
+  data?: { cleared: boolean; face_id: string; person_id: string | null; index_rebuilt: boolean }
+  error?: string
+}> {
+  try {
+    console.log("[clearFaceDescriptorAction] Clearing:", faceId)
+    const result = await apiFetch(`/api/faces/${faceId}/clear-descriptor`, {
+      method: "POST",
+    })
+    console.log("[clearFaceDescriptorAction] Result:", result)
+
+    if (!result.success) {
+      return { success: false, error: result.error || "Unknown error" }
+    }
+
+    return { success: true, data: result.data }
+  } catch (error: any) {
+    console.error("[clearFaceDescriptorAction] Error:", error)
+    return { success: false, error: error.message || "Failed to clear descriptor" }
+  }
+}
+
 // ========== DUPLICATE PEOPLE DETECTION ==========
 
 /**
