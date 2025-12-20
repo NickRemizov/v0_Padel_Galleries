@@ -1,7 +1,7 @@
 # Схема базы данных Padel Galleries
 
-**Дата обновления:** 17.12.2025  
-**Версия:** 3.6 (Связь users → people)
+**Дата обновления:** 20.12.2025  
+**Версия:** 3.7 (Excluded embeddings)
 
 ---
 
@@ -47,7 +47,7 @@
 
 База данных поддерживает мультигородскую архитектуру с возможностью расширения на новые города и страны.
 
-\`\`\`
+```
 cities
   └── locations (площадки)
         └── galleries (галереи)
@@ -55,7 +55,7 @@ cities
                     └── photo_faces (лица на фото + эмбеддинги)
                           └── people (игроки)
                                 └── users (Telegram-аккаунты)
-\`\`\`
+```
 
 ---
 
@@ -127,12 +127,12 @@ cities
 - `organizer_id` → `organizers.id`
 
 **Получение города галереи:**
-\`\`\`sql
+```sql
 SELECT c.* FROM galleries g
 JOIN locations l ON l.id = g.location_id
 JOIN cities c ON c.id = l.city_id
 WHERE g.id = 'gallery_uuid';
-\`\`\`
+```
 
 ---
 
@@ -181,6 +181,7 @@ WHERE g.id = 'gallery_uuid';
 | `insightface_bbox` | jsonb | YES | **Координаты лица {x, y, width, height}** |
 | `insightface_confidence` | double precision | YES | **Уверенность детекции InsightFace** |
 | `insightface_det_score` | double precision | YES | **Оценка качества детекции InsightFace** |
+| `excluded_from_index` | boolean | YES | **Исключён из HNSW индекса** (default: false) ⭐ NEW |
 | `blur_score` | double precision | YES | Оценка размытия (0-1) |
 | `face_category` | face_category | YES | Категория лица (default: 'unknown') |
 | `verified_at` | timestamptz | YES | Дата верификации |
@@ -200,22 +201,27 @@ WHERE g.id = 'gallery_uuid';
 - `verified=true` означает ручное подтверждение, `recognition_confidence` должен быть 1.0
 - `recognition_confidence >= threshold` используется для отображения (не только verified)
 - **Эмбеддинги хранятся в `insightface_descriptor`** — это единственный источник!
+- **`excluded_from_index=true`** — эмбеддинг исключён из HNSW индекса (outlier), но остаётся в базе
 
 **Типичные запросы:**
 
-\`\`\`sql
--- Получить все эмбеддинги для индекса
+```sql
+-- Получить все эмбеддинги для индекса (исключая excluded)
 SELECT person_id, insightface_descriptor 
 FROM photo_faces 
 WHERE verified = true 
   AND insightface_descriptor IS NOT NULL 
-  AND person_id IS NOT NULL;
+  AND person_id IS NOT NULL
+  AND (excluded_from_index IS NULL OR excluded_from_index = false);
 
--- Подсчитать дескрипторы для человека
-SELECT COUNT(*) FROM photo_faces 
+-- Подсчитать дескрипторы для человека (включая excluded)
+SELECT 
+  COUNT(*) as total,
+  COUNT(*) FILTER (WHERE excluded_from_index = true) as excluded
+FROM photo_faces 
 WHERE person_id = 'xxx' 
   AND insightface_descriptor IS NOT NULL;
-\`\`\`
+```
 
 ---
 
@@ -530,9 +536,9 @@ WHERE person_id = 'xxx'
 - `trg_photo_faces_update_cache` — обновляет кеш при назначении person_id
 
 **Цепочка определения города игрока:**
-\`\`\`
+```
 people → photo_faces → gallery_images → galleries → locations → cities
-\`\`\`
+```
 
 ---
 
@@ -541,14 +547,14 @@ people → photo_faces → gallery_images → galleries → locations → cities
 ### generate_unique_slug
 Генерирует уникальный URL-slug с автоматическим добавлением счётчика при дубликатах.
 
-\`\`\`sql
+```sql
 generate_unique_slug(
   base_text TEXT,           -- Исходный текст
   table_name TEXT,          -- Имя таблицы
   column_name TEXT,         -- Имя колонки (default: 'slug')
   exclude_id UUID           -- ID для исключения при обновлении
 ) RETURNS TEXT
-\`\`\`
+```
 
 **Логика:**
 1. Приводит к lowercase
@@ -561,7 +567,7 @@ generate_unique_slug(
 
 ## ER-диаграмма связей
 
-\`\`\`
+```
 ┌─────────────┐
 │   cities    │
 └──────┬──────┘
@@ -584,6 +590,7 @@ generate_unique_slug(
        ▼                                               │
 ┌─────────────────────────────────────┐                │
 │ photo_faces (+ insightface_descriptor)              │
+│ + excluded_from_index (outliers)    │                │
 └──────┬──────────────────────────────┘                │
        │ N:1                                           │
        ▼                                               │
@@ -595,59 +602,69 @@ generate_unique_slug(
 ┌─────────────┐
 │    users    │ (Telegram-аккаунты)
 └─────────────┘
-\`\`\`
+```
 
 ---
 
 ## Типичные запросы
 
 ### Получить всех игроков города
-\`\`\`sql
+```sql
 SELECT p.* FROM people p
 JOIN person_city_cache pcc ON pcc.person_id = p.id
 WHERE pcc.city_id = 'city_uuid'
 ORDER BY pcc.photos_count DESC;
-\`\`\`
+```
 
 ### Получить галереи города
-\`\`\`sql
+```sql
 SELECT g.* FROM galleries g
 JOIN locations l ON l.id = g.location_id
 WHERE l.city_id = 'city_uuid'
 ORDER BY g.shoot_date DESC;
-\`\`\`
+```
 
 ### Получить организаторов города
-\`\`\`sql
+```sql
 SELECT o.* FROM organizers o
 JOIN organizer_cities oc ON oc.organizer_id = o.id
 WHERE oc.city_id = 'city_uuid';
-\`\`\`
+```
 
 ### Найти галерею по slug
-\`\`\`sql
+```sql
 SELECT * FROM galleries WHERE slug = 'turnir-valencia-13-12';
-\`\`\`
+```
 
 ### Найти игрока по slug
-\`\`\`sql
+```sql
 SELECT * FROM people WHERE slug = 'ivan-petrov';
-\`\`\`
+```
 
 ### Найти игрока по Gmail (для OAuth)
-\`\`\`sql
+```sql
 SELECT * FROM people WHERE gmail = 'user@gmail.com';
-\`\`\`
+```
 
 ### Найти игрока по Telegram-пользователю
-\`\`\`sql
+```sql
 SELECT p.* FROM people p
 JOIN users u ON u.person_id = p.id
 WHERE u.telegram_id = 123456789;
-\`\`\`
+```
+
+### Подсчитать excluded эмбеддинги для человека
+```sql
+SELECT 
+  COUNT(*) as total_descriptors,
+  COUNT(*) FILTER (WHERE excluded_from_index = true) as excluded_count
+FROM photo_faces 
+WHERE person_id = 'person_uuid' 
+  AND insightface_descriptor IS NOT NULL;
+```
 
 ### Пересчитать кеш person_city_cache
-\`\`\`sql
+```sql
 INSERT INTO person_city_cache (person_id, city_id, photos_count, first_photo_date, last_photo_date)
 SELECT 
   pf.person_id,
@@ -668,7 +685,7 @@ ON CONFLICT (person_id, city_id) DO UPDATE SET
   first_photo_date = EXCLUDED.first_photo_date,
   last_photo_date = EXCLUDED.last_photo_date,
   updated_at = NOW();
-\`\`\`
+```
 
 ---
 
@@ -686,70 +703,89 @@ ON CONFLICT (person_id, city_id) DO UPDATE SET
 4. Уникальные индексы
 
 ### 🔜 Связь организаторов/фотографов с игроками
-\`\`\`sql
+```sql
 ALTER TABLE organizers ADD COLUMN person_id UUID REFERENCES people(id);
 ALTER TABLE photographers ADD COLUMN person_id UUID REFERENCES people(id);
-\`\`\`
+```
 
 ### 🔜 Удаление DEPRECATED (после 01.02.2025)
-\`\`\`sql
+```sql
 DROP TABLE face_descriptors_DEPRECATED;
 ALTER TABLE photo_faces DROP COLUMN bounding_box_DEPRECATED;
 ALTER TABLE photo_faces DROP COLUMN confidence_DEPRECATED;
-\`\`\`
+```
 
 ---
 
 ## Миграции (выполненные)
 
+### 20.12.2025 — excluded_from_index ✅
+```sql
+-- Добавлено поле для исключения outliers из HNSW индекса
+ALTER TABLE photo_faces ADD COLUMN excluded_from_index BOOLEAN DEFAULT FALSE;
+CREATE INDEX idx_photo_faces_excluded ON photo_faces(excluded_from_index) 
+  WHERE excluded_from_index = true;
+```
+
 ### 17.12.2025 — Связь users → people ✅
-\`\`\`sql
+```sql
 ALTER TABLE public.users 
 ADD COLUMN person_id uuid REFERENCES public.people(id) ON DELETE SET NULL;
 CREATE INDEX idx_users_person_id ON public.users(person_id);
-\`\`\`
+```
 
 ### 14.12.2025 — Gmail и Telegram поля ✅
-\`\`\`sql
+```sql
 -- Файл: migrations/20241214_people_gmail_telegram.sql
 ALTER TABLE people ADD COLUMN gmail TEXT;
 CREATE INDEX idx_people_gmail ON people(gmail) WHERE gmail IS NOT NULL;
 -- Миграция telegram_profile_url → telegram_nickname
 -- telegram_profile_url очищено (будет заполняться ботом)
-\`\`\`
+```
 
 ### 14.12.2025 — Переименование legacy в DEPRECATED ✅
-\`\`\`sql
+```sql
 -- Файл: migrations/20241214_rename_legacy_to_deprecated.sql
 ALTER TABLE face_descriptors RENAME TO face_descriptors_DEPRECATED;
 ALTER TABLE photo_faces RENAME COLUMN bounding_box TO bounding_box_DEPRECATED;
 ALTER TABLE photo_faces RENAME COLUMN confidence TO confidence_DEPRECATED;
-\`\`\`
+```
 
 ### Добавление нового города
-\`\`\`sql
+```sql
 INSERT INTO cities (name, slug, country) 
 VALUES ('Madrid', 'madrid', 'Spain');
-\`\`\`
+```
 
 ### Привязка площадки к городу
-\`\`\`sql
+```sql
 UPDATE locations 
 SET city_id = (SELECT id FROM cities WHERE slug = 'madrid')
 WHERE name = 'Club Padel Madrid';
-\`\`\`
+```
 
 ### Привязка организатора к нескольким городам
-\`\`\`sql
+```sql
 INSERT INTO organizer_cities (organizer_id, city_id)
 VALUES 
   ('org_uuid', (SELECT id FROM cities WHERE slug = 'valencia')),
   ('org_uuid', (SELECT id FROM cities WHERE slug = 'madrid'));
-\`\`\`
+```
 
 ---
 
 ## История изменений
+
+### v3.7 (20.12.2025) — Excluded embeddings ✅
+- **ДОБАВЛЕНО:** `photo_faces.excluded_from_index` — флаг исключения из HNSW индекса
+- **ДОБАВЛЕН индекс:** `idx_photo_faces_excluded`
+- **ОБНОВЛЕНЫ запросы:** учитывают excluded_from_index при построении индекса
+- **API endpoints:** 
+  - `GET /people/consistency-audit` — аудит всех игроков
+  - `POST /people/audit-all-embeddings` — массовое исправление outliers
+  - `POST /people/{id}/clear-outliers` — исправление outliers одного игрока
+  - `GET /people/{id}/embedding-consistency` — детали по эмбеддингам игрока
+  - `POST /faces/{id}/toggle-excluded` — переключение excluded для одного эмбеддинга
 
 ### v3.6 (17.12.2025) — Связь users → people ✅
 - **ДОБАВЛЕНО:** `users.person_id` — FK → people.id (ON DELETE SET NULL)
