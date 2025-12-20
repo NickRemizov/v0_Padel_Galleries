@@ -6,16 +6,17 @@ import type { TaggedFace } from "@/lib/types"
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check, ChevronLeft, ChevronRight } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Loader2, Save, X, Plus, Maximize2, Minimize2, Scan, Check, ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react"
 import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.14" // Fix: use topMatch.name (not person_name)
+const VERSION = "v6.15" // Search in person list + auto-assign on create + compact confirm button
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -55,6 +56,7 @@ export function FaceTaggingDialog({
   const [showDetailsDialog, setShowDetailsDialog] = useState(false)
   const [detailedFaces, setDetailedFaces] = useState<DetailedFace[]>([])
   const [hasRedetectedData, setHasRedetectedData] = useState(false)
+  const [personSelectOpen, setPersonSelectOpen] = useState(false)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
@@ -185,13 +187,6 @@ export function FaceTaggingDialog({
       loadPeople()
     }
   }, [open])
-
-  // Reload people after adding new person
-  useEffect(() => {
-    if (!showAddPerson && open) {
-      loadPeople()
-    }
-  }, [showAddPerson, open])
 
   // Draw faces ONLY when both image AND data are ready for CURRENT imageId
   useEffect(() => {
@@ -447,6 +442,40 @@ export function FaceTaggingDialog({
     }
     setTaggedFaces(updated)
     drawFaces(updated)
+    setPersonSelectOpen(false)
+  }
+
+  // Handle new person created - auto-assign to active or first unassigned face
+  function handlePersonCreated(personId: string, personName: string) {
+    setShowAddPerson(false)
+    
+    // Reload people list
+    loadPeople()
+    
+    // Find face to assign: selected face or first unassigned
+    let targetIndex = selectedFaceIndex
+    
+    if (targetIndex === null) {
+      // Find first face without personId
+      targetIndex = taggedFaces.findIndex(face => !face.personId)
+    }
+    
+    if (targetIndex !== null && targetIndex >= 0 && targetIndex < taggedFaces.length) {
+      console.log(`[${VERSION}] Auto-assigning new person "${personName}" to face index ${targetIndex}`)
+      
+      const updated = [...taggedFaces]
+      updated[targetIndex] = {
+        ...updated[targetIndex],
+        personId: personId,
+        personName: personName,
+        verified: true,
+      }
+      setTaggedFaces(updated)
+      setSelectedFaceIndex(targetIndex)
+      drawFaces(updated)
+    } else {
+      console.log(`[${VERSION}] No face to assign new person to`)
+    }
   }
 
   function handleAssignFromDetails(faceIndex: number, personId: string, personName: string) {
@@ -594,6 +623,9 @@ export function FaceTaggingDialog({
 
   const canSave = !saving
   const isLoading = loadingFaces || !imageLoaded
+
+  // Get selected face for person selector
+  const selectedFace = selectedFaceIndex !== null ? taggedFaces[selectedFaceIndex] : null
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -798,32 +830,74 @@ export function FaceTaggingDialog({
                   </div>
                 )}
 
-                {selectedFaceIndex !== null && taggedFaces[selectedFaceIndex] && (
+                {selectedFaceIndex !== null && selectedFace && (
                   <div className="flex items-center gap-2 ml-auto">
-                    <Select value={taggedFaces[selectedFaceIndex].personId || ""} onValueChange={handlePersonSelect}>
-                      <SelectTrigger className="w-[250px]">
-                        <SelectValue placeholder="Выберите человека" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {people.map((person) => (
-                          <SelectItem key={person.id} value={person.id}>
-                            {person.real_name}
-                            {person.telegram_name && ` (${person.telegram_name})`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {taggedFaces[selectedFaceIndex].personId && (
-                      <Badge 
-                        variant="secondary" 
-                        className={`whitespace-nowrap ${taggedFaces[selectedFaceIndex].verified ? "bg-green-500 text-white" : ""}`}
-                      >
-                        {taggedFaces[selectedFaceIndex].verified 
-                          ? "✓ Подтверждено" 
-                          : `${Math.round((taggedFaces[selectedFaceIndex].recognitionConfidence || 0) * 100)}%`
-                        }
+                    {/* Person selector with search */}
+                    <Popover open={personSelectOpen} onOpenChange={setPersonSelectOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={personSelectOpen}
+                          className="w-[250px] justify-between"
+                        >
+                          {selectedFace.personId
+                            ? people.find((p) => p.id === selectedFace.personId)?.real_name || selectedFace.personName
+                            : "Выберите человека..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[300px] p-0">
+                        <Command>
+                          <CommandInput placeholder="Поиск игрока..." />
+                          <CommandList>
+                            <CommandEmpty>Игрок не найден</CommandEmpty>
+                            <CommandGroup className="max-h-[300px] overflow-y-auto">
+                              {people.map((person) => (
+                                <CommandItem
+                                  key={person.id}
+                                  value={`${person.real_name} ${person.telegram_name || ""}`}
+                                  onSelect={() => handlePersonSelect(person.id)}
+                                >
+                                  <Check
+                                    className={`mr-2 h-4 w-4 ${
+                                      selectedFace.personId === person.id ? "opacity-100" : "opacity-0"
+                                    }`}
+                                  />
+                                  {person.real_name}
+                                  {person.telegram_name && ` (${person.telegram_name})`}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    
+                    {/* Verified indicator - compact green check button */}
+                    {selectedFace.personId && selectedFace.verified && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="h-9 w-9 rounded-md bg-green-500 flex items-center justify-center">
+                              <Check className="h-4 w-4 text-white" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Подтверждено</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    
+                    {/* Confidence badge for unverified */}
+                    {selectedFace.personId && !selectedFace.verified && (
+                      <Badge variant="secondary" className="whitespace-nowrap">
+                        {Math.round((selectedFace.recognitionConfidence || 0) * 100)}%
                       </Badge>
                     )}
+                    
+                    {/* Delete button */}
                     <Button variant="destructive" size="icon" onClick={() => handleRemoveFace(selectedFaceIndex)}>
                       <X className="h-4 w-4" />
                     </Button>
@@ -885,7 +959,11 @@ export function FaceTaggingDialog({
           </div>
         </div>
       </DialogContent>
-      <AddPersonDialog open={showAddPerson} onOpenChange={setShowAddPerson} />
+      <AddPersonDialog 
+        open={showAddPerson} 
+        onOpenChange={setShowAddPerson}
+        onPersonCreated={handlePersonCreated}
+      />
       <FaceRecognitionDetailsDialog
         open={showDetailsDialog}
         onOpenChange={setShowDetailsDialog}
