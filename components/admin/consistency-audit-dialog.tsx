@@ -261,7 +261,7 @@ export function ConsistencyAuditDialog({
                 )}
               </div>
               
-              {/* Fix All button */}
+              {/* Fix All button - aligned with action buttons below */}
               {totalFixableOutliers > 0 && (
                 <Button
                   variant="outline"
@@ -303,13 +303,13 @@ export function ConsistencyAuditDialog({
               className="flex-1 overflow-y-auto border rounded-lg"
             >
               {/* Header */}
-              <div className="sticky top-0 bg-muted/90 backdrop-blur grid grid-cols-[2fr_0.8fr_0.8fr_1fr_0.8fr_auto] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b">
+              <div className="sticky top-0 bg-muted/90 backdrop-blur grid grid-cols-[2fr_0.7fr_0.7fr_0.9fr_0.7fr_110px] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground border-b">
                 <div>Игрок</div>
                 <div className="text-center">Фото</div>
                 <div className="text-center">Дескр.</div>
-                <div className="text-center">Исключено</div>
+                <div className="text-center">Outliers</div>
                 <div className="text-center">Консист.</div>
-                <div className="text-center w-[180px]">Действия</div>
+                <div className="text-right pr-1">Действия</div>
               </div>
               
               {/* Rows */}
@@ -317,7 +317,7 @@ export function ConsistencyAuditDialog({
                 {displayedResults.map((result) => (
                   <div
                     key={result.person_id}
-                    className={`grid grid-cols-[2fr_0.8fr_0.8fr_1fr_0.8fr_auto] gap-2 px-4 py-2 text-sm border-l-4 items-center ${getRowStyle(result)}`}
+                    className={`grid grid-cols-[2fr_0.7fr_0.7fr_0.9fr_0.7fr_110px] gap-2 px-4 py-2 text-sm border-l-4 items-center ${getRowStyle(result)}`}
                   >
                     <div className="font-medium truncate" title={result.person_name}>
                       {result.person_name}
@@ -329,19 +329,14 @@ export function ConsistencyAuditDialog({
                       {result.descriptor_count}
                     </div>
                     <div className="text-center">
-                      {/* Format: total_excluded / new_outliers */}
+                      {/* Format: XX/YY - total excluded / new outliers */}
                       {((result.excluded_count || 0) > 0 || result.outlier_count > 0) ? (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                           result.outlier_count > 0 
                             ? "bg-red-100 text-red-800" 
                             : "bg-yellow-100 text-yellow-800"
                         }`}>
-                          {(result.excluded_count || 0) + result.outlier_count}
-                          {result.outlier_count > 0 && (
-                            <span className="text-red-600 ml-1">
-                              (+{result.outlier_count})
-                            </span>
-                          )}
+                          {result.excluded_count || 0}/{result.outlier_count}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">0</span>
@@ -350,7 +345,7 @@ export function ConsistencyAuditDialog({
                     <div className={`text-center font-medium ${getConsistencyColor(result.overall_consistency)}`}>
                       {Math.round(result.overall_consistency * 100)}%
                     </div>
-                    <div className="flex justify-end gap-1 w-[180px]">
+                    <div className="flex justify-end items-center gap-1">
                       <Button
                         variant="outline"
                         size="sm"
@@ -366,8 +361,8 @@ export function ConsistencyAuditDialog({
                       {result.outlier_count > 0 && (
                         <Button
                           variant="outline"
-                          size="sm"
-                          className="h-7 px-2 border-gray-400"
+                          size="icon"
+                          className="h-7 w-7 border-gray-400"
                           disabled={fixingPersonId === result.person_id}
                           onClick={() => setConfirmFix({
                             open: true,
@@ -375,14 +370,12 @@ export function ConsistencyAuditDialog({
                             personName: result.person_name,
                             outlierCount: result.outlier_count,
                           })}
+                          title="Исправить outliers"
                         >
                           {fixingPersonId === result.person_id ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            <>
-                              <Wrench className="h-3.5 w-3.5 mr-1" />
-                              Исправить
-                            </>
+                            <Wrench className="h-3.5 w-3.5" />
                           )}
                         </Button>
                       )}
