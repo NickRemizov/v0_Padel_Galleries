@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { AlertTriangle, CheckCircle, Loader2, Users, Eye, Wrench } from "lucide-react"
+import { AlertTriangle, Loader2, Users, Eye, Wrench } from "lucide-react"
 import {
   runConsistencyAuditAction,
   clearPersonOutliersAction,
@@ -236,32 +236,28 @@ export function ConsistencyAuditDialog({
           {/* Summary */}
           {summary && (
             <div className="flex items-center justify-between py-3 px-4 bg-muted rounded-lg">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Проверено:</span>
+              <div className="flex items-center gap-6 text-sm">
+                {/* Проверено - серый */}
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <span>Проверено:</span>
                   <span className="font-bold">{summary.total_people}</span>
                 </div>
-                {summary.people_with_problems > 0 ? (
-                  <div className="flex items-center gap-2 text-red-600">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span className="font-medium">
-                      С проблемами: {summary.people_with_problems}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-green-600">
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="font-medium">Проблем не найдено</span>
-                  </div>
-                )}
-                {summary.total_outliers > 0 && (
-                  <div className="text-sm text-muted-foreground">
-                    Всего outliers: {summary.total_outliers}
-                  </div>
-                )}
+                
+                {/* С проблемами - черный с иконкой */}
+                <div className="flex items-center gap-1 text-foreground">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>С проблемами:</span>
+                  <span className="font-bold">{summary.people_with_problems}</span>
+                </div>
+                
+                {/* Найдено проблем - красный */}
+                <div className="flex items-center gap-1 text-red-600">
+                  <span>Найдено проблем:</span>
+                  <span className="font-bold">{summary.total_outliers}</span>
+                </div>
               </div>
               
-              {/* Fix All button - aligned with action buttons below */}
+              {/* Fix All button */}
               {totalFixableOutliers > 0 && (
                 <Button
                   variant="outline"
@@ -309,7 +305,7 @@ export function ConsistencyAuditDialog({
                 <div className="text-center">Дескр.</div>
                 <div className="text-center">Outliers</div>
                 <div className="text-center">Консист.</div>
-                <div className="text-right pr-1">Действия</div>
+                <div>Действия</div>
               </div>
               
               {/* Rows */}
@@ -329,14 +325,14 @@ export function ConsistencyAuditDialog({
                       {result.descriptor_count}
                     </div>
                     <div className="text-center">
-                      {/* Format: XX/YY - total excluded / new outliers */}
+                      {/* Format: XX or XX/YY (show /YY only if outlier_count > 0) */}
                       {((result.excluded_count || 0) > 0 || result.outlier_count > 0) ? (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                           result.outlier_count > 0 
                             ? "bg-red-100 text-red-800" 
                             : "bg-yellow-100 text-yellow-800"
                         }`}>
-                          {result.excluded_count || 0}/{result.outlier_count}
+                          {result.excluded_count || 0}{result.outlier_count > 0 ? `/${result.outlier_count}` : ""}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">0</span>
@@ -345,7 +341,7 @@ export function ConsistencyAuditDialog({
                     <div className={`text-center font-medium ${getConsistencyColor(result.overall_consistency)}`}>
                       {Math.round(result.overall_consistency * 100)}%
                     </div>
-                    <div className="flex justify-end items-center gap-1">
+                    <div className="flex justify-start items-center gap-1">
                       <Button
                         variant="outline"
                         size="sm"
