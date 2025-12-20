@@ -50,6 +50,7 @@ interface PersonPhoto {
   faceId: string
   confidence: number | null
   verified: boolean
+  excluded_from_index?: boolean
   boundingBox: BoundingBox | null
   faceCount: number
   filename: string
@@ -619,6 +620,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {sortedPhotos.map((photo) => {
                   const canVerify = !photo.verified
+                  const isExcluded = photo.excluded_from_index === true
 
                   // Calculate face styles - returns null if bbox is invalid
                   const faceStyles = calculateFaceStyles(photo.boundingBox, photo.width, photo.height)
@@ -715,7 +717,8 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
                         </div>
                       </div>
 
-                      <div className="p-2 space-y-0.5">
+                      {/* Photo info - gray background if excluded */}
+                      <div className={`p-2 space-y-0.5 ${isExcluded ? "bg-gray-200" : ""}`}>
                         <p className="text-xs font-medium truncate" title={photo.filename}>
                           {photo.filename}
                         </p>
