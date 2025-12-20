@@ -807,7 +807,7 @@ async def unlink_person_from_photo(identifier: str, photo_id: str = Query(...)):
 
 @router.get("/{identifier}/photos-with-details")
 async def get_person_photos_with_details(identifier: str):
-    """Получает фотографии человека с детальной информацией."""
+    """Получает фотографии человека с детальной информацией, включая excluded_from_index."""
     try:
         person_id = _get_person_id(identifier)
         
@@ -816,10 +816,10 @@ async def get_person_photos_with_details(identifier: str):
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
-        # Получаем все photo_faces для этого человека
+        # Получаем все photo_faces для этого человека (включая excluded_from_index)
         photo_faces_result = supabase_db_instance.client.table("photo_faces")\
             .select(
-                "id, photo_id, recognition_confidence, verified, insightface_bbox, person_id, "
+                "id, photo_id, recognition_confidence, verified, insightface_bbox, person_id, excluded_from_index, "
                 "gallery_images(id, image_url, gallery_id, width, height, original_filename, galleries(shoot_date, title))"
             )\
             .eq("person_id", person_id)\
@@ -846,12 +846,14 @@ async def get_person_photos_with_details(identifier: str):
             if photo_id not in photos_map:
                 faces_for_photo = [f for f in photo_faces if f.get("gallery_images", {}).get("id") == photo_id]
                 is_verified = any(f.get("verified") == True for f in faces_for_photo)
+                is_excluded = any(f.get("excluded_from_index") == True for f in faces_for_photo)
                 
                 photos_map[photo_id] = {
                     **gi,
                     "faceId": pf["id"],
                     "confidence": pf.get("recognition_confidence"),
                     "verified": is_verified,
+                    "excluded_from_index": is_excluded,
                     "boundingBox": pf.get("insightface_bbox"),
                     "shootDate": gi.get("galleries", {}).get("shoot_date") if gi.get("galleries") else None,
                     "filename": gi.get("original_filename", ""),
