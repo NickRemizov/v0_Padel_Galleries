@@ -8,6 +8,8 @@ v4.2: Fixed descriptor parsing in recognize-unknown
 v4.3: Added pagination to recognize-unknown (Supabase limit is 1000)
 v4.4: Added clear-descriptor endpoint for outlier removal
 v4.5: Added set-excluded endpoint for excluded_from_index flag
+v4.6: Fixed excluded_from_index auto-reset on person_id change
+v4.7: Added batch-assign endpoint for cluster assignment with index rebuild
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -80,6 +82,12 @@ class BatchVerifyRequest(BaseModel):
 class RecognizeUnknownRequest(BaseModel):
     gallery_id: Optional[str] = None
     confidence_threshold: Optional[float] = None
+
+
+class BatchAssignRequest(BaseModel):
+    """Request model for batch assigning faces to a person."""
+    face_ids: List[str]
+    person_id: str
 
 
 # Endpoints
@@ -204,9 +212,30 @@ async def update_face(
     try:
         logger.info(f"Updating face {request.face_id}")
         
+        # Get current face data to check if person_id is changing
+        current_response = supabase_db.client.table("photo_faces").select(
+            "id, person_id, insightface_descriptor, excluded_from_index"
+        ).eq("id", request.face_id).execute()
+        
+        if not current_response.data:
+            raise NotFoundError("Face", request.face_id)
+        
+        current_face = current_response.data[0]
+        current_person_id = current_face.get("person_id")
+        has_descriptor = current_face.get("insightface_descriptor") is not None
+        
         update_data = {}
+        person_id_changed = False
+        
         if request.person_id is not None:
             update_data["person_id"] = request.person_id
+            # Check if person_id is actually changing
+            if request.person_id != current_person_id:
+                person_id_changed = True
+                # Reset excluded_from_index when person changes (v4.6)
+                update_data["excluded_from_index"] = False
+                logger.info(f"[update_face] person_id changing {current_person_id} -> {request.person_id}, resetting excluded_from_index")
+                
         if request.verified is not None:
             update_data["verified"] = request.verified
         if request.recognition_confidence is not None:
@@ -219,14 +248,109 @@ async def update_face(
         if not response.data:
             raise NotFoundError("Face", request.face_id)
         
-        logger.info(f"Face updated: {request.face_id}")
-        return ApiResponse.ok(response.data[0])
+        # Rebuild index if person_id changed and face has descriptor
+        index_rebuilt = False
+        if person_id_changed and has_descriptor:
+            try:
+                logger.info(f"[update_face] Rebuilding index after person_id change")
+                rebuild_result = await face_service.rebuild_players_index()
+                if rebuild_result.get("success"):
+                    index_rebuilt = True
+                    logger.info(f"[update_face] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+            except Exception as index_error:
+                logger.error(f"[update_face] Error rebuilding index: {index_error}")
+        
+        logger.info(f"Face updated: {request.face_id}, index_rebuilt={index_rebuilt}")
+        
+        result = response.data[0]
+        result["index_rebuilt"] = index_rebuilt
+        return ApiResponse.ok(result)
         
     except NotFoundError:
         raise
     except Exception as e:
         logger.error(f"Error updating face: {e}")
         raise DatabaseError(str(e), operation="update_face")
+
+
+@router.post("/batch-assign")
+async def batch_assign_faces(
+    request: BatchAssignRequest,
+    face_service: FaceRecognitionService = Depends(lambda: face_service_instance),
+    supabase_db: SupabaseDatabase = Depends(lambda: supabase_db_instance)
+):
+    """
+    Batch assign multiple faces to a person with single index rebuild.
+    
+    v4.7: New endpoint for efficient cluster assignment.
+    
+    This is much more efficient than calling /update N times,
+    as it rebuilds the index only ONCE at the end.
+    """
+    try:
+        logger.info(f"[batch-assign] START: {len(request.face_ids)} faces -> person {request.person_id}")
+        
+        if not request.face_ids:
+            return ApiResponse.ok({
+                "updated_count": 0,
+                "index_rebuilt": False
+            })
+        
+        # Update all faces in a single batch
+        updated_count = 0
+        has_descriptors = False
+        
+        for face_id in request.face_ids:
+            try:
+                # Check if face has descriptor
+                check_response = supabase_db.client.table("photo_faces").select(
+                    "id, insightface_descriptor"
+                ).eq("id", face_id).execute()
+                
+                if check_response.data:
+                    if check_response.data[0].get("insightface_descriptor"):
+                        has_descriptors = True
+                    
+                    # Update face
+                    update_response = supabase_db.client.table("photo_faces").update({
+                        "person_id": request.person_id,
+                        "verified": True,
+                        "recognition_confidence": 1.0,
+                        "excluded_from_index": False  # Reset on assignment
+                    }).eq("id", face_id).execute()
+                    
+                    if update_response.data:
+                        updated_count += 1
+                        
+            except Exception as e:
+                logger.warning(f"[batch-assign] Failed to update face {face_id}: {e}")
+        
+        logger.info(f"[batch-assign] Updated {updated_count}/{len(request.face_ids)} faces")
+        
+        # Rebuild index ONCE at the end if any faces had descriptors
+        index_rebuilt = False
+        if has_descriptors and updated_count > 0:
+            try:
+                logger.info("[batch-assign] Rebuilding index after batch assignment...")
+                rebuild_result = await face_service.rebuild_players_index()
+                if rebuild_result.get("success"):
+                    index_rebuilt = True
+                    logger.info(f"[batch-assign] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                else:
+                    logger.error(f"[batch-assign] ✗ Index rebuild failed: {rebuild_result}")
+            except Exception as index_error:
+                logger.error(f"[batch-assign] Error rebuilding index: {index_error}")
+        
+        return ApiResponse.ok({
+            "updated_count": updated_count,
+            "total_requested": len(request.face_ids),
+            "person_id": request.person_id,
+            "index_rebuilt": index_rebuilt
+        })
+        
+    except Exception as e:
+        logger.error(f"[batch-assign] ERROR: {e}", exc_info=True)
+        raise DatabaseError(str(e), operation="batch_assign_faces")
 
 
 @router.post("/delete")
@@ -400,11 +524,19 @@ async def batch_verify_faces(
             if face.person_id:
                 any_has_person_id = True
             
+            # Check if person_id is changing - reset excluded_from_index if so
+            current_face = next((f for f in existing_faces if f["id"] == face.id), None)
+            current_person_id = current_face.get("person_id") if current_face else None
+            
             update_data = {
                 "person_id": face.person_id,
                 "recognition_confidence": 1.0 if face.person_id else None,
                 "verified": bool(face.person_id),
             }
+            
+            # Reset excluded_from_index if person changes (v4.6)
+            if face.person_id != current_person_id:
+                update_data["excluded_from_index"] = False
             
             logger.info(f"[batch-verify] Updating face {face.id} with: {update_data}")
             
@@ -565,6 +697,17 @@ async def recognize_unknown_faces(
     try:
         logger.info(f"[recognize-unknown] START gallery_id={request.gallery_id}, threshold={request.confidence_threshold}")
         
+        # IMPORTANT: Rebuild index FIRST to ensure we have latest data
+        logger.info("[recognize-unknown] Rebuilding index before recognition to ensure fresh data...")
+        try:
+            rebuild_result = await face_service.rebuild_players_index()
+            if rebuild_result.get("success"):
+                logger.info(f"[recognize-unknown] ✓ Pre-recognition index rebuild: {rebuild_result.get('new_descriptor_count')} descriptors")
+            else:
+                logger.warning(f"[recognize-unknown] Pre-recognition index rebuild failed: {rebuild_result}")
+        except Exception as e:
+            logger.warning(f"[recognize-unknown] Pre-recognition index rebuild error: {e}")
+        
         # Get ALL unknown faces with pagination
         unknown_faces = await get_all_unknown_faces_paginated(supabase_db, request.gallery_id)
         
@@ -574,7 +717,8 @@ async def recognize_unknown_faces(
             return ApiResponse.ok({
                 "total_unknown": 0,
                 "recognized_count": 0,
-                "by_person": []
+                "by_person": [],
+                "index_rebuilt": True
             })
         
         # Get threshold from config if not provided
@@ -640,16 +784,15 @@ async def recognize_unknown_faces(
         if skipped_count > 0:
             logger.warning(f"[recognize-unknown] Skipped {skipped_count} faces with invalid descriptors")
         
-        # Rebuild index if any faces were recognized (they now have person_id)
-        index_rebuilt = False
+        # Rebuild index AGAIN if any faces were recognized (they now have person_id)
+        index_rebuilt = True  # We already rebuilt at the start
         if recognized_count > 0:
             try:
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
-                    index_rebuilt = True
-                    logger.info(f"[recognize-unknown] Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                    logger.info(f"[recognize-unknown] ✓ Post-recognition index rebuild: {rebuild_result.get('new_descriptor_count')} descriptors")
             except Exception as index_error:
-                logger.error(f"[recognize-unknown] Error rebuilding index: {index_error}")
+                logger.error(f"[recognize-unknown] Error in post-recognition rebuild: {index_error}")
         
         # Format by_person for response
         by_person_list = [
