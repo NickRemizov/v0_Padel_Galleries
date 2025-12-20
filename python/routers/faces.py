@@ -8,6 +8,7 @@ v4.2: Fixed descriptor parsing in recognize-unknown
 v4.3: Added pagination to recognize-unknown (Supabase limit is 1000)
 v4.4: Added clear-descriptor endpoint for outlier removal
 v4.5: Added set-excluded endpoint for excluded_from_index flag
+v4.6: Reset excluded_from_index when person_id changes
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -204,9 +205,22 @@ async def update_face(
     try:
         logger.info(f"Updating face {request.face_id}")
         
+        # v4.6: Check if person_id is changing to reset excluded_from_index
+        old_face = None
+        if request.person_id is not None:
+            old_response = supabase_db.client.table("photo_faces").select(
+                "person_id, excluded_from_index"
+            ).eq("id", request.face_id).execute()
+            if old_response.data:
+                old_face = old_response.data[0]
+        
         update_data = {}
         if request.person_id is not None:
             update_data["person_id"] = request.person_id
+            # v4.6: Reset excluded_from_index if person_id changed
+            if old_face and old_face.get("person_id") != request.person_id:
+                update_data["excluded_from_index"] = False
+                logger.info(f"[v4.6] Resetting excluded_from_index for face {request.face_id} (person_id changed)")
         if request.verified is not None:
             update_data["verified"] = request.verified
         if request.recognition_confidence is not None:
@@ -354,6 +368,7 @@ async def batch_verify_faces(
     Batch verify faces: update kept faces and delete removed ones.
     
     v4.0: Always rebuild index if faces were deleted OR updated with person_id
+    v4.6: Reset excluded_from_index when person_id changes
     """
     try:
         logger.info(f"[batch-verify] START photo={request.photo_id}, faces={len(request.kept_faces)}")
@@ -362,9 +377,9 @@ async def batch_verify_faces(
         for i, face in enumerate(request.kept_faces):
             logger.info(f"[batch-verify] Input face[{i}]: id={face.id}, person_id={face.person_id}")
         
-        # Get existing faces with their descriptors
+        # Get existing faces with their descriptors and person_id
         existing_response = supabase_db.client.table("photo_faces").select(
-            "id, person_id, insightface_descriptor"
+            "id, person_id, insightface_descriptor, excluded_from_index"
         ).eq("photo_id", request.photo_id).execute()
         
         existing_faces = existing_response.data or []
@@ -400,11 +415,21 @@ async def batch_verify_faces(
             if face.person_id:
                 any_has_person_id = True
             
+            # v4.6: Check if person_id changed to reset excluded_from_index
+            old_face_data = next((f for f in existing_faces if f["id"] == face.id), None)
+            old_person_id = old_face_data.get("person_id") if old_face_data else None
+            person_id_changed = old_person_id != face.person_id
+            
             update_data = {
                 "person_id": face.person_id,
                 "recognition_confidence": 1.0 if face.person_id else None,
                 "verified": bool(face.person_id),
             }
+            
+            # v4.6: Reset excluded_from_index if person_id changed
+            if person_id_changed:
+                update_data["excluded_from_index"] = False
+                logger.info(f"[batch-verify] [v4.6] Resetting excluded_from_index for face {face.id} (person changed: {old_person_id} -> {face.person_id})")
             
             logger.info(f"[batch-verify] Updating face {face.id} with: {update_data}")
             
