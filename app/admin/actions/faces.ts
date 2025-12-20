@@ -399,6 +399,7 @@ export async function updatePhotoFaceAction(
       return {
         success: true,
         data: result.data,
+        index_rebuilt: result.data?.index_rebuilt ?? false,
       }
     } else {
       return {
@@ -479,21 +480,42 @@ export async function clusterUnknownFacesAction(galleryId: string) {
   }
 }
 
+/**
+ * Batch assign multiple faces to a person.
+ * Uses new /api/faces/batch-assign endpoint that rebuilds index ONCE at the end.
+ * 
+ * v4.7: Much more efficient than calling update N times.
+ *
+ * @param faceIds - Array of face IDs to assign
+ * @param personId - Person ID to assign to
+ */
 export async function assignFacesToPersonAction(faceIds: string[], personId: string) {
   try {
     console.log("[assignFacesToPersonAction] Assigning", faceIds.length, "faces to person:", personId)
 
-    // Update each face with the person_id
-    for (const faceId of faceIds) {
-      await updatePhotoFaceAction(faceId, {
+    const result = await apiFetch("/api/faces/batch-assign", {
+      method: "POST",
+      body: JSON.stringify({
+        face_ids: faceIds,
         person_id: personId,
-        verified: true,
-        recognition_confidence: 1.0,
-      })
-    }
+      }),
+    })
 
-    revalidatePath("/admin")
-    return { success: true }
+    console.log("[assignFacesToPersonAction] Result:", JSON.stringify(result, null, 2))
+
+    if (result.success) {
+      revalidatePath("/admin")
+      return {
+        success: true,
+        updated_count: result.data?.updated_count ?? 0,
+        index_rebuilt: result.data?.index_rebuilt ?? false,
+      }
+    } else {
+      return {
+        success: false,
+        error: result.error || "Failed to assign faces",
+      }
+    }
   } catch (error) {
     console.error("[assignFacesToPersonAction] Error:", error)
     return {
