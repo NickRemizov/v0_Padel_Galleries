@@ -12,6 +12,8 @@ v4.0: New recognition algorithm with adaptive early exit
 - Formula: final_confidence = source_confidence × similarity
 - Early exit when similarity < best_final_confidence
 - No separate penalty for non-verified faces
+
+v4.1: Added add_face_to_index for incremental updates
 """
 
 import os
@@ -162,6 +164,70 @@ class FaceRecognitionService:
         except Exception as e:
             logger.error(f"[FaceRecognition] ERROR rebuilding index: {e}")
             return {"success": False, "error": str(e)}
+    
+    def add_face_to_index(
+        self,
+        person_id: str,
+        embedding: np.ndarray,
+        verified: bool = False,
+        recognition_confidence: Optional[float] = None,
+    ) -> bool:
+        """
+        Append a single face embedding to the in-memory HNSW index.
+        
+        Falls back to full rebuild if the index is missing or the append fails.
+        
+        Args:
+            person_id: Person ID to associate with embedding
+            embedding: 512-dim face embedding
+            verified: Whether this is a verified match
+            recognition_confidence: Confidence score (defaults to 1.0 if verified)
+            
+        Returns:
+            True on success, False otherwise
+        """
+        try:
+            self._ensure_initialized()
+            
+            if embedding is None:
+                logger.warning("[FaceRecognition] Cannot add face to index: empty embedding")
+                return False
+            
+            if embedding.dtype != np.float32:
+                embedding = embedding.astype(np.float32)
+            
+            if len(embedding.shape) != 1 or embedding.shape[0] != self._players_index.dim:
+                logger.warning(
+                    f"[FaceRecognition] Cannot add face to index: invalid embedding shape {embedding.shape}"
+                )
+                return False
+            
+            confidence = 1.0 if verified else float(recognition_confidence or 0.0)
+            
+            if not self._players_index.is_loaded():
+                logger.warning("[FaceRecognition] Index not loaded, rebuilding before append")
+                self._load_players_index()
+            
+            success = self._players_index.add_embeddings(
+                [person_id],
+                [embedding],
+                [verified],
+                [confidence],
+            )
+            
+            if success:
+                # Update legacy compatibility maps
+                self.player_ids_map = self._players_index.ids_map
+                logger.info(f"[FaceRecognition] Face added to index for person {person_id[:8]}...")
+                return True
+            else:
+                logger.warning("[FaceRecognition] Incremental index update failed, triggering rebuild")
+                self._load_players_index()
+                return True  # Rebuild succeeded
+                
+        except Exception as e:
+            logger.error(f"[FaceRecognition] ERROR adding face to index: {e}")
+            return False
     
     async def _build_hnsw_index(self, tournament_id: str):
         """Build temporary HNSW index for tournament"""
