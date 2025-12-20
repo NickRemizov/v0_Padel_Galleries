@@ -1,8 +1,6 @@
 """
 HNSW index management for face recognition.
 Handles loading, building, and querying the players index.
-
-v2.0: Added add_embeddings for incremental updates
 """
 
 import numpy as np
@@ -100,9 +98,9 @@ class HNSWIndex:
             self.index.set_ef(ef_search)
             
             # Store mappings
-            self.ids_map = list(person_ids)
-            self.verified_map = list(verified_flags)
-            self.confidence_map = list(confidences)
+            self.ids_map = person_ids
+            self.verified_map = verified_flags
+            self.confidence_map = confidences
             
             unique_people = len(set(person_ids))
             verified_count = sum(1 for v in verified_flags if v)
@@ -154,57 +152,6 @@ class HNSWIndex:
         except Exception as e:
             logger.error(f"Error querying HNSW index: {e}")
             return [], [], [], []
-    
-    def add_embeddings(
-        self,
-        person_ids: List[str],
-        embeddings: List[np.ndarray],
-        verified_flags: List[bool],
-        confidences: List[float]
-    ) -> bool:
-        """
-        Append new embeddings to an already built index.
-        
-        Args:
-            person_ids: Person IDs for each embedding
-            embeddings: Embeddings to add
-            verified_flags: Verified flags matching each embedding
-            confidences: recognition_confidence for each embedding
-            
-        Returns:
-            True on success, False otherwise.
-        """
-        if not self.is_loaded():
-            logger.warning("Cannot add embeddings: index not loaded")
-            return False
-        
-        if not embeddings:
-            logger.warning("Cannot add embeddings: empty payload")
-            return False
-        
-        try:
-            current_count = self.get_count()
-            new_count = current_count + len(embeddings)
-            
-            # Ensure index has enough capacity for new elements
-            self.index.resize_index(new_count)
-            
-            labels = np.arange(current_count, new_count)
-            embeddings_array = np.array(embeddings, dtype=np.float32)
-            self.index.add_items(embeddings_array, labels)
-            
-            self.ids_map.extend(person_ids)
-            self.verified_map.extend(verified_flags)
-            self.confidence_map.extend(confidences)
-            
-            logger.info(
-                f"HNSW index incrementally updated: +{len(embeddings)} embeddings (total={new_count})"
-            )
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error adding embeddings to HNSW index: {e}")
-            return False
     
     def query_raw(
         self,

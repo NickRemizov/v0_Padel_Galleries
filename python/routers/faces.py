@@ -8,8 +8,6 @@ v4.2: Fixed descriptor parsing in recognize-unknown
 v4.3: Added pagination to recognize-unknown (Supabase limit is 1000)
 v4.4: Added clear-descriptor endpoint for outlier removal
 v4.5: Added set-excluded endpoint for excluded_from_index flag
-v4.6: Reset excluded_from_index when person_id changes
-v4.7: Cursor pagination + incremental index updates in recognize-unknown
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -206,22 +204,9 @@ async def update_face(
     try:
         logger.info(f"Updating face {request.face_id}")
         
-        # v4.6: Check if person_id is changing to reset excluded_from_index
-        old_face = None
-        if request.person_id is not None:
-            old_response = supabase_db.client.table("photo_faces").select(
-                "person_id, excluded_from_index"
-            ).eq("id", request.face_id).execute()
-            if old_response.data:
-                old_face = old_response.data[0]
-        
         update_data = {}
         if request.person_id is not None:
             update_data["person_id"] = request.person_id
-            # v4.6: Reset excluded_from_index if person_id changed
-            if old_face and old_face.get("person_id") != request.person_id:
-                update_data["excluded_from_index"] = False
-                logger.info(f"[v4.6] Resetting excluded_from_index for face {request.face_id} (person_id changed)")
         if request.verified is not None:
             update_data["verified"] = request.verified
         if request.recognition_confidence is not None:
@@ -369,7 +354,6 @@ async def batch_verify_faces(
     Batch verify faces: update kept faces and delete removed ones.
     
     v4.0: Always rebuild index if faces were deleted OR updated with person_id
-    v4.6: Reset excluded_from_index when person_id changes
     """
     try:
         logger.info(f"[batch-verify] START photo={request.photo_id}, faces={len(request.kept_faces)}")
@@ -378,9 +362,9 @@ async def batch_verify_faces(
         for i, face in enumerate(request.kept_faces):
             logger.info(f"[batch-verify] Input face[{i}]: id={face.id}, person_id={face.person_id}")
         
-        # Get existing faces with their descriptors and person_id
+        # Get existing faces with their descriptors
         existing_response = supabase_db.client.table("photo_faces").select(
-            "id, person_id, insightface_descriptor, excluded_from_index"
+            "id, person_id, insightface_descriptor"
         ).eq("photo_id", request.photo_id).execute()
         
         existing_faces = existing_response.data or []
@@ -416,21 +400,11 @@ async def batch_verify_faces(
             if face.person_id:
                 any_has_person_id = True
             
-            # v4.6: Check if person_id changed to reset excluded_from_index
-            old_face_data = next((f for f in existing_faces if f["id"] == face.id), None)
-            old_person_id = old_face_data.get("person_id") if old_face_data else None
-            person_id_changed = old_person_id != face.person_id
-            
             update_data = {
                 "person_id": face.person_id,
                 "recognition_confidence": 1.0 if face.person_id else None,
                 "verified": bool(face.person_id),
             }
-            
-            # v4.6: Reset excluded_from_index if person_id changed
-            if person_id_changed:
-                update_data["excluded_from_index"] = False
-                logger.info(f"[batch-verify] [v4.6] Resetting excluded_from_index for face {face.id} (person changed: {old_person_id} -> {face.person_id})")
             
             logger.info(f"[batch-verify] Updating face {face.id} with: {update_data}")
             
@@ -523,10 +497,7 @@ async def get_all_unknown_faces_paginated(
     gallery_id: Optional[str] = None
 ) -> List[dict]:
     """
-    Get ALL unknown faces with cursor-based pagination (Supabase limit is 1000).
-    
-    v4.7: Uses cursor-based pagination (created_at, id) to avoid offset skips
-    when rows drop out of the result set during long-running scans.
+    Get ALL unknown faces with pagination (Supabase limit is 1000).
     
     Args:
         supabase_db: Database client
@@ -537,65 +508,40 @@ async def get_all_unknown_faces_paginated(
     """
     all_faces = []
     page_size = 1000
-    last_created_at: Optional[str] = None
-    last_id: Optional[str] = None
+    offset = 0
     
     while True:
         if gallery_id:
             # With gallery filter - need join
-            query = supabase_db.client.table("photo_faces").select(
-                "id, photo_id, insightface_descriptor, created_at, gallery_images!inner(gallery_id)"
+            response = supabase_db.client.table("photo_faces").select(
+                "id, photo_id, insightface_descriptor, gallery_images!inner(gallery_id)"
             ).is_(
                 "person_id", "null"
             ).not_.is_(
                 "insightface_descriptor", "null"
             ).eq(
                 "gallery_images.gallery_id", gallery_id
-            )
+            ).order("created_at", desc=False).range(offset, offset + page_size - 1).execute()
         else:
             # All faces - no join needed
-            query = supabase_db.client.table("photo_faces").select(
-                "id, photo_id, insightface_descriptor, created_at"
+            response = supabase_db.client.table("photo_faces").select(
+                "id, photo_id, insightface_descriptor"
             ).is_(
                 "person_id", "null"
             ).not_.is_(
                 "insightface_descriptor", "null"
-            )
-        
-        # Cursor filter: get records after last seen (created_at, id)
-        if last_created_at and last_id:
-            # Use gt on created_at for most cases, handle same-timestamp with id
-            query = query.gte("created_at", last_created_at)
-        
-        response = query.order("created_at", desc=False).order("id", desc=False).limit(page_size).execute()
+            ).order("created_at", desc=False).range(offset, offset + page_size - 1).execute()
         
         if not response.data or len(response.data) == 0:
             break
         
-        # Filter out already-seen records (for same created_at)
-        new_faces = []
-        for face in response.data:
-            if last_created_at and last_id:
-                # Skip if same timestamp but id <= last_id
-                if face.get("created_at") == last_created_at and face.get("id") <= last_id:
-                    continue
-            new_faces.append(face)
-        
-        if not new_faces:
-            break
-        
-        all_faces.extend(new_faces)
-        logger.info(
-            f"[recognize-unknown] Loaded page: cursor=({last_created_at}, {last_id}), "
-            f"fetched={len(response.data)}, new={len(new_faces)}, total={len(all_faces)}"
-        )
+        all_faces.extend(response.data)
+        logger.info(f"[recognize-unknown] Loaded page: offset={offset}, count={len(response.data)}, total={len(all_faces)}")
         
         if len(response.data) < page_size:
             break
         
-        # Update cursor
-        last_created_at = new_faces[-1].get("created_at")
-        last_id = new_faces[-1].get("id")
+        offset += page_size
     
     return all_faces
 
@@ -610,7 +556,6 @@ async def recognize_unknown_faces(
     Recognize all unknown faces by running them through the recognition algorithm.
     
     v4.3: Added pagination to handle >1000 faces (Supabase limit)
-    v4.7: Cursor pagination + incremental index updates
     
     This is useful after manually assigning a few photos to a new player -
     the algorithm can then find other photos of the same player automatically.
@@ -620,7 +565,7 @@ async def recognize_unknown_faces(
     try:
         logger.info(f"[recognize-unknown] START gallery_id={request.gallery_id}, threshold={request.confidence_threshold}")
         
-        # Get ALL unknown faces with cursor pagination
+        # Get ALL unknown faces with pagination
         unknown_faces = await get_all_unknown_faces_paginated(supabase_db, request.gallery_id)
         
         logger.info(f"[recognize-unknown] Total unknown faces with descriptors: {len(unknown_faces)}")
@@ -644,8 +589,6 @@ async def recognize_unknown_faces(
         recognized_count = 0
         skipped_count = 0
         by_person = {}  # person_id -> {name, count}
-        incremental_updates = 0
-        incremental_failed = False
         
         for i, face in enumerate(unknown_faces):
             face_id = face["id"]
@@ -668,18 +611,6 @@ async def recognize_unknown_faces(
                     "recognition_confidence": confidence,
                     "verified": False  # Auto-recognized, not manually verified
                 }).eq("id", face_id).execute()
-                
-                # v4.7: Incrementally add to index so later faces see the newly linked person
-                added = face_service.add_face_to_index(
-                    person_id,
-                    embedding,
-                    verified=False,
-                    recognition_confidence=confidence,
-                )
-                if added:
-                    incremental_updates += 1
-                else:
-                    incremental_failed = True
                 
                 recognized_count += 1
                 
@@ -709,19 +640,16 @@ async def recognize_unknown_faces(
         if skipped_count > 0:
             logger.warning(f"[recognize-unknown] Skipped {skipped_count} faces with invalid descriptors")
         
-        # v4.7: Full rebuild only if incremental updates failed or weren't possible
+        # Rebuild index if any faces were recognized (they now have person_id)
         index_rebuilt = False
-        if recognized_count > 0 and (incremental_failed or incremental_updates == 0):
+        if recognized_count > 0:
             try:
-                logger.info("[recognize-unknown] Falling back to full index rebuild...")
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
                     index_rebuilt = True
                     logger.info(f"[recognize-unknown] Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
             except Exception as index_error:
                 logger.error(f"[recognize-unknown] Error rebuilding index: {index_error}")
-        else:
-            logger.info(f"[recognize-unknown] Incremental updates: {incremental_updates}, skipping full rebuild")
         
         # Format by_person for response
         by_person_list = [
@@ -735,8 +663,7 @@ async def recognize_unknown_faces(
             "total_unknown": len(unknown_faces),
             "recognized_count": recognized_count,
             "by_person": by_person_list,
-            "index_rebuilt": index_rebuilt,
-            "incremental_updates": incremental_updates
+            "index_rebuilt": index_rebuilt
         })
         
     except Exception as e:
