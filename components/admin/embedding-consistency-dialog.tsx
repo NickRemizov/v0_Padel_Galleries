@@ -10,20 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Trash2, AlertTriangle, CheckCircle, Loader2, Ban, RotateCcw } from "lucide-react"
+import { AlertTriangle, CheckCircle, Loader2, Ban, RotateCcw } from "lucide-react"
 import {
   getEmbeddingConsistencyAction,
-  clearFaceDescriptorAction,
   setFaceExcludedAction,
   type ConsistencyData,
   type EmbeddingResult,
@@ -80,12 +69,6 @@ export function EmbeddingConsistencyDialog({
   const [data, setData] = useState<ConsistencyData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [actionFaceId, setActionFaceId] = useState<string | null>(null)
-  const [confirmDialog, setConfirmDialog] = useState<{
-    open: boolean
-    faceId: string | null
-    filename: string | null
-    action: "clear" | "exclude" | "include"
-  }>({ open: false, faceId: null, filename: null, action: "clear" })
   const [hasChanges, setHasChanges] = useState(false)
 
   useEffect(() => {
@@ -114,34 +97,6 @@ export function EmbeddingConsistencyDialog({
     }
   }
 
-  async function handleClearDescriptor(faceId: string) {
-    setActionFaceId(faceId)
-    try {
-      const result = await clearFaceDescriptorAction(faceId)
-      
-      if (result.success && result.data?.cleared) {
-        // Remove from list
-        setData((prev) => {
-          if (!prev) return prev
-          return {
-            ...prev,
-            total_embeddings: prev.total_embeddings - 1,
-            outlier_count: Math.max(0, prev.outlier_count - 1),
-            embeddings: prev.embeddings.filter((e) => e.face_id !== faceId),
-          }
-        })
-        setHasChanges(true)
-      } else {
-        console.error("[ConsistencyDialog] Clear failed:", result.error)
-      }
-    } catch (e) {
-      console.error("[ConsistencyDialog] Clear error:", e)
-    } finally {
-      setActionFaceId(null)
-      setConfirmDialog({ open: false, faceId: null, filename: null, action: "clear" })
-    }
-  }
-
   async function handleSetExcluded(faceId: string, excluded: boolean) {
     setActionFaceId(faceId)
     try {
@@ -157,7 +112,7 @@ export function EmbeddingConsistencyDialog({
               return { 
                 ...e, 
                 is_excluded: excluded,
-                is_outlier: excluded ? false : e.is_outlier // If excluded, not an outlier anymore
+                is_outlier: excluded ? false : e.is_outlier
               }
             }
             return e
@@ -182,7 +137,6 @@ export function EmbeddingConsistencyDialog({
       console.error("[ConsistencyDialog] Set excluded error:", e)
     } finally {
       setActionFaceId(null)
-      setConfirmDialog({ open: false, faceId: null, filename: null, action: "clear" })
     }
   }
 
@@ -296,209 +250,162 @@ export function EmbeddingConsistencyDialog({
   }
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={handleDialogClose}>
-        <DialogContent className="sm:max-w-[800px] max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Проверка эмбеддингов: {personName}
-            </DialogTitle>
-            <DialogDescription>
-              Анализ консистентности дескрипторов лица. Outliers — эмбеддинги, которые сильно отличаются от остальных.
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={handleDialogClose}>
+      <DialogContent className="sm:max-w-[800px] max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            Проверка эмбеддингов: {personName}
+          </DialogTitle>
+          <DialogDescription>
+            Анализ консистентности дескрипторов лица. Outliers — эмбеддинги, которые сильно отличаются от остальных.
+          </DialogDescription>
+        </DialogHeader>
 
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center py-12 text-red-500">
-              {error}
-            </div>
-          ) : data ? (
-            <>
-              {/* Summary */}
-              <div className="flex flex-wrap items-center gap-4 py-4 border-b">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Консистентность:</span>
-                  <span className={`text-lg font-bold ${getConsistencyColor(data.overall_consistency)}`}>
-                    {Math.round(data.overall_consistency * 100)}%
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Всего:</span>
-                  <span className="font-medium">{data.total_embeddings}</span>
-                </div>
-                {data.outlier_count > 0 && (
-                  <div className="flex items-center gap-2 text-red-600">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span className="font-medium">Outliers: {data.outlier_count}</span>
-                  </div>
-                )}
-                {(data.excluded_count || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Ban className="h-4 w-4" />
-                    <span className="font-medium">Исключено: {data.excluded_count}</span>
-                  </div>
-                )}
-                {data.outlier_count === 0 && (data.excluded_count || 0) === 0 && data.total_embeddings > 0 && (
-                  <div className="flex items-center gap-2 text-green-600">
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="font-medium">Все в норме</span>
-                  </div>
-                )}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center py-12 text-red-500">
+            {error}
+          </div>
+        ) : data ? (
+          <>
+            {/* Summary */}
+            <div className="flex flex-wrap items-center gap-4 py-4 border-b">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Консистентность:</span>
+                <span className={`text-lg font-bold ${getConsistencyColor(data.overall_consistency)}`}>
+                  {Math.round(data.overall_consistency * 100)}%
+                </span>
               </div>
-
-              {/* Embeddings list */}
-              {data.message ? (
-                <div className="py-8 text-center text-muted-foreground">
-                  {data.message}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Всего:</span>
+                <span className="font-medium">{data.total_embeddings}</span>
+              </div>
+              {data.outlier_count > 0 && (
+                <div className="flex items-center gap-2 text-red-600">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span className="font-medium">Outliers: {data.outlier_count}</span>
                 </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto">
-                  <div className="space-y-2 py-2">
-                    {data.embeddings.map((emb) => (
-                      <div
-                        key={emb.face_id}
-                        className={`flex items-center gap-4 p-3 rounded-lg border ${
-                          emb.is_excluded 
-                            ? "border-gray-300 bg-gray-50" 
-                            : emb.is_outlier 
-                              ? "border-red-300 bg-red-50" 
-                              : "border-gray-200"
-                        }`}
-                      >
-                        {/* Face Thumbnail with bbox crop */}
-                        <FaceThumbnail emb={emb} />
+              )}
+              {(data.excluded_count || 0) > 0 && (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Ban className="h-4 w-4" />
+                  <span className="font-medium">Исключено: {data.excluded_count}</span>
+                </div>
+              )}
+              {data.outlier_count === 0 && (data.excluded_count || 0) === 0 && data.total_embeddings > 0 && (
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle className="h-4 w-4" />
+                  <span className="font-medium">Все в норме</span>
+                </div>
+              )}
+            </div>
 
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium truncate ${emb.is_excluded ? "text-gray-500" : ""}`}>
-                            {emb.filename || emb.photo_id.slice(0, 8)}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <span
-                              className={`px-2 py-0.5 rounded text-xs font-medium ${getSimilarityColor(
-                                emb.similarity_to_centroid,
-                                emb.is_outlier,
-                                emb.is_excluded
-                              )}`}
-                            >
-                              {Math.round(emb.similarity_to_centroid * 100)}% к центру
+            {/* Embeddings list */}
+            {data.message ? (
+              <div className="py-8 text-center text-muted-foreground">
+                {data.message}
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto">
+                <div className="space-y-2 py-2">
+                  {data.embeddings.map((emb) => (
+                    <div
+                      key={emb.face_id}
+                      className={`flex items-center gap-4 p-3 rounded-lg border ${
+                        emb.is_excluded 
+                          ? "border-gray-300 bg-gray-50" 
+                          : emb.is_outlier 
+                            ? "border-red-300 bg-red-50" 
+                            : "border-gray-200"
+                      }`}
+                    >
+                      {/* Face Thumbnail with bbox crop */}
+                      <FaceThumbnail emb={emb} />
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${emb.is_excluded ? "text-gray-500" : ""}`}>
+                          {emb.filename || emb.photo_id.slice(0, 8)}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-medium ${getSimilarityColor(
+                              emb.similarity_to_centroid,
+                              emb.is_outlier,
+                              emb.is_excluded
+                            )}`}
+                          >
+                            {Math.round(emb.similarity_to_centroid * 100)}% к центру
+                          </span>
+                          {emb.verified && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              Verified
                             </span>
-                            {emb.verified && (
-                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                Verified
-                              </span>
-                            )}
-                            {emb.is_excluded && (
-                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
-                                ИСКЛЮЧЁН
-                              </span>
-                            )}
-                            {emb.is_outlier && !emb.is_excluded && (
-                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                                OUTLIER
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex-shrink-0 flex gap-1">
-                          {emb.is_excluded ? (
-                            // Show "Include" button for excluded items
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={actionFaceId === emb.face_id}
-                              onClick={() => handleSetExcluded(emb.face_id, false)}
-                              title="Вернуть в индекс"
-                            >
-                              {actionFaceId === emb.face_id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <RotateCcw className="h-4 w-4" />
-                              )}
-                              <span className="ml-1">Вернуть</span>
-                            </Button>
-                          ) : (
-                            // Show "Exclude" and "Delete" buttons for non-excluded
-                            <>
-                              <Button
-                                variant={emb.is_outlier ? "destructive" : "outline"}
-                                size="sm"
-                                disabled={actionFaceId === emb.face_id}
-                                onClick={() => handleSetExcluded(emb.face_id, true)}
-                                title="Исключить из индекса (сохранить дескриптор)"
-                              >
-                                {actionFaceId === emb.face_id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Ban className="h-4 w-4" />
-                                )}
-                                <span className="ml-1">Исключить</span>
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled={actionFaceId === emb.face_id}
-                                onClick={() =>
-                                  setConfirmDialog({
-                                    open: true,
-                                    faceId: emb.face_id,
-                                    filename: emb.filename,
-                                    action: "clear"
-                                  })
-                                }
-                                title="Удалить дескриптор полностью"
-                              >
-                                <Trash2 className="h-4 w-4 text-gray-500" />
-                              </Button>
-                            </>
+                          )}
+                          {emb.is_excluded && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                              ИСКЛЮЧЁН
+                            </span>
+                          )}
+                          {emb.is_outlier && !emb.is_excluded && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                              OUTLIER
+                            </span>
                           )}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
 
-      <AlertDialog
-        open={confirmDialog.open}
-        onOpenChange={(next) => setConfirmDialog((s) => ({ ...s, open: next }))}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Удалить дескриптор?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Дескриптор будет <strong>полностью удалён</strong>. Фото останется привязанным к игроку,
-              но эмбеддинг будет потерян навсегда.
-              <br /><br />
-              <strong>Рекомендация:</strong> используйте "Исключить" вместо удаления — это сохранит дескриптор, но уберёт его из индекса.
-              {confirmDialog.filename && (
-                <span className="block mt-2 font-medium">
-                  Файл: {confirmDialog.filename}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              onClick={() => confirmDialog.faceId && handleClearDescriptor(confirmDialog.faceId)}
-            >
-              Удалить навсегда
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+                      {/* Action button - single position */}
+                      <div className="flex-shrink-0 w-[100px]">
+                        {emb.is_excluded ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            disabled={actionFaceId === emb.face_id}
+                            onClick={() => handleSetExcluded(emb.face_id, false)}
+                            title="Вернуть в индекс"
+                          >
+                            {actionFaceId === emb.face_id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <>
+                                <RotateCcw className="h-4 w-4 mr-1" />
+                                Вернуть
+                              </>
+                            )}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant={emb.is_outlier ? "destructive" : "outline"}
+                            size="sm"
+                            className="w-full"
+                            disabled={actionFaceId === emb.face_id}
+                            onClick={() => handleSetExcluded(emb.face_id, true)}
+                            title="Исключить из индекса"
+                          >
+                            {actionFaceId === emb.face_id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Ban className="h-4 w-4 mr-1" />
+                                Исключить
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   )
 }
