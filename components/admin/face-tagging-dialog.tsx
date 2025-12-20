@@ -16,7 +16,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.15" // Search in person list + auto-assign on create + compact confirm button
+const VERSION = "v6.16" // Fix: green check on white background with green border
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -874,13 +874,13 @@ export function FaceTaggingDialog({
                       </PopoverContent>
                     </Popover>
                     
-                    {/* Verified indicator - compact green check button */}
+                    {/* Verified indicator - green check on white background */}
                     {selectedFace.personId && selectedFace.verified && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <div className="h-9 w-9 rounded-md bg-green-500 flex items-center justify-center">
-                              <Check className="h-4 w-4 text-white" />
+                            <div className="h-9 w-9 rounded-md bg-white border-2 border-green-500 flex items-center justify-center">
+                              <Check className="h-4 w-4 text-green-500" />
                             </div>
                           </TooltipTrigger>
                           <TooltipContent>
