@@ -76,9 +76,7 @@ export function DatabaseIntegrityChecker() {
   const supabaseClient = createClient()
 
   useEffect(() => {
-    // Initial check on component mount
-    handleCheck()
-    // Загружаем порог confidence из face_recognition_config
+    // Load confidence threshold from settings (lightweight operation)
     const loadSettings = async () => {
       try {
         const supabase = createClient()
@@ -96,6 +94,8 @@ export function DatabaseIntegrityChecker() {
       }
     }
     loadSettings()
+    // NOTE: Auto-check removed to avoid Vercel timeout (60s limit)
+    // User must manually click "Запустить проверку"
   }, [])
 
   const handleCheck = async () => {
@@ -109,7 +109,13 @@ export function DatabaseIntegrityChecker() {
         alert(`Ошибка проверки: ${result.error}`)
       }
     } catch (error: any) {
-      alert(`Ошибка: ${error.message}`)
+      // Better error handling for timeouts
+      const message = error.message || String(error)
+      if (message.includes("Failed to fetch") || message.includes("timeout")) {
+        alert("Превышено время ожидания (60 сек). База слишком большая для онлайн-проверки.\n\nПопробуйте позже или обратитесь к администратору.")
+      } else {
+        alert(`Ошибка: ${message}`)
+      }
     } finally {
       setIsChecking(false)
     }
@@ -561,7 +567,8 @@ export function DatabaseIntegrityChecker() {
         <CardHeader>
           <CardTitle>Проверка целостности базы данных</CardTitle>
           <CardDescription>
-            Проверка и исправление нарушений целостности данных в системе распознавания лиц
+            Проверка и исправление нарушений целостности данных в системе распознавания лиц.
+            Проверка может занять до 60 секунд при большом объёме данных.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -569,7 +576,7 @@ export function DatabaseIntegrityChecker() {
             {isChecking ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Проверка...
+                Проверка... (может занять до 60 сек)
               </>
             ) : (
               <>
@@ -578,6 +585,15 @@ export function DatabaseIntegrityChecker() {
               </>
             )}
           </Button>
+          {!report && !isChecking && (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>Нажмите кнопку для начала проверки</AlertTitle>
+              <AlertDescription>
+                Проверка анализирует всю базу данных и может занять некоторое время
+              </AlertDescription>
+            </Alert>
+          )}
           {report && (
             <Alert variant={report.totalIssues > 0 ? "destructive" : "default"}>
               {report.totalIssues > 0 ? (
