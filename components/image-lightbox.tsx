@@ -49,12 +49,24 @@ export function ImageLightbox({
   // UI visibility state - toggle by tap
   const [hideUI, setHideUI] = useState(false)
   
-  // Swipe state - simplified
+  // Swipe state
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
+  const [swipeOffset, setSwipeOffset] = useState(0)
   const [isMultiTouch, setIsMultiTouch] = useState(false)
   const [isSwiping, setIsSwiping] = useState(false)
+  
+  // Track displayed index separately for smooth transitions
+  const [displayedIndex, setDisplayedIndex] = useState(currentIndex)
+  const [isTransitioning, setIsTransitioning] = useState(false)
 
   const minSwipeDistance = 50
+
+  // Sync displayedIndex with currentIndex on prop change
+  useEffect(() => {
+    if (currentIndex !== displayedIndex && !isTransitioning) {
+      setDisplayedIndex(currentIndex)
+    }
+  }, [currentIndex])
 
   useEffect(() => {
     const fetchVerifiedPeople = async () => {
@@ -119,22 +131,29 @@ export function ImageLightbox({
   }
 
   const onTouchStart = (e: React.TouchEvent) => {
+    if (isTransitioning) return
+    
     // Detect multi-touch (pinch zoom)
     if (e.touches.length > 1) {
       setIsMultiTouch(true)
       setTouchStartX(null)
+      setSwipeOffset(0)
       return
     }
     
     setIsMultiTouch(false)
     setTouchStartX(e.targetTouches[0].clientX)
+    setSwipeOffset(0)
     setIsSwiping(false)
   }
 
   const onTouchMove = (e: React.TouchEvent) => {
+    if (isTransitioning) return
+    
     // Ignore if multi-touch (zoom gesture)
     if (isMultiTouch || e.touches.length > 1) {
       setIsMultiTouch(true)
+      setSwipeOffset(0)
       return
     }
     
@@ -147,17 +166,25 @@ export function ImageLightbox({
     if (Math.abs(offset) > 10) {
       setIsSwiping(true)
     }
+    
+    // Limit the offset for visual feedback
+    const limitedOffset = Math.max(-100, Math.min(100, offset))
+    setSwipeOffset(limitedOffset)
   }
 
   const onTouchEnd = (e: React.TouchEvent) => {
+    if (isTransitioning) return
+    
     // Ignore if was multi-touch
     if (isMultiTouch) {
       setIsMultiTouch(false)
+      setSwipeOffset(0)
       setIsSwiping(false)
       return
     }
     
     if (touchStartX === null) {
+      setSwipeOffset(0)
       setIsSwiping(false)
       return
     }
@@ -169,15 +196,40 @@ export function ImageLightbox({
     const isRightSwipe = distance < -minSwipeDistance  // swipe right = go to prev
 
     if (isLeftSwipe && images.length > 1) {
-      handleNext()
+      navigateWithAnimation('next')
     } else if (isRightSwipe && images.length > 1) {
-      handlePrev()
+      navigateWithAnimation('prev')
+    } else {
+      // Snap back
+      setSwipeOffset(0)
     }
 
     setTouchStartX(null)
-    
-    // Reset swiping flag after a short delay
     setTimeout(() => setIsSwiping(false), 100)
+  }
+
+  const navigateWithAnimation = (direction: 'prev' | 'next') => {
+    if (isTransitioning) return
+    
+    setIsTransitioning(true)
+    
+    // Animate out current image
+    setSwipeOffset(direction === 'next' ? -200 : 200)
+    
+    // After animation, switch image
+    setTimeout(() => {
+      const newIndex = direction === 'next'
+        ? (currentIndex === images.length - 1 ? 0 : currentIndex + 1)
+        : (currentIndex === 0 ? images.length - 1 : currentIndex - 1)
+      
+      setSwipeOffset(0)
+      setDisplayedIndex(newIndex)
+      onNavigate(newIndex)
+      
+      setTimeout(() => {
+        setIsTransitioning(false)
+      }, 50)
+    }, 150)
   }
 
   const handleDownload = async () => {
@@ -216,13 +268,11 @@ export function ImageLightbox({
   }
 
   const handlePrev = () => {
-    const prevIndex = currentIndex === 0 ? images.length - 1 : currentIndex - 1
-    onNavigate(prevIndex)
+    navigateWithAnimation('prev')
   }
 
   const handleNext = () => {
-    const nextIndex = currentIndex === images.length - 1 ? 0 : currentIndex + 1
-    onNavigate(nextIndex)
+    navigateWithAnimation('next')
   }
 
   const handleShare = async () => {
@@ -250,7 +300,24 @@ export function ImageLightbox({
     }
   }
 
+  // Get transform and opacity for smooth animation
+  const getImageStyle = () => {
+    const baseTransform = `translateX(${swipeOffset}px)`
+    const scale = isTransitioning ? 0.95 : 1
+    const opacity = isTransitioning ? 0.7 : 1
+    
+    return {
+      transform: `${baseTransform} scale(${scale})`,
+      opacity,
+      transition: isTransitioning || swipeOffset === 0 
+        ? 'transform 150ms ease-out, opacity 150ms ease-out' 
+        : 'none',
+    }
+  }
+
   if (!isOpen || !currentImage) return null
+
+  const displayedImage = images[displayedIndex]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
@@ -413,11 +480,13 @@ export function ImageLightbox({
           </div>
         )}
 
-        {/* Single image - no carousel, just instant switch */}
+        {/* Main image with swipe animation */}
         <img
-          src={currentImage.url || "/placeholder.svg"}
-          alt={currentImage.alt}
+          key={displayedIndex}
+          src={displayedImage?.url || "/placeholder.svg"}
+          alt={displayedImage?.alt || ""}
           className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain"
+          style={getImageStyle()}
         />
 
         {/* File info - BOTTOM CENTER on desktop */}
