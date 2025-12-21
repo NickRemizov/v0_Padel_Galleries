@@ -49,24 +49,12 @@ export function ImageLightbox({
   // UI visibility state - toggle by tap
   const [hideUI, setHideUI] = useState(false)
   
-  // Swipe state
+  // Swipe state - simplified
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
-  const [swipeOffset, setSwipeOffset] = useState(0)
   const [isMultiTouch, setIsMultiTouch] = useState(false)
   const [isSwiping, setIsSwiping] = useState(false)
-  
-  // Animation state
-  const [animatingTo, setAnimatingTo] = useState<'left' | 'right' | null>(null)
-  const [showAdjacentImages, setShowAdjacentImages] = useState(false)
-  const animationRef = useRef<NodeJS.Timeout | null>(null)
 
   const minSwipeDistance = 50
-
-  // Get previous and next image indices
-  const prevIndex = currentIndex === 0 ? images.length - 1 : currentIndex - 1
-  const nextIndex = currentIndex === images.length - 1 ? 0 : currentIndex + 1
-  const prevImage = images[prevIndex]
-  const nextImage = images[nextIndex]
 
   useEffect(() => {
     const fetchVerifiedPeople = async () => {
@@ -112,22 +100,6 @@ export function ImageLightbox({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, currentIndex, images.length])
 
-  // Cleanup animation timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (animationRef.current) {
-        clearTimeout(animationRef.current)
-      }
-    }
-  }, [])
-
-  // Reset animation state when currentIndex changes (after navigation)
-  useEffect(() => {
-    setAnimatingTo(null)
-    setSwipeOffset(0)
-    setShowAdjacentImages(false)
-  }, [currentIndex])
-
   const formatDateDDMM = (dateString?: string) => {
     if (!dateString) return ""
 
@@ -151,14 +123,11 @@ export function ImageLightbox({
     if (e.touches.length > 1) {
       setIsMultiTouch(true)
       setTouchStartX(null)
-      setSwipeOffset(0)
-      setShowAdjacentImages(false)
       return
     }
     
     setIsMultiTouch(false)
     setTouchStartX(e.targetTouches[0].clientX)
-    setSwipeOffset(0)
     setIsSwiping(false)
   }
 
@@ -166,8 +135,6 @@ export function ImageLightbox({
     // Ignore if multi-touch (zoom gesture)
     if (isMultiTouch || e.touches.length > 1) {
       setIsMultiTouch(true)
-      setSwipeOffset(0)
-      setShowAdjacentImages(false)
       return
     }
     
@@ -179,53 +146,32 @@ export function ImageLightbox({
     // Mark as swiping if moved more than 10px
     if (Math.abs(offset) > 10) {
       setIsSwiping(true)
-      // Show adjacent images only when actually swiping
-      setShowAdjacentImages(true)
     }
-    
-    // Limit the offset
-    const limitedOffset = Math.max(-150, Math.min(150, offset))
-    setSwipeOffset(limitedOffset)
   }
 
-  const onTouchEnd = () => {
+  const onTouchEnd = (e: React.TouchEvent) => {
     // Ignore if was multi-touch
     if (isMultiTouch) {
       setIsMultiTouch(false)
-      setSwipeOffset(0)
       setIsSwiping(false)
-      setShowAdjacentImages(false)
       return
     }
     
     if (touchStartX === null) {
-      setSwipeOffset(0)
       setIsSwiping(false)
-      setShowAdjacentImages(false)
       return
     }
 
-    const isLeftSwipe = swipeOffset < -minSwipeDistance  // swipe left = go to next
-    const isRightSwipe = swipeOffset > minSwipeDistance  // swipe right = go to prev
+    const touchEndX = e.changedTouches[0]?.clientX ?? touchStartX
+    const distance = touchStartX - touchEndX
+    
+    const isLeftSwipe = distance > minSwipeDistance  // swipe left = go to next
+    const isRightSwipe = distance < -minSwipeDistance  // swipe right = go to prev
 
     if (isLeftSwipe && images.length > 1) {
-      // Animate current out to left, then navigate
-      setAnimatingTo('left')
-      animationRef.current = setTimeout(() => {
-        const nextIdx = currentIndex === images.length - 1 ? 0 : currentIndex + 1
-        onNavigate(nextIdx)
-      }, 200)
+      handleNext()
     } else if (isRightSwipe && images.length > 1) {
-      // Animate current out to right, then navigate
-      setAnimatingTo('right')
-      animationRef.current = setTimeout(() => {
-        const prevIdx = currentIndex === 0 ? images.length - 1 : currentIndex - 1
-        onNavigate(prevIdx)
-      }, 200)
-    } else {
-      // Snap back
-      setSwipeOffset(0)
-      setShowAdjacentImages(false)
+      handlePrev()
     }
 
     setTouchStartX(null)
@@ -302,52 +248,6 @@ export function ImageLightbox({
       console.error("Error copying to clipboard:", error)
       alert("Не удалось скопировать ссылку")
     }
-  }
-
-  // Calculate transform for current image
-  const getCurrentImageTransform = () => {
-    if (animatingTo === 'left') {
-      return 'translateX(-100vw)'
-    } else if (animatingTo === 'right') {
-      return 'translateX(100vw)'
-    }
-    return `translateX(${swipeOffset}px)`
-  }
-
-  // Calculate transform for adjacent images
-  const getAdjacentImageTransform = (position: 'prev' | 'next') => {
-    if (animatingTo === 'left' && position === 'next') {
-      // Next slides in from right to center
-      return 'translateX(0)'
-    } else if (animatingTo === 'right' && position === 'prev') {
-      // Prev slides in from left to center
-      return 'translateX(0)'
-    }
-    
-    // During swipe, show adjacent images peeking
-    if (swipeOffset !== 0 && !animatingTo) {
-      if (position === 'prev' && swipeOffset > 0) {
-        return `translateX(calc(-100% + ${swipeOffset}px))`
-      } else if (position === 'next' && swipeOffset < 0) {
-        return `translateX(calc(100% + ${swipeOffset}px))`
-      }
-    }
-    
-    // Default: hidden off-screen
-    return position === 'prev' ? 'translateX(-200vw)' : 'translateX(200vw)'
-  }
-
-  // Check if adjacent image should be visible
-  const shouldShowAdjacentImage = (position: 'prev' | 'next') => {
-    if (!showAdjacentImages && !animatingTo) return false
-    
-    if (animatingTo === 'left' && position === 'next') return true
-    if (animatingTo === 'right' && position === 'prev') return true
-    
-    if (swipeOffset > 0 && position === 'prev') return true
-    if (swipeOffset < 0 && position === 'next') return true
-    
-    return false
   }
 
   if (!isOpen || !currentImage) return null
@@ -513,51 +413,12 @@ export function ImageLightbox({
           </div>
         )}
 
-        {/* Images container for carousel effect */}
-        <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-          {/* Previous image - only render when needed */}
-          {images.length > 1 && prevImage && shouldShowAdjacentImage('prev') && (
-            <img
-              src={prevImage.url || "/placeholder.svg"}
-              alt={prevImage.alt}
-              className={cn(
-                "absolute max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain",
-                animatingTo ? "transition-transform duration-200 ease-out" : ""
-              )}
-              style={{
-                transform: getAdjacentImageTransform('prev'),
-              }}
-            />
-          )}
-
-          {/* Current image */}
-          <img
-            src={currentImage.url || "/placeholder.svg"}
-            alt={currentImage.alt}
-            className={cn(
-              "max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain",
-              animatingTo ? "transition-transform duration-200 ease-out" : ""
-            )}
-            style={{
-              transform: getCurrentImageTransform(),
-            }}
-          />
-
-          {/* Next image - only render when needed */}
-          {images.length > 1 && nextImage && shouldShowAdjacentImage('next') && (
-            <img
-              src={nextImage.url || "/placeholder.svg"}
-              alt={nextImage.alt}
-              className={cn(
-                "absolute max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain",
-                animatingTo ? "transition-transform duration-200 ease-out" : ""
-              )}
-              style={{
-                transform: getAdjacentImageTransform('next'),
-              }}
-            />
-          )}
-        </div>
+        {/* Single image - no carousel, just instant switch */}
+        <img
+          src={currentImage.url || "/placeholder.svg"}
+          alt={currentImage.alt}
+          className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain"
+        />
 
         {/* File info - BOTTOM CENTER on desktop */}
         <div 
