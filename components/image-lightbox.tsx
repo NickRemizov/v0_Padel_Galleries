@@ -55,8 +55,9 @@ export function ImageLightbox({
   const [isMultiTouch, setIsMultiTouch] = useState(false)
   const [isSwiping, setIsSwiping] = useState(false)
   
-  // Animation state - separate from swipe to prevent double movement
+  // Animation state
   const [animatingTo, setAnimatingTo] = useState<'left' | 'right' | null>(null)
+  const [showAdjacentImages, setShowAdjacentImages] = useState(false)
   const animationRef = useRef<NodeJS.Timeout | null>(null)
 
   const minSwipeDistance = 50
@@ -124,6 +125,7 @@ export function ImageLightbox({
   useEffect(() => {
     setAnimatingTo(null)
     setSwipeOffset(0)
+    setShowAdjacentImages(false)
   }, [currentIndex])
 
   const formatDateDDMM = (dateString?: string) => {
@@ -150,6 +152,7 @@ export function ImageLightbox({
       setIsMultiTouch(true)
       setTouchStartX(null)
       setSwipeOffset(0)
+      setShowAdjacentImages(false)
       return
     }
     
@@ -164,6 +167,7 @@ export function ImageLightbox({
     if (isMultiTouch || e.touches.length > 1) {
       setIsMultiTouch(true)
       setSwipeOffset(0)
+      setShowAdjacentImages(false)
       return
     }
     
@@ -175,6 +179,8 @@ export function ImageLightbox({
     // Mark as swiping if moved more than 10px
     if (Math.abs(offset) > 10) {
       setIsSwiping(true)
+      // Show adjacent images only when actually swiping
+      setShowAdjacentImages(true)
     }
     
     // Limit the offset
@@ -188,12 +194,14 @@ export function ImageLightbox({
       setIsMultiTouch(false)
       setSwipeOffset(0)
       setIsSwiping(false)
+      setShowAdjacentImages(false)
       return
     }
     
     if (touchStartX === null) {
       setSwipeOffset(0)
       setIsSwiping(false)
+      setShowAdjacentImages(false)
       return
     }
 
@@ -217,6 +225,7 @@ export function ImageLightbox({
     } else {
       // Snap back
       setSwipeOffset(0)
+      setShowAdjacentImages(false)
     }
 
     setTouchStartX(null)
@@ -307,8 +316,6 @@ export function ImageLightbox({
 
   // Calculate transform for adjacent images
   const getAdjacentImageTransform = (position: 'prev' | 'next') => {
-    const vw = typeof window !== 'undefined' ? window.innerWidth : 1000
-    
     if (animatingTo === 'left' && position === 'next') {
       // Next slides in from right to center
       return 'translateX(0)'
@@ -327,7 +334,20 @@ export function ImageLightbox({
     }
     
     // Default: hidden off-screen
-    return position === 'prev' ? 'translateX(-100vw)' : 'translateX(100vw)'
+    return position === 'prev' ? 'translateX(-200vw)' : 'translateX(200vw)'
+  }
+
+  // Check if adjacent image should be visible
+  const shouldShowAdjacentImage = (position: 'prev' | 'next') => {
+    if (!showAdjacentImages && !animatingTo) return false
+    
+    if (animatingTo === 'left' && position === 'next') return true
+    if (animatingTo === 'right' && position === 'prev') return true
+    
+    if (swipeOffset > 0 && position === 'prev') return true
+    if (swipeOffset < 0 && position === 'next') return true
+    
+    return false
   }
 
   if (!isOpen || !currentImage) return null
@@ -495,8 +515,8 @@ export function ImageLightbox({
 
         {/* Images container for carousel effect */}
         <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-          {/* Previous image */}
-          {images.length > 1 && prevImage && (
+          {/* Previous image - only render when needed */}
+          {images.length > 1 && prevImage && shouldShowAdjacentImage('prev') && (
             <img
               src={prevImage.url || "/placeholder.svg"}
               alt={prevImage.alt}
@@ -523,8 +543,8 @@ export function ImageLightbox({
             }}
           />
 
-          {/* Next image */}
-          {images.length > 1 && nextImage && (
+          {/* Next image - only render when needed */}
+          {images.length > 1 && nextImage && shouldShowAdjacentImage('next') && (
             <img
               src={nextImage.url || "/placeholder.svg"}
               alt={nextImage.alt}
@@ -561,7 +581,7 @@ export function ImageLightbox({
           {formatFileSize(currentImage.fileSize)}
         </div>
         
-        {/* Filename - BOTTOM RIGHT on mobile - INVERTED: hidden by default, shown when hideUI is true */}
+        {/* Filename - BOTTOM RIGHT on mobile - hidden by default, shown when hideUI is true */}
         <div 
           className={cn(
             "absolute bottom-4 right-4 md:hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200 z-20",
