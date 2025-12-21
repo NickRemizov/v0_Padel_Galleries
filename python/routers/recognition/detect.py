@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 import numpy as np
 import json
 
+from core.config import VERSION
 from core.responses import ApiResponse
 from core.exceptions import DetectionError, PhotoNotFoundError
 from core.logging import get_logger
@@ -91,9 +92,9 @@ async def detect_faces(
     supabase_client = get_supabase_client()
     try:
         logger.info("=" * 80)
-        logger.info("DETECT FACES REQUEST START")
-        logger.info(f"Image URL: {request.image_url}")
-        logger.info(f"Apply quality filters: {request.apply_quality_filters}")
+        logger.info(f"[v{VERSION}] DETECT FACES REQUEST START")
+        logger.info(f"[v{VERSION}] Image URL: {request.image_url}")
+        logger.info(f"[v{VERSION}] Apply quality filters: {request.apply_quality_filters}")
         
         # Detect faces
         detected_faces = await face_service.detect_faces(
@@ -104,7 +105,7 @@ async def detect_faces(
             min_blur_score=request.min_blur_score
         )
         
-        logger.info(f"✓ Detected {len(detected_faces)} faces")
+        logger.info(f"[v{VERSION}] ✓ Detected {len(detected_faces)} faces")
         
         # Format response
         faces_data = []
@@ -132,13 +133,13 @@ async def detect_faces(
             }
             faces_data.append(face_data)
         
-        logger.info(f"✓ Returning {len(faces_data)} faces")
-        logger.info("DETECT FACES REQUEST END")
+        logger.info(f"[v{VERSION}] ✓ Returning {len(faces_data)} faces")
+        logger.info(f"[v{VERSION}] DETECT FACES REQUEST END")
         logger.info("=" * 80)
         return {"faces": faces_data}
         
     except Exception as e:
-        logger.error(f"❌ ERROR in detect_faces: {e}", exc_info=True)
+        logger.error(f"[v{VERSION}] ❌ ERROR in detect_faces: {e}", exc_info=True)
         raise DetectionError(f"Failed to detect faces: {str(e)}")
 
 
@@ -159,10 +160,10 @@ async def process_photo(
         db_confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
         logger.info("=" * 80)
-        logger.info("PROCESS PHOTO REQUEST START")
-        logger.info(f"Photo ID: {request.photo_id}")
-        logger.info(f"Force redetect: {request.force_redetect}")
-        logger.info(f"Apply quality filters: {request.apply_quality_filters}")
+        logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST START")
+        logger.info(f"[v{VERSION}] Photo ID: {request.photo_id}")
+        logger.info(f"[v{VERSION}] Force redetect: {request.force_redetect}")
+        logger.info(f"[v{VERSION}] Apply quality filters: {request.apply_quality_filters}")
         
         # Always use DB config for quality filters (ignore frontend defaults)
         if request.apply_quality_filters:
@@ -171,12 +172,12 @@ async def process_photo(
                 "min_face_size": quality_filters_config.get('min_face_size', 80),
                 "min_blur_score": quality_filters_config.get('min_blur_score', 100)
             }
-            logger.info(f"Quality filters from DB: {face_service.quality_filters}")
+            logger.info(f"[v{VERSION}] Quality filters from DB: {face_service.quality_filters}")
         
-        logger.info(f"Confidence threshold from DB: {db_confidence_threshold}")
+        logger.info(f"[v{VERSION}] Confidence threshold from DB: {db_confidence_threshold}")
         
         if request.force_redetect:
-            logger.info("Force redetect - deleting existing faces")
+            logger.info(f"[v{VERSION}] Force redetect - deleting existing faces")
             supabase_client.client.table("photo_faces").delete().eq("photo_id", request.photo_id).execute()
         
         # Check existing faces in database
@@ -185,13 +186,13 @@ async def process_photo(
         ).eq("photo_id", request.photo_id).execute()
         
         existing_faces = existing_result.data or []
-        logger.info(f"Found {len(existing_faces)} existing faces in DB")
+        logger.info(f"[v{VERSION}] Found {len(existing_faces)} existing faces in DB")
         
         # Track if we need to rebuild index
         index_rebuilt = False
         
         if len(existing_faces) == 0:
-            logger.info("Case 1: New photo - detecting faces")
+            logger.info(f"[v{VERSION}] Case 1: New photo - detecting faces")
             
             # Get image URL
             photo_response = supabase_client.client.table("gallery_images").select("image_url").eq("id", request.photo_id).execute()
@@ -202,7 +203,7 @@ async def process_photo(
             
             # Detect faces
             detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=request.apply_quality_filters)
-            logger.info(f"✓ Detected {len(detected_faces)} faces")
+            logger.info(f"[v{VERSION}] ✓ Detected {len(detected_faces)} faces")
             
             saved_faces = []
             face_metrics = {}
@@ -224,7 +225,7 @@ async def process_photo(
                     confidence_threshold=db_confidence_threshold
                 )
                 
-                logger.info(f"Face {idx+1}: person_id={person_id}, confidence={rec_confidence}")
+                logger.info(f"[v{VERSION}] Face {idx+1}: person_id={person_id}, confidence={rec_confidence}")
                 
                 # Get metrics for details dialog
                 distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
@@ -251,19 +252,19 @@ async def process_photo(
                         "top_matches": top_matches,
                     }
             
-            logger.info(f"✓ Saved {len(saved_faces)} faces")
+            logger.info(f"[v{VERSION}] ✓ Saved {len(saved_faces)} faces")
             
             # Rebuild index if any face has person_id
             faces_with_person = [f for f in saved_faces if f.get("person_id")]
             if len(faces_with_person) > 0:
                 try:
-                    logger.info(f"Rebuilding index ({len(faces_with_person)} recognized faces)...")
+                    logger.info(f"[v{VERSION}] Rebuilding index ({len(faces_with_person)} recognized faces)...")
                     rebuild_result = await face_service.rebuild_players_index()
                     if rebuild_result.get("success"):
                         index_rebuilt = True
-                        logger.info(f"✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                        logger.info(f"[v{VERSION}] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
                 except Exception as index_error:
-                    logger.error(f"Error rebuilding index: {index_error}")
+                    logger.error(f"[v{VERSION}] Error rebuilding index: {index_error}")
             
             # Build response
             response_faces = []
@@ -289,21 +290,21 @@ async def process_photo(
                     "index_rebuilt": index_rebuilt,
                 })
             
-            logger.info("PROCESS PHOTO REQUEST END")
+            logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST END")
             logger.info("=" * 80)
             
             return {"success": True, "data": response_faces, "error": None, "index_rebuilt": index_rebuilt}
         
-        logger.info("Case 2: Existing faces - checking for unverified")
+        logger.info(f"[v{VERSION}] Case 2: Existing faces - checking for unverified")
         
         unverified_faces = [f for f in existing_faces if not f["person_id"] or not f["verified"]]
-        logger.info(f"Found {len(unverified_faces)} unverified faces")
+        logger.info(f"[v{VERSION}] Found {len(unverified_faces)} unverified faces")
         
         face_metrics = {}
         faces_updated = False
         
         if len(unverified_faces) > 0:
-            logger.info(f"Recognizing {len(unverified_faces)} unverified faces")
+            logger.info(f"[v{VERSION}] Recognizing {len(unverified_faces)} unverified faces")
             
             for face in unverified_faces:
                 descriptor = face["insightface_descriptor"]
@@ -330,7 +331,7 @@ async def process_photo(
                 )
                 
                 if person_id and rec_confidence:
-                    logger.info(f"Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")
+                    logger.info(f"[v{VERSION}] Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")
                     
                     supabase_client.client.table("photo_faces").update({
                         "person_id": person_id,
@@ -338,7 +339,7 @@ async def process_photo(
                     }).eq("id", face["id"]).execute()
                     
                     faces_updated = True
-                    logger.info(f"✓ Updated face {face['id']}")
+                    logger.info(f"[v{VERSION}] ✓ Updated face {face['id']}")
         
         # Get metrics for verified faces
         for face in existing_faces:
@@ -361,13 +362,13 @@ async def process_photo(
         # Rebuild index if faces were updated
         if faces_updated:
             try:
-                logger.info("Rebuilding index after updating faces...")
+                logger.info(f"[v{VERSION}] Rebuilding index after updating faces...")
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
                     index_rebuilt = True
-                    logger.info(f"✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                    logger.info(f"[v{VERSION}] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
             except Exception as index_error:
-                logger.error(f"Error rebuilding index: {index_error}")
+                logger.error(f"[v{VERSION}] Error rebuilding index: {index_error}")
         
         # Load all faces
         final_result = supabase_client.client.table("photo_faces").select(
@@ -385,8 +386,8 @@ async def process_photo(
                 "index_rebuilt": index_rebuilt,
             })
         
-        logger.info(f"✓ Returning {len(response_faces)} faces, index_rebuilt={index_rebuilt}")
-        logger.info("PROCESS PHOTO REQUEST END")
+        logger.info(f"[v{VERSION}] ✓ Returning {len(response_faces)} faces, index_rebuilt={index_rebuilt}")
+        logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST END")
         logger.info("=" * 80)
         
         return {"success": True, "data": response_faces, "error": None, "index_rebuilt": index_rebuilt}
@@ -394,5 +395,5 @@ async def process_photo(
     except PhotoNotFoundError:
         raise
     except Exception as e:
-        logger.error(f"❌ ERROR in process_photo: {e}", exc_info=True)
+        logger.error(f"[v{VERSION}] ❌ ERROR in process_photo: {e}", exc_info=True)
         return ApiResponse.fail(f"Failed to process photo: {str(e)}", code="DETECTION_ERROR").model_dump()
