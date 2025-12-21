@@ -11,6 +11,21 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 
+# =============================================================================
+# Application Version
+# =============================================================================
+# Single source of truth for version across all modules.
+# Update this when deploying new features.
+#
+# Version history:
+#   5.0.0 - 2024-12-21: All routers migrated to ApiResponse + custom exceptions
+#   4.1.0 - Admin router added
+#   4.0.0 - Clean architecture refactoring
+# =============================================================================
+
+VERSION = "5.0.0"
+
+
 @dataclass
 class Settings:
     """Application settings loaded from environment variables."""
