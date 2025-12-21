@@ -9,42 +9,16 @@
 
 | Категория | Критичных | Важных | Незначительных |
 |-----------|-----------|--------|----------------|
-| Ошибки кода | 1 | 2 | 3 |
 | Race conditions | 2 | 0 | 0 |
 | Производительность | 0 | 3 | 0 |
 | Консистентность | 0 | 2 | 1 |
+| Мёртвый код | 0 | 0 | 1 |
 
 ---
 
 ## 🔴 Критические проблемы
 
-### 1. Отсутствующий метод `get_recognition_config_sync()`
-
-**Файл:** `python/services/face_recognition.py:256, 423`
-
-```python
-config = self.supabase_db.get_recognition_config_sync()  # НЕ СУЩЕСТВУЕТ!
-```
-
-**Проблема:** Метод `get_recognition_config_sync()` вызывается, но в `SupabaseDatabase` есть только `get_recognition_config()` (без суффикса `_sync`).
-
-**Почему работает сейчас:** В основном flow (`process_photo`) `confidence_threshold` всегда передаётся явно, поэтому этот код не выполняется.
-
-**Когда сломается:** Если вызвать `recognize_face()` без параметра `confidence_threshold`.
-
-**Решение:**
-```python
-# Вариант 1: Добавить алиас в supabase_database.py
-def get_recognition_config_sync(self) -> Dict:
-    return self.get_recognition_config()
-
-# Вариант 2: Исправить вызов в face_recognition.py
-config = self.supabase_db.get_recognition_config()  # убрать _sync
-```
-
----
-
-### 2. Race condition: модификация shared state `quality_filters`
+### 1. Race condition: модификация shared state `quality_filters`
 
 **Файл:** `python/routers/recognition/detect.py:178-183`
 
