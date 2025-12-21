@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { X, ChevronLeft, ChevronRight, Download, LinkIcon, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { LikeButton } from "@/components/like-button"
@@ -44,18 +44,20 @@ export function ImageLightbox({
   const currentImage = images[currentIndex]
   const [showCopied, setShowCopied] = useState(false)
   const [showComments, setShowComments] = useState(false)
-  const [touchStart, setTouchStart] = useState<number | null>(null)
-  const [touchEnd, setTouchEnd] = useState<number | null>(null)
   const [verifiedPeople, setVerifiedPeople] = useState<Array<{ id: string; name: string }>>([])
   
   // UI visibility state - toggle by tap
   const [hideUI, setHideUI] = useState(false)
   
-  // Smooth swipe animation state
+  // Swipe state
+  const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
-  const [isAnimating, setIsAnimating] = useState(false)
-  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
+  const [isMultiTouch, setIsMultiTouch] = useState(false)
   const [isSwiping, setIsSwiping] = useState(false)
+  
+  // Animation state - separate from swipe to prevent double movement
+  const [animatingTo, setAnimatingTo] = useState<'left' | 'right' | null>(null)
+  const animationRef = useRef<NodeJS.Timeout | null>(null)
 
   const minSwipeDistance = 50
 
@@ -109,6 +111,21 @@ export function ImageLightbox({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, currentIndex, images.length])
 
+  // Cleanup animation timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) {
+        clearTimeout(animationRef.current)
+      }
+    }
+  }, [])
+
+  // Reset animation state when currentIndex changes (after navigation)
+  useEffect(() => {
+    setAnimatingTo(null)
+    setSwipeOffset(0)
+  }, [currentIndex])
+
   const formatDateDDMM = (dateString?: string) => {
     if (!dateString) return ""
 
@@ -121,76 +138,88 @@ export function ImageLightbox({
 
   // Toggle UI visibility on tap
   const handleImageTap = (e: React.MouseEvent | React.TouchEvent) => {
-    // Only toggle if not swiping and tap is on the image area (not buttons)
+    // Only toggle if not swiping and tap is on the image area
     if (!isSwiping && (e.target as HTMLElement).tagName === 'IMG') {
       setHideUI(prev => !prev)
     }
   }
 
   const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null)
-    setTouchStart(e.targetTouches[0].clientX)
+    // Detect multi-touch (pinch zoom)
+    if (e.touches.length > 1) {
+      setIsMultiTouch(true)
+      setTouchStartX(null)
+      setSwipeOffset(0)
+      return
+    }
+    
+    setIsMultiTouch(false)
+    setTouchStartX(e.targetTouches[0].clientX)
     setSwipeOffset(0)
     setIsSwiping(false)
   }
 
   const onTouchMove = (e: React.TouchEvent) => {
-    const currentTouch = e.targetTouches[0].clientX
-    setTouchEnd(currentTouch)
-    
-    // Calculate swipe offset for smooth animation
-    if (touchStart !== null) {
-      const offset = currentTouch - touchStart
-      // Mark as swiping if moved more than 10px
-      if (Math.abs(offset) > 10) {
-        setIsSwiping(true)
-      }
-      // Limit the offset
-      const limitedOffset = Math.max(-200, Math.min(200, offset))
-      setSwipeOffset(limitedOffset)
+    // Ignore if multi-touch (zoom gesture)
+    if (isMultiTouch || e.touches.length > 1) {
+      setIsMultiTouch(true)
+      setSwipeOffset(0)
+      return
     }
+    
+    if (touchStartX === null) return
+    
+    const currentTouch = e.targetTouches[0].clientX
+    const offset = currentTouch - touchStartX
+    
+    // Mark as swiping if moved more than 10px
+    if (Math.abs(offset) > 10) {
+      setIsSwiping(true)
+    }
+    
+    // Limit the offset
+    const limitedOffset = Math.max(-150, Math.min(150, offset))
+    setSwipeOffset(limitedOffset)
   }
 
   const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) {
+    // Ignore if was multi-touch
+    if (isMultiTouch) {
+      setIsMultiTouch(false)
+      setSwipeOffset(0)
+      setIsSwiping(false)
+      return
+    }
+    
+    if (touchStartX === null) {
       setSwipeOffset(0)
       setIsSwiping(false)
       return
     }
 
-    const distance = touchStart - touchEnd
-    const isLeftSwipe = distance > minSwipeDistance  // swipe left = go to next
-    const isRightSwipe = distance < -minSwipeDistance  // swipe right = go to prev
+    const isLeftSwipe = swipeOffset < -minSwipeDistance  // swipe left = go to next
+    const isRightSwipe = swipeOffset > minSwipeDistance  // swipe right = go to prev
 
-    if (isLeftSwipe) {
-      // Swipe left -> next image
-      // Current slides out to left, next slides in from right
-      setSlideDirection('left')
-      setIsAnimating(true)
-      setTimeout(() => {
-        handleNext()
-        setIsAnimating(false)
-        setSlideDirection(null)
-        setSwipeOffset(0)
-      }, 250)
-    } else if (isRightSwipe) {
-      // Swipe right -> prev image
-      // Current slides out to right, prev slides in from left
-      setSlideDirection('right')
-      setIsAnimating(true)
-      setTimeout(() => {
-        handlePrev()
-        setIsAnimating(false)
-        setSlideDirection(null)
-        setSwipeOffset(0)
-      }, 250)
+    if (isLeftSwipe && images.length > 1) {
+      // Animate current out to left, then navigate
+      setAnimatingTo('left')
+      animationRef.current = setTimeout(() => {
+        const nextIdx = currentIndex === images.length - 1 ? 0 : currentIndex + 1
+        onNavigate(nextIdx)
+      }, 200)
+    } else if (isRightSwipe && images.length > 1) {
+      // Animate current out to right, then navigate
+      setAnimatingTo('right')
+      animationRef.current = setTimeout(() => {
+        const prevIdx = currentIndex === 0 ? images.length - 1 : currentIndex - 1
+        onNavigate(prevIdx)
+      }, 200)
     } else {
-      // Snap back if swipe wasn't long enough
+      // Snap back
       setSwipeOffset(0)
     }
 
-    setTouchStart(null)
-    setTouchEnd(null)
+    setTouchStartX(null)
     
     // Reset swiping flag after a short delay
     setTimeout(() => setIsSwiping(false), 100)
@@ -266,45 +295,39 @@ export function ImageLightbox({
     }
   }
 
-  // Calculate transforms for carousel effect
+  // Calculate transform for current image
   const getCurrentImageTransform = () => {
-    if (isAnimating) {
-      if (slideDirection === 'left') {
-        return 'translateX(-100vw)'
-      } else if (slideDirection === 'right') {
-        return 'translateX(100vw)'
-      }
+    if (animatingTo === 'left') {
+      return 'translateX(-100vw)'
+    } else if (animatingTo === 'right') {
+      return 'translateX(100vw)'
     }
     return `translateX(${swipeOffset}px)`
   }
 
+  // Calculate transform for adjacent images
   const getAdjacentImageTransform = (position: 'prev' | 'next') => {
-    if (isAnimating) {
-      // During animation, adjacent image slides into view
-      if (slideDirection === 'left' && position === 'next') {
-        return 'translateX(0)'
-      } else if (slideDirection === 'right' && position === 'prev') {
-        return 'translateX(0)'
-      }
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1000
+    
+    if (animatingTo === 'left' && position === 'next') {
+      // Next slides in from right to center
+      return 'translateX(0)'
+    } else if (animatingTo === 'right' && position === 'prev') {
+      // Prev slides in from left to center
+      return 'translateX(0)'
     }
     
     // During swipe, show adjacent images peeking
-    if (swipeOffset !== 0) {
+    if (swipeOffset !== 0 && !animatingTo) {
       if (position === 'prev' && swipeOffset > 0) {
-        // Swiping right, prev image peeks from left
-        return `translateX(${swipeOffset - window.innerWidth}px)`
+        return `translateX(calc(-100% + ${swipeOffset}px))`
       } else if (position === 'next' && swipeOffset < 0) {
-        // Swiping left, next image peeks from right
-        return `translateX(${swipeOffset + window.innerWidth}px)`
+        return `translateX(calc(100% + ${swipeOffset}px))`
       }
     }
     
     // Default: hidden off-screen
-    if (position === 'prev') {
-      return 'translateX(-100vw)'
-    } else {
-      return 'translateX(100vw)'
-    }
+    return position === 'prev' ? 'translateX(-100vw)' : 'translateX(100vw)'
   }
 
   if (!isOpen || !currentImage) return null
@@ -322,7 +345,7 @@ export function ImageLightbox({
         onTouchEnd={onTouchEnd}
         onClick={handleImageTap}
       >
-        {/* Photo counter - TOP LEFT on mobile (was bottom left) */}
+        {/* Photo counter - TOP LEFT on mobile */}
         <div 
           className={cn(
             "absolute top-4 left-4 md:hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm z-20 transition-opacity duration-200",
@@ -342,7 +365,7 @@ export function ImageLightbox({
           {currentIndex + 1} / {images.length}
         </div>
 
-        {/* Verified people names - BOTTOM LEFT on mobile (was top left) */}
+        {/* Verified people names - BOTTOM LEFT on mobile */}
         {verifiedPeople.length > 0 && (
           <div 
             className={cn(
@@ -471,13 +494,16 @@ export function ImageLightbox({
         )}
 
         {/* Images container for carousel effect */}
-        <div className="relative w-full h-full flex items-center justify-center">
-          {/* Previous image (hidden, slides in from left on swipe right) */}
+        <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+          {/* Previous image */}
           {images.length > 1 && prevImage && (
             <img
               src={prevImage.url || "/placeholder.svg"}
               alt={prevImage.alt}
-              className="absolute max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain transition-transform duration-250 ease-out"
+              className={cn(
+                "absolute max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain",
+                animatingTo ? "transition-transform duration-200 ease-out" : ""
+              )}
               style={{
                 transform: getAdjacentImageTransform('prev'),
               }}
@@ -488,18 +514,24 @@ export function ImageLightbox({
           <img
             src={currentImage.url || "/placeholder.svg"}
             alt={currentImage.alt}
-            className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain transition-transform duration-250 ease-out"
+            className={cn(
+              "max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain",
+              animatingTo ? "transition-transform duration-200 ease-out" : ""
+            )}
             style={{
               transform: getCurrentImageTransform(),
             }}
           />
 
-          {/* Next image (hidden, slides in from right on swipe left) */}
+          {/* Next image */}
           {images.length > 1 && nextImage && (
             <img
               src={nextImage.url || "/placeholder.svg"}
               alt={nextImage.alt}
-              className="absolute max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain transition-transform duration-250 ease-out"
+              className={cn(
+                "absolute max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain",
+                animatingTo ? "transition-transform duration-200 ease-out" : ""
+              )}
               style={{
                 transform: getAdjacentImageTransform('next'),
               }}
@@ -529,11 +561,11 @@ export function ImageLightbox({
           {formatFileSize(currentImage.fileSize)}
         </div>
         
-        {/* Filename - BOTTOM RIGHT on mobile */}
+        {/* Filename - BOTTOM RIGHT on mobile - INVERTED: hidden by default, shown when hideUI is true */}
         <div 
           className={cn(
             "absolute bottom-4 right-4 md:hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200 z-20",
-            hideUI && "opacity-0 pointer-events-none"
+            !hideUI && "opacity-0 pointer-events-none"
           )}
         >
           {currentImage.filename || `image-${currentIndex + 1}.jpg`}
