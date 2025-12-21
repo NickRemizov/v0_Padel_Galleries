@@ -2,18 +2,22 @@
 Face clustering endpoints.
 - POST /cluster-unknown-faces
 - POST /reject-face-cluster
+
+v3.24: Migrated to custom exceptions and ApiResponse
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Query, Depends
 from typing import List, Optional
-import logging
 import numpy as np
 import hdbscan
 import json
 
+from core.responses import ApiResponse
+from core.exceptions import ClusteringError
+from core.logging import get_logger
 from .dependencies import get_face_service, get_supabase_client
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter()
 
 
@@ -38,10 +42,10 @@ async def cluster_unknown_faces(
         
         if not faces or len(faces) < min_cluster_size:
             logger.info(f"Not enough faces for clustering: {len(faces) if faces else 0}")
-            return {
+            return ApiResponse.ok({
                 "clusters": [],
                 "ungrouped_faces": []
-            }
+            }).model_dump()
         
         logger.info(f"Clustering {len(faces)} faces...")
         
@@ -120,14 +124,14 @@ async def cluster_unknown_faces(
         
         logger.info(f"Returning {len(clusters)} clusters, {len(ungrouped)} ungrouped")
         
-        return {
+        return ApiResponse.ok({
             "clusters": clusters,
             "ungrouped_faces": ungrouped
-        }
+        }).model_dump()
         
     except Exception as e:
         logger.error(f"Error clustering faces: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ClusteringError(f"Failed to cluster faces: {str(e)}")
 
 
 @router.post("/reject-face-cluster")
@@ -143,10 +147,10 @@ async def reject_face_cluster(
     """
     supabase_client = get_supabase_client()
     try:
-        logger.info(f"[v3.23] ===== REJECT FACE CLUSTER =====")
-        logger.info(f"[v3.23] Gallery ID: {gallery_id}")
-        logger.info(f"[v3.23] Face IDs: {len(face_ids)}")
-        logger.info(f"[v3.23] Rejected by: {rejected_by}")
+        logger.info(f"[v3.24] ===== REJECT FACE CLUSTER =====")
+        logger.info(f"[v3.24] Gallery ID: {gallery_id}")
+        logger.info(f"[v3.24] Face IDs: {len(face_ids)}")
+        logger.info(f"[v3.24] Rejected by: {rejected_by}")
         
         # Get face descriptors
         descriptors = []
@@ -182,10 +186,10 @@ async def reject_face_cluster(
             for face_id in face_ids:
                 supabase_client.client.table("photo_faces").delete().eq("id", face_id).execute()
             
-            logger.info(f"[v3.23] Successfully rejected and deleted {len(face_ids)} faces")
+            logger.info(f"[v3.24] Successfully rejected and deleted {len(face_ids)} faces")
         
-        return {"success": success}
+        return ApiResponse.ok({"rejected": len(face_ids)}).model_dump()
         
     except Exception as e:
-        logger.error(f"[v3.23] ERROR rejecting cluster: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[v3.24] ERROR rejecting cluster: {str(e)}", exc_info=True)
+        raise ClusteringError(f"Failed to reject face cluster: {str(e)}")
