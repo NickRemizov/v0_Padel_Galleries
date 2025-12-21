@@ -20,7 +20,6 @@ from routers.recognition import (
 from models.recognition_schemas import (
     DetectFacesRequest,
     RecognizeFaceRequest,
-    BatchRecognizeRequest,
     GenerateDescriptorsRequest,
     ProcessPhotoRequest,
     ProcessPhotoResponse,
@@ -40,7 +39,6 @@ __all__ = [
     # Schemas
     'DetectFacesRequest',
     'RecognizeFaceRequest',
-    'BatchRecognizeRequest',
     'GenerateDescriptorsRequest',
     'ProcessPhotoRequest',
     'ProcessPhotoResponse',

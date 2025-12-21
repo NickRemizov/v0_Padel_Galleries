@@ -179,7 +179,7 @@ async def process_photo(
             face_service.quality_filters = {
                 "min_detection_score": request.min_detection_score or quality_filters_config.get('min_detection_score', 0.7),
                 "min_face_size": request.min_face_size or quality_filters_config.get('min_face_size', 80),
-                "min_blur_score": request.min_blur_score or quality_filters_config.get('min_blur_score', 100)
+                "min_blur_score": request.min_blur_score or quality_filters_config.get('min_blur_score', 80)
             }
             logger.info(f"[v2.5] Quality filters: det={face_service.quality_filters['min_detection_score']}, size={face_service.quality_filters['min_face_size']}, blur={face_service.quality_filters['min_blur_score']}")
         else:

@@ -67,7 +67,7 @@ const DEFAULT_CONFIG: Config = {
   quality_filters: {
     min_detection_score: 0.7,
     min_face_size: 80,
-    min_blur_score: 100.0,
+    min_blur_score: 80.0,
   },
 }
 
@@ -573,11 +573,11 @@ export function FaceTrainingManager() {
                 <div className="flex items-center justify-between">
                   <Label className="text-sm">Минимальная резкость (blur score)</Label>
                   <span className="text-sm font-medium">
-                    {Math.round(localConfig.quality_filters?.min_blur_score || 100)}
+                    {Math.round(localConfig.quality_filters?.min_blur_score || 80)}
                   </span>
                 </div>
                 <Slider
-                  value={[localConfig.quality_filters?.min_blur_score || 100]}
+                  value={[localConfig.quality_filters?.min_blur_score || 80]}
                   onValueChange={([value]) =>
                     setLocalConfig({
                       ...localConfig,

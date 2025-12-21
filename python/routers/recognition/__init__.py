@@ -4,7 +4,7 @@ Combines all sub-routers into a single router for mounting in main.py.
 
 Structure:
 - detect.py: /detect-faces, /process-photo
-- recognize.py: /recognize-face, /batch-recognize
+- recognize.py: /recognize-face
 - clusters.py: /cluster-unknown-faces, /reject-face-cluster
 - descriptors.py: /generate-descriptors, /missing-descriptors-*, /regenerate-*
 - maintenance.py: /rebuild-index

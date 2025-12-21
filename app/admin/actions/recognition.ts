@@ -21,7 +21,7 @@ export async function getRecognitionConfigAction() {
           quality_filters: {
             min_detection_score: 0.7,
             min_face_size: 80,
-            min_blur_score: 100,
+            min_blur_score: 80,
           },
         },
       }
@@ -39,7 +39,7 @@ export async function getRecognitionConfigAction() {
         quality_filters: {
           min_detection_score: 0.7,
           min_face_size: 80,
-          min_blur_score: 100,
+          min_blur_score: 80,
         },
       },
     }
