@@ -16,7 +16,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 
-const VERSION = "v6.16" // Fix: green check on white background with green border
+const VERSION = "v6.17" // Rename insightface_confidence to insightface_det_score
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -230,7 +230,7 @@ export function FaceTaggingDialog({
         id: f.id,
         face: {
           boundingBox: f.insightface_bbox,
-          confidence: f.insightface_confidence,
+          confidence: f.insightface_det_score,
           blur_score: 0,
           embedding: null,
         },
@@ -274,7 +274,7 @@ export function FaceTaggingDialog({
             id: f.id,
             face: {
               boundingBox: f.insightface_bbox,
-              confidence: f.insightface_confidence,
+              confidence: f.insightface_det_score,
               blur_score: 0,
               embedding: null,
             },
@@ -294,7 +294,7 @@ export function FaceTaggingDialog({
             id: f.id,
             face: {
               boundingBox: f.insightface_bbox,
-              confidence: f.insightface_confidence,
+              confidence: f.insightface_det_score,
               blur_score: 0,
               embedding: null,
             },
@@ -310,7 +310,7 @@ export function FaceTaggingDialog({
           id: f.id,
           face: {
             boundingBox: f.insightface_bbox,
-            confidence: f.insightface_confidence,
+            confidence: f.insightface_det_score,
             blur_score: 0,
             embedding: null,
           },
@@ -335,7 +335,7 @@ export function FaceTaggingDialog({
           boundingBox: f.insightface_bbox,
           size: Math.max(f.insightface_bbox.width, f.insightface_bbox.height),
           blur_score: f.blur_score,
-          detection_score: f.insightface_confidence,
+          detection_score: f.insightface_det_score,
           recognition_confidence: f.recognition_confidence,
           embedding_quality: f.embedding_quality,
           distance_to_nearest: f.distance_to_nearest,
