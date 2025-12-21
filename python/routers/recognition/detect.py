@@ -125,7 +125,7 @@ async def detect_faces(
                     "width": float(face["bbox"][2] - face["bbox"][0]),
                     "height": float(face["bbox"][3] - face["bbox"][1]),
                 },
-                "confidence": float(face["det_score"]),
+                "insightface_det_score": float(face["det_score"]),
                 "blur_score": float(face.get("blur_score", 0)),
                 "embedding": face["embedding"].tolist(),
                 "distance_to_nearest": distance_to_nearest,
@@ -182,7 +182,7 @@ async def process_photo(
         
         # Check existing faces in database
         existing_result = supabase_client.client.table("photo_faces").select(
-            "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, insightface_descriptor, blur_score"
+            "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_det_score, insightface_descriptor, blur_score"
         ).eq("photo_id", request.photo_id).execute()
         
         existing_faces = existing_result.data or []
@@ -216,7 +216,7 @@ async def process_photo(
                     "width": float(face["bbox"][2] - face["bbox"][0]),
                     "height": float(face["bbox"][3] - face["bbox"][1]),
                 }
-                det_confidence = float(face["det_score"])
+                det_score = float(face["det_score"])
                 blur_score = float(face.get("blur_score", 0))
                 
                 # Use DB threshold for recognition
@@ -230,12 +230,12 @@ async def process_photo(
                 # Get metrics for details dialog
                 distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
                 
-                # Save to DB - now includes blur_score
+                # Save to DB
                 insert_data = {
                     "photo_id": request.photo_id,
                     "person_id": person_id,
                     "insightface_bbox": bbox,
-                    "insightface_confidence": det_confidence,
+                    "insightface_det_score": det_score,
                     "blur_score": blur_score,
                     "recognition_confidence": rec_confidence,
                     "verified": False,
@@ -283,7 +283,7 @@ async def process_photo(
                     "recognition_confidence": face["recognition_confidence"],
                     "verified": face["verified"],
                     "insightface_bbox": face["insightface_bbox"],
-                    "insightface_confidence": face["insightface_confidence"],
+                    "insightface_det_score": face.get("insightface_det_score"),
                     "blur_score": face.get("blur_score") or metrics.get("blur_score"),
                     "distance_to_nearest": metrics.get("distance_to_nearest"),
                     "top_matches": metrics.get("top_matches", []),
@@ -371,9 +371,9 @@ async def process_photo(
             except Exception as index_error:
                 logger.error(f"[v{VERSION}] Error rebuilding index: {index_error}")
         
-        # Load all faces (now includes blur_score from DB)
+        # Load all faces
         final_result = supabase_client.client.table("photo_faces").select(
-            "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_confidence, blur_score, people(id, real_name, telegram_name)"
+            "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_det_score, blur_score, people(id, real_name, telegram_name)"
         ).eq("photo_id", request.photo_id).execute()
         
         response_faces = []
