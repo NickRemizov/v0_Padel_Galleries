@@ -6,17 +6,21 @@ Descriptor generation and regeneration endpoints.
 - POST /regenerate-missing-descriptors
 - POST /regenerate-single-descriptor
 - POST /regenerate-unknown-descriptors
+
+v3.27: Migrated to custom exceptions and ApiResponse
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
-import logging
+from fastapi import APIRouter, Query, Depends
 import numpy as np
 
+from core.responses import ApiResponse
+from core.exceptions import DescriptorError, FaceNotFoundError
+from core.logging import get_logger
 from models.recognition_schemas import GenerateDescriptorsRequest
 from utils.geometry import calculate_iou
 from .dependencies import get_face_service, get_supabase_client
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter()
 
 
@@ -31,13 +35,13 @@ async def generate_descriptors(
     """
     supabase_client = get_supabase_client()
     try:
-        logger.info(f"[v3.26] ===== GENERATE DESCRIPTORS FOR MANUAL TAGS =====")
-        logger.info(f"[v3.26] Image URL: {request.image_url}")
-        logger.info(f"[v3.26] Faces to process: {len(request.faces)}")
+        logger.info(f"[v3.27] ===== GENERATE DESCRIPTORS FOR MANUAL TAGS =====")
+        logger.info(f"[v3.27] Image URL: {request.image_url}")
+        logger.info(f"[v3.27] Faces to process: {len(request.faces)}")
         
         # Detect all faces on the image
         detected_faces = await face_service.detect_faces(request.image_url)
-        logger.info(f"[v3.26] Detected {len(detected_faces)} faces on image")
+        logger.info(f"[v3.27] Detected {len(detected_faces)} faces on image")
         
         generated_count = 0
         
@@ -46,8 +50,8 @@ async def generate_descriptors(
             tagged_bbox = tagged_face["bbox"]
             verified = tagged_face.get("verified", True)
             
-            logger.info(f"[v3.26] Processing tagged face for person {person_id}")
-            logger.info(f"[v3.26]   Tagged bbox: {tagged_bbox}")
+            logger.info(f"[v3.27] Processing tagged face for person {person_id}")
+            logger.info(f"[v3.27]   Tagged bbox: {tagged_bbox}")
             
             # Find matching detected face by IoU
             best_match = None
@@ -68,7 +72,7 @@ async def generate_descriptors(
                     best_match = detected_face
             
             if best_match and best_iou > 0.3:  # 30% overlap threshold
-                logger.info(f"[v3.26]   Found matching detected face (IoU: {best_iou:.2f})")
+                logger.info(f"[v3.27]   Found matching detected face (IoU: {best_iou:.2f})")
                 
                 # Save descriptor to database
                 descriptor = best_match["embedding"].tolist()
@@ -83,24 +87,23 @@ async def generate_descriptors(
                     
                     if success:
                         generated_count += 1
-                        logger.info(f"[v3.26]   ✓ Descriptor saved for person {person_id}")
+                        logger.info(f"[v3.27]   ✓ Descriptor saved for person {person_id}")
                     else:
-                        logger.error(f"[v3.26]   ✗ Failed to save descriptor")
+                        logger.error(f"[v3.27]   ✗ Failed to save descriptor")
             else:
-                logger.warning(f"[v3.26]   No matching detected face found (best IoU: {best_iou:.2f})")
+                logger.warning(f"[v3.27]   No matching detected face found (best IoU: {best_iou:.2f})")
         
-        logger.info(f"[v3.26] ✓ Generated {generated_count}/{len(request.faces)} descriptors")
-        logger.info(f"[v3.26] ===== END GENERATE DESCRIPTORS =====")
+        logger.info(f"[v3.27] ✓ Generated {generated_count}/{len(request.faces)} descriptors")
+        logger.info(f"[v3.27] ===== END GENERATE DESCRIPTORS =====")
         
-        return {
-            "success": True,
+        return ApiResponse.ok({
             "generated": generated_count,
             "total": len(request.faces)
-        }
+        }).model_dump()
         
     except Exception as e:
-        logger.error(f"[v3.26] ERROR generating descriptors: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[v3.27] ERROR generating descriptors: {str(e)}", exc_info=True)
+        raise DescriptorError(f"Failed to generate descriptors: {str(e)}")
 
 
 @router.get("/missing-descriptors-count")
@@ -115,10 +118,10 @@ async def get_missing_descriptors_count():
         count = result.count or 0
         logger.info(f"[RegenerateDescriptors] Found {count} faces missing descriptors")
         
-        return {"success": True, "count": count}
+        return ApiResponse.ok({"count": count}).model_dump()
     except Exception as e:
         logger.error(f"[RegenerateDescriptors] Error getting count: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DescriptorError(f"Failed to count missing descriptors: {str(e)}")
 
 
 @router.get("/missing-descriptors-list")
@@ -149,10 +152,10 @@ async def get_missing_descriptors_list():
                 "bbox": face.get("insightface_bbox")
             })
         
-        return {"success": True, "faces": formatted, "count": len(formatted)}
+        return ApiResponse.ok({"faces": formatted, "count": len(formatted)}).model_dump()
     except Exception as e:
         logger.error(f"[RegenerateDescriptors] Error getting list: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DescriptorError(f"Failed to list missing descriptors: {str(e)}")
 
 
 @router.post("/regenerate-missing-descriptors")
@@ -176,13 +179,12 @@ async def regenerate_missing_descriptors(
         logger.info(f"[RegenerateDescriptors] Found {len(missing_faces)} faces to regenerate")
         
         if not missing_faces:
-            return {
-                "success": True,
+            return ApiResponse.ok({
                 "total_faces": 0,
                 "regenerated": 0,
                 "failed": 0,
                 "details": []
-            }
+            }).model_dump()
         
         regenerated = 0
         failed = 0
@@ -302,17 +304,16 @@ async def regenerate_missing_descriptors(
         
         logger.info(f"[RegenerateDescriptors] ===== END ===== Total: {len(missing_faces)}, Success: {regenerated}, Failed: {failed}")
         
-        return {
-            "success": True,
+        return ApiResponse.ok({
             "total_faces": len(missing_faces),
             "regenerated": regenerated,
             "failed": failed,
             "details": details
-        }
+        }).model_dump()
     
     except Exception as e:
         logger.error(f"[RegenerateDescriptors] Fatal error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DescriptorError(f"Failed to regenerate descriptors: {str(e)}")
 
 
 @router.post("/regenerate-single-descriptor")
@@ -331,23 +332,23 @@ async def regenerate_single_descriptor(
         ).eq("id", face_id).execute()
         
         if not face_result.data:
-            return {"success": False, "error": "Face not found"}
+            raise FaceNotFoundError(face_id)
         
         face = face_result.data[0]
         image_url = face.get("gallery_images", {}).get("image_url") if face.get("gallery_images") else None
         
         if not image_url:
-            return {"success": False, "error": "No image URL"}
+            return ApiResponse.fail("No image URL", code="NO_IMAGE").model_dump()
         
         bbox = face.get("insightface_bbox")
         if not bbox:
-            return {"success": False, "error": "No bbox stored"}
+            return ApiResponse.fail("No bbox stored", code="NO_BBOX").model_dump()
         
         # Detect faces on image
         detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=False)
         
         if not detected_faces:
-            return {"success": False, "error": "No faces detected on image"}
+            return ApiResponse.fail("No faces detected on image", code="NO_FACES").model_dump()
         
         # Find best match by IoU
         best_match = None
@@ -368,7 +369,7 @@ async def regenerate_single_descriptor(
                 best_match = detected_face
         
         if not best_match or best_iou < 0.3:
-            return {"success": False, "error": f"No matching face (best IoU: {best_iou:.2f})"}
+            return ApiResponse.fail(f"No matching face (best IoU: {best_iou:.2f})", code="NO_MATCH").model_dump()
         
         # Save descriptor
         embedding = best_match["embedding"].tolist()
@@ -380,15 +381,16 @@ async def regenerate_single_descriptor(
         
         logger.info(f"[RegenerateDescriptors] ✓ Regenerated {face_id} (IoU: {best_iou:.2f})")
         
-        return {
-            "success": True,
+        return ApiResponse.ok({
             "iou": round(best_iou, 2),
             "det_score": round(float(best_match["det_score"]), 2)
-        }
+        }).model_dump()
         
+    except FaceNotFoundError:
+        raise
     except Exception as e:
         logger.error(f"[RegenerateDescriptors] Error: {str(e)}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        raise DescriptorError(f"Failed to regenerate descriptor: {str(e)}")
 
 
 @router.post("/regenerate-unknown-descriptors")
@@ -404,8 +406,8 @@ async def regenerate_unknown_descriptors(
     """
     supabase_client = get_supabase_client()
     try:
-        logger.info(f"[v3.24] ===== REGENERATE UNKNOWN DESCRIPTORS =====")
-        logger.info(f"[v3.24] Gallery ID: {gallery_id}")
+        logger.info(f"[v3.27] ===== REGENERATE UNKNOWN DESCRIPTORS =====")
+        logger.info(f"[v3.27] Gallery ID: {gallery_id}")
         
         # Get all photo_ids from gallery
         gallery_photos_response = supabase_client.client.table("gallery_images").select(
@@ -413,17 +415,16 @@ async def regenerate_unknown_descriptors(
         ).eq("gallery_id", gallery_id).execute()
         
         if not gallery_photos_response.data:
-            logger.info(f"[v3.24] No photos found in gallery")
-            return {
-                "success": True,
+            logger.info(f"[v3.27] No photos found in gallery")
+            return ApiResponse.ok({
                 "total_faces": 0,
                 "regenerated": 0,
                 "failed": 0,
                 "already_had_descriptor": 0
-            }
+            }).model_dump()
         
         photo_ids = [photo["id"] for photo in gallery_photos_response.data]
-        logger.info(f"[v3.24] Found {len(photo_ids)} photos in gallery")
+        logger.info(f"[v3.27] Found {len(photo_ids)} photos in gallery")
         
         # Get faces without descriptors (person_id = NULL AND insightface_descriptor IS NULL)
         faces_response = supabase_client.client.table("photo_faces").select(
@@ -432,28 +433,27 @@ async def regenerate_unknown_descriptors(
         ).in_("photo_id", photo_ids).is_("person_id", "null").execute()
         
         if not faces_response.data:
-            logger.info(f"[v3.24] No unknown faces found")
-            return {
-                "success": True,
+            logger.info(f"[v3.27] No unknown faces found")
+            return ApiResponse.ok({
                 "total_faces": 0,
                 "regenerated": 0,
                 "failed": 0,
                 "already_had_descriptor": 0
-            }
+            }).model_dump()
         
         total_faces = len(faces_response.data)
         regenerated = 0
         failed = 0
         already_had_descriptor = 0
         
-        logger.info(f"[v3.24] Found {total_faces} unknown faces, checking descriptors...")
+        logger.info(f"[v3.27] Found {total_faces} unknown faces, checking descriptors...")
         
         for face in faces_response.data:
             face_id = face["id"]
             photo_data = face.get("gallery_images")
             
             if not photo_data:
-                logger.warning(f"[v3.24] Face {face_id} has no photo data, skipping")
+                logger.warning(f"[v3.27] Face {face_id} has no photo data, skipping")
                 failed += 1
                 continue
             
@@ -465,19 +465,19 @@ async def regenerate_unknown_descriptors(
             # Check if has bbox
             bbox = face.get("insightface_bbox")
             if not bbox:
-                logger.warning(f"[v3.24] Face {face_id} has no bbox, skipping")
+                logger.warning(f"[v3.27] Face {face_id} has no bbox, skipping")
                 failed += 1
                 continue
             
             try:
-                logger.info(f"[v3.24] Regenerating descriptor for face {face_id}")
+                logger.info(f"[v3.27] Regenerating descriptor for face {face_id}")
                 
                 # Download and detect faces on image
                 image_url = photo_data["image_url"]
                 detected_faces = await face_service.detect_faces(image_url)
                 
                 if not detected_faces:
-                    logger.warning(f"[v3.24] No faces detected on image for face {face_id}")
+                    logger.warning(f"[v3.27] No faces detected on image for face {face_id}")
                     failed += 1
                     continue
                 
@@ -504,7 +504,7 @@ async def regenerate_unknown_descriptors(
                     descriptor = best_match["embedding"]
                     
                     if len(descriptor) != 512:
-                        logger.error(f"[v3.24] Invalid descriptor dimension: {len(descriptor)}, expected 512")
+                        logger.error(f"[v3.27] Invalid descriptor dimension: {len(descriptor)}, expected 512")
                         failed += 1
                         continue
                     
@@ -517,30 +517,29 @@ async def regenerate_unknown_descriptors(
                     }).eq("id", face_id).execute()
                     
                     regenerated += 1
-                    logger.info(f"[v3.24] ✓ Descriptor regenerated for face {face_id} (IoU: {best_iou:.2f})")
+                    logger.info(f"[v3.27] ✓ Descriptor regenerated for face {face_id} (IoU: {best_iou:.2f})")
                 else:
-                    logger.warning(f"[v3.24] No matching face found for face {face_id} (best IoU: {best_iou:.2f})")
+                    logger.warning(f"[v3.27] No matching face found for face {face_id} (best IoU: {best_iou:.2f})")
                     failed += 1
                     
             except Exception as e:
-                logger.error(f"[v3.24] Error regenerating descriptor for face {face_id}: {str(e)}")
+                logger.error(f"[v3.27] Error regenerating descriptor for face {face_id}: {str(e)}")
                 failed += 1
                 continue
         
-        logger.info(f"[v3.24] ===== REGENERATION COMPLETE =====")
-        logger.info(f"[v3.24] Total faces: {total_faces}")
-        logger.info(f"[v3.24] Already had descriptor: {already_had_descriptor}")
-        logger.info(f"[v3.24] Regenerated: {regenerated}")
-        logger.info(f"[v3.24] Failed: {failed}")
+        logger.info(f"[v3.27] ===== REGENERATION COMPLETE =====")
+        logger.info(f"[v3.27] Total faces: {total_faces}")
+        logger.info(f"[v3.27] Already had descriptor: {already_had_descriptor}")
+        logger.info(f"[v3.27] Regenerated: {regenerated}")
+        logger.info(f"[v3.27] Failed: {failed}")
         
-        return {
-            "success": True,
+        return ApiResponse.ok({
             "total_faces": total_faces,
             "regenerated": regenerated,
             "failed": failed,
             "already_had_descriptor": already_had_descriptor
-        }
+        }).model_dump()
         
     except Exception as e:
-        logger.error(f"[v3.24] ERROR regenerating descriptors: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[v3.27] ERROR regenerating descriptors: {str(e)}")
+        raise DescriptorError(f"Failed to regenerate unknown descriptors: {str(e)}")
