@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Core imports - new architecture foundation
-from core.config import settings
+from core.config import settings, VERSION
 from core.exceptions import AppException
 from core.responses import ApiResponse
 from core.logging import setup_logging, get_logger
@@ -47,7 +47,7 @@ from routers import (
 app = FastAPI(
     title="Padel Tournament Face Recognition API",
     description="API для распознавания и группировки игроков на турнирах по паделу",
-    version="4.1.0",  # Bumped for admin router
+    version=VERSION,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -112,6 +112,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
 # Service Initialization (Dependency Injection)
 # ============================================================
 
+logger.info(f"Starting Padel Recognition API v{VERSION}")
 logger.info("Creating singleton service instances...")
 
 # 1. Database clients
@@ -182,7 +183,7 @@ async def root():
             return f.read()
     except FileNotFoundError:
         return HTMLResponse(
-            content="<h1>Padel Face Recognition API</h1><p>API is running. Visit <a href='/api/docs'>/api/docs</a> for documentation.</p>",
+            content=f"<h1>Padel Face Recognition API v{VERSION}</h1><p>API is running. Visit <a href='/api/docs'>/api/docs</a> for documentation.</p>",
             status_code=200
         )
 
@@ -195,7 +196,7 @@ async def health_check():
     return ApiResponse.ok({
         "status": "healthy",
         "service": "padel-recognition",
-        "version": "4.1.0",
+        "version": VERSION,
         "model_loaded": face_service.is_ready()
     }).model_dump()
 
