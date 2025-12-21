@@ -90,17 +90,6 @@ Content-Type: application/json
 }
 \`\`\`
 
-#### Пакетное распознавание
-\`\`\`bash
-POST /batch-recognize
-Content-Type: application/json
-
-{
-  "gallery_ids": ["gallery1", "gallery2"],
-  "confidence_threshold": 0.60
-}
-\`\`\`
-
 #### Кластеризация неизвестных лиц
 \`\`\`bash
 POST /cluster-unknown-faces?gallery_id=xxx&min_cluster_size=2

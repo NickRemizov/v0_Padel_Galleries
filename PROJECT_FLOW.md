@@ -88,7 +88,7 @@ AutoRecognitionDialog открывается
     │   │   Фильтрация (если apply_quality_filters=true):
     │   │       Загрузка настроек из face_recognition_config:
     │   │           • min_face_size (default: 80px)
-    │   │           • min_blur_score (default: 100.0)
+    │   │           • min_blur_score (default: 80.0)
     │   │           • min_detection_score (default: 0.7)
     │   │       ↓
     │   │       Отбрасывание лиц:
@@ -424,7 +424,7 @@ Telegram отправляет webhook → /api/telegram/webhook
 \`\`\`javascript
 {
     min_face_size: 80,           // пиксели
-    min_blur_score: 100.0,       // резкость (Laplacian)
+    min_blur_score: 80.0,        // резкость (Laplacian)
     min_detection_score: 0.7     // уверенность детекции
 }
 \`\`\`

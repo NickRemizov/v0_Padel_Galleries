@@ -170,7 +170,7 @@ async def process_photo(
             face_service.quality_filters = {
                 "min_detection_score": quality_filters_config.get('min_detection_score', 0.7),
                 "min_face_size": quality_filters_config.get('min_face_size', 80),
-                "min_blur_score": quality_filters_config.get('min_blur_score', 100)
+                "min_blur_score": quality_filters_config.get('min_blur_score', 80)
             }
             logger.info(f"[v{VERSION}] Quality filters from DB: {face_service.quality_filters}")
         

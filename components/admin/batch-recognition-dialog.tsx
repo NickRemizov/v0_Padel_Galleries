@@ -150,7 +150,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
           confidenceThreshold: configResult.config?.confidence_thresholds?.high_data || 0.6,
           minDetectionScore: configResult.config?.quality_filters?.min_detection_score || 0.7,
           minFaceSize: configResult.config?.quality_filters?.min_face_size || 80,
-          minBlurScore: configResult.config?.quality_filters?.min_blur_score || 100,
+          minBlurScore: configResult.config?.quality_filters?.min_blur_score || 80,
         }
       : undefined
     

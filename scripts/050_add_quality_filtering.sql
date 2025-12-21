@@ -9,7 +9,7 @@ INSERT INTO face_recognition_config (key, value) VALUES
 ('quality_filters', '{
   "min_detection_score": 0.7,
   "min_face_size": 80,
-  "min_blur_score": 100.0
+  "min_blur_score": 80.0
 }'::jsonb)
 ON CONFLICT (key) DO UPDATE
 SET value = EXCLUDED.value,
