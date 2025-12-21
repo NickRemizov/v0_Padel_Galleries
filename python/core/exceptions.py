@@ -161,6 +161,30 @@ class IndexNotLoadedError(RecognitionError):
         )
 
 
+class DetectionError(RecognitionError):
+    """Face detection failed."""
+    def __init__(self, message: str):
+        super().__init__(message=message, phase="detection")
+
+
+class DescriptorError(RecognitionError):
+    """Descriptor generation/regeneration failed."""
+    def __init__(self, message: str):
+        super().__init__(message=message, phase="descriptor")
+
+
+class ClusteringError(RecognitionError):
+    """Face clustering failed."""
+    def __init__(self, message: str):
+        super().__init__(message=message, phase="clustering")
+
+
+class IndexRebuildError(RecognitionError):
+    """Index rebuild failed."""
+    def __init__(self, message: str):
+        super().__init__(message=message, phase="index_rebuild")
+
+
 # === Authentication Errors ===
 
 class AuthenticationError(AppException):
