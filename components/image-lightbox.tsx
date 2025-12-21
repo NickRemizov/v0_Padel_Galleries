@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { X, ChevronLeft, ChevronRight, Download, LinkIcon, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { LikeButton } from "@/components/like-button"
@@ -48,17 +48,22 @@ export function ImageLightbox({
   const [touchEnd, setTouchEnd] = useState<number | null>(null)
   const [verifiedPeople, setVerifiedPeople] = useState<Array<{ id: string; name: string }>>([])
   
-  // UI visibility state for long press
+  // UI visibility state - toggle by tap
   const [hideUI, setHideUI] = useState(false)
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null)
-  const longPressDelay = 500 // ms
   
   // Smooth swipe animation state
   const [swipeOffset, setSwipeOffset] = useState(0)
   const [isAnimating, setIsAnimating] = useState(false)
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
+  const [isSwiping, setIsSwiping] = useState(false)
 
   const minSwipeDistance = 50
+
+  // Get previous and next image indices
+  const prevIndex = currentIndex === 0 ? images.length - 1 : currentIndex - 1
+  const nextIndex = currentIndex === images.length - 1 ? 0 : currentIndex + 1
+  const prevImage = images[prevIndex]
+  const nextImage = images[nextIndex]
 
   useEffect(() => {
     const fetchVerifiedPeople = async () => {
@@ -104,28 +109,6 @@ export function ImageLightbox({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, currentIndex, images.length])
 
-  // Cleanup long press timer on unmount
-  useEffect(() => {
-    return () => {
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current)
-      }
-    }
-  }, [])
-
-  const formatShortDate = (dateString?: string) => {
-    if (!dateString) return ""
-
-    const date = new Date(dateString)
-    const months = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
-
-    const day = date.getDate()
-    const month = months[date.getMonth()]
-    const year = date.getFullYear()
-
-    return `${day} ${month} ${year}`
-  }
-
   const formatDateDDMM = (dateString?: string) => {
     if (!dateString) return ""
 
@@ -136,61 +119,52 @@ export function ImageLightbox({
     return `${day}.${month}`
   }
 
-  // Long press handlers for hiding UI
-  const handleLongPressStart = () => {
-    longPressTimer.current = setTimeout(() => {
-      setHideUI(true)
-    }, longPressDelay)
-  }
-
-  const handleLongPressEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
+  // Toggle UI visibility on tap
+  const handleImageTap = (e: React.MouseEvent | React.TouchEvent) => {
+    // Only toggle if not swiping and tap is on the image area (not buttons)
+    if (!isSwiping && (e.target as HTMLElement).tagName === 'IMG') {
+      setHideUI(prev => !prev)
     }
-    setHideUI(false)
   }
 
   const onTouchStart = (e: React.TouchEvent) => {
     setTouchEnd(null)
     setTouchStart(e.targetTouches[0].clientX)
     setSwipeOffset(0)
-    handleLongPressStart()
+    setIsSwiping(false)
   }
 
   const onTouchMove = (e: React.TouchEvent) => {
     const currentTouch = e.targetTouches[0].clientX
     setTouchEnd(currentTouch)
     
-    // Cancel long press if finger moves
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-    }
-    
     // Calculate swipe offset for smooth animation
     if (touchStart !== null) {
       const offset = currentTouch - touchStart
-      // Limit the offset to prevent over-scrolling
-      const limitedOffset = Math.max(-150, Math.min(150, offset))
+      // Mark as swiping if moved more than 10px
+      if (Math.abs(offset) > 10) {
+        setIsSwiping(true)
+      }
+      // Limit the offset
+      const limitedOffset = Math.max(-200, Math.min(200, offset))
       setSwipeOffset(limitedOffset)
     }
   }
 
   const onTouchEnd = () => {
-    handleLongPressEnd()
-    
     if (!touchStart || !touchEnd) {
       setSwipeOffset(0)
+      setIsSwiping(false)
       return
     }
 
     const distance = touchStart - touchEnd
-    const isLeftSwipe = distance > minSwipeDistance
-    const isRightSwipe = distance < -minSwipeDistance
+    const isLeftSwipe = distance > minSwipeDistance  // swipe left = go to next
+    const isRightSwipe = distance < -minSwipeDistance  // swipe right = go to prev
 
     if (isLeftSwipe) {
-      // Animate slide out to left, then change image
+      // Swipe left -> next image
+      // Current slides out to left, next slides in from right
       setSlideDirection('left')
       setIsAnimating(true)
       setTimeout(() => {
@@ -198,9 +172,10 @@ export function ImageLightbox({
         setIsAnimating(false)
         setSlideDirection(null)
         setSwipeOffset(0)
-      }, 200)
+      }, 250)
     } else if (isRightSwipe) {
-      // Animate slide out to right, then change image
+      // Swipe right -> prev image
+      // Current slides out to right, prev slides in from left
       setSlideDirection('right')
       setIsAnimating(true)
       setTimeout(() => {
@@ -208,7 +183,7 @@ export function ImageLightbox({
         setIsAnimating(false)
         setSlideDirection(null)
         setSwipeOffset(0)
-      }, 200)
+      }, 250)
     } else {
       // Snap back if swipe wasn't long enough
       setSwipeOffset(0)
@@ -216,6 +191,9 @@ export function ImageLightbox({
 
     setTouchStart(null)
     setTouchEnd(null)
+    
+    // Reset swiping flag after a short delay
+    setTimeout(() => setIsSwiping(false), 100)
   }
 
   const handleDownload = async () => {
@@ -288,29 +266,51 @@ export function ImageLightbox({
     }
   }
 
-  // Calculate image transform for smooth swipe animation
-  const getImageTransform = () => {
+  // Calculate transforms for carousel effect
+  const getCurrentImageTransform = () => {
     if (isAnimating) {
       if (slideDirection === 'left') {
-        return 'translateX(-100%) scale(0.9)'
+        return 'translateX(-100vw)'
       } else if (slideDirection === 'right') {
-        return 'translateX(100%) scale(0.9)'
+        return 'translateX(100vw)'
       }
     }
     return `translateX(${swipeOffset}px)`
   }
 
-  const getImageOpacity = () => {
-    if (isAnimating) return 0.5
-    // Fade slightly as user swipes
-    const fadeAmount = Math.abs(swipeOffset) / 300
-    return 1 - fadeAmount * 0.3
+  const getAdjacentImageTransform = (position: 'prev' | 'next') => {
+    if (isAnimating) {
+      // During animation, adjacent image slides into view
+      if (slideDirection === 'left' && position === 'next') {
+        return 'translateX(0)'
+      } else if (slideDirection === 'right' && position === 'prev') {
+        return 'translateX(0)'
+      }
+    }
+    
+    // During swipe, show adjacent images peeking
+    if (swipeOffset !== 0) {
+      if (position === 'prev' && swipeOffset > 0) {
+        // Swiping right, prev image peeks from left
+        return `translateX(${swipeOffset - window.innerWidth}px)`
+      } else if (position === 'next' && swipeOffset < 0) {
+        // Swiping left, next image peeks from right
+        return `translateX(${swipeOffset + window.innerWidth}px)`
+      }
+    }
+    
+    // Default: hidden off-screen
+    if (position === 'prev') {
+      return 'translateX(-100vw)'
+    } else {
+      return 'translateX(100vw)'
+    }
   }
 
   if (!isOpen || !currentImage) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
       {/* Overlay */}
       <div className="absolute inset-0 bg-black/90" onClick={onClose} />
 
@@ -320,12 +320,13 @@ export function ImageLightbox({
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
+        onClick={handleImageTap}
       >
         {/* Photo counter - TOP LEFT on mobile (was bottom left) */}
         <div 
           className={cn(
             "absolute top-4 left-4 md:hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm z-20 transition-opacity duration-200",
-            hideUI && "opacity-0"
+            hideUI && "opacity-0 pointer-events-none"
           )}
         >
           {currentIndex + 1} / {images.length}
@@ -335,7 +336,7 @@ export function ImageLightbox({
         <div 
           className={cn(
             "absolute top-4 left-1/2 -translate-x-1/2 md:block hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200",
-            hideUI && "opacity-0"
+            hideUI && "opacity-0 pointer-events-none"
           )}
         >
           {currentIndex + 1} / {images.length}
@@ -346,7 +347,7 @@ export function ImageLightbox({
           <div 
             className={cn(
               "absolute md:top-4 md:left-4 bottom-4 left-4 md:bottom-auto flex flex-col gap-1 z-20 transition-opacity duration-200",
-              hideUI && "opacity-0"
+              hideUI && "opacity-0 pointer-events-none"
             )}
           >
             {verifiedPeople.map((person) => {
@@ -363,6 +364,7 @@ export function ImageLightbox({
                   key={person.id}
                   href={`/players/${person.id}`}
                   className="bg-black/70 hover:bg-black/80 text-white px-3 py-1.5 rounded-full text-sm transition-colors"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   {person.name}
                 </Link>
@@ -372,7 +374,7 @@ export function ImageLightbox({
         )}
 
         {showCopied && (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-full text-sm">
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-full text-sm z-30">
             Ссылка скопирована в буфер обмена
           </div>
         )}
@@ -382,10 +384,10 @@ export function ImageLightbox({
           variant="ghost"
           size="icon"
           className={cn(
-            "absolute top-4 right-4 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200",
-            hideUI && "opacity-0"
+            "absolute top-4 right-4 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200 z-20",
+            hideUI && "opacity-0 pointer-events-none"
           )}
-          onClick={onClose}
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
         >
           <X className="h-6 w-6" />
         </Button>
@@ -396,10 +398,10 @@ export function ImageLightbox({
             variant="ghost"
             size="icon"
             className={cn(
-              "absolute top-4 right-16 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200",
-              hideUI && "opacity-0"
+              "absolute top-4 right-16 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200 z-20",
+              hideUI && "opacity-0 pointer-events-none"
             )}
-            onClick={handleShare}
+            onClick={(e) => { e.stopPropagation(); handleShare(); }}
             title="Скопировать ссылку на фото"
           >
             <LinkIcon className="h-6 w-6" />
@@ -411,10 +413,10 @@ export function ImageLightbox({
           variant="ghost"
           size="icon"
           className={cn(
-            "absolute top-4 right-28 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200",
-            hideUI && "opacity-0"
+            "absolute top-4 right-28 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200 z-20",
+            hideUI && "opacity-0 pointer-events-none"
           )}
-          onClick={handleDownload}
+          onClick={(e) => { e.stopPropagation(); handleDownload(); }}
         >
           <Download className="h-6 w-6" />
         </Button>
@@ -425,11 +427,11 @@ export function ImageLightbox({
             variant="ghost"
             size="icon"
             className={cn(
-              "absolute top-4 right-40 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200",
+              "absolute top-4 right-40 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200 z-20",
               showComments && "bg-white/30",
-              hideUI && "opacity-0"
+              hideUI && "opacity-0 pointer-events-none"
             )}
-            onClick={() => setShowComments(!showComments)}
+            onClick={(e) => { e.stopPropagation(); setShowComments(!showComments); }}
             title="Комментарии"
           >
             <MessageCircle className="h-6 w-6" />
@@ -438,42 +440,78 @@ export function ImageLightbox({
 
         {/* Like button */}
         {currentImage?.id && (
-          <LikeButton
-            imageId={currentImage.id}
+          <div 
             className={cn(
-              "absolute top-4 right-52 bg-black/50 text-white hover:bg-black/60 transition-opacity duration-200",
-              hideUI && "opacity-0"
+              "absolute top-4 right-52 z-20 transition-opacity duration-200",
+              hideUI && "opacity-0 pointer-events-none"
             )}
-          />
+            onClick={(e) => e.stopPropagation()}
+          >
+            <LikeButton
+              imageId={currentImage.id}
+              className="bg-black/50 text-white hover:bg-black/60"
+            />
+          </div>
         )}
 
         {/* Favorite button */}
         {currentImage?.id && (
-          <FavoriteButton
-            imageId={currentImage.id}
+          <div
             className={cn(
-              "absolute top-4 right-64 bg-black/50 text-white hover:bg-black/60 transition-opacity duration-200",
-              hideUI && "opacity-0"
+              "absolute top-4 right-64 z-20 transition-opacity duration-200",
+              hideUI && "opacity-0 pointer-events-none"
             )}
-          />
+            onClick={(e) => e.stopPropagation()}
+          >
+            <FavoriteButton
+              imageId={currentImage.id}
+              className="bg-black/50 text-white hover:bg-black/60"
+            />
+          </div>
         )}
 
-        {/* Image with smooth swipe animation */}
-        <img
-          src={currentImage.url || "/placeholder.svg"}
-          alt={currentImage.alt}
-          className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain transition-all duration-200 ease-out"
-          style={{
-            transform: getImageTransform(),
-            opacity: getImageOpacity(),
-          }}
-        />
+        {/* Images container for carousel effect */}
+        <div className="relative w-full h-full flex items-center justify-center">
+          {/* Previous image (hidden, slides in from left on swipe right) */}
+          {images.length > 1 && prevImage && (
+            <img
+              src={prevImage.url || "/placeholder.svg"}
+              alt={prevImage.alt}
+              className="absolute max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain transition-transform duration-250 ease-out"
+              style={{
+                transform: getAdjacentImageTransform('prev'),
+              }}
+            />
+          )}
+
+          {/* Current image */}
+          <img
+            src={currentImage.url || "/placeholder.svg"}
+            alt={currentImage.alt}
+            className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain transition-transform duration-250 ease-out"
+            style={{
+              transform: getCurrentImageTransform(),
+            }}
+          />
+
+          {/* Next image (hidden, slides in from right on swipe left) */}
+          {images.length > 1 && nextImage && (
+            <img
+              src={nextImage.url || "/placeholder.svg"}
+              alt={nextImage.alt}
+              className="absolute max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain transition-transform duration-250 ease-out"
+              style={{
+                transform: getAdjacentImageTransform('next'),
+              }}
+            />
+          )}
+        </div>
 
         {/* File info - BOTTOM CENTER on desktop */}
         <div 
           className={cn(
-            "absolute bottom-4 left-1/2 -translate-x-1/2 md:block hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200",
-            hideUI && "opacity-0"
+            "absolute bottom-4 left-1/2 -translate-x-1/2 md:block hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200 z-20",
+            hideUI && "opacity-0 pointer-events-none"
           )}
         >
           {currentImage.filename || `image-${currentIndex + 1}.jpg`}
@@ -494,8 +532,8 @@ export function ImageLightbox({
         {/* Filename - BOTTOM RIGHT on mobile */}
         <div 
           className={cn(
-            "absolute bottom-4 right-4 md:hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200",
-            hideUI && "opacity-0"
+            "absolute bottom-4 right-4 md:hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200 z-20",
+            hideUI && "opacity-0 pointer-events-none"
           )}
         >
           {currentImage.filename || `image-${currentIndex + 1}.jpg`}
@@ -507,10 +545,10 @@ export function ImageLightbox({
             variant="ghost"
             size="icon"
             className={cn(
-              "absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200",
-              hideUI && "opacity-0"
+              "absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200 z-20",
+              hideUI && "opacity-0 pointer-events-none"
             )}
-            onClick={handlePrev}
+            onClick={(e) => { e.stopPropagation(); handlePrev(); }}
           >
             <ChevronLeft className="h-8 w-8" />
           </Button>
@@ -522,10 +560,10 @@ export function ImageLightbox({
             variant="ghost"
             size="icon"
             className={cn(
-              "absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200",
-              hideUI && "opacity-0"
+              "absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 bg-black/50 transition-opacity duration-200 z-20",
+              hideUI && "opacity-0 pointer-events-none"
             )}
-            onClick={handleNext}
+            onClick={(e) => { e.stopPropagation(); handleNext(); }}
           >
             <ChevronRight className="h-8 w-8" />
           </Button>
@@ -535,9 +573,10 @@ export function ImageLightbox({
         {showComments && currentImage?.id && (
           <div 
             className={cn(
-              "absolute right-4 top-20 bottom-20 w-96 bg-background rounded-lg shadow-xl overflow-hidden flex flex-col transition-opacity duration-200",
-              hideUI && "opacity-0"
+              "absolute right-4 top-20 bottom-20 w-96 bg-background rounded-lg shadow-xl overflow-hidden flex flex-col transition-opacity duration-200 z-30",
+              hideUI && "opacity-0 pointer-events-none"
             )}
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex-1 overflow-y-auto p-4">
               <CommentsSection imageId={currentImage.id} />
