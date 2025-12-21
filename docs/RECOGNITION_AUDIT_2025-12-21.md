@@ -22,13 +22,13 @@
 
 **Файл:** `python/routers/recognition/detect.py:178-183`
 
-```python
+\`\`\`python
 if request.apply_quality_filters:
     face_service.quality_filters = {  # ← МОДИФИЦИРУЕТ ОБЩИЙ ОБЪЕКТ!
         "min_detection_score": request.min_detection_score or ...,
         ...
     }
-```
+\`\`\`
 
 **Проблема:** `face_service` — singleton. Если два запроса с разными параметрами качества выполняются одновременно:
 1. Запрос A устанавливает `min_blur_score = 50`
@@ -36,7 +36,7 @@ if request.apply_quality_filters:
 3. Запрос A использует `min_blur_score = 100` (неверно!)
 
 **Решение:** Передавать фильтры как параметр, не модифицируя shared state:
-```python
+\`\`\`python
 filters = {
     "min_detection_score": request.min_detection_score or ...,
     ...
@@ -46,7 +46,7 @@ detected_faces = await face_service.detect_faces(
     apply_quality_filters=True,
     filters=filters  # передать как параметр
 )
-```
+\`\`\`
 
 ---
 
@@ -68,7 +68,7 @@ detected_faces = await face_service.detect_faces(
 4. Параллельный `recognize_face()` может получить неконсистентный индекс
 
 **Решение:**
-```python
+\`\`\`python
 import asyncio
 
 class FaceRecognitionService:
@@ -79,7 +79,7 @@ class FaceRecognitionService:
         async with self._rebuild_lock:
             self._load_players_index()
             ...
-```
+\`\`\`
 
 ---
 
@@ -115,16 +115,16 @@ class FaceRecognitionService:
 - `get_recognition_config()` — в обоих, разные сигнатуры
 
 **SupabaseDatabase** (используется в FaceRecognitionService):
-```python
+\`\`\`python
 # Фильтрует по verified = False
 .eq("verified", False)
-```
+\`\`\`
 
 **SupabaseClient** (используется в эндпоинтах):
-```python
+\`\`\`python
 # НЕ фильтрует по verified
 # нет .eq("verified", ...)
-```
+\`\`\`
 
 **Решение:** Унифицировать в один класс или чётко разделить ответственность.
 
@@ -134,7 +134,7 @@ class FaceRecognitionService:
 
 **Файл:** `python/routers/recognition/detect.py:255-263`
 
-```python
+\`\`\`python
 insert_data = {
     "photo_id": request.photo_id,
     "insightface_bbox": bbox,
@@ -144,18 +144,18 @@ insert_data = {
     "verified": False,
     "insightface_descriptor": ...,
 }
-```
+\`\`\`
 
 **Проблема:** `blur_score` вычисляется (строка 241), но не записывается в БД. Хотя поле `blur_score` в таблице `photo_faces` существует.
 
 **Решение:**
-```python
+\`\`\`python
 insert_data = {
     ...
     "blur_score": blur_score,  # добавить
     ...
 }
-```
+\`\`\`
 
 ---
 
@@ -189,10 +189,10 @@ insert_data = {
 ### 9. Отсутствие транзакций в batch-операциях
 
 **Пример:** `routers/faces.py:270`
-```python
+\`\`\`python
 supabase_db.client.table("photo_faces").delete().eq("photo_id", ...).execute()
 # ... цикл insert'ов ...
-```
+\`\`\`
 
 Если ошибка между delete и insert — данные потеряются.
 
@@ -211,14 +211,14 @@ supabase_db.client.table("photo_faces").delete().eq("photo_id", ...).execute()
 4. Группировка по кластерам
 
 **Параметры HDBSCAN:**
-```python
+\`\`\`python
 clusterer = hdbscan.HDBSCAN(
     min_cluster_size=min_cluster_size,  # default: 2
     min_samples=1,
     metric='euclidean',
     cluster_selection_epsilon=0.5
 )
-```
+\`\`\`
 
 ### Возможные причины неработающей кластеризации
 
@@ -229,13 +229,13 @@ clusterer = hdbscan.HDBSCAN(
 
 ### Как проверить
 
-```bash
+\`\`\`bash
 # 1. Проверить количество неизвестных лиц
 curl -X POST "http://vlcpadel.com:8001/api/recognition/cluster-unknown-faces?min_cluster_size=2"
 
 # 2. Проверить логи
 tail -f /tmp/fastapi.log | grep -i cluster
-```
+\`\`\`
 
 ---
 

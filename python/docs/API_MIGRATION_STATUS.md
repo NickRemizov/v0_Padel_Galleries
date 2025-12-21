@@ -69,7 +69,7 @@
 
 ## Custom Exceptions Added
 
-```python
+\`\`\`python
 # Recognition-specific exceptions (added Dec 21, 2025)
 DetectionError      # Face detection failed
 DescriptorError     # Descriptor generation/regeneration failed  
@@ -83,11 +83,11 @@ FaceNotFoundError   # Face not found
 PersonNotFoundError # Person not found
 ValidationError     # Input validation failed
 DatabaseError       # Database operation failed
-```
+\`\`\`
 
 ## Architecture Summary
 
-```
+\`\`\`
 python/
 ├── main.py                      # Entry point, DI, exception handlers
 ├── core/                        # Foundation (no dependencies)
@@ -106,7 +106,7 @@ python/
 ├── services/                    # Business logic
 └── routers/                     # HTTP endpoints
     └── recognition/            # Face recognition endpoints (migrated)
-```
+\`\`\`
 
 ## Breaking Changes
 
