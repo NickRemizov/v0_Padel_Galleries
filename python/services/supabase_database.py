@@ -524,7 +524,7 @@ class SupabaseDatabase:
                 batch_photo_ids = all_photo_ids[i:i + batch_size]
                 
                 faces_response = self.client.table("photo_faces").select(
-                    "id, photo_id, insightface_descriptor, insightface_bbox, insightface_confidence"
+                    "id, photo_id, insightface_descriptor, insightface_bbox, insightface_det_score"
                 ).in_(
                     "photo_id", batch_photo_ids
                 ).is_(
