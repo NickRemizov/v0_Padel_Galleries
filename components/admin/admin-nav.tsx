@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { APP_VERSION } from "@/lib/version"
 import { 
   Images, 
   Users, 
@@ -23,8 +24,6 @@ import {
 } from "@/components/ui/select"
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-
-const APP_VERSION = "v3.0.0"
 
 interface City {
   id: string

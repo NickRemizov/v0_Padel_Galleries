@@ -15,8 +15,7 @@ import type { Person } from "@/lib/types"
 import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
-
-const VERSION = "v6.17" // Rename insightface_confidence to insightface_det_score
+import { APP_VERSION } from "@/lib/version"
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -122,10 +121,10 @@ export function FaceTaggingDialog({
       // Dialog closing and we have loaded faces for this image
       // Only call onSave if we didn't just save (to prevent double call)
       if (!justSavedRef.current) {
-        console.log(`[${VERSION}] Dialog closing without save, updating badges with ${taggedFacesRef.current.length} faces`)
+        console.log(`[${APP_VERSION}] Dialog closing without save, updating badges with ${taggedFacesRef.current.length} faces`)
         onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
       } else {
-        console.log(`[${VERSION}] Dialog closing after save, skipping onSave (already called)`)
+        console.log(`[${APP_VERSION}] Dialog closing after save, skipping onSave (already called)`)
       }
     }
     // Reset justSaved flag on close
@@ -141,7 +140,7 @@ export function FaceTaggingDialog({
     
     // Update badge for current photo before navigating
     if (loadedForImageIdRef.current === currentImageIdRef.current) {
-      console.log(`[${VERSION}] Navigating to previous, updating badge for ${currentImageIdRef.current}`)
+      console.log(`[${APP_VERSION}] Navigating to previous, updating badge for ${currentImageIdRef.current}`)
       onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
     }
     
@@ -153,7 +152,7 @@ export function FaceTaggingDialog({
     
     // Update badge for current photo before navigating
     if (loadedForImageIdRef.current === currentImageIdRef.current) {
-      console.log(`[${VERSION}] Navigating to next, updating badge for ${currentImageIdRef.current}`)
+      console.log(`[${APP_VERSION}] Navigating to next, updating badge for ${currentImageIdRef.current}`)
       onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
     }
     
@@ -164,7 +163,7 @@ export function FaceTaggingDialog({
   useEffect(() => {
     if (!open) return
     
-    console.log(`[${VERSION}] imageId changed to ${imageId}`)
+    console.log(`[${APP_VERSION}] imageId changed to ${imageId}`)
     
     // Instant state reset
     setTaggedFaces([])
@@ -194,7 +193,7 @@ export function FaceTaggingDialog({
     const isImageReady = imageLoaded && imageRef.current?.complete
     
     if (isDataReady && isImageReady) {
-      console.log(`[${VERSION}] Both ready for ${imageId}, drawing ${taggedFaces.length} faces`)
+      console.log(`[${APP_VERSION}] Both ready for ${imageId}, drawing ${taggedFaces.length} faces`)
       drawFaces(taggedFaces)
     }
   }, [imageLoaded, taggedFaces, loadingFaces, imageId])
@@ -207,19 +206,19 @@ export function FaceTaggingDialog({
   }
 
   async function loadFacesForImage(targetImageId: string) {
-    console.log(`[${VERSION}] Loading faces for ${targetImageId}`)
+    console.log(`[${APP_VERSION}] Loading faces for ${targetImageId}`)
     
     try {
       const result = await processPhotoAction(targetImageId)
 
       // Check if this is still the current image (user might have navigated away)
       if (currentImageIdRef.current !== targetImageId) {
-        console.log(`[${VERSION}] Image changed during load (${targetImageId} -> ${currentImageIdRef.current}), ignoring`)
+        console.log(`[${APP_VERSION}] Image changed during load (${targetImageId} -> ${currentImageIdRef.current}), ignoring`)
         return
       }
 
       if (!result.success || !result.faces) {
-        console.log(`[${VERSION}] No faces for ${targetImageId}`)
+        console.log(`[${APP_VERSION}] No faces for ${targetImageId}`)
         setTaggedFaces([])
         loadedForImageIdRef.current = targetImageId
         setLoadingFaces(false)
@@ -240,13 +239,13 @@ export function FaceTaggingDialog({
         verified: f.verified,
       }))
 
-      console.log(`[${VERSION}] Loaded ${tagged.length} faces for ${targetImageId}`)
+      console.log(`[${APP_VERSION}] Loaded ${tagged.length} faces for ${targetImageId}`)
       
       setTaggedFaces(tagged)
       loadedForImageIdRef.current = targetImageId
       setLoadingFaces(false)
     } catch (error) {
-      console.error(`[${VERSION}] Error loading faces:`, error)
+      console.error(`[${APP_VERSION}] Error loading faces:`, error)
       if (currentImageIdRef.current === targetImageId) {
         setTaggedFaces([])
         loadedForImageIdRef.current = targetImageId
@@ -350,7 +349,7 @@ export function FaceTaggingDialog({
       drawFaces(tagged)
       setHasRedetectedData(true)
     } catch (error) {
-      console.error(`[${VERSION}] Error redetecting:`, error)
+      console.error(`[${APP_VERSION}] Error redetecting:`, error)
       alert(`Error: ${error}`)
     } finally {
       setRedetecting(false)
@@ -461,7 +460,7 @@ export function FaceTaggingDialog({
     }
     
     if (targetIndex !== null && targetIndex >= 0 && targetIndex < taggedFaces.length) {
-      console.log(`[${VERSION}] Auto-assigning new person "${personName}" to face index ${targetIndex}`)
+      console.log(`[${APP_VERSION}] Auto-assigning new person "${personName}" to face index ${targetIndex}`)
       
       const updated = [...taggedFaces]
       updated[targetIndex] = {
@@ -474,7 +473,7 @@ export function FaceTaggingDialog({
       setSelectedFaceIndex(targetIndex)
       drawFaces(updated)
     } else {
-      console.log(`[${VERSION}] No face to assign new person to`)
+      console.log(`[${APP_VERSION}] No face to assign new person to`)
     }
   }
 
@@ -545,7 +544,7 @@ export function FaceTaggingDialog({
       
       setSaving(false)
     } catch (error) {
-      console.error(`[${VERSION}] Error saving:`, error)
+      console.error(`[${APP_VERSION}] Error saving:`, error)
       alert(`Ошибка: ${error instanceof Error ? error.message : String(error)}`)
       setSaving(false)
     }
@@ -587,7 +586,7 @@ export function FaceTaggingDialog({
       setSaving(false)
       onOpenChange(false)
     } catch (error) {
-      console.error(`[${VERSION}] Error saving:`, error)
+      console.error(`[${APP_VERSION}] Error saving:`, error)
       alert(`Ошибка: ${error instanceof Error ? error.message : String(error)}`)
       setSaving(false)
     }
@@ -631,7 +630,7 @@ export function FaceTaggingDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-[90vw] h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Тегирование лиц {VERSION}</DialogTitle>
+          <DialogTitle>Тегирование лиц {APP_VERSION}</DialogTitle>
           <DialogDescription title={fullFileName}>
             Файл: {displayFileName} | Обнаружено лиц: {taggedFaces.length}. Кликните на лицо, чтобы назначить человека.
           </DialogDescription>
@@ -752,7 +751,7 @@ export function FaceTaggingDialog({
                   className="hidden"
                   crossOrigin="anonymous"
                   onLoad={() => {
-                    console.log(`[${VERSION}] Image loaded for ${imageId}`)
+                    console.log(`[${APP_VERSION}] Image loaded for ${imageId}`)
                     setImageLoaded(true)
                   }}
                 />
