@@ -7,7 +7,8 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-import { RefreshCw, Loader2, CheckCircle2, AlertCircle, TrendingUp, AlertTriangle } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { RefreshCw, Loader2, CheckCircle2, AlertCircle, TrendingUp, AlertTriangle, UserCircle } from "lucide-react"
 import { TrainingHistoryList } from "./training-history-list"
 
 const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
@@ -41,6 +42,7 @@ interface Config {
     min_face_size: number
     min_blur_score: number
   }
+  auto_avatar_on_create?: boolean
 }
 
 interface DatasetStats {
@@ -69,6 +71,7 @@ const DEFAULT_CONFIG: Config = {
     min_face_size: 80,
     min_blur_score: 80.0,
   },
+  auto_avatar_on_create: true,
 }
 
 export function FaceTrainingManager() {
@@ -115,6 +118,7 @@ export function FaceTrainingManager() {
         console.log("[v0] Config data received:", configData)
         console.log("[v0] quality_filters from backend:", configData.quality_filters)
         console.log("[v0] min_blur_score from backend:", configData.quality_filters?.min_blur_score)
+        console.log("[v0] auto_avatar_on_create from backend:", configData.auto_avatar_on_create)
 
         if (configData.error === "https_required") {
           setHttpsRequired(true)
@@ -139,9 +143,11 @@ export function FaceTrainingManager() {
               ...DEFAULT_CONFIG.quality_filters,
               ...(configData.quality_filters || {}),
             },
+            auto_avatar_on_create: configData.auto_avatar_on_create ?? DEFAULT_CONFIG.auto_avatar_on_create,
           }
           console.log("[v0] Merged config:", validConfig)
           console.log("[v0] Final min_blur_score:", validConfig.quality_filters.min_blur_score)
+          console.log("[v0] Final auto_avatar_on_create:", validConfig.auto_avatar_on_create)
           setFastapiError(false)
           setConfig(validConfig)
           setLocalConfig(validConfig)
@@ -507,8 +513,33 @@ export function FaceTrainingManager() {
           <CardDescription>Настройте пороги confidence и вес контекста для распознавания лиц</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Quality Filtering section */}
+          {/* Auto Avatar Section */}
           <div className="space-y-4">
+            <h4 className="text-sm font-medium flex items-center gap-2">
+              <UserCircle className="h-4 w-4" />
+              Автоматические аватары
+            </h4>
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label className="text-base">Автоматически присваивать аватар при создании игрока</Label>
+                <p className="text-sm text-muted-foreground">
+                  При создании нового игрока аватар будет сгенерирован автоматически из фото с лицом
+                </p>
+              </div>
+              <Switch
+                checked={localConfig.auto_avatar_on_create ?? true}
+                onCheckedChange={(checked) =>
+                  setLocalConfig({
+                    ...localConfig,
+                    auto_avatar_on_create: checked,
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          {/* Quality Filtering section */}
+          <div className="space-y-4 pt-4 border-t">
             <h4 className="text-sm font-medium">Фильтрация качества</h4>
             <p className="text-xs text-muted-foreground">
               Отсеивайте лица низкого качества при детекции и распознавании
