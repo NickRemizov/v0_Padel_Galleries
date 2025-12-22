@@ -504,7 +504,7 @@ export function ImageLightbox({
           key={displayedIndex}
           src={displayedImage?.url || "/placeholder.svg"}
           alt={displayedImage?.alt || ""}
-          className="max-w-[95vw] max-h-[85vh] w-auto h-auto object-contain"
+          className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain"
           style={getImageStyle()}
         />
 
