@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
@@ -11,6 +11,7 @@ import { assignFacesToPersonAction, markPhotoAsProcessedAction } from "@/app/adm
 import { getPeopleAction } from "@/app/admin/actions/entities"
 import { clusterAllUnknownFacesAction } from "@/app/admin/actions/recognition"
 import type { Person } from "@/lib/types"
+import type { BoundingBox } from "@/lib/avatar-utils"
 import FaceCropPreview from "@/components/FaceCropPreview"
 
 interface GlobalUnknownFacesDialogProps {
@@ -32,6 +33,7 @@ interface ClusterFace {
   gallery_id?: string
   gallery_title?: string
   shoot_date?: string
+  distance_to_centroid?: number // v1.1.0: distance to cluster centroid
 }
 
 interface Cluster {
@@ -49,11 +51,13 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   const [showSelectPerson, setShowSelectPerson] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
+  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
 
   useEffect(() => {
     if (open) {
       loadClusters()
       loadPeople()
+      loadConfig()
       setRemovedFaces(new Set())
       setCurrentClusterIndex(0)
     }
@@ -62,6 +66,18 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   useEffect(() => {
     setRemovedFaces(new Set())
   }, [currentClusterIndex])
+
+  async function loadConfig() {
+    try {
+      const response = await fetch("/api/admin/training/config")
+      if (response.ok) {
+        const config = await response.json()
+        setAutoAvatarEnabled(config.auto_avatar_on_create ?? true)
+      }
+    } catch (error) {
+      console.error("[GlobalUnknownFaces] Error loading config:", error)
+    }
+  }
 
   async function loadClusters() {
     setLoading(true)
@@ -90,6 +106,20 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
       setPeople(result.data)
     }
   }
+
+  // v1.1.0: Find the best face for avatar (closest to centroid)
+  const bestFaceForAvatar = useMemo(() => {
+    if (!clusters.length || currentClusterIndex >= clusters.length) return null
+    
+    const currentCluster = clusters[currentClusterIndex]
+    const visibleFaces = currentCluster.faces.filter((f) => !removedFaces.has(f.id))
+    
+    if (!visibleFaces.length) return null
+    
+    // Faces are already sorted by distance_to_centroid (closest first)
+    // Just return the first one
+    return visibleFaces[0]
+  }, [clusters, currentClusterIndex, removedFaces])
 
   async function handleCreatePerson() {
     setShowAddPerson(true)
@@ -206,9 +236,11 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
             <>
               <div className="flex-1 overflow-y-auto pr-2">
                 <div className="grid grid-cols-4 gap-4">
-                  {visibleFaces.map((face) => (
+                  {visibleFaces.map((face, index) => (
                     <div key={face.id} className="relative">
-                      <div className="aspect-square rounded-lg overflow-hidden border">
+                      <div className={`aspect-square rounded-lg overflow-hidden border ${
+                        index === 0 ? "ring-2 ring-primary ring-offset-2" : ""
+                      }`}>
                         <FaceCropPreview
                           imageUrl={face.image_url || "/placeholder.svg"}
                           bbox={face.bbox}
@@ -222,12 +254,17 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                      {(face.gallery_title || face.shoot_date) && (
-                        <div className="mt-1 text-xs text-muted-foreground truncate text-center">
-                          {face.gallery_title}
-                          {face.shoot_date && ` ${formatDate(face.shoot_date)}`}
-                        </div>
-                      )}
+                      {/* v1.1.0: Show distance to centroid and mark best face */}
+                      <div className="mt-1 text-xs text-muted-foreground truncate text-center">
+                        {index === 0 && (
+                          <span className="text-primary font-medium">★ </span>
+                        )}
+                        {face.gallery_title}
+                        {face.shoot_date && ` ${formatDate(face.shoot_date)}`}
+                        {face.distance_to_centroid !== undefined && (
+                          <span className="ml-1 opacity-60">({face.distance_to_centroid.toFixed(2)})</span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -307,7 +344,15 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
         </DialogContent>
       </Dialog>
 
-      <AddPersonDialog open={showAddPerson} onOpenChange={setShowAddPerson} onPersonCreated={handlePersonCreated} />
+      {/* v1.1.0: Pass best face data for auto-avatar generation */}
+      <AddPersonDialog 
+        open={showAddPerson} 
+        onOpenChange={setShowAddPerson} 
+        onPersonCreated={handlePersonCreated}
+        faceImageUrl={bestFaceForAvatar?.image_url}
+        faceBbox={bestFaceForAvatar?.bbox as BoundingBox | undefined}
+        autoAvatarEnabled={autoAvatarEnabled}
+      />
     </>
   )
 }
