@@ -29,6 +29,8 @@ async def cluster_unknown_faces(
     Кластеризация неизвестных лиц с HDBSCAN.
     Если gallery_id указан - только в этой галерее.
     Если gallery_id не указан - по всей базе.
+    
+    v1.1.0: Added distance_to_centroid for each face in cluster.
     """
     supabase_client = get_supabase_client()
     try:
@@ -71,24 +73,36 @@ async def cluster_unknown_faces(
         
         logger.info(f"[v{VERSION}] Found {len(set(cluster_labels))} unique labels")
         
-        # Group faces by cluster
+        # Group faces by cluster with their embeddings
         clusters_dict = {}
         ungrouped = []
         
-        for face, label in zip(faces, cluster_labels):
+        for idx, (face, label) in enumerate(zip(faces, cluster_labels)):
             if label == -1:
                 ungrouped.append(face)
             else:
                 if label not in clusters_dict:
                     clusters_dict[label] = []
-                clusters_dict[label].append(face)
+                # Store face with its embedding index
+                clusters_dict[label].append((face, idx))
         
         # Format clusters and sort by size (largest first)
         clusters = []
-        for cluster_id, cluster_faces in clusters_dict.items():
+        for cluster_id, cluster_data in clusters_dict.items():
+            # Calculate centroid for this cluster
+            cluster_indices = [idx for _, idx in cluster_data]
+            cluster_embeddings = embeddings_array[cluster_indices]
+            centroid = np.mean(cluster_embeddings, axis=0)
+            
+            # Calculate distance to centroid for each face
             normalized_faces = []
-            for face in cluster_faces:
+            for face, idx in cluster_data:
                 face = face.copy()
+                
+                # Calculate distance to centroid
+                embedding = embeddings_array[idx]
+                distance = float(np.linalg.norm(embedding - centroid))
+                face["distance_to_centroid"] = round(distance, 4)
                 
                 bbox = face.get("insightface_bbox")
                 if bbox:
@@ -109,6 +123,9 @@ async def cluster_unknown_faces(
                 face.pop("height", None)
                 
                 normalized_faces.append(face)
+            
+            # Sort faces by distance to centroid (closest first)
+            normalized_faces.sort(key=lambda x: x.get("distance_to_centroid", float("inf")))
             
             clusters.append({
                 "cluster_id": int(cluster_id),
