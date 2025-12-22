@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,31 +15,48 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Plus } from "lucide-react"
-import { addPersonAction } from "@/app/admin/actions"
+import { Plus, Loader2 } from "lucide-react"
+import { addPersonAction, updatePersonAvatarAction } from "@/app/admin/actions"
+import { generateAvatarBlob, uploadAvatarBlob, type BoundingBox } from "@/lib/avatar-utils"
 
 interface AddPersonDialogProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   onPersonCreated?: (personId: string, personName: string) => void
+  // v1.1.0: Data for auto-avatar generation
+  faceImageUrl?: string
+  faceBbox?: BoundingBox
+  autoAvatarEnabled?: boolean
 }
 
 export function AddPersonDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   onPersonCreated,
+  faceImageUrl,
+  faceBbox,
+  autoAvatarEnabled = true,
 }: AddPersonDialogProps = {}) {
   const [internalOpen, setInternalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [avatarStatus, setAvatarStatus] = useState<string | null>(null)
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setOpen = controlledOnOpenChange || setInternalOpen
+
+  // Reset avatar status when dialog opens/closes
+  useEffect(() => {
+    if (!open) {
+      setAvatarStatus(null)
+    }
+  }, [open])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
     const formData = new FormData(form)
     setLoading(true)
+    setAvatarStatus(null)
 
     const data = {
       real_name: formData.get("real_name") as string,
@@ -52,13 +69,41 @@ export function AddPersonDialog({
     }
 
     const result = await addPersonAction(data)
-    setLoading(false)
 
-    if (result.success) {
-      setOpen(false)
-      if (onPersonCreated && result.data) {
-        onPersonCreated(result.data.id, result.data.real_name)
+    if (result.success && result.data) {
+      const personId = result.data.id
+      const personName = result.data.real_name
+
+      // v1.1.0: Auto-generate avatar if enabled and face data provided
+      if (autoAvatarEnabled && faceImageUrl && faceBbox) {
+        setAvatarStatus("Генерация аватара...")
+        try {
+          console.log("[AddPersonDialog] Generating avatar for", personName)
+          console.log("[AddPersonDialog] Image URL:", faceImageUrl)
+          console.log("[AddPersonDialog] Bbox:", faceBbox)
+
+          const avatarBlob = await generateAvatarBlob(faceImageUrl, faceBbox)
+          setAvatarStatus("Загрузка аватара...")
+          
+          const avatarUrl = await uploadAvatarBlob(avatarBlob, personId)
+          console.log("[AddPersonDialog] Avatar uploaded:", avatarUrl)
+          
+          await updatePersonAvatarAction(personId, avatarUrl)
+          console.log("[AddPersonDialog] Avatar assigned to person")
+          
+          setAvatarStatus("Аватар создан!")
+        } catch (error) {
+          console.error("[AddPersonDialog] Error generating avatar:", error)
+          setAvatarStatus("Ошибка создания аватара")
+          // Don't fail the whole operation - person is already created
+        }
       }
+
+      setLoading(false)
+      setOpen(false)
+      onPersonCreated?.(personId, personName)
+    } else {
+      setLoading(false)
     }
   }
 
@@ -123,11 +168,30 @@ export function AddPersonDialog({
             <Input id="paddle_ranking" name="paddle_ranking" type="number" min="0" max="10" step="0.25" />
             <p className="text-xs text-muted-foreground">Значение от 0 до 10 с шагом 0.25</p>
           </div>
+
+          {/* Show avatar generation status */}
+          {autoAvatarEnabled && faceImageUrl && faceBbox && (
+            <div className="rounded-lg border bg-muted/50 p-3">
+              <p className="text-sm text-muted-foreground">
+                Аватар будет сгенерирован автоматически из текущего фото
+              </p>
+              {avatarStatus && (
+                <p className="mt-1 text-sm font-medium">{avatarStatus}</p>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <Button type="submit" disabled={loading}>
-            {loading ? "Добавление..." : "Добавить"}
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {avatarStatus || "Добавление..."}
+              </>
+            ) : (
+              "Добавить"
+            )}
           </Button>
         </DialogFooter>
       </form>
