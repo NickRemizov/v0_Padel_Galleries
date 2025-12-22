@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { X, ChevronLeft, ChevronRight, Download, LinkIcon, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { LikeButton } from "@/components/like-button"
@@ -61,6 +61,18 @@ export function ImageLightbox({
 
   const minSwipeDistance = 50
 
+  // Use ref to track current index for keyboard navigation
+  const currentIndexRef = useRef(currentIndex)
+  const isTransitioningRef = useRef(isTransitioning)
+  
+  useEffect(() => {
+    currentIndexRef.current = currentIndex
+  }, [currentIndex])
+  
+  useEffect(() => {
+    isTransitioningRef.current = isTransitioning
+  }, [isTransitioning])
+
   // Sync displayedIndex with currentIndex on prop change
   useEffect(() => {
     if (currentIndex !== displayedIndex && !isTransitioning) {
@@ -92,6 +104,39 @@ export function ImageLightbox({
     fetchVerifiedPeople()
   }, [currentImage?.id])
 
+  const navigateWithAnimation = useCallback((direction: 'prev' | 'next') => {
+    if (isTransitioningRef.current) return
+    
+    setIsTransitioning(true)
+    
+    // Animate out current image
+    setSwipeOffset(direction === 'next' ? -200 : 200)
+    
+    // After animation, switch image
+    setTimeout(() => {
+      const idx = currentIndexRef.current
+      const newIndex = direction === 'next'
+        ? (idx === images.length - 1 ? 0 : idx + 1)
+        : (idx === 0 ? images.length - 1 : idx - 1)
+      
+      setSwipeOffset(0)
+      setDisplayedIndex(newIndex)
+      onNavigate(newIndex)
+      
+      setTimeout(() => {
+        setIsTransitioning(false)
+      }, 50)
+    }, 150)
+  }, [images.length, onNavigate])
+
+  const handlePrev = useCallback(() => {
+    navigateWithAnimation('prev')
+  }, [navigateWithAnimation])
+
+  const handleNext = useCallback(() => {
+    navigateWithAnimation('next')
+  }, [navigateWithAnimation])
+
   useEffect(() => {
     if (!isOpen) return
 
@@ -110,7 +155,7 @@ export function ImageLightbox({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, currentIndex, images.length])
+  }, [isOpen, handlePrev, handleNext, onClose])
 
   const formatDateDDMM = (dateString?: string) => {
     if (!dateString) return ""
@@ -208,30 +253,6 @@ export function ImageLightbox({
     setTimeout(() => setIsSwiping(false), 100)
   }
 
-  const navigateWithAnimation = (direction: 'prev' | 'next') => {
-    if (isTransitioning) return
-    
-    setIsTransitioning(true)
-    
-    // Animate out current image
-    setSwipeOffset(direction === 'next' ? -200 : 200)
-    
-    // After animation, switch image
-    setTimeout(() => {
-      const newIndex = direction === 'next'
-        ? (currentIndex === images.length - 1 ? 0 : currentIndex + 1)
-        : (currentIndex === 0 ? images.length - 1 : currentIndex - 1)
-      
-      setSwipeOffset(0)
-      setDisplayedIndex(newIndex)
-      onNavigate(newIndex)
-      
-      setTimeout(() => {
-        setIsTransitioning(false)
-      }, 50)
-    }, 150)
-  }
-
   const handleDownload = async () => {
     try {
       if (currentImage?.id) {
@@ -265,14 +286,6 @@ export function ImageLightbox({
   const formatDimensions = (width?: number, height?: number) => {
     if (!width || !height) return ""
     return `${width} × ${height} px`
-  }
-
-  const handlePrev = () => {
-    navigateWithAnimation('prev')
-  }
-
-  const handleNext = () => {
-    navigateWithAnimation('next')
   }
 
   const handleShare = async () => {
@@ -318,6 +331,9 @@ export function ImageLightbox({
   if (!isOpen || !currentImage) return null
 
   const displayedImage = images[displayedIndex]
+  
+  // Check if viewing from player gallery (has currentPlayerId and galleryTitle)
+  const isPlayerGalleryView = !!currentPlayerId && !!currentImage.galleryTitle
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
@@ -342,14 +358,17 @@ export function ImageLightbox({
           {currentIndex + 1} / {images.length}
         </div>
         
-        {/* Photo counter - TOP CENTER on desktop */}
+        {/* Photo counter and file info - TOP CENTER on desktop */}
         <div 
           className={cn(
-            "absolute top-4 left-1/2 -translate-x-1/2 md:block hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200",
+            "absolute top-4 left-1/2 -translate-x-1/2 md:flex hidden flex-col items-center gap-1 transition-opacity duration-200 z-20",
             hideUI && "opacity-0 pointer-events-none"
           )}
         >
-          {currentIndex + 1} / {images.length}
+          {/* Counter */}
+          <div className="bg-black/70 text-white px-4 py-2 rounded-full text-sm">
+            {currentIndex + 1} / {images.length}
+          </div>
         </div>
 
         {/* Verified people names - BOTTOM LEFT on mobile */}
@@ -485,30 +504,33 @@ export function ImageLightbox({
           key={displayedIndex}
           src={displayedImage?.url || "/placeholder.svg"}
           alt={displayedImage?.alt || ""}
-          className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain"
+          className="max-w-[95vw] max-h-[85vh] w-auto h-auto object-contain"
           style={getImageStyle()}
         />
 
-        {/* File info - BOTTOM CENTER on desktop */}
+        {/* File info - BOTTOM CENTER on desktop - multi-line support */}
         <div 
           className={cn(
-            "absolute bottom-4 left-1/2 -translate-x-1/2 md:block hidden bg-black/70 text-white px-4 py-2 rounded-full text-sm transition-opacity duration-200 z-20",
+            "absolute bottom-4 left-1/2 -translate-x-1/2 md:flex hidden flex-col items-center gap-1 max-w-[90vw] transition-opacity duration-200 z-20",
             hideUI && "opacity-0 pointer-events-none"
           )}
         >
-          {currentImage.filename || `image-${currentIndex + 1}.jpg`}
-          {currentPlayerId && currentImage.galleryTitle && (
-            <>
-              {" | "}
+          {/* Line 1: Gallery title (if from player gallery) */}
+          {isPlayerGalleryView && (
+            <div className="bg-black/70 text-white px-4 py-2 rounded-full text-sm text-center">
               {currentImage.galleryTitle}
               {currentImage.galleryDate && ` ${formatDateDDMM(currentImage.galleryDate)}`}
-            </>
+            </div>
           )}
-          {formatDimensions(currentImage.width, currentImage.height) && (
-            <> | {formatDimensions(currentImage.width, currentImage.height)}</>
-          )}
-          {" | "}
-          {formatFileSize(currentImage.fileSize)}
+          {/* Line 2: Filename and file info */}
+          <div className="bg-black/70 text-white px-4 py-2 rounded-full text-sm text-center whitespace-nowrap">
+            {currentImage.filename || `image-${currentIndex + 1}.jpg`}
+            {formatDimensions(currentImage.width, currentImage.height) && (
+              <> | {formatDimensions(currentImage.width, currentImage.height)}</>
+            )}
+            {" | "}
+            {formatFileSize(currentImage.fileSize)}
+          </div>
         </div>
         
         {/* Filename - BOTTOM RIGHT on mobile - hidden by default, shown when hideUI is true */}
