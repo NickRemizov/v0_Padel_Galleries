@@ -16,6 +16,7 @@ import { AddPersonDialog } from "./add-person-dialog"
 import { processPhotoAction, batchVerifyFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 import { APP_VERSION } from "@/lib/version"
+import type { BoundingBox } from "@/lib/avatar-utils"
 
 interface FaceTaggingDialogProps {
   imageId: string
@@ -56,6 +57,7 @@ export function FaceTaggingDialog({
   const [detailedFaces, setDetailedFaces] = useState<DetailedFace[]>([])
   const [hasRedetectedData, setHasRedetectedData] = useState(false)
   const [personSelectOpen, setPersonSelectOpen] = useState(false)
+  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
@@ -79,6 +81,24 @@ export function FaceTaggingDialog({
   useEffect(() => {
     taggedFacesRef.current = taggedFaces
   }, [taggedFaces])
+
+  // Load auto_avatar_on_create setting
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const response = await fetch("/api/admin/training/config")
+        if (response.ok) {
+          const config = await response.json()
+          setAutoAvatarEnabled(config.auto_avatar_on_create ?? true)
+        }
+      } catch (error) {
+        console.error("[FaceTaggingDialog] Error loading config:", error)
+      }
+    }
+    if (open) {
+      loadConfig()
+    }
+  }, [open])
 
   const getDisplayFileName = useCallback(() => {
     try {
@@ -444,6 +464,14 @@ export function FaceTaggingDialog({
     setPersonSelectOpen(false)
   }
 
+  // Get bbox for selected face (for auto-avatar)
+  const getSelectedFaceBbox = useCallback((): BoundingBox | undefined => {
+    if (selectedFaceIndex === null) return undefined
+    const face = taggedFaces[selectedFaceIndex]
+    if (!face?.face?.boundingBox) return undefined
+    return face.face.boundingBox as BoundingBox
+  }, [selectedFaceIndex, taggedFaces])
+
   // Handle new person created - auto-assign to active or first unassigned face
   function handlePersonCreated(personId: string, personName: string) {
     setShowAddPerson(false)
@@ -625,6 +653,7 @@ export function FaceTaggingDialog({
 
   // Get selected face for person selector
   const selectedFace = selectedFaceIndex !== null ? taggedFaces[selectedFaceIndex] : null
+  const selectedFaceBbox = getSelectedFaceBbox()
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -958,10 +987,14 @@ export function FaceTaggingDialog({
           </div>
         </div>
       </DialogContent>
+      {/* v1.1.0: Pass face data for auto-avatar generation */}
       <AddPersonDialog 
         open={showAddPerson} 
         onOpenChange={setShowAddPerson}
         onPersonCreated={handlePersonCreated}
+        faceImageUrl={imageUrl}
+        faceBbox={selectedFaceBbox}
+        autoAvatarEnabled={autoAvatarEnabled}
       />
       <FaceRecognitionDetailsDialog
         open={showDetailsDialog}
