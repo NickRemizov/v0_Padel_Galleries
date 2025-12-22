@@ -1,22 +1,7 @@
 # Схема базы данных Padel Galleries
 
 **Дата обновления:** 22.12.2025  
-**Версия:** 3.8 (Renamed insightface_confidence → insightface_det_score)
-
----
-
-## ✅ LEGACY ПОЛЯ ПЕРЕИМЕНОВАНЫ
-
-Миграция выполнена 14.12.2025. Legacy поля переименованы в `*_DEPRECATED`:
-
-| Было | Стало | Использовать |
-|------|-------|--------------|
-| `face_descriptors` | `face_descriptors_DEPRECATED` | `photo_faces.insightface_descriptor` |
-| `photo_faces.bounding_box` | `bounding_box_DEPRECATED` | `photo_faces.insightface_bbox` |
-| `photo_faces.confidence` | `confidence_DEPRECATED` | `photo_faces.insightface_det_score` |
-| `photo_faces.insightface_confidence` | `insightface_confidence_DEPRECATED` | `photo_faces.insightface_det_score` |
-
-**Любая попытка использовать старые имена вызовет ошибку** — это защита от случайного использования.
+**Версия:** 3.9 (Removed deprecated fields from documentation)
 
 ---
 
@@ -190,9 +175,6 @@ WHERE g.id = 'gallery_uuid';
 | `training_context` | jsonb | YES | Контекст обучения |
 | `created_at` | timestamptz | YES | Дата создания |
 | `updated_at` | timestamptz | YES | Дата обновления |
-| `bounding_box_DEPRECATED` | jsonb | YES | ⛔ НЕ ИСПОЛЬЗОВАТЬ → `insightface_bbox` |
-| `confidence_DEPRECATED` | double | YES | ⛔ НЕ ИСПОЛЬЗОВАТЬ → `insightface_det_score` |
-| `insightface_confidence_DEPRECATED` | double | YES | ⛔ НЕ ИСПОЛЬЗОВАТЬ → `insightface_det_score` |
 
 **Связи:**
 - `photo_id` → `gallery_images.id`
@@ -225,22 +207,6 @@ FROM photo_faces
 WHERE person_id = 'xxx' 
   AND insightface_descriptor IS NOT NULL;
 ```
-
----
-
-### face_descriptors_DEPRECATED ⛔ НЕ ИСПОЛЬЗОВАТЬ
-
-> **Таблица переименована 14.12.2025. Будет удалена после 01.02.2025.**
-> 
-> Все данные в `photo_faces.insightface_descriptor`.
-
-| Поле | Тип | NULL | Описание |
-|------|-----|------|----------|
-| `id` | uuid | NO | Первичный ключ |
-| `source_image_id` | uuid | YES | FK → gallery_images.id |
-| `person_id` | uuid | NO | FK → people.id |
-| `descriptor` | jsonb | NO | ~~512-мерный вектор~~ DEPRECATED |
-| `created_at` | timestamptz | YES | Дата создания |
 
 ---
 
@@ -711,14 +677,6 @@ ALTER TABLE organizers ADD COLUMN person_id UUID REFERENCES people(id);
 ALTER TABLE photographers ADD COLUMN person_id UUID REFERENCES people(id);
 ```
 
-### 🔜 Удаление DEPRECATED (после 01.02.2025)
-```sql
-DROP TABLE face_descriptors_DEPRECATED;
-ALTER TABLE photo_faces DROP COLUMN bounding_box_DEPRECATED;
-ALTER TABLE photo_faces DROP COLUMN confidence_DEPRECATED;
-ALTER TABLE photo_faces DROP COLUMN insightface_confidence_DEPRECATED;
-```
-
 ---
 
 ## Миграции (выполненные)
@@ -762,14 +720,6 @@ CREATE INDEX idx_people_gmail ON people(gmail) WHERE gmail IS NOT NULL;
 -- telegram_profile_url очищено (будет заполняться ботом)
 ```
 
-### 14.12.2025 — Переименование legacy в DEPRECATED ✅
-```sql
--- Файл: migrations/20241214_rename_legacy_to_deprecated.sql
-ALTER TABLE face_descriptors RENAME TO face_descriptors_DEPRECATED;
-ALTER TABLE photo_faces RENAME COLUMN bounding_box TO bounding_box_DEPRECATED;
-ALTER TABLE photo_faces RENAME COLUMN confidence TO confidence_DEPRECATED;
-```
-
 ### Добавление нового города
 ```sql
 INSERT INTO cities (name, slug, country) 
@@ -794,6 +744,13 @@ VALUES
 ---
 
 ## История изменений
+
+### v3.9 (22.12.2025) — Cleanup deprecated documentation ✅
+- **УДАЛЕНО:** Все упоминания deprecated полей из документации
+- **УДАЛЕНА:** Секция "Legacy поля переименованы"
+- **УДАЛЕНА:** Таблица face_descriptors_DEPRECATED из документации
+- **УДАЛЕНА:** Планируемая миграция удаления deprecated
+- **Цель:** Исключить возможность случайного использования deprecated полей
 
 ### v3.8 (22.12.2025) — Renamed insightface_confidence → insightface_det_score ✅
 - **ПЕРЕИМЕНОВАНО:** `photo_faces.insightface_confidence` → `insightface_confidence_DEPRECATED`
@@ -847,14 +804,10 @@ VALUES
 - UI: "Рейтинг" → "Уровень в падел"
 
 ### v3.3 (14.12.2025) — Legacy renamed to DEPRECATED ✅
-- **ВЫПОЛНЕНО:** `face_descriptors` → `face_descriptors_DEPRECATED`
-- **ВЫПОЛНЕНО:** `photo_faces.bounding_box` → `bounding_box_DEPRECATED`
-- **ВЫПОЛНЕНО:** `photo_faces.confidence` → `confidence_DEPRECATED`
-- Код обновлён для совместимости с обоими именами
+- Поля legacy переименованы в *_DEPRECATED для защиты от случайного использования
 
 ### v3.2 (14.12.2025) — Legacy cleanup
 - Добавлено предупреждение о legacy полях
-- Документировано что `face_descriptors` - DEPRECATED
 - Добавлены поля `width`, `height` в `gallery_images`
 - Добавлены поля профилей в `people`
 
