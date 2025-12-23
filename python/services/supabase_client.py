@@ -260,7 +260,7 @@ class SupabaseClient:
         self,
         face_id: str,
         descriptor: np.ndarray,
-        confidence: float,
+        det_score: float,
         bbox: Dict,
         training_context: Dict
     ):
@@ -270,8 +270,8 @@ class SupabaseClient:
         try:
             descriptor_list = descriptor.tolist() if isinstance(descriptor, np.ndarray) else descriptor
             
-            # Convert confidence to native Python float
-            confidence_float = float(confidence)
+            # Convert det_score to native Python float
+            det_score_float = float(det_score)
             
             # Convert bbox values to native Python types
             bbox_clean = {}
@@ -293,7 +293,7 @@ class SupabaseClient:
             
             update_data = {
                 "insightface_descriptor": descriptor_list,
-                "insightface_confidence": confidence_float,
+                "insightface_det_score": det_score_float,
                 "insightface_bbox": bbox_clean,
                 "training_used": True,
                 "training_context": training_context_clean
@@ -508,7 +508,7 @@ class SupabaseClient:
             
             # Теперь получаем ВСЕ лица из этих фото где person_id = NULL
             response = self.client.table("photo_faces").select(
-                "id, photo_id, insightface_descriptor, insightface_bbox, insightface_confidence, "
+                "id, photo_id, insightface_descriptor, insightface_bbox, insightface_det_score, "
                 "gallery_images(id, image_url, width, height, gallery_id)"
             ).in_("photo_id", photo_ids).is_("person_id", "null").execute()
             
@@ -538,7 +538,7 @@ class SupabaseClient:
                     "height": photo.get("height"),
                     "insightface_descriptor": face["insightface_descriptor"],
                     "insightface_bbox": face["insightface_bbox"],
-                    "insightface_confidence": face["insightface_confidence"]
+                    "insightface_det_score": face.get("insightface_det_score")
                 })
             
             return filtered_faces
@@ -562,7 +562,7 @@ class SupabaseClient:
             
             # Получаем все лица с person_id = NULL, включая информацию о галерее
             response = self.client.table("photo_faces").select(
-                "id, photo_id, insightface_descriptor, insightface_bbox, insightface_confidence, "
+                "id, photo_id, insightface_descriptor, insightface_bbox, insightface_det_score, "
                 "gallery_images(id, image_url, width, height, gallery_id, "
                 "galleries(id, title, shoot_date))"
             ).is_("person_id", "null").execute()
@@ -598,7 +598,7 @@ class SupabaseClient:
                     "height": photo.get("height"),
                     "insightface_descriptor": face["insightface_descriptor"],
                     "insightface_bbox": face["insightface_bbox"],
-                    "insightface_confidence": face["insightface_confidence"],
+                    "insightface_det_score": face.get("insightface_det_score"),
                     "gallery_id": photo.get("gallery_id"),
                     "gallery_title": gallery.get("title"),
                     "shoot_date": gallery.get("shoot_date")
