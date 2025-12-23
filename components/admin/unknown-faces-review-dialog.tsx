@@ -166,7 +166,7 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogContent className="sm:max-w-[900px] h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>Неизвестные лица - кластеризация</DialogTitle>
             <DialogDescription>
