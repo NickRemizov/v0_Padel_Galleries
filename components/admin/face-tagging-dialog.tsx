@@ -58,6 +58,7 @@ export function FaceTaggingDialog({
   const [hasRedetectedData, setHasRedetectedData] = useState(false)
   const [personSelectOpen, setPersonSelectOpen] = useState(false)
   const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
+  const [isLandscape, setIsLandscape] = useState(false)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
@@ -781,13 +782,21 @@ export function FaceTaggingDialog({
                   crossOrigin="anonymous"
                   onLoad={() => {
                     console.log(`[${APP_VERSION}] Image loaded for ${imageId}`)
+                    const img = imageRef.current
+                    if (img) {
+                      setIsLandscape(img.naturalWidth > img.naturalHeight)
+                    }
                     setImageLoaded(true)
                   }}
                 />
                 <canvas
                   ref={canvasRef}
-                  className={`w-full cursor-pointer ${
-                    imageFitMode === "contain" ? "object-contain h-full" : "object-cover"
+                  className={`cursor-pointer ${
+                    imageFitMode === "contain" 
+                      ? "w-full h-full object-contain" 
+                      : isLandscape 
+                        ? "h-full w-auto" 
+                        : "w-full h-auto"
                   }`}
                   onClick={(e) => {
                     const canvas = canvasRef.current
