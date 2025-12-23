@@ -111,7 +111,7 @@ async def _calculate_people_stats(people: list, supabase_db: SupabaseDatabase) -
         return people
 
 
-@router.get("/")
+@router.get("")
 async def get_people(
     with_stats: bool = Query(False),
     supabase_db: SupabaseDatabase = Depends(get_supabase_db)
@@ -149,7 +149,7 @@ async def get_person(
         raise DatabaseError(str(e), operation="get_person")
 
 
-@router.post("/")
+@router.post("")
 async def create_person(
     data: PersonCreate,
     supabase_db: SupabaseDatabase = Depends(get_supabase_db)
