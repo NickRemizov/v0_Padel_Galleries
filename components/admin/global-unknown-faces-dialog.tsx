@@ -52,6 +52,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
   const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
+  const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -60,6 +61,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
       loadConfig()
       setRemovedFaces(new Set())
       setCurrentClusterIndex(0)
+      setMinGridHeight(null)
     }
   }, [open])
 
@@ -89,9 +91,20 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
       console.log("[GlobalUnknownFaces] Result:", result)
 
       if (result.success && result.data) {
-        setClusters(result.data.clusters || [])
+        const loadedClusters = result.data.clusters || []
+        setClusters(loadedClusters)
         setCurrentClusterIndex(0)
-        console.log("[GlobalUnknownFaces] Loaded", result.data.clusters?.length || 0, "clusters")
+        console.log("[GlobalUnknownFaces] Loaded", loadedClusters.length, "clusters")
+        
+        // Calculate minHeight based on largest cluster
+        if (loadedClusters.length > 0) {
+          const maxFaces = Math.max(...loadedClusters.map(c => c.faces.length))
+          const rows = Math.ceil(maxFaces / 4) // 4 columns
+          // Each row: ~200px (aspect-square) + 24px (text) + 16px (gap)
+          const calculatedHeight = rows * 240
+          setMinGridHeight(calculatedHeight)
+          console.log("[GlobalUnknownFaces] Max faces:", maxFaces, "rows:", rows, "minHeight:", calculatedHeight)
+        }
       }
     } catch (error) {
       console.error("[GlobalUnknownFaces] Error loading clusters:", error)
@@ -235,7 +248,10 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
           ) : currentCluster ? (
             <>
               <div className="flex-1 overflow-y-auto pr-2">
-                <div className="grid grid-cols-4 gap-4">
+                <div 
+                  className="grid grid-cols-4 gap-4"
+                  style={{ minHeight: minGridHeight ? `${minGridHeight}px` : undefined }}
+                >
                   {visibleFaces.map((face, index) => (
                     <div key={face.id} className="relative">
                       <div className={`aspect-square rounded-lg overflow-hidden border ${
