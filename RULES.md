@@ -34,28 +34,28 @@
 ### 5. FRONTEND ↔ BACKEND ↔ DATABASE
 Фронтенд общается **ТОЛЬКО через бэкенд API**, никогда напрямую с базой данных.
 
-```
+\`\`\`
 Frontend (Vercel) → Backend API (FastAPI) → Supabase
-```
+\`\`\`
 
 ### 6. ЕДИНЫЙ ФОРМАТ ОТВЕТОВ
 Все эндпоинты бэкенда возвращают `ApiResponse`:
-```json
+\`\`\`json
 {
   "success": true,
   "data": { ... },
   "error": null
 }
-```
+\`\`\`
 
 ### 7. ФРОНТЕНД ЧИТАЕТ ИЗ `result.data`
-```typescript
+\`\`\`typescript
 // ПРАВИЛЬНО:
 const clusters = result.data?.clusters || []
 
 // НЕПРАВИЛЬНО:
 const clusters = result.clusters || []
-```
+\`\`\`
 
 ### 8. SINGLE SOURCE OF TRUTH
 Одна точка истины для каждой сущности. Не дублировать данные.
@@ -73,9 +73,9 @@ const clusters = result.clusters || []
 3. Составить полный список → показать → получить согласие → менять всё
 
 ### 10. ПОСЛЕ ИЗМЕНЕНИЙ — ПРОВЕРКА
-```bash
+\`\`\`bash
 cd ~/python && git pull && ./restart.sh
-```
+\`\`\`
 Затем тестировать изменённый функционал.
 
 ---
