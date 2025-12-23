@@ -8,6 +8,9 @@ Features:
 - ApiResponse format
 - DB config for quality filters and threshold
 - Adaptive early exit algorithm support
+
+v2.0: process-photo is READ-ONLY for navigation (no DB writes, no index rebuild)
+      DB changes happen only in batch-verify when user clicks Save
 """
 
 from fastapi import APIRouter, Depends
@@ -151,7 +154,12 @@ async def process_photo(
 ):
     """
     Process photo for face detection and recognition.
-    Always uses DB config for quality filters and threshold.
+    
+    v2.0: READ-ONLY for existing photos (navigation).
+    - Case 1 (new photo): Detect faces, save descriptors, recognize candidates
+    - Case 2 (existing photo): Just load faces and compute candidates (NO DB writes, NO rebuild)
+    
+    DB changes and index rebuild happen ONLY in batch-verify when user clicks Save.
     """
     try:
         # Load config from DB
@@ -188,9 +196,9 @@ async def process_photo(
         existing_faces = existing_result.data or []
         logger.info(f"[v{VERSION}] Found {len(existing_faces)} existing faces in DB")
         
-        # Track if we need to rebuild index
-        index_rebuilt = False
-        
+        # ========================================================================
+        # CASE 1: New photo - detect faces and save descriptors
+        # ========================================================================
         if len(existing_faces) == 0:
             logger.info(f"[v{VERSION}] Case 1: New photo - detecting faces")
             
@@ -219,7 +227,7 @@ async def process_photo(
                 det_score = float(face["det_score"])
                 blur_score = float(face.get("blur_score", 0))
                 
-                # Use DB threshold for recognition
+                # Use DB threshold for recognition (find candidate)
                 person_id, rec_confidence = await face_service.recognize_face(
                     embedding, 
                     confidence_threshold=db_confidence_threshold
@@ -230,15 +238,16 @@ async def process_photo(
                 # Get metrics for details dialog
                 distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
                 
-                # Save to DB
+                # Save to DB - save descriptor and candidate person_id
+                # Note: verified=False, so this won't affect index until user confirms
                 insert_data = {
                     "photo_id": request.photo_id,
-                    "person_id": person_id,
+                    "person_id": person_id,  # Candidate (not verified)
                     "insightface_bbox": bbox,
                     "insightface_det_score": det_score,
                     "blur_score": blur_score,
                     "recognition_confidence": rec_confidence,
-                    "verified": False,
+                    "verified": False,  # Not verified until user confirms
                     "insightface_descriptor": f"[{','.join(map(str, embedding.tolist()))}]",
                 }
                 
@@ -255,17 +264,9 @@ async def process_photo(
             
             logger.info(f"[v{VERSION}] ✓ Saved {len(saved_faces)} faces")
             
-            # Rebuild index if any face has person_id
-            faces_with_person = [f for f in saved_faces if f.get("person_id")]
-            if len(faces_with_person) > 0:
-                try:
-                    logger.info(f"[v{VERSION}] Rebuilding index ({len(faces_with_person)} recognized faces)...")
-                    rebuild_result = await face_service.rebuild_players_index()
-                    if rebuild_result.get("success"):
-                        index_rebuilt = True
-                        logger.info(f"[v{VERSION}] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
-                except Exception as index_error:
-                    logger.error(f"[v{VERSION}] Error rebuilding index: {index_error}")
+            # v2.0: NO INDEX REBUILD here!
+            # Rebuild happens in batch-verify when user confirms assignments
+            # These faces have verified=False, so they shouldn't be in index anyway
             
             # Build response
             response_faces = []
@@ -288,90 +289,45 @@ async def process_photo(
                     "distance_to_nearest": metrics.get("distance_to_nearest"),
                     "top_matches": metrics.get("top_matches", []),
                     "people": person_data,
-                    "index_rebuilt": index_rebuilt,
+                    "index_rebuilt": False,  # v2.0: Never rebuild on navigation
                 })
             
             logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST END")
             logger.info("=" * 80)
             
-            return {"success": True, "data": response_faces, "error": None, "index_rebuilt": index_rebuilt}
+            return {"success": True, "data": response_faces, "error": None, "index_rebuilt": False}
         
-        logger.info(f"[v{VERSION}] Case 2: Existing faces - checking for unverified")
-        
-        unverified_faces = [f for f in existing_faces if not f["person_id"] or not f["verified"]]
-        logger.info(f"[v{VERSION}] Found {len(unverified_faces)} unverified faces")
+        # ========================================================================
+        # CASE 2: Existing faces - READ ONLY (no DB writes, no rebuild)
+        # ========================================================================
+        logger.info(f"[v{VERSION}] Case 2: Existing faces - READ ONLY mode")
         
         face_metrics = {}
-        faces_updated = False
         
-        if len(unverified_faces) > 0:
-            logger.info(f"[v{VERSION}] Recognizing {len(unverified_faces)} unverified faces")
-            
-            for face in unverified_faces:
-                descriptor = face["insightface_descriptor"]
-                if not descriptor:
-                    continue
-                
-                if isinstance(descriptor, str):
-                    embedding = np.array(json.loads(descriptor), dtype=np.float32)
-                elif isinstance(descriptor, list):
-                    embedding = np.array(descriptor, dtype=np.float32)
-                else:
-                    continue
-                
-                distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
-                face_metrics[face["id"]] = {
-                    "distance_to_nearest": distance_to_nearest,
-                    "top_matches": top_matches,
-                }
-                
-                # Use DB threshold
-                person_id, rec_confidence = await face_service.recognize_face(
-                    embedding, 
-                    confidence_threshold=db_confidence_threshold
-                )
-                
-                if person_id and rec_confidence:
-                    logger.info(f"[v{VERSION}] Face {face['id']}: person_id={person_id}, confidence={rec_confidence}")
-                    
-                    supabase_client.client.table("photo_faces").update({
-                        "person_id": person_id,
-                        "recognition_confidence": rec_confidence,
-                    }).eq("id", face["id"]).execute()
-                    
-                    faces_updated = True
-                    logger.info(f"[v{VERSION}] ✓ Updated face {face['id']}")
-        
-        # Get metrics for verified faces
+        # Compute recognition candidates for display (but don't save to DB!)
         for face in existing_faces:
-            if face["id"] not in face_metrics:
-                descriptor = face.get("insightface_descriptor")
-                if descriptor:
-                    if isinstance(descriptor, str):
-                        embedding = np.array(json.loads(descriptor), dtype=np.float32)
-                    elif isinstance(descriptor, list):
-                        embedding = np.array(descriptor, dtype=np.float32)
-                    else:
-                        continue
-                    
-                    distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
-                    face_metrics[face["id"]] = {
-                        "distance_to_nearest": distance_to_nearest,
-                        "top_matches": top_matches,
-                    }
+            descriptor = face.get("insightface_descriptor")
+            if not descriptor:
+                continue
+            
+            if isinstance(descriptor, str):
+                embedding = np.array(json.loads(descriptor), dtype=np.float32)
+            elif isinstance(descriptor, list):
+                embedding = np.array(descriptor, dtype=np.float32)
+            else:
+                continue
+            
+            # Get metrics for display
+            distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
+            face_metrics[face["id"]] = {
+                "distance_to_nearest": distance_to_nearest,
+                "top_matches": top_matches,
+            }
+            
+            # v2.0: NO DB UPDATE here!
+            # We just compute candidates for display, actual assignment happens in batch-verify
         
-        # Rebuild index if faces were updated
-        if faces_updated:
-            try:
-                logger.info(f"[v{VERSION}] Rebuilding index after updating faces...")
-                rebuild_result = await face_service.rebuild_players_index()
-                if rebuild_result.get("success"):
-                    index_rebuilt = True
-                    logger.info(f"[v{VERSION}] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
-            except Exception as index_error:
-                logger.error(f"[v{VERSION}] Error rebuilding index: {index_error}")
-        
-        # Load all faces
+        # Load faces with people data
         final_result = supabase_client.client.table("photo_faces").select(
             "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_det_score, blur_score, people(id, real_name, telegram_name)"
         ).eq("photo_id", request.photo_id).execute()
@@ -384,14 +340,14 @@ async def process_photo(
                 "blur_score": face.get("blur_score") or metrics.get("blur_score"),
                 "distance_to_nearest": metrics.get("distance_to_nearest"),
                 "top_matches": metrics.get("top_matches", []),
-                "index_rebuilt": index_rebuilt,
+                "index_rebuilt": False,  # v2.0: Never rebuild on navigation
             })
         
-        logger.info(f"[v{VERSION}] ✓ Returning {len(response_faces)} faces, index_rebuilt={index_rebuilt}")
+        logger.info(f"[v{VERSION}] ✓ Returning {len(response_faces)} faces (READ ONLY, no DB changes)")
         logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST END")
         logger.info("=" * 80)
         
-        return {"success": True, "data": response_faces, "error": None, "index_rebuilt": index_rebuilt}
+        return {"success": True, "data": response_faces, "error": None, "index_rebuilt": False}
         
     except PhotoNotFoundError:
         raise
