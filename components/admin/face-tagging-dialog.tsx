@@ -786,8 +786,8 @@ export function FaceTaggingDialog({
                 />
                 <canvas
                   ref={canvasRef}
-                  className={`w-full h-full cursor-pointer ${
-                    imageFitMode === "contain" ? "object-contain" : "object-cover"
+                  className={`w-full cursor-pointer ${
+                    imageFitMode === "contain" ? "object-contain h-full" : "object-cover"
                   }`}
                   onClick={(e) => {
                     const canvas = canvasRef.current
