@@ -231,7 +231,7 @@ async def regenerate_missing_descriptors(
                             embedding = best_match["embedding"].tolist()
                             supabase_client.client.table("photo_faces").update({
                                 "insightface_descriptor": embedding,
-                                "insightface_det_score": float(best_match["det_score"]),
+                                "insightface_confidence": float(best_match["det_score"]),
                             }).eq("id", missing_face["id"]).execute()
                             
                             regenerated += 1
@@ -315,7 +315,7 @@ async def regenerate_single_descriptor(
         embedding = best_match["embedding"].tolist()
         supabase_client.client.table("photo_faces").update({
             "insightface_descriptor": embedding,
-            "insightface_det_score": float(best_match["det_score"]),
+            "insightface_confidence": float(best_match["det_score"]),
         }).eq("id", face_id).execute()
         
         logger.info(f"[v{VERSION}] ✓ Regenerated {face_id} (IoU: {best_iou:.2f})")
@@ -419,7 +419,7 @@ async def regenerate_unknown_descriptors(
                     descriptor_str = f"[{','.join(map(str, descriptor))}]"
                     supabase_client.client.table("photo_faces").update({
                         "insightface_descriptor": descriptor_str,
-                        "insightface_det_score": float(best_match["det_score"])
+                        "insightface_confidence": float(best_match["det_score"])
                     }).eq("id", face_id).execute()
                     
                     regenerated += 1
