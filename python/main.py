@@ -50,6 +50,7 @@ app = FastAPI(
     version=VERSION,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
+    redirect_slashes=False,  # Don't redirect /api/people to /api/people/
 )
 
 # ============================================================
