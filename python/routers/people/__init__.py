@@ -87,12 +87,13 @@ from .avatar import router as avatar_router
 from .consistency import router as consistency_router
 from .outliers import router as outliers_router
 
-# Include all sub-routers
-router.include_router(crud_router)
-router.include_router(photos_router)
-router.include_router(avatar_router)
-router.include_router(consistency_router)
-router.include_router(outliers_router)
+# IMPORTANT: Include STATIC routes BEFORE dynamic routes with {id}
+# Otherwise FastAPI will try to match "consistency-audit" as {id} UUID
+router.include_router(consistency_router)  # /consistency-audit, /{id}/embedding-consistency
+router.include_router(outliers_router)     # /audit-all-embeddings, /{id}/clear-outliers
+router.include_router(crud_router)         # /, /{id} - MUST BE LAST (has catch-all {id})
+router.include_router(photos_router)       # /{id}/photos, /{id}/photos-with-details
+router.include_router(avatar_router)       # /{id}/avatar
 
 # Export for main.py
 __all__ = ["router", "set_services"]
