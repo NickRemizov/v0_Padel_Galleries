@@ -10,6 +10,7 @@ v4.4: Added clear-descriptor endpoint for outlier removal
 v4.5: Added set-excluded endpoint for excluded_from_index flag
 v4.6: Fixed excluded_from_index auto-reset on person_id change
 v4.7: Added batch-assign endpoint for cluster assignment with index rebuild
+v4.8: Optimized batch-verify - rebuild index only when person_id changes (not just verification)
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -477,7 +478,8 @@ async def batch_verify_faces(
     """
     Batch verify faces: update kept faces and delete removed ones.
     
-    v4.0: Always rebuild index if faces were deleted OR updated with person_id
+    v4.8: Optimized - rebuild index ONLY when person_id changes or faces deleted.
+    Just verification (verified: false -> true) without person_id change does NOT trigger rebuild.
     """
     try:
         logger.info(f"[batch-verify] START photo={request.photo_id}, faces={len(request.kept_faces)}")
@@ -512,21 +514,24 @@ async def batch_verify_faces(
         if to_delete:
             logger.info(f"[batch-verify] Deleted {len(to_delete)} faces, had_descriptors={deleted_faces_had_descriptors}")
         
-        # Update kept faces
+        # Update kept faces - track person_id changes for index rebuild decision
         updated_count = 0
         failed_count = 0
-        any_has_person_id = False
+        person_id_changed_with_descriptor = False  # v4.8: track if any face with descriptor had person_id change
         
         for face in request.kept_faces:
             if not face.id:
                 continue
-                
-            if face.person_id:
-                any_has_person_id = True
             
-            # Check if person_id is changing - reset excluded_from_index if so
+            # Check if person_id is changing
             current_face = next((f for f in existing_faces if f["id"] == face.id), None)
             current_person_id = current_face.get("person_id") if current_face else None
+            has_descriptor = current_face.get("insightface_descriptor") is not None if current_face else False
+            
+            # Track person_id changes for faces WITH descriptors (affects index)
+            if face.person_id != current_person_id and has_descriptor:
+                person_id_changed_with_descriptor = True
+                logger.info(f"[batch-verify] Face {face.id} person_id changed: {current_person_id} -> {face.person_id} (has descriptor)")
             
             update_data = {
                 "person_id": face.person_id,
@@ -551,15 +556,15 @@ async def batch_verify_faces(
         
         logger.info(f"[batch-verify] Update summary: {updated_count} succeeded, {failed_count} failed")
         
-        # Rebuild index if:
+        # Rebuild index ONLY if:
         # 1. Any deleted faces had descriptors (need to remove from index)
-        # 2. Any kept faces have person_id (need to update in index)
-        need_rebuild = deleted_faces_had_descriptors or any_has_person_id
+        # 2. Any kept faces WITH DESCRIPTORS had person_id CHANGED
+        # v4.8: Don't rebuild just for verification (verified: false -> true) without person_id change
+        need_rebuild = deleted_faces_had_descriptors or person_id_changed_with_descriptor
         
         index_rebuilt = False
         if need_rebuild:
-            faces_with_person = [f for f in request.kept_faces if f.person_id]
-            logger.info(f"[batch-verify] Rebuilding index: deleted_had_descriptors={deleted_faces_had_descriptors}, faces_with_person={len(faces_with_person)}")
+            logger.info(f"[batch-verify] Rebuilding index: deleted_had_descriptors={deleted_faces_had_descriptors}, person_id_changed={person_id_changed_with_descriptor}")
             try:
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
@@ -570,7 +575,7 @@ async def batch_verify_faces(
             except Exception as index_error:
                 logger.error(f"[batch-verify] ✗ Index rebuild exception: {index_error}")
         else:
-            logger.info("[batch-verify] No index rebuild needed")
+            logger.info("[batch-verify] No index rebuild needed (no person_id changes with descriptors)")
         
         result = {
             "verified": all(f.person_id for f in request.kept_faces) if request.kept_faces else False,
