@@ -30,6 +30,7 @@ interface ClusterFace {
     width: number
     height: number
   }
+  original_filename?: string
   gallery_id?: string
   gallery_title?: string
   shoot_date?: string
@@ -194,18 +195,6 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
     setRemovedFaces((prev) => new Set(prev).add(faceId))
   }
 
-  function formatDate(dateStr: string | null | undefined): string {
-    if (!dateStr) return ""
-    try {
-      const date = new Date(dateStr)
-      const day = date.getDate().toString().padStart(2, "0")
-      const month = (date.getMonth() + 1).toString().padStart(2, "0")
-      return `${day}.${month}`
-    } catch {
-      return ""
-    }
-  }
-
   const currentCluster = clusters[currentClusterIndex]
   const hasPreviousCluster = currentClusterIndex > 0
   const hasNextCluster = currentClusterIndex + 1 < clusters.length
@@ -214,7 +203,7 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogContent className="sm:max-w-[900px] h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>Неизвестные лица - кластеризация</DialogTitle>
             <DialogDescription>
@@ -256,8 +245,7 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
                         {index === 0 && (
                           <span className="text-primary font-medium">★ </span>
                         )}
-                        {face.gallery_title}
-                        {face.shoot_date && ` ${formatDate(face.shoot_date)}`}
+                        {face.original_filename || "—"}
                         {face.distance_to_centroid !== undefined && (
                           <span className="ml-1 opacity-60">({face.distance_to_centroid.toFixed(2)})</span>
                         )}
