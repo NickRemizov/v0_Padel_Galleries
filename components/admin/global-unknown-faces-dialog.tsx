@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, X, Trash2 } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, X, Trash2, Star } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -53,6 +54,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
   const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
+  const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -61,6 +63,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
       loadConfig()
       setRemovedFaces(new Set())
       setCurrentClusterIndex(0)
+      setMinGridHeight(null)
     }
   }, [open])
 
@@ -94,6 +97,15 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
         setClusters(loadedClusters)
         setCurrentClusterIndex(0)
         console.log("[GlobalUnknownFaces] Loaded", loadedClusters.length, "clusters")
+        
+        // Calculate minHeight based on largest cluster (first one, sorted by size)
+        if (loadedClusters.length > 0) {
+          const maxFaces = loadedClusters[0].faces.length
+          const rows = Math.ceil(maxFaces / 4)
+          // Each row: ~200px (aspect-square) + 16px gap
+          const calculatedHeight = rows * 216
+          setMinGridHeight(calculatedHeight)
+        }
       }
     } catch (error) {
       console.error("[GlobalUnknownFaces] Error loading clusters:", error)
@@ -221,6 +233,33 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     setRemovedFaces((prev) => new Set(prev).add(faceId))
   }
 
+  function formatDate(dateStr: string | null | undefined): string {
+    if (!dateStr) return ""
+    try {
+      const date = new Date(dateStr)
+      const day = date.getDate().toString().padStart(2, "0")
+      const month = (date.getMonth() + 1).toString().padStart(2, "0")
+      return `${day}.${month}`
+    } catch {
+      return ""
+    }
+  }
+
+  function buildTooltip(face: ClusterFace): string {
+    const lines: string[] = []
+    if (face.gallery_title) {
+      const dateStr = face.shoot_date ? ` ${formatDate(face.shoot_date)}` : ""
+      lines.push(`Галерея: ${face.gallery_title}${dateStr}`)
+    }
+    if (face.original_filename) {
+      lines.push(`Файл: ${face.original_filename}`)
+    }
+    if (face.distance_to_centroid !== undefined) {
+      lines.push(`Расстояние до центроида: ${face.distance_to_centroid.toFixed(2)}`)
+    }
+    return lines.join("\n")
+  }
+
   const currentCluster = clusters[currentClusterIndex]
   const hasPreviousCluster = currentClusterIndex > 0
   const hasNextCluster = currentClusterIndex + 1 < clusters.length
@@ -229,7 +268,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[900px] h-[85vh] flex flex-col overflow-hidden">
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>Неизвестные лица - кластеризация</DialogTitle>
             <DialogDescription>
@@ -252,35 +291,41 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
           ) : currentCluster ? (
             <>
               <div className="flex-1 overflow-y-auto pr-2">
-                <div className="grid grid-cols-4 gap-4 content-start">
-                  {visibleFaces.map((face, index) => (
-                    <div key={face.id} className="relative">
-                      <div className="aspect-square rounded-lg overflow-hidden border">
-                        <FaceCropPreview
-                          imageUrl={face.image_url || "/placeholder.svg"}
-                          bbox={face.bbox}
-                        />
-                      </div>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-2 right-2 h-7 w-7"
-                        onClick={() => handleRemoveFace(face.id)}
-                        title="Убрать из кластера"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                      <div className="mt-1 text-xs text-muted-foreground truncate text-center">
-                        {index === 0 && (
-                          <span className="text-primary font-medium">★ </span>
-                        )}
-                        {face.original_filename || face.gallery_title || "—"}
-                        {face.distance_to_centroid !== undefined && (
-                          <span className="ml-1 opacity-60">({face.distance_to_centroid.toFixed(2)})</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                <div 
+                  className="grid grid-cols-4 gap-4 content-start"
+                  style={{ minHeight: minGridHeight ? `${minGridHeight}px` : undefined }}
+                >
+                  <TooltipProvider>
+                    {visibleFaces.map((face, index) => (
+                      <Tooltip key={face.id}>
+                        <TooltipTrigger asChild>
+                          <div className="relative aspect-square">
+                            <div className="w-full h-full rounded-lg overflow-hidden border">
+                              <FaceCropPreview
+                                imageUrl={face.image_url || "/placeholder.svg"}
+                                bbox={face.bbox}
+                              />
+                            </div>
+                            {index === 0 && (
+                              <Star className="absolute top-2 left-2 h-5 w-5 fill-yellow-400 text-yellow-400" />
+                            )}
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="absolute top-2 right-2 h-7 w-7"
+                              onClick={() => handleRemoveFace(face.id)}
+                              title="Убрать из кластера"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="whitespace-pre-line">
+                          {buildTooltip(face)}
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </TooltipProvider>
                 </div>
 
                 {visibleFaces.length === 0 && (
