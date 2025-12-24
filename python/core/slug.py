@@ -53,13 +53,9 @@ def resolve_identifier(
             return result.data[0]
         return None
     
-    # Not a UUID - try slug first
+    # Not a UUID - try slug only
+    # DO NOT try as ID - PostgreSQL will error on invalid UUID format
     result = client.table(table).select(select).eq(slug_column, identifier).execute()
-    if result.data and len(result.data) > 0:
-        return result.data[0]
-    
-    # Fallback: try as ID anyway (for backward compatibility during migration)
-    result = client.table(table).select(select).eq("id", identifier).execute()
     if result.data and len(result.data) > 0:
         return result.data[0]
     
