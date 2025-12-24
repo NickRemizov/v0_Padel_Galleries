@@ -14,6 +14,7 @@ from core.config import VERSION
 from core.responses import ApiResponse
 from core.exceptions import ClusteringError
 from core.logging import get_logger
+from services.supabase import get_faces_repository
 from .dependencies import get_face_service, get_supabase_client
 
 logger = get_logger(__name__)
@@ -32,14 +33,14 @@ async def cluster_unknown_faces(
     
     v1.1.0: Added distance_to_centroid for each face in cluster.
     """
-    supabase_client = get_supabase_client()
+    faces_repo = get_faces_repository()
     try:
         if gallery_id:
             logger.info(f"[v{VERSION}] Clustering unknown faces for gallery {gallery_id}")
-            faces = await supabase_client.get_unknown_faces_from_gallery(gallery_id)
+            faces = faces_repo.get_unknown_faces_from_gallery(gallery_id)
         else:
             logger.info(f"[v{VERSION}] Clustering ALL unknown faces from database (global mode)")
-            faces = await supabase_client.get_all_unknown_faces()
+            faces = faces_repo.get_all_unknown_faces()
         
         if not faces or len(faces) < min_cluster_size:
             logger.info(f"[v{VERSION}] Not enough faces for clustering: {len(faces) if faces else 0}")
@@ -156,9 +157,11 @@ async def reject_face_cluster(
     face_service=Depends(get_face_service)
 ):
     """
-    Reject a cluster of faces as not interesting
+    Reject a cluster of faces as not interesting.
+    Saves descriptors to rejected_faces table and deletes from photo_faces.
     """
     supabase_client = get_supabase_client()
+    faces_repo = get_faces_repository()
     try:
         logger.info(f"[v{VERSION}] ===== REJECT FACE CLUSTER =====")
         logger.info(f"[v{VERSION}] Gallery ID: {gallery_id}")
@@ -185,8 +188,8 @@ async def reject_face_cluster(
                 
                 photo_ids.append(face["photo_id"])
         
-        # Save to rejected_faces table
-        success = await supabase_client.reject_face_cluster(
+        # Save to rejected_faces table using new sync repository
+        success = faces_repo.reject_face_cluster(
             descriptors=descriptors,
             gallery_id=gallery_id,
             photo_ids=photo_ids,
