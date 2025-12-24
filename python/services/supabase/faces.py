@@ -68,7 +68,8 @@ class FacesRepository:
                 
                 response = self.client.table("photo_faces").select(
                     "id, photo_id, insightface_descriptor, insightface_bbox, insightface_det_score, "
-                    "gallery_images(id, image_url, width, height, gallery_id)"
+                    "gallery_images(id, image_url, original_filename, width, height, gallery_id, "
+                    "galleries(id, title, shoot_date))"
                 ).in_(
                     "photo_id", batch
                 ).is_(
@@ -86,15 +87,21 @@ class FacesRepository:
                         if not face.get("insightface_bbox"):
                             continue
                         
+                        gallery = photo.get("galleries") or {}
+                        
                         all_faces.append({
                             "id": face["id"],
                             "photo_id": face["photo_id"],
                             "photo_url": photo["image_url"],
+                            "original_filename": photo.get("original_filename"),
                             "width": photo.get("width"),
                             "height": photo.get("height"),
                             "insightface_descriptor": face["insightface_descriptor"],
                             "insightface_bbox": face["insightface_bbox"],
-                            "insightface_det_score": face.get("insightface_det_score")
+                            "insightface_det_score": face.get("insightface_det_score"),
+                            "gallery_id": photo.get("gallery_id"),
+                            "gallery_title": gallery.get("title"),
+                            "shoot_date": gallery.get("shoot_date")
                         })
             
             logger.info(f"[Faces] Found {len(all_faces)} unknown faces in gallery")
@@ -122,7 +129,7 @@ class FacesRepository:
             while True:
                 response = self.client.table("photo_faces").select(
                     "id, photo_id, insightface_descriptor, insightface_bbox, insightface_det_score, "
-                    "gallery_images(id, image_url, width, height, gallery_id, "
+                    "gallery_images(id, image_url, original_filename, width, height, gallery_id, "
                     "galleries(id, title, shoot_date))"
                 ).is_(
                     "person_id", "null"
@@ -147,6 +154,7 @@ class FacesRepository:
                         "id": face["id"],
                         "photo_id": face["photo_id"],
                         "photo_url": photo["image_url"],
+                        "original_filename": photo.get("original_filename"),
                         "width": photo.get("width"),
                         "height": photo.get("height"),
                         "insightface_descriptor": face["insightface_descriptor"],
