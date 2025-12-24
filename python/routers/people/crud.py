@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("")
+@router.get("/")
 async def get_people(with_stats: bool = Query(False)):
     """Get all people, optionally with face stats."""
     supabase_db = get_supabase_db()
@@ -56,7 +56,7 @@ async def get_person(identifier: str):
         raise DatabaseError(str(e), operation="get_person")
 
 
-@router.post("")
+@router.post("/")
 async def create_person(data: PersonCreate):
     """Create a new person."""
     supabase_db = get_supabase_db()
