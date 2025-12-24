@@ -9,6 +9,8 @@ Usage:
     db = SupabaseService()
     config = db.config.get_recognition_config()
     embeddings = db.embeddings.get_all_player_embeddings()
+    faces = db.faces.get_unknown_faces_from_gallery(gallery_id)
+    person = db.people.get_person_info(person_id)
 
 For backward compatibility:
     from services.supabase import get_supabase_client
@@ -19,6 +21,8 @@ from .base import SupabaseBase, get_supabase_client, get_supabase_base
 from .config import ConfigRepository, get_config_repository, get_recognition_config
 from .embeddings import EmbeddingsRepository, get_embeddings_repository
 from .training import TrainingRepository, get_training_repository
+from .faces import FacesRepository, get_faces_repository
+from .people import PeopleRepository, get_people_repository
 
 from core.logging import get_logger
 
@@ -33,6 +37,8 @@ class SupabaseService:
     - config: Recognition configuration
     - embeddings: HNSW index embeddings
     - training: Training sessions and verified faces
+    - faces: Face operations (unknown faces, rejection, recognition results)
+    - people: Person/player operations
     
     Also provides backward compatibility via .client property.
     """
@@ -53,6 +59,8 @@ class SupabaseService:
         self._config = None
         self._embeddings = None
         self._training = None
+        self._faces = None
+        self._people = None
         self._initialized = True
         
         logger.info("SupabaseService initialized")
@@ -82,6 +90,20 @@ class SupabaseService:
         if self._training is None:
             self._training = get_training_repository()
         return self._training
+    
+    @property
+    def faces(self) -> FacesRepository:
+        """Faces repository."""
+        if self._faces is None:
+            self._faces = get_faces_repository()
+        return self._faces
+    
+    @property
+    def people(self) -> PeopleRepository:
+        """People repository."""
+        if self._people is None:
+            self._people = get_people_repository()
+        return self._people
 
 
 # Global instance
@@ -110,10 +132,14 @@ __all__ = [
     "ConfigRepository",
     "EmbeddingsRepository", 
     "TrainingRepository",
+    "FacesRepository",
+    "PeopleRepository",
     
     # Convenience functions
     "get_config_repository",
     "get_embeddings_repository",
     "get_training_repository",
+    "get_faces_repository",
+    "get_people_repository",
     "get_recognition_config",
 ]
