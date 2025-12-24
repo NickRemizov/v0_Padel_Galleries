@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, Trash2, Ban } from "lucide-react"
+import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, X, Trash2 } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -33,7 +33,7 @@ interface ClusterFace {
   gallery_id?: string
   gallery_title?: string
   shoot_date?: string
-  distance_to_centroid?: number // v1.1.0: distance to cluster centroid
+  distance_to_centroid?: number
 }
 
 interface Cluster {
@@ -52,7 +52,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
   const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
-  const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -61,7 +60,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
       loadConfig()
       setRemovedFaces(new Set())
       setCurrentClusterIndex(0)
-      setMinGridHeight(null)
     }
   }, [open])
 
@@ -95,16 +93,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
         setClusters(loadedClusters)
         setCurrentClusterIndex(0)
         console.log("[GlobalUnknownFaces] Loaded", loadedClusters.length, "clusters")
-        
-        // Calculate minHeight based on largest cluster
-        if (loadedClusters.length > 0) {
-          const maxFaces = Math.max(...loadedClusters.map(c => c.faces.length))
-          const rows = Math.ceil(maxFaces / 4) // 4 columns
-          // Each row: ~200px (aspect-square) + 24px (text) + 16px (gap)
-          const calculatedHeight = rows * 240
-          setMinGridHeight(calculatedHeight)
-          console.log("[GlobalUnknownFaces] Max faces:", maxFaces, "rows:", rows, "minHeight:", calculatedHeight)
-        }
       }
     } catch (error) {
       console.error("[GlobalUnknownFaces] Error loading clusters:", error)
@@ -120,7 +108,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     }
   }
 
-  // v1.1.0: Find the best face for avatar (closest to centroid)
   const bestFaceForAvatar = useMemo(() => {
     if (!clusters.length || currentClusterIndex >= clusters.length) return null
     
@@ -129,8 +116,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     
     if (!visibleFaces.length) return null
     
-    // Faces are already sorted by distance_to_centroid (closest first)
-    // Just return the first one
     return visibleFaces[0]
   }, [clusters, currentClusterIndex, removedFaces])
 
@@ -278,15 +263,10 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
           ) : currentCluster ? (
             <>
               <div className="flex-1 overflow-y-auto pr-2">
-                <div 
-                  className="grid grid-cols-4 gap-4"
-                  style={{ minHeight: minGridHeight ? `${minGridHeight}px` : undefined }}
-                >
+                <div className="grid grid-cols-4 gap-4 content-start">
                   {visibleFaces.map((face, index) => (
                     <div key={face.id} className="relative">
-                      <div className={`aspect-square rounded-lg overflow-hidden border ${
-                        index === 0 ? "ring-2 ring-primary ring-offset-2" : ""
-                      }`}>
+                      <div className="aspect-square rounded-lg overflow-hidden border">
                         <FaceCropPreview
                           imageUrl={face.image_url || "/placeholder.svg"}
                           bbox={face.bbox}
@@ -295,12 +275,12 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                       <Button
                         variant="destructive"
                         size="icon"
-                        className="absolute top-2 right-2 h-8 w-8"
+                        className="absolute top-2 right-2 h-7 w-7"
                         onClick={() => handleRemoveFace(face.id)}
+                        title="Убрать из кластера"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <X className="h-4 w-4" />
                       </Button>
-                      {/* v1.1.0: Show distance to centroid and mark best face */}
                       <div className="mt-1 text-xs text-muted-foreground truncate text-center">
                         {index === 0 && (
                           <span className="text-primary font-medium">★ </span>
@@ -337,7 +317,7 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                       disabled={processing}
                       title="Удалить весь кластер"
                     >
-                      <Ban className="h-4 w-4 mr-2" />
+                      <Trash2 className="h-4 w-4 mr-2" />
                       Отклонить
                     </Button>
 
@@ -400,7 +380,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
         </DialogContent>
       </Dialog>
 
-      {/* v1.1.0: Pass best face data for auto-avatar generation */}
       <AddPersonDialog 
         open={showAddPerson} 
         onOpenChange={setShowAddPerson} 
