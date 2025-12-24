@@ -4,7 +4,7 @@ CRUD and advanced operations for people (players)
 Supports both UUID and slug identifiers for human-readable URLs
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, field_validator
 from typing import Optional, List
 import re
@@ -439,30 +439,16 @@ async def create_person(data: PersonCreate):
 
 @router.get("/{identifier}")
 async def get_person(
-    identifier: str,
+    identifier: str = Path(
+        ...,
+        pattern=r"^(?!(consistency-audit|audit-all-embeddings)$).+",
+        description="Person identifier (UUID or slug)",
+    ),
     outlier_threshold: float = Query(0.5, include_in_schema=False),
     min_descriptors: int = Query(2, include_in_schema=False),
     dry_run: bool = Query(False, include_in_schema=False)
 ):
     """Get a person by ID or slug."""
-    # Route guard: FastAPI may incorrectly match static paths to /{identifier}
-    # This fallback ensures audit endpoints work correctly
-    if identifier == "consistency-audit":
-        try:
-            data = await _consistency_audit_impl(outlier_threshold, min_descriptors)
-            return ApiResponse.ok(data)
-        except Exception as e:
-            logger.error(f"[consistency-audit] Error: {e}", exc_info=True)
-            raise DatabaseError(str(e), operation="consistency_audit")
-    
-    if identifier == "audit-all-embeddings":
-        try:
-            data = await _audit_all_embeddings_impl(outlier_threshold, min_descriptors, dry_run)
-            return ApiResponse.ok(data)
-        except Exception as e:
-            logger.error(f"[audit-all] Error: {e}", exc_info=True)
-            raise DatabaseError(str(e), operation="audit_all_embeddings")
-    
     try:
         person = _resolve_person(identifier)
         if person:
