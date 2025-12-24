@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, Trash2, Ban } from "lucide-react"
+import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, X, Trash2 } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -30,6 +30,10 @@ interface ClusterFace {
     width: number
     height: number
   }
+  gallery_id?: string
+  gallery_title?: string
+  shoot_date?: string
+  distance_to_centroid?: number
 }
 
 interface Cluster {
@@ -47,14 +51,12 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
   const [showSelectPerson, setShowSelectPerson] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
-  const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
 
   useEffect(() => {
     if (open) {
       loadClusters()
       loadPeople()
       setRemovedFaces(new Set())
-      setMinGridHeight(null)
     }
   }, [open, galleryId])
 
@@ -76,16 +78,6 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
         setClusters(loadedClusters)
         setCurrentClusterIndex(0)
         console.log("[UnknownFacesDialog] Loaded", loadedClusters.length, "clusters")
-        
-        // Calculate minHeight based on largest cluster
-        if (loadedClusters.length > 0) {
-          const maxFaces = Math.max(...loadedClusters.map(c => c.faces.length))
-          const rows = Math.ceil(maxFaces / 4) // 4 columns
-          // Each row: ~200px (aspect-square) + 16px (gap)
-          const calculatedHeight = rows * 216
-          setMinGridHeight(calculatedHeight)
-          console.log("[UnknownFacesDialog] Max faces:", maxFaces, "rows:", rows, "minHeight:", calculatedHeight)
-        }
       }
     } catch (error) {
       console.error("[UnknownFacesReview] Error loading clusters:", error)
@@ -202,6 +194,18 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
     setRemovedFaces((prev) => new Set(prev).add(faceId))
   }
 
+  function formatDate(dateStr: string | null | undefined): string {
+    if (!dateStr) return ""
+    try {
+      const date = new Date(dateStr)
+      const day = date.getDate().toString().padStart(2, "0")
+      const month = (date.getMonth() + 1).toString().padStart(2, "0")
+      return `${day}.${month}`
+    } catch {
+      return ""
+    }
+  }
+
   const currentCluster = clusters[currentClusterIndex]
   const hasPreviousCluster = currentClusterIndex > 0
   const hasNextCluster = currentClusterIndex + 1 < clusters.length
@@ -233,21 +237,31 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
           ) : currentCluster ? (
             <>
               <div className="flex-1 overflow-y-auto pr-2">
-                <div 
-                  className="grid grid-cols-4 gap-4"
-                  style={{ minHeight: minGridHeight ? `${minGridHeight}px` : undefined }}
-                >
-                  {visibleFaces.map((face) => (
-                    <div key={face.id} className="relative aspect-square">
-                      <FaceCropPreview imageUrl={face.image_url || "/placeholder.svg"} bbox={face.bbox} />
+                <div className="grid grid-cols-4 gap-4 content-start">
+                  {visibleFaces.map((face, index) => (
+                    <div key={face.id} className="relative">
+                      <div className="aspect-square rounded-lg overflow-hidden border">
+                        <FaceCropPreview imageUrl={face.image_url || "/placeholder.svg"} bbox={face.bbox} />
+                      </div>
                       <Button
                         variant="destructive"
                         size="icon"
-                        className="absolute top-2 right-2 h-8 w-8"
+                        className="absolute top-2 right-2 h-7 w-7"
                         onClick={() => handleRemoveFace(face.id)}
+                        title="Убрать из кластера"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <X className="h-4 w-4" />
                       </Button>
+                      <div className="mt-1 text-xs text-muted-foreground truncate text-center">
+                        {index === 0 && (
+                          <span className="text-primary font-medium">★ </span>
+                        )}
+                        {face.gallery_title}
+                        {face.shoot_date && ` ${formatDate(face.shoot_date)}`}
+                        {face.distance_to_centroid !== undefined && (
+                          <span className="ml-1 opacity-60">({face.distance_to_centroid.toFixed(2)})</span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -274,7 +288,7 @@ export function UnknownFacesReviewDialog({ open, onOpenChange, galleryId, onComp
                       disabled={processing}
                       title="Удалить весь кластер"
                     >
-                      <Ban className="h-4 w-4 mr-2" />
+                      <Trash2 className="h-4 w-4 mr-2" />
                       Отклонить
                     </Button>
 
