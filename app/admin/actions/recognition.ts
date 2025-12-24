@@ -357,3 +357,39 @@ export async function clusterAllUnknownFacesAction(): Promise<{
     }
   }
 }
+
+/**
+ * Отклонить (удалить) кластер лиц
+ * Удаляет лица из photo_faces таблицы
+ */
+export async function rejectFaceClusterAction(faceIds: string[]): Promise<{
+  success: boolean
+  deleted?: number
+  error?: string
+}> {
+  try {
+    logger.debug("actions/recognition", `[rejectFaceClusterAction] Rejecting ${faceIds.length} faces`)
+
+    const result = await apiFetch<{ deleted: number }>(
+      `/api/recognition/reject-face-cluster`,
+      {
+        method: "POST",
+        body: JSON.stringify(faceIds),
+      },
+    )
+
+    const data = result.data || result
+    logger.debug("actions/recognition", `[rejectFaceClusterAction] Deleted ${data.deleted} faces`)
+
+    return {
+      success: true,
+      deleted: data.deleted || 0,
+    }
+  } catch (error: any) {
+    logger.error("actions/recognition", "Error rejecting face cluster", error)
+    return {
+      success: false,
+      error: error.message || String(error),
+    }
+  }
+}
