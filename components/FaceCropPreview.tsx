@@ -30,11 +30,16 @@ export default function FaceCropPreview({ imageUrl, bbox, size = 200 }: FaceCrop
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = "high"
 
-      // 50% padding on each side
+      // 50% padding on each side for height
       const padding = 0.5
-      const paddedWidth = bbox.width * (1 + padding * 2)
       const paddedHeight = bbox.height * (1 + padding * 2)
-      const paddedX = Math.max(0, bbox.x - bbox.width * padding)
+      
+      // Make width equal to height for square crop
+      const paddedWidth = paddedHeight
+      
+      // Center horizontally based on bbox center
+      const bboxCenterX = bbox.x + bbox.width / 2
+      const paddedX = bboxCenterX - paddedWidth / 2
       const paddedY = Math.max(0, bbox.y - bbox.height * padding)
 
       const cropX = Math.max(0, paddedX)
@@ -42,21 +47,19 @@ export default function FaceCropPreview({ imageUrl, bbox, size = 200 }: FaceCrop
       const cropWidth = Math.min(paddedWidth, img.width - cropX)
       const cropHeight = Math.min(paddedHeight, img.height - cropY)
 
+      // Ensure square output
+      const cropSize = Math.min(cropWidth, cropHeight)
+
       const previewSize = size
       canvas.width = previewSize
       canvas.height = previewSize
 
-      ctx.fillStyle = "#000000"
-      ctx.fillRect(0, 0, previewSize, previewSize)
-
-      const scale = Math.min(previewSize / cropWidth, previewSize / cropHeight)
-      const scaledWidth = cropWidth * scale
-      const scaledHeight = cropHeight * scale
-
-      const offsetX = (previewSize - scaledWidth) / 2
-      const offsetY = (previewSize - scaledHeight) / 2
-
-      ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, offsetX, offsetY, scaledWidth, scaledHeight)
+      // Draw the crop centered
+      ctx.drawImage(
+        img, 
+        cropX, cropY, cropSize, cropSize, 
+        0, 0, previewSize, previewSize
+      )
     }
 
     img.onerror = () => {
