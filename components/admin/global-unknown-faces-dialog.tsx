@@ -3,13 +3,13 @@
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
+import { Loader2, UserPlus, Users, ChevronLeft, ChevronRight, Trash2, Ban } from "lucide-react"
 import { AddPersonDialog } from "./add-person-dialog"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { assignFacesToPersonAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
-import { clusterAllUnknownFacesAction } from "@/app/admin/actions/recognition"
+import { clusterAllUnknownFacesAction, rejectFaceClusterAction } from "@/app/admin/actions/recognition"
 import type { Person } from "@/lib/types"
 import type { BoundingBox } from "@/lib/avatar-utils"
 import FaceCropPreview from "@/components/FaceCropPreview"
@@ -177,6 +177,36 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     }
   }
 
+  async function handleRejectCluster() {
+    if (clusters.length === 0 || currentClusterIndex >= clusters.length) return
+
+    const currentCluster = clusters[currentClusterIndex]
+    const facesToReject = currentCluster.faces.filter((f) => !removedFaces.has(f.id))
+    const faceIds = facesToReject.map((f) => f.id)
+
+    if (faceIds.length === 0) {
+      moveToNextCluster()
+      return
+    }
+
+    setProcessing(true)
+    try {
+      console.log("[GlobalUnknownFaces] Rejecting cluster with", faceIds.length, "faces")
+      const result = await rejectFaceClusterAction(faceIds)
+      
+      if (result.success) {
+        console.log("[GlobalUnknownFaces] Successfully rejected", result.deleted, "faces")
+        moveToNextCluster()
+      } else {
+        console.error("[GlobalUnknownFaces] Error rejecting cluster:", result.error)
+      }
+    } catch (error) {
+      console.error("[GlobalUnknownFaces] Error rejecting cluster:", error)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   function handlePreviousCluster() {
     if (currentClusterIndex > 0) {
       setRemovedFaces(new Set())
@@ -301,6 +331,16 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                     Кластер {currentClusterIndex + 1} из {clusters.length} (всего {currentCluster?.size || 0} фото)
                   </p>
                   <div className="flex gap-2">
+                    <Button 
+                      variant="destructive" 
+                      onClick={handleRejectCluster} 
+                      disabled={processing}
+                      title="Удалить весь кластер"
+                    >
+                      <Ban className="h-4 w-4 mr-2" />
+                      Отклонить
+                    </Button>
+
                     <Button variant="outline" onClick={handleCreatePerson} disabled={processing}>
                       <UserPlus className="h-4 w-4 mr-2" />
                       Создать игрока
