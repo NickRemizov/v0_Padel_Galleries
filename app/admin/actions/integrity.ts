@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache"
 
 /**
  * Database Integrity Checker
- * Исправлены имена полей + orphanedLinks + actions для карточек
+ * v2.0: Fixed float comparison for confidence (use 0.9999 threshold)
+ * + added confidenceWithoutVerified check
  * + пагинация для всех запросов к photo_faces
  * + правильная проверка дубликатов по 5 полям
  */
@@ -24,6 +25,7 @@ export interface IntegrityReport {
   photoFaces: {
     verifiedWithoutPerson: number
     verifiedWithWrongConfidence: number
+    confidenceWithoutVerified: number
     personWithoutConfidence: number
     nonExistentPerson: number
     nonExistentPhoto: number
@@ -49,6 +51,11 @@ const DUPLICATE_CHECK_FIELDS = [
   "facebook_profile_url",
   "instagram_profile_url",
 ] as const
+
+/**
+ * Threshold for float comparison (0.9999 ≈ 100%)
+ */
+const CONFIDENCE_100_THRESHOLD = 0.9999
 
 /**
  * Получить порог confidence из настроек
@@ -149,6 +156,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     const photoFaces = {
       verifiedWithoutPerson: 0,
       verifiedWithWrongConfidence: 0,
+      confidenceWithoutVerified: 0,
       personWithoutConfidence: 0,
       nonExistentPerson: 0,
       nonExistentPhoto: 0,
@@ -191,7 +199,8 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }))
     }
 
-    // 2. Verified с неправильным confidence (обычно немного записей)
+    // 2. Verified с неправильным confidence (< 0.9999)
+    // v2.0: Using .lt() instead of .neq() to properly handle float comparison
     const { data: verifiedWithWrongConfidence } = await supabase
       .from("photo_faces")
       .select(`
@@ -199,14 +208,42 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
         gallery_images(id, image_url, gallery_id, galleries(title))
       `)
       .eq("verified", true)
-      .neq("recognition_confidence", 1.0)
+      .lt("recognition_confidence", CONFIDENCE_100_THRESHOLD)
 
     photoFaces.verifiedWithWrongConfidence = verifiedWithWrongConfidence?.length || 0
     console.log("[v0] verifiedWithWrongConfidence count:", photoFaces.verifiedWithWrongConfidence)
     if (verifiedWithWrongConfidence && verifiedWithWrongConfidence.length > 0) {
-      details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 10).map((item: any) => ({
+      details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 50).map((item: any) => ({
         ...item,
         confidence: item.recognition_confidence,
+        bbox: item.insightface_bbox,
+        image_url: item.gallery_images?.image_url,
+        gallery_title: item.gallery_images?.galleries?.title,
+      }))
+    }
+
+    // 2b. Confidence ~100% без verified (NEW CHECK)
+    // v2.0: Faces with high confidence but not verified - should be verified
+    const { data: confidenceWithoutVerified } = await supabase
+      .from("photo_faces")
+      .select(`
+        id, photo_id, person_id, recognition_confidence, verified, insightface_bbox,
+        gallery_images(id, image_url, gallery_id, galleries(title)),
+        people(real_name)
+      `)
+      .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+      .eq("verified", false)
+
+    photoFaces.confidenceWithoutVerified = confidenceWithoutVerified?.length || 0
+    console.log("[v0] confidenceWithoutVerified count:", photoFaces.confidenceWithoutVerified)
+    if (confidenceWithoutVerified && confidenceWithoutVerified.length > 0) {
+      details.confidenceWithoutVerified = confidenceWithoutVerified.slice(0, 50).map((item: any) => ({
+        id: item.id,
+        photo_id: item.photo_id,
+        person_id: item.person_id,
+        person_name: item.people?.real_name || "Unknown",
+        confidence: item.recognition_confidence,
+        verified: item.verified,
         bbox: item.insightface_bbox,
         image_url: item.gallery_images?.image_url,
         gallery_title: item.gallery_images?.galleries?.title,
@@ -424,6 +461,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
     totalIssues =
       photoFaces.verifiedWithoutPerson +
       photoFaces.verifiedWithWrongConfidence +
+      photoFaces.confidenceWithoutVerified +
       photoFaces.personWithoutConfidence +
       photoFaces.nonExistentPerson +
       photoFaces.nonExistentPhoto +
@@ -437,7 +475,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       photoFaces,
       people,
       totalIssues,
-      checksPerformed: 9,
+      checksPerformed: 10,
       details,
     }
 
@@ -482,11 +520,27 @@ export async function fixIntegrityIssuesAction(
       }
 
       case "verifiedWithWrongConfidence": {
+        // v2.0: Using .lt() instead of .neq() for proper float comparison
         const { data: updated, error } = await supabase
           .from("photo_faces")
           .update({ recognition_confidence: 1.0 })
           .eq("verified", true)
-          .neq("recognition_confidence", 1.0)
+          .lt("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+          .select("id")
+
+        if (error) throw error
+        fixed = updated?.length || 0
+        details.updatedIds = updated?.map((u: any) => u.id)
+        break
+      }
+
+      case "confidenceWithoutVerified": {
+        // v2.0: NEW FIX - set verified=true for faces with ~100% confidence
+        const { data: updated, error } = await supabase
+          .from("photo_faces")
+          .update({ verified: true })
+          .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+          .eq("verified", false)
           .select("id")
 
         if (error) throw error
@@ -697,6 +751,32 @@ export async function getIssueDetailsAction(
 
         details = (data || []).map((item: any) => ({
           ...item,
+          bbox: item.insightface_bbox,
+          image_url: item.gallery_images?.image_url,
+          gallery_title: item.gallery_images?.galleries?.title,
+        }))
+        break
+      }
+
+      case "confidenceWithoutVerified": {
+        const { data } = await supabase
+          .from("photo_faces")
+          .select(`
+            id, photo_id, person_id, recognition_confidence, verified, insightface_bbox,
+            gallery_images(id, image_url, galleries(title)),
+            people(real_name)
+          `)
+          .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+          .eq("verified", false)
+          .limit(limit)
+
+        details = (data || []).map((item: any) => ({
+          id: item.id,
+          photo_id: item.photo_id,
+          person_id: item.person_id,
+          person_name: item.people?.real_name || "Unknown",
+          confidence: item.recognition_confidence,
+          verified: item.verified,
           bbox: item.insightface_bbox,
           image_url: item.gallery_images?.image_url,
           gallery_title: item.gallery_images?.galleries?.title,
