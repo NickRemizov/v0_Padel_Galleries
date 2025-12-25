@@ -1,6 +1,7 @@
 """
 Faces API - Statistics
 Statistics endpoint for admin panel
+v2.1: Added pagination for photo_faces query
 """
 
 from fastapi import APIRouter, Depends
@@ -36,11 +37,27 @@ async def get_face_statistics(
         people_data = people_response.data or []
         total_people = people_response.count or 0
         
-        faces_response = supabase_db.client.table("photo_faces").select(
-            "id, photo_id, person_id, verified, confidence"
-        ).execute()
+        # v2.1: Load ALL faces with pagination
+        faces = []
+        offset = 0
+        page_size = 1000
         
-        faces = faces_response.data or []
+        while True:
+            faces_response = supabase_db.client.table("photo_faces").select(
+                "id, photo_id, person_id, verified, confidence"
+            ).range(offset, offset + page_size - 1).execute()
+            
+            batch = faces_response.data or []
+            if not batch:
+                break
+            
+            faces.extend(batch)
+            
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        
+        logger.info(f"[v2.1] Loaded {len(faces)} faces with pagination")
         
         verified_count = len([f for f in faces if f.get("verified")])
         high_conf_count = len([
