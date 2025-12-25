@@ -12,6 +12,7 @@ import { assignFacesToPersonAction, markPhotoAsProcessedAction } from "@/app/adm
 import { getPeopleAction } from "@/app/admin/actions/entities"
 import { clusterAllUnknownFacesAction, rejectFaceClusterAction } from "@/app/admin/actions/recognition"
 import type { Person } from "@/lib/types"
+import { formatPersonDisplayName, getPersonSearchString } from "@/lib/utils/person-display"
 import type { BoundingBox } from "@/lib/avatar-utils"
 import FaceCropPreview from "@/components/FaceCropPreview"
 
@@ -87,22 +88,16 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     setLoading(true)
     try {
       console.log("[GlobalUnknownFaces] Loading all unknown face clusters...")
-
       const result = await clusterAllUnknownFacesAction()
-
       console.log("[GlobalUnknownFaces] Result:", result)
-
       if (result.success && result.data) {
         const loadedClusters = result.data.clusters || []
         setClusters(loadedClusters)
         setCurrentClusterIndex(0)
         console.log("[GlobalUnknownFaces] Loaded", loadedClusters.length, "clusters")
-        
-        // Calculate minHeight based on largest cluster (first one, sorted by size)
         if (loadedClusters.length > 0) {
           const maxFaces = loadedClusters[0].faces.length
           const rows = Math.ceil(maxFaces / 4)
-          // Each row: ~200px (aspect-square) + 16px gap
           const calculatedHeight = rows * 216
           setMinGridHeight(calculatedHeight)
         }
@@ -123,12 +118,9 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
 
   const bestFaceForAvatar = useMemo(() => {
     if (!clusters.length || currentClusterIndex >= clusters.length) return null
-    
     const currentCluster = clusters[currentClusterIndex]
     const visibleFaces = currentCluster.faces.filter((f) => !removedFaces.has(f.id))
-    
     if (!visibleFaces.length) return null
-    
     return visibleFaces[0]
   }, [clusters, currentClusterIndex, removedFaces])
 
@@ -150,22 +142,18 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
 
   async function assignClusterToPerson(personId: string) {
     if (clusters.length === 0 || currentClusterIndex >= clusters.length) return
-
     const currentCluster = clusters[currentClusterIndex]
     const facesToAssign = currentCluster.faces.filter((f) => !removedFaces.has(f.id))
     const faceIds = facesToAssign.map((f) => f.id)
-
     setProcessing(true)
     try {
       const result = await assignFacesToPersonAction(faceIds, personId)
       if (result.success) {
         const uniquePhotoIds = [...new Set(facesToAssign.map((f) => f.photo_id))]
         console.log("[GlobalUnknownFaces] Marking", uniquePhotoIds.length, "photos as processed")
-
         for (const photoId of uniquePhotoIds) {
           await markPhotoAsProcessedAction(photoId)
         }
-
         moveToNextCluster()
       }
     } catch (error) {
@@ -177,21 +165,17 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
 
   async function handleRejectCluster() {
     if (clusters.length === 0 || currentClusterIndex >= clusters.length) return
-
     const currentCluster = clusters[currentClusterIndex]
     const facesToReject = currentCluster.faces.filter((f) => !removedFaces.has(f.id))
     const faceIds = facesToReject.map((f) => f.id)
-
     if (faceIds.length === 0) {
       moveToNextCluster()
       return
     }
-
     setProcessing(true)
     try {
       console.log("[GlobalUnknownFaces] Rejecting cluster with", faceIds.length, "faces")
       const result = await rejectFaceClusterAction(faceIds)
-      
       if (result.success) {
         console.log("[GlobalUnknownFaces] Successfully rejected", result.deleted, "faces")
         moveToNextCluster()
@@ -375,10 +359,10 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
                               {people.map((person) => (
                                 <CommandItem
                                   key={person.id}
+                                  value={getPersonSearchString(person)}
                                   onSelect={() => handleSelectPerson(person.id)}
                                 >
-                                  {person.real_name}
-                                  {person.telegram_name && ` (${person.telegram_name})`}
+                                  {formatPersonDisplayName(person)}
                                 </CommandItem>
                               ))}
                             </CommandGroup>
