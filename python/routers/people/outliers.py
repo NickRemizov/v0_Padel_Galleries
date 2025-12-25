@@ -7,15 +7,24 @@ import numpy as np
 import json
 
 from fastapi import APIRouter, Query
+from uuid import UUID
 
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
 
-from .helpers import get_supabase_db, get_face_service, get_person_id
+from .helpers import get_supabase_db, get_face_service
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _get_person_id_from_uuid(supabase_db, person_uuid: UUID) -> str:
+    """Get person ID from UUID. Raises NotFoundError if not found."""
+    result = supabase_db.client.table("people").select("id").eq("id", str(person_uuid)).execute()
+    if result.data and len(result.data) > 0:
+        return result.data[0]["id"]
+    raise NotFoundError("Person", str(person_uuid))
 
 
 @router.get("/audit-all-embeddings")
@@ -175,9 +184,9 @@ async def audit_all_embeddings(
         raise DatabaseError(str(e), operation="audit_all_embeddings")
 
 
-@router.post("/{identifier}/clear-outliers")
+@router.post("/{identifier:uuid}/clear-outliers")
 async def clear_person_outliers(
-    identifier: str,
+    identifier: UUID,
     outlier_threshold: float = Query(0.5, description="Similarity below this = outlier")
 ):
     """
@@ -189,7 +198,7 @@ async def clear_person_outliers(
     face_service = get_face_service()
     
     try:
-        person_id = get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(supabase_db, identifier)
         
         logger.info(f"[clear-outliers] Marking outliers for person {person_id}, threshold={outlier_threshold}")
         
