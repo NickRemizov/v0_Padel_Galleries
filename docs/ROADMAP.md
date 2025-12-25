@@ -1,6 +1,6 @@
 # ROADMAP — План развития Padel Galleries
 
-> **Обновлено:** 23 декабря 2025
+> **Обновлено:** 25 декабря 2025
 > **Источники:** BACKEND_TODO.md, FRONTEND_TODO.md, FRONTEND_API_AUDIT.md
 
 ---
@@ -13,6 +13,36 @@
 | Рефакторинг компонентов | 0 | 0 | 6 |
 | Инфраструктура | 0 | 0 | 3 |
 | Функционал | 0 | 0 | 4 |
+
+---
+
+## ✅ Недавно выполнено (25 декабря 2025)
+
+### UUID Converter для People API
+- **Проблема:** Роуты `/api/people/{identifier}/...` не различали UUID и slug
+- **Решение:** Добавлен `{identifier:uuid}` converter в 5 файлов `routers/people/`
+- **Коммиты:** 07f6bafc04f, 67afb21b64d, 3d164583b58, cf69324a1ae, 133b5e4806f
+
+### Очистка orphaned файлов
+- **Удалено:** `routers/admin.py` (32KB), `routers/recognition.py`
+- **Причина:** Orphaned после рефакторинга на модульную структуру
+- **Коммиты:** 42a9bdba, ffa148f7
+
+### Исправление verified count в галереях
+- **Проблема:** Фото считалось verified если хотя бы одно лицо verified
+- **Исправлено:** Фото verified если: нет лиц ИЛИ все лица verified
+- **Файл:** `routers/galleries.py`
+- **Коммит:** 64f283435cd
+
+### Person Display утилита для выпадающих списков
+- **Проблема:** Игроки с одинаковыми именами неразличимы в селекторах
+- **Решение:** Утилита `lib/utils/person-display.ts` с каскадом идентификаторов:
+  - telegram_name → @telegram_nickname → gmail
+- **Применено в:**
+  - `face-tagging-dialog.tsx`
+  - `unknown-faces-review-dialog.tsx`
+  - `global-unknown-faces-dialog.tsx`
+- **Коммит:** f83413d5eb2d, f920c5a8a2d2
 
 ---
 
@@ -29,10 +59,10 @@
 | `POST /api/galleries` | ✅ Done | `routers/galleries.py` |
 | `PUT /api/galleries/{id}` | ✅ Done | `routers/galleries.py` |
 | `DELETE /api/galleries/{id}` | ⏳ TODO | — |
-| `GET /api/people` | ✅ Done | `routers/people.py` |
-| `POST /api/people` | ⏳ TODO | — |
-| `PUT /api/people/{id}` | ⏳ TODO | — |
-| `DELETE /api/people/{id}` | ⏳ TODO | — |
+| `GET /api/people` | ✅ Done | `routers/people/` |
+| `POST /api/people` | ✅ Done | `routers/people/crud.py` |
+| `PUT /api/people/{id}` | ✅ Done | `routers/people/crud.py` |
+| `DELETE /api/people/{id}` | ✅ Done | `routers/people/crud.py` |
 
 **Прогресс миграции Admin Server Actions:**
 | Action | Прямой Supabase | Через FastAPI |
@@ -41,11 +71,12 @@
 | `createGalleryAction` | ❌ | ✅ |
 | `updateGalleryAction` | ❌ | ✅ |
 | `deleteGalleryAction` | ✅ Нужно | ⏳ |
-| `getPeopleAction` | ✅ Нужно | ⏳ |
-| `createPersonAction` | ✅ Нужно | ⏳ |
+| `getPeopleAction` | ❌ | ✅ |
+| `createPersonAction` | ❌ | ✅ |
+| `updatePersonAction` | ❌ | ✅ |
 
 **Файлы с прямым Supabase (нужно мигрировать):**
-\`\`\`
+```
 app/admin/actions/cleanup.ts      # 12KB - сложные UPDATE/DELETE
 app/admin/actions/integrity.ts    # 28KB - проверки БД
 app/api/comments/*/route.ts       # Комментарии
@@ -54,7 +85,7 @@ app/api/favorites/*/route.ts      # Избранное
 app/page.tsx                      # Публичная главная
 app/gallery/[id]/page.tsx         # Публичная галерея
 app/players/*/page.tsx            # Публичные игроки
-\`\`\`
+```
 
 **Оценка:** 22-32 часа
 
@@ -75,14 +106,14 @@ app/players/*/page.tsx            # Публичные игроки
 ### 1.3 Dependency Injection: Убрать глобальные переменные
 
 **Проблема:** Все роутеры используют глобальные переменные вместо FastAPI Depends:
-\`\`\`python
+```python
 # Сейчас (плохо)
 supabase_db_instance: SupabaseDatabase = None
 
 def set_services(supabase_db):
     global supabase_db_instance
     supabase_db_instance = supabase_db
-\`\`\`
+```
 
 **Решение:** Правильный FastAPI DI через `Depends()`.
 
@@ -110,7 +141,7 @@ def set_services(supabase_db):
 | `database-integrity-checker.tsx` | 29KB | Вынести проверки в хуки | 3-4 ч |
 | `face-training-manager.tsx` | 29KB | Разбить по функциональности | 3-4 ч |
 | `training-stats-card.tsx` | 28KB | Вынести графики | 2-3 ч |
-| `face-tagging-dialog.tsx` | 23KB | Разбить UI и логику | 2-3 ч |
+| `face-tagging-dialog.tsx` | 32KB | Разбить UI и логику | 2-3 ч |
 | `person-gallery-dialog.tsx` | 22KB | Вынести галерею | 2-3 ч |
 
 **Общая оценка:** 18-26 часов
@@ -122,34 +153,33 @@ def set_services(supabase_db):
 **Проблема:** Два класса для работы с БД — `SupabaseClient` и `SupabaseDatabase` — дублируют методы.
 
 **Решение:** Создать единый Repository слой:
-\`\`\`
+```
 python/repositories/
 ├── base.py           # Базовый класс
 ├── faces_repo.py     # CRUD для photo_faces
 ├── people_repo.py    # CRUD для people
 └── ...
-\`\`\`
+```
 
 **Оценка:** 6-8 часов
 
 ---
 
-### 2.3 Рефакторинг faces.py (1031 строк → модули)
+### ✅ 2.3 Рефакторинг people.py → модули (ВЫПОЛНЕНО)
 
-**Проблема:** `python/routers/faces.py` = 1031 строк. Превышает лимит 400-500 строк.
-
-**Решение:** Разбить на модули:
-\`\`\`
-python/routers/faces/
+**Было:** `python/routers/people.py` = 1000+ строк
+**Стало:** Модульная структура:
+```
+python/routers/people/
 ├── __init__.py           # Экспорт router
-├── router.py             # Основной router + set_services
-├── batch_operations.py   # batch-verify, batch-assign, batch-save
-├── recognition.py        # recognize-unknown, clear-descriptor, set-excluded
-├── statistics.py         # /statistics endpoint
-└── models.py             # Pydantic models (Request/Response)
-\`\`\`
-
-**Оценка:** 2-3 часа
+├── crud.py               # GET/POST/PUT/DELETE
+├── photos.py             # Фото игрока
+├── consistency.py        # Embedding consistency
+├── outliers.py           # Outliers management
+├── avatar.py             # Аватары
+├── helpers.py            # Вспомогательные функции
+└── models.py             # Pydantic models
+```
 
 ---
 
@@ -248,14 +278,14 @@ python/routers/faces/
 
 ## 📝 Как добавлять задачи
 
-\`\`\`markdown
+```markdown
 ### X.X Название задачи
 
 **Проблема:** Описание проблемы
 **Решение:** Что нужно сделать
 **Файлы:** Какие файлы затронуты
 **Оценка:** X-Y часов
-\`\`\`
+```
 
 ---
 
