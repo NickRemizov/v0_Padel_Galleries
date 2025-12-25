@@ -7,15 +7,24 @@ import numpy as np
 import json
 
 from fastapi import APIRouter, Query
+from uuid import UUID
 
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
 
-from .helpers import get_supabase_db, get_person_id, convert_bbox_to_array
+from .helpers import get_supabase_db, convert_bbox_to_array
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _get_person_id_from_uuid(supabase_db, person_uuid: UUID) -> str:
+    """Get person ID from UUID. Raises NotFoundError if not found."""
+    result = supabase_db.client.table("people").select("id").eq("id", str(person_uuid)).execute()
+    if result.data and len(result.data) > 0:
+        return result.data[0]["id"]
+    raise NotFoundError("Person", str(person_uuid))
 
 
 @router.get("/consistency-audit")
@@ -195,9 +204,9 @@ async def consistency_audit(
         raise DatabaseError(str(e), operation="consistency_audit")
 
 
-@router.get("/{identifier}/embedding-consistency")
+@router.get("/{identifier:uuid}/embedding-consistency")
 async def get_embedding_consistency(
-    identifier: str,
+    identifier: UUID,
     outlier_threshold: float = Query(0.5, description="Similarity below this = outlier")
 ):
     """
@@ -211,7 +220,7 @@ async def get_embedding_consistency(
     supabase_db = get_supabase_db()
     
     try:
-        person_id = get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(supabase_db, identifier)
         
         logger.info(f"[consistency] Analyzing embeddings for person {person_id}")
         
