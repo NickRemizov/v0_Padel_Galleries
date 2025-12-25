@@ -7,6 +7,7 @@ Supports both UUID and slug identifiers for human-readable URLs
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, field_validator
 from typing import Optional, List
+from uuid import UUID
 import re
 
 from core.responses import ApiResponse
@@ -45,6 +46,14 @@ def _get_person_id(identifier: str) -> str:
     if not person:
         raise NotFoundError("Person", identifier)
     return person["id"]
+
+
+def _get_person_id_from_uuid(person_uuid: UUID) -> str:
+    """Get person ID from UUID. Raises NotFoundError if not found."""
+    result = supabase_db_instance.client.table("people").select("id").eq("id", str(person_uuid)).execute()
+    if result.data and len(result.data) > 0:
+        return result.data[0]["id"]
+    raise NotFoundError("Person", str(person_uuid))
 
 
 def _convert_bbox_to_array(bbox) -> Optional[List[float]]:
@@ -145,7 +154,22 @@ async def get_people(with_stats: bool = Query(False)):
         raise DatabaseError(str(e), operation="get_people")
 
 
-# ============ STATIC ROUTES (must be before /{identifier}) ============
+@router.post("")
+async def create_person(data: PersonCreate):
+    """Create a new person."""
+    try:
+        insert_data = data.model_dump(exclude_none=True)
+        result = supabase_db_instance.client.table("people").insert(insert_data).execute()
+        if result.data:
+            logger.info(f"Created person: {data.real_name}")
+            return ApiResponse.ok(result.data[0])
+        raise DatabaseError("Insert failed", operation="create_person")
+    except Exception as e:
+        logger.error(f"Error creating person: {e}")
+        raise DatabaseError(str(e), operation="create_person")
+
+
+# ============ STATIC ROUTES (must be before /{identifier:uuid}) ============
 
 @router.get("/consistency-audit")
 async def consistency_audit(
@@ -337,14 +361,6 @@ async def audit_all_embeddings(
     
     Supports both GET (for browser testing) and POST.
     Use dry_run=true to preview without making changes.
-    
-    This is the mass audit function that:
-    1. For each person with >= min_descriptors
-    2. Calculates centroid from non-excluded embeddings
-    3. Marks embeddings with similarity < threshold as excluded
-    4. Rebuilds HNSW index at the end (unless dry_run)
-    
-    Returns summary of changes per person.
     """
     import numpy as np
     import json
@@ -482,23 +498,58 @@ async def audit_all_embeddings(
         raise DatabaseError(str(e), operation="audit_all_embeddings")
 
 
-# ============ DYNAMIC ROUTES WITH {identifier} ============
+# ============ SLUG-BASED ROUTES (for human-readable URLs) ============
 
-@router.post("/{identifier}/clear-outliers")
+@router.get("/slug/{slug}")
+async def get_person_by_slug(slug: str):
+    """Get a person by slug."""
+    try:
+        person = _resolve_person(slug)
+        if person:
+            return ApiResponse.ok(person)
+        raise NotFoundError("Person", slug)
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting person by slug {slug}: {e}")
+        raise DatabaseError(str(e), operation="get_person_by_slug")
+
+
+@router.get("/slug/{slug}/photos")
+async def get_person_photos_by_slug(slug: str):
+    """Get all photos containing this person (by slug)."""
+    try:
+        person_id = _get_person_id(slug)
+        
+        config = supabase_db_instance.get_recognition_config()
+        confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
+        
+        result = supabase_db_instance.client.table("photo_faces").select(
+            "id, photo_id, verified, recognition_confidence, "
+            "gallery_images!inner(id, image_url, original_url, original_filename, file_size, width, height, gallery_id, created_at, "
+            "galleries(id, title, shoot_date, sort_order))"
+        ).eq("person_id", person_id).or_(f"verified.eq.true,recognition_confidence.gte.{confidence_threshold}").execute()
+        return ApiResponse.ok(result.data or [])
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting person photos by slug: {e}")
+        raise DatabaseError(str(e), operation="get_person_photos_by_slug")
+
+
+# ============ UUID-BASED DYNAMIC ROUTES ============
+
+@router.post("/{identifier:uuid}/clear-outliers")
 async def clear_person_outliers(
-    identifier: str,
+    identifier: UUID,
     outlier_threshold: float = Query(0.5, description="Similarity below this = outlier")
 ):
-    """
-    Mark outlier embeddings for a person as excluded_from_index = TRUE.
-    
-    Does NOT delete the descriptor, just excludes from HNSW index.
-    """
+    """Mark outlier embeddings for a person as excluded_from_index = TRUE."""
     import numpy as np
     import json
     
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         logger.info(f"[clear-outliers] Marking outliers for person {person_id}, threshold={outlier_threshold}")
         
@@ -516,7 +567,7 @@ async def clear_person_outliers(
             })
         
         # Parse embeddings
-        embeddings_data = []  # [(embedding, face)]
+        embeddings_data = []
         for face in faces:
             descriptor = face["insightface_descriptor"]
             try:
@@ -590,14 +641,14 @@ async def clear_person_outliers(
         raise DatabaseError(str(e), operation="clear_person_outliers")
 
 
-@router.get("/{identifier}")
-async def get_person(identifier: str):
-    """Get a person by ID or slug."""
+@router.get("/{identifier:uuid}")
+async def get_person(identifier: UUID):
+    """Get a person by UUID."""
     try:
-        person = _resolve_person(identifier)
-        if person:
-            return ApiResponse.ok(person)
-        raise NotFoundError("Person", identifier)
+        result = supabase_db_instance.client.table("people").select("*").eq("id", str(identifier)).execute()
+        if result.data and len(result.data) > 0:
+            return ApiResponse.ok(result.data[0])
+        raise NotFoundError("Person", str(identifier))
     except NotFoundError:
         raise
     except Exception as e:
@@ -605,17 +656,15 @@ async def get_person(identifier: str):
         raise DatabaseError(str(e), operation="get_person")
 
 
-@router.get("/{identifier}/photos")
-async def get_person_photos(identifier: str):
+@router.get("/{identifier:uuid}/photos")
+async def get_person_photos(identifier: UUID):
     """Get all photos containing this person with gallery info for sorting."""
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
-        # Include galleries join for title, shoot_date, sort_order
-        # Added: original_url, file_size, width, height for lightbox display
         result = supabase_db_instance.client.table("photo_faces").select(
             "id, photo_id, verified, recognition_confidence, "
             "gallery_images!inner(id, image_url, original_url, original_filename, file_size, width, height, gallery_id, created_at, "
@@ -629,26 +678,11 @@ async def get_person_photos(identifier: str):
         raise DatabaseError(str(e), operation="get_person_photos")
 
 
-@router.post("")
-async def create_person(data: PersonCreate):
-    """Create a new person."""
+@router.put("/{identifier:uuid}")
+async def update_person(identifier: UUID, data: PersonUpdate):
+    """Update a person by UUID."""
     try:
-        insert_data = data.model_dump(exclude_none=True)
-        result = supabase_db_instance.client.table("people").insert(insert_data).execute()
-        if result.data:
-            logger.info(f"Created person: {data.real_name}")
-            return ApiResponse.ok(result.data[0])
-        raise DatabaseError("Insert failed", operation="create_person")
-    except Exception as e:
-        logger.error(f"Error creating person: {e}")
-        raise DatabaseError(str(e), operation="create_person")
-
-
-@router.put("/{identifier}")
-async def update_person(identifier: str, data: PersonUpdate):
-    """Update a person by ID or slug."""
-    try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
@@ -657,7 +691,7 @@ async def update_person(identifier: str, data: PersonUpdate):
         if result.data:
             logger.info(f"Updated person {person_id}")
             return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", identifier)
+        raise NotFoundError("Person", str(identifier))
     except (NotFoundError, ValidationError):
         raise
     except Exception as e:
@@ -665,17 +699,17 @@ async def update_person(identifier: str, data: PersonUpdate):
         raise DatabaseError(str(e), operation="update_person")
 
 
-@router.patch("/{identifier}/avatar")
-async def update_avatar(identifier: str, avatar_url: str = Query(...)):
+@router.patch("/{identifier:uuid}/avatar")
+async def update_avatar(identifier: UUID, avatar_url: str = Query(...)):
     """Update person's avatar."""
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         result = supabase_db_instance.client.table("people").update({"avatar_url": avatar_url}).eq("id", person_id).execute()
         if result.data:
             logger.info(f"Updated avatar for person {person_id}")
             return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", identifier)
+        raise NotFoundError("Person", str(identifier))
     except NotFoundError:
         raise
     except Exception as e:
@@ -683,11 +717,11 @@ async def update_avatar(identifier: str, avatar_url: str = Query(...)):
         raise DatabaseError(str(e), operation="update_avatar")
 
 
-@router.patch("/{identifier}/visibility")
-async def update_visibility(identifier: str, data: VisibilityUpdate):
+@router.patch("/{identifier:uuid}/visibility")
+async def update_visibility(identifier: UUID, data: VisibilityUpdate):
     """Update person's visibility settings."""
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
@@ -695,7 +729,7 @@ async def update_visibility(identifier: str, data: VisibilityUpdate):
         result = supabase_db_instance.client.table("people").update(update_data).eq("id", person_id).execute()
         if result.data:
             return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", identifier)
+        raise NotFoundError("Person", str(identifier))
     except (NotFoundError, ValidationError):
         raise
     except Exception as e:
@@ -703,11 +737,11 @@ async def update_visibility(identifier: str, data: VisibilityUpdate):
         raise DatabaseError(str(e), operation="update_visibility")
 
 
-@router.delete("/{identifier}")
-async def delete_person(identifier: str):
+@router.delete("/{identifier:uuid}")
+async def delete_person(identifier: UUID):
     """Delete a person and cleanup related data."""
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         # Cleanup deprecated face_descriptors table (if exists)
         for table_name in ["face_descriptors_DEPRECATED", "face_descriptors"]:
@@ -741,11 +775,11 @@ async def delete_person(identifier: str):
         raise DatabaseError(str(e), operation="delete_person")
 
 
-@router.post("/{identifier}/verify-on-photo")
-async def verify_person_on_photo(identifier: str, photo_id: str = Query(...)):
+@router.post("/{identifier:uuid}/verify-on-photo")
+async def verify_person_on_photo(identifier: UUID, photo_id: str = Query(...)):
     """Верифицирует человека на конкретном фото."""
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         logger.info(f"Verifying person {person_id} on photo {photo_id}")
         
@@ -766,11 +800,11 @@ async def verify_person_on_photo(identifier: str, photo_id: str = Query(...)):
         raise DatabaseError(str(e), operation="verify_person_on_photo")
 
 
-@router.post("/{identifier}/unlink-from-photo")
-async def unlink_person_from_photo(identifier: str, photo_id: str = Query(...)):
+@router.post("/{identifier:uuid}/unlink-from-photo")
+async def unlink_person_from_photo(identifier: UUID, photo_id: str = Query(...)):
     """Отвязывает человека от фото."""
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         logger.info(f"Unlinking person {person_id} from photo {photo_id}")
         
@@ -784,7 +818,7 @@ async def unlink_person_from_photo(identifier: str, photo_id: str = Query(...)):
         faces_count = count_result.count if hasattr(count_result, 'count') else len(count_result.data or [])
         logger.info(f"Found {faces_count} faces to unlink")
         
-        # Then update (without .select() which doesn't work in sync client)
+        # Then update
         supabase_db_instance.client.table("photo_faces")\
             .update({
                 "person_id": None,
@@ -806,18 +840,18 @@ async def unlink_person_from_photo(identifier: str, photo_id: str = Query(...)):
         raise DatabaseError(str(e), operation="unlink_person_from_photo")
 
 
-@router.get("/{identifier}/photos-with-details")
-async def get_person_photos_with_details(identifier: str):
+@router.get("/{identifier:uuid}/photos-with-details")
+async def get_person_photos_with_details(identifier: UUID):
     """Получает фотографии человека с детальной информацией, включая excluded_from_index."""
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         logger.info(f"Getting photos with details for person {person_id}")
         
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
-        # Получаем все photo_faces для этого человека (включая excluded_from_index)
+        # Получаем все photo_faces для этого человека
         photo_faces_result = supabase_db_instance.client.table("photo_faces")\
             .select(
                 "id, photo_id, recognition_confidence, verified, insightface_bbox, person_id, excluded_from_index, "
@@ -908,28 +942,25 @@ async def get_person_photos_with_details(identifier: str):
         raise DatabaseError(str(e), operation="get_person_photos_with_details")
 
 
-@router.get("/{identifier}/embedding-consistency")
+@router.get("/{identifier:uuid}/embedding-consistency")
 async def get_embedding_consistency(
-    identifier: str,
+    identifier: UUID,
     outlier_threshold: float = Query(0.5, description="Similarity below this = outlier")
 ):
     """
     Analyze consistency of person's embeddings to find outliers.
     
     Returns embeddings sorted by similarity to centroid (worst first).
-    Outliers are embeddings that don't match the person's "average" face.
-    
-    Now includes excluded_from_index status.
     """
     import numpy as np
     import json
     
     try:
-        person_id = _get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(identifier)
         
         logger.info(f"[consistency] Analyzing embeddings for person {person_id}")
         
-        # Get all faces with embeddings for this person (include bbox and image dimensions)
+        # Get all faces with embeddings for this person
         result = supabase_db_instance.client.table("photo_faces").select(
             "id, photo_id, verified, recognition_confidence, insightface_descriptor, insightface_bbox, excluded_from_index, "
             "gallery_images(id, image_url, original_filename, width, height)"
@@ -951,7 +982,7 @@ async def get_embedding_consistency(
         logger.info(f"[consistency] Found {len(faces)} faces with embeddings")
         
         # Parse embeddings
-        embeddings_data = []  # [(embedding, face)]
+        embeddings_data = []
         for face in faces:
             descriptor = face["insightface_descriptor"]
             if isinstance(descriptor, list):
@@ -981,7 +1012,6 @@ async def get_embedding_consistency(
         non_excluded = [(e, f) for e, f in embeddings_data if not f.get("excluded_from_index")]
         
         if len(non_excluded) < 2:
-            # Use all if not enough non-excluded
             centroid_embeddings = [e for e, f in embeddings_data]
         else:
             centroid_embeddings = [e for e, f in non_excluded]
@@ -1053,14 +1083,7 @@ async def get_embedding_consistency(
 
 
 async def _calculate_people_stats(people: list) -> list:
-    """Calculate face statistics for all people.
-    
-    Counts:
-    - verified_photos_count: photos where person is verified
-    - high_confidence_photos_count: photos with high confidence (not verified)
-    - descriptor_count: total photo_faces with embeddings for this person
-    - excluded_count: descriptors excluded from index
-    """
+    """Calculate face statistics for all people."""
     try:
         config = supabase_db_instance.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
