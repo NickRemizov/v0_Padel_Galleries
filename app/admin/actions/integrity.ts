@@ -6,8 +6,8 @@ import { revalidatePath } from "next/cache"
 
 /**
  * Database Integrity Checker
- * v2.0: Fixed float comparison for confidence (use 0.9999 threshold)
- * + added confidenceWithoutVerified check
+ * v2.1: Changed CONFIDENCE_100_THRESHOLD from 0.9999 to 0.99
+ * + added pagination to confidenceWithoutVerified check
  * + пагинация для всех запросов к photo_faces
  * + правильная проверка дубликатов по 5 полям
  */
@@ -53,9 +53,10 @@ const DUPLICATE_CHECK_FIELDS = [
 ] as const
 
 /**
- * Threshold for float comparison (0.9999 ≈ 100%)
+ * Threshold for float comparison (0.99 ≈ 100%)
+ * v2.1: Changed from 0.9999 to 0.99 to catch all near-100% values
  */
-const CONFIDENCE_100_THRESHOLD = 0.9999
+const CONFIDENCE_100_THRESHOLD = 0.99
 
 /**
  * Получить порог confidence из настроек
@@ -119,7 +120,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
   data?: IntegrityReport
   error?: string
 }> {
-  console.log("[v0] Starting integrity check...")
+  console.log("[v2.1] Starting integrity check...")
   const supabase = await createClient()
 
   try {
@@ -184,7 +185,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .is("person_id", null)
 
     photoFaces.verifiedWithoutPerson = verifiedWithoutPerson?.length || 0
-    console.log("[v0] verifiedWithoutPerson count:", photoFaces.verifiedWithoutPerson)
+    console.log("[v2.1] verifiedWithoutPerson count:", photoFaces.verifiedWithoutPerson)
     if (verifiedWithoutPerson && verifiedWithoutPerson.length > 0) {
       details.verifiedWithoutPerson = verifiedWithoutPerson.slice(0, 50).map((item: any) => ({
         id: item.id,
@@ -199,8 +200,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }))
     }
 
-    // 2. Verified с неправильным confidence (< 0.9999)
-    // v2.0: Using .lt() instead of .neq() to properly handle float comparison
+    // 2. Verified с неправильным confidence (< 0.99)
     const { data: verifiedWithWrongConfidence } = await supabase
       .from("photo_faces")
       .select(`
@@ -211,7 +211,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .lt("recognition_confidence", CONFIDENCE_100_THRESHOLD)
 
     photoFaces.verifiedWithWrongConfidence = verifiedWithWrongConfidence?.length || 0
-    console.log("[v0] verifiedWithWrongConfidence count:", photoFaces.verifiedWithWrongConfidence)
+    console.log("[v2.1] verifiedWithWrongConfidence count:", photoFaces.verifiedWithWrongConfidence)
     if (verifiedWithWrongConfidence && verifiedWithWrongConfidence.length > 0) {
       details.verifiedWithWrongConfidence = verifiedWithWrongConfidence.slice(0, 50).map((item: any) => ({
         ...item,
@@ -222,22 +222,20 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }))
     }
 
-    // 2b. Confidence ~100% без verified (NEW CHECK)
-    // v2.0: Faces with high confidence but not verified - should be verified
-    const { data: confidenceWithoutVerified } = await supabase
-      .from("photo_faces")
-      .select(`
-        id, photo_id, person_id, recognition_confidence, verified, insightface_bbox,
-        gallery_images(id, image_url, gallery_id, galleries(title)),
-        people(real_name)
-      `)
-      .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
-      .eq("verified", false)
+    // 2b. Confidence ~100% без verified (С ПАГИНАЦИЕЙ)
+    // v2.1: Now using pagination to catch all records
+    const allConfidenceWithoutVerified = await loadAllPhotoFaces<any>(
+      supabase,
+      `id, photo_id, person_id, recognition_confidence, verified, insightface_bbox,
+       gallery_images(id, image_url, gallery_id, galleries(title)),
+       people(real_name)`,
+      (q) => q.gte("recognition_confidence", CONFIDENCE_100_THRESHOLD).eq("verified", false)
+    )
+    console.log(`[v2.1] confidenceWithoutVerified loaded with pagination: ${allConfidenceWithoutVerified.length}`)
 
-    photoFaces.confidenceWithoutVerified = confidenceWithoutVerified?.length || 0
-    console.log("[v0] confidenceWithoutVerified count:", photoFaces.confidenceWithoutVerified)
-    if (confidenceWithoutVerified && confidenceWithoutVerified.length > 0) {
-      details.confidenceWithoutVerified = confidenceWithoutVerified.slice(0, 50).map((item: any) => ({
+    photoFaces.confidenceWithoutVerified = allConfidenceWithoutVerified.length
+    if (allConfidenceWithoutVerified.length > 0) {
+      details.confidenceWithoutVerified = allConfidenceWithoutVerified.slice(0, 50).map((item: any) => ({
         id: item.id,
         photo_id: item.photo_id,
         person_id: item.person_id,
@@ -262,7 +260,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .is("recognition_confidence", null)
 
     photoFaces.personWithoutConfidence = personWithoutConfidence?.length || 0
-    console.log("[v0] personWithoutConfidence count:", photoFaces.personWithoutConfidence)
+    console.log("[v2.1] personWithoutConfidence count:", photoFaces.personWithoutConfidence)
     if (personWithoutConfidence && personWithoutConfidence.length > 0) {
       details.personWithoutConfidence = personWithoutConfidence.slice(0, 10).map((item: any) => ({
         ...item,
@@ -279,7 +277,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       "id, photo_id, person_id, insightface_bbox",
       (q) => q.not("person_id", "is", null)
     )
-    console.log(`[v0] Total photo_faces with person_id loaded: ${allPhotoFacesWithPerson.length}`)
+    console.log(`[v2.1] Total photo_faces with person_id loaded: ${allPhotoFacesWithPerson.length}`)
 
     if (allPhotoFacesWithPerson.length > 0) {
       const personIds = [...new Set(allPhotoFacesWithPerson.map((pf) => pf.person_id))]
@@ -295,7 +293,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       const nonExistentPersonFaces = allPhotoFacesWithPerson.filter((pf) => !existingIds.has(pf.person_id!))
 
       photoFaces.nonExistentPerson = nonExistentPersonFaces.length
-      console.log("[v0] nonExistentPerson count:", photoFaces.nonExistentPerson)
+      console.log("[v2.1] nonExistentPerson count:", photoFaces.nonExistentPerson)
       if (nonExistentPersonFaces.length > 0) {
         details.nonExistentPersonFaces = nonExistentPersonFaces.slice(0, 10).map((item: any) => ({
           ...item,
@@ -309,7 +307,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       supabase,
       "id, photo_id, insightface_bbox"
     )
-    console.log(`[v0] Total photo_faces loaded for nonExistentPhoto check: ${allPhotoFacesWithPhotos.length}`)
+    console.log(`[v2.1] Total photo_faces loaded for nonExistentPhoto check: ${allPhotoFacesWithPhotos.length}`)
 
     if (allPhotoFacesWithPhotos.length > 0) {
       const photoIds = [...new Set(allPhotoFacesWithPhotos.map((pf) => pf.photo_id))]
@@ -324,7 +322,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       const nonExistentPhotoFaces = allPhotoFacesWithPhotos.filter((pf) => !existingPhotoIds.has(pf.photo_id))
 
       photoFaces.nonExistentPhoto = nonExistentPhotoFaces.length
-      console.log("[v0] nonExistentPhoto count:", photoFaces.nonExistentPhoto)
+      console.log("[v2.1] nonExistentPhoto count:", photoFaces.nonExistentPhoto)
       if (nonExistentPhotoFaces.length > 0) {
         details.nonExistentPhotoFaces = nonExistentPhotoFaces.slice(0, 50).map((item: any) => ({
           ...item,
@@ -335,7 +333,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
 
     // 6. Orphaned links (С ПАГИНАЦИЕЙ)
     const confidenceThreshold = await getConfidenceThreshold()
-    console.log(`[v0] Using confidence threshold: ${confidenceThreshold}`)
+    console.log(`[v2.1] Using confidence threshold: ${confidenceThreshold}`)
 
     const allFacesForOrphaned = await loadAllPhotoFaces<any>(
       supabase,
@@ -344,14 +342,14 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
        people(real_name)`,
       (q) => q.not("person_id", "is", null).not("insightface_descriptor", "is", null).eq("verified", false)
     )
-    console.log(`[v0] Total faces for orphaned check loaded: ${allFacesForOrphaned.length}`)
+    console.log(`[v2.1] Total faces for orphaned check loaded: ${allFacesForOrphaned.length}`)
 
     const orphanedLinks = allFacesForOrphaned.filter(
       (face) => (face.recognition_confidence || 0) < confidenceThreshold
     )
 
     photoFaces.orphanedLinks = orphanedLinks.length
-    console.log("[v0] orphanedLinks count:", photoFaces.orphanedLinks)
+    console.log("[v2.1] orphanedLinks count:", photoFaces.orphanedLinks)
     if (orphanedLinks.length > 0) {
       details.orphanedLinks = orphanedLinks.slice(0, 50).map((face: any) => ({
         id: face.id,
@@ -376,7 +374,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       .not("insightface_descriptor", "is", null)
 
     photoFaces.unrecognizedFaces = unrecognizedCount.count || 0
-    console.log("[v0] unrecognizedFaces (info only) count:", photoFaces.unrecognizedFaces)
+    console.log("[v2.1] unrecognizedFaces (info only) count:", photoFaces.unrecognizedFaces)
 
     // ========== PEOPLE CHECKS ==========
 
@@ -391,7 +389,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       const peopleWithoutFacesList = allPeopleData.filter((p) => !peopleWithFaces.has(p.id))
 
       people.withoutFaces = peopleWithoutFacesList.length
-      console.log("[v0] peopleWithoutFaces count:", people.withoutFaces)
+      console.log("[v2.1] peopleWithoutFaces count:", people.withoutFaces)
       
       // Сохраняем только имена для вывода списком
       if (peopleWithoutFacesList.length > 0) {
@@ -449,7 +447,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       }
 
       people.duplicatePeople = duplicateGroups.length
-      console.log("[v0] duplicatePeople groups:", people.duplicatePeople)
+      console.log("[v2.1] duplicatePeople groups:", people.duplicatePeople)
 
       if (duplicateGroups.length > 0) {
         details.duplicatePeople = duplicateGroups
@@ -479,11 +477,11 @@ export async function checkDatabaseIntegrityFullAction(): Promise<{
       details,
     }
 
-    console.log("[v0] Integrity check complete. Total issues:", totalIssues)
+    console.log("[v2.1] Integrity check complete. Total issues:", totalIssues)
 
     return { success: true, data: report }
   } catch (error: any) {
-    console.log("[v0] Error in integrity check:", error.message)
+    console.log("[v2.1] Error in integrity check:", error.message)
     logger.error("actions/integrity", "Error checking database integrity", error)
     return { success: false, error: error.message || "Failed to check database integrity" }
   }
@@ -520,7 +518,6 @@ export async function fixIntegrityIssuesAction(
       }
 
       case "verifiedWithWrongConfidence": {
-        // v2.0: Using .lt() instead of .neq() for proper float comparison
         const { data: updated, error } = await supabase
           .from("photo_faces")
           .update({ recognition_confidence: 1.0 })
@@ -535,17 +532,31 @@ export async function fixIntegrityIssuesAction(
       }
 
       case "confidenceWithoutVerified": {
-        // v2.0: NEW FIX - set verified=true for faces with ~100% confidence
-        const { data: updated, error } = await supabase
-          .from("photo_faces")
-          .update({ verified: true })
-          .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
-          .eq("verified", false)
-          .select("id")
+        // v2.1: Using pagination to fix ALL records
+        const allToFix = await loadAllPhotoFaces<{ id: string }>(
+          supabase,
+          "id",
+          (q) => q.gte("recognition_confidence", CONFIDENCE_100_THRESHOLD).eq("verified", false)
+        )
+        console.log(`[v2.1] Found ${allToFix.length} faces to fix for confidenceWithoutVerified`)
 
-        if (error) throw error
-        fixed = updated?.length || 0
-        details.updatedIds = updated?.map((u: any) => u.id)
+        if (allToFix.length > 0) {
+          const idsToFix = allToFix.map((f) => f.id)
+          
+          // Update батчами
+          for (let i = 0; i < idsToFix.length; i += 500) {
+            const batch = idsToFix.slice(i, i + 500)
+            const { error } = await supabase
+              .from("photo_faces")
+              .update({ verified: true })
+              .in("id", batch)
+
+            if (error) throw error
+          }
+          
+          fixed = idsToFix.length
+          details.updatedIds = idsToFix.slice(0, 100)
+        }
         break
       }
 
@@ -570,7 +581,7 @@ export async function fixIntegrityIssuesAction(
           "id, person_id",
           (q) => q.not("person_id", "is", null)
         )
-        console.log(`[v0] Loaded ${allPhotoFaces.length} photo_faces for nonExistentPersonFaces fix`)
+        console.log(`[v2.1] Loaded ${allPhotoFaces.length} photo_faces for nonExistentPersonFaces fix`)
 
         if (allPhotoFaces.length > 0) {
           const personIds = [...new Set(allPhotoFaces.map((pf) => pf.person_id!))]
@@ -608,11 +619,11 @@ export async function fixIntegrityIssuesAction(
           supabase,
           "id, photo_id"
         )
-        console.log(`[v0] Total photo_faces loaded: ${allPhotoFaces.length}`)
+        console.log(`[v2.1] Total photo_faces loaded: ${allPhotoFaces.length}`)
 
         if (allPhotoFaces.length > 0) {
           const photoIds = [...new Set(allPhotoFaces.map((pf) => pf.photo_id))]
-          console.log(`[v0] Unique photo_ids: ${photoIds.length}`)
+          console.log(`[v2.1] Unique photo_ids: ${photoIds.length}`)
 
           const existingPhotoIds = new Set<string>()
           for (let i = 0; i < photoIds.length; i += 500) {
@@ -621,11 +632,11 @@ export async function fixIntegrityIssuesAction(
             existingPhotos?.forEach((p: any) => existingPhotoIds.add(p.id))
           }
 
-          console.log(`[v0] Existing photos found: ${existingPhotoIds.size}`)
+          console.log(`[v2.1] Existing photos found: ${existingPhotoIds.size}`)
 
           const invalidIds = allPhotoFaces.filter((pf) => !existingPhotoIds.has(pf.photo_id)).map((pf) => pf.id)
 
-          console.log(`[v0] Invalid photo_faces to delete: ${invalidIds.length}`)
+          console.log(`[v2.1] Invalid photo_faces to delete: ${invalidIds.length}`)
 
           if (invalidIds.length > 0) {
             const batchSize = 50
@@ -636,7 +647,7 @@ export async function fixIntegrityIssuesAction(
               const { error: deleteError } = await supabase.from("photo_faces").delete().in("id", batch)
 
               if (deleteError) {
-                console.error(`[v0] Error deleting batch ${i}-${i + batch.length}:`, deleteError)
+                console.error(`[v2.1] Error deleting batch ${i}-${i + batch.length}:`, deleteError)
               } else {
                 deleted += batch.length
               }
@@ -647,7 +658,7 @@ export async function fixIntegrityIssuesAction(
             }
 
             fixed = deleted
-            console.log(`[v0] Successfully deleted: ${deleted} records`)
+            console.log(`[v2.1] Successfully deleted: ${deleted} records`)
           }
         }
         break
@@ -662,7 +673,7 @@ export async function fixIntegrityIssuesAction(
           "id, recognition_confidence",
           (q) => q.not("person_id", "is", null).not("insightface_descriptor", "is", null).eq("verified", false)
         )
-        console.log(`[v0] Loaded ${allFaces.length} faces for orphanedLinks fix`)
+        console.log(`[v2.1] Loaded ${allFaces.length} faces for orphanedLinks fix`)
 
         const toFix = allFaces.filter((f) => (f.recognition_confidence || 0) < confidenceThreshold)
 
@@ -713,14 +724,14 @@ export async function fixIntegrityIssuesAction(
     }
 
     logger.info("actions/integrity", `Fixed ${fixed} issues of type ${issueType}`)
-    console.log("[v0] Fixed issues count:", fixed)
+    console.log("[v2.1] Fixed issues count:", fixed)
 
     revalidatePath("/admin")
 
     return { success: true, data: { fixed, issueType, details } }
   } catch (error: any) {
     logger.error("actions/integrity", "Error fixing integrity issue", error)
-    console.error("[v0] Error fixing integrity issue:", error)
+    console.error("[v2.1] Error fixing integrity issue:", error)
     return { success: false, error: error.message || "Failed to fix integrity issue" }
   }
 }
