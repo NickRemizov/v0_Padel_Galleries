@@ -1,6 +1,7 @@
 """
 Faces API - CRUD Operations
 Basic face CRUD endpoints: get, save, update, delete
+v4.7: Fix verified/confidence sync in update_face
 """
 
 from fastapi import APIRouter, Depends
@@ -176,6 +177,16 @@ async def update_face(
                 
         if request.verified is not None:
             update_data["verified"] = request.verified
+            # v4.7: Sync confidence when verified=true with person_id
+            # This fixes the bug where verified=true but confidence stays at old value (e.g. 0.83)
+            if request.verified:
+                # Use person_id from request or current face
+                effective_person_id = request.person_id if request.person_id is not None else current_person_id
+                if effective_person_id:
+                    update_data["recognition_confidence"] = 1.0
+                    logger.info(f"[update_face] v4.7: verified=true with person_id, setting confidence=1.0")
+        
+        # Explicit recognition_confidence from request takes precedence
         if request.recognition_confidence is not None:
             update_data["recognition_confidence"] = request.recognition_confidence
         
