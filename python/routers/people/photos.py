@@ -4,24 +4,33 @@ Endpoints for person's photos: list, verify, unlink
 """
 
 from fastapi import APIRouter, Query
+from uuid import UUID
 
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
 
-from .helpers import get_supabase_db, get_person_id, convert_bbox_to_array
+from .helpers import get_supabase_db, convert_bbox_to_array
 
 logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/{identifier}/photos")
-async def get_person_photos(identifier: str):
+def _get_person_id_from_uuid(supabase_db, person_uuid: UUID) -> str:
+    """Get person ID from UUID. Raises NotFoundError if not found."""
+    result = supabase_db.client.table("people").select("id").eq("id", str(person_uuid)).execute()
+    if result.data and len(result.data) > 0:
+        return result.data[0]["id"]
+    raise NotFoundError("Person", str(person_uuid))
+
+
+@router.get("/{identifier:uuid}/photos")
+async def get_person_photos(identifier: UUID):
     """Get all photos containing this person with gallery info for sorting."""
     supabase_db = get_supabase_db()
     
     try:
-        person_id = get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(supabase_db, identifier)
         
         config = supabase_db.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
@@ -41,13 +50,13 @@ async def get_person_photos(identifier: str):
         raise DatabaseError(str(e), operation="get_person_photos")
 
 
-@router.get("/{identifier}/photos-with-details")
-async def get_person_photos_with_details(identifier: str):
+@router.get("/{identifier:uuid}/photos-with-details")
+async def get_person_photos_with_details(identifier: UUID):
     """Получает фотографии человека с детальной информацией, включая excluded_from_index."""
     supabase_db = get_supabase_db()
     
     try:
-        person_id = get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(supabase_db, identifier)
         
         logger.info(f"Getting photos with details for person {person_id}")
         
@@ -145,13 +154,13 @@ async def get_person_photos_with_details(identifier: str):
         raise DatabaseError(str(e), operation="get_person_photos_with_details")
 
 
-@router.post("/{identifier}/verify-on-photo")
-async def verify_person_on_photo(identifier: str, photo_id: str = Query(...)):
+@router.post("/{identifier:uuid}/verify-on-photo")
+async def verify_person_on_photo(identifier: UUID, photo_id: str = Query(...)):
     """Верифицирует человека на конкретном фото."""
     supabase_db = get_supabase_db()
     
     try:
-        person_id = get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(supabase_db, identifier)
         
         logger.info(f"Verifying person {person_id} on photo {photo_id}")
         
@@ -172,13 +181,13 @@ async def verify_person_on_photo(identifier: str, photo_id: str = Query(...)):
         raise DatabaseError(str(e), operation="verify_person_on_photo")
 
 
-@router.post("/{identifier}/unlink-from-photo")
-async def unlink_person_from_photo(identifier: str, photo_id: str = Query(...)):
+@router.post("/{identifier:uuid}/unlink-from-photo")
+async def unlink_person_from_photo(identifier: UUID, photo_id: str = Query(...)):
     """Отвязывает человека от фото."""
     supabase_db = get_supabase_db()
     
     try:
-        person_id = get_person_id(identifier)
+        person_id = _get_person_id_from_uuid(supabase_db, identifier)
         
         logger.info(f"Unlinking person {person_id} from photo {photo_id}")
         
