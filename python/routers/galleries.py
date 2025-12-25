@@ -338,7 +338,15 @@ async def get_gallery_unrecognized_photos(identifier: str):
 
 @router.get("/{identifier}/stats")
 async def get_gallery_stats(identifier: str):
-    """Get face recognition stats for a gallery."""
+    """Get face recognition stats for a gallery.
+    
+    Photo is verified if:
+    - It has NO faces (no faces = nothing to verify = verified)
+    - OR ALL its faces have verified=True
+    
+    Photo is NOT verified if:
+    - It has at least one face with verified=False
+    """
     try:
         gallery_id = _get_gallery_id(identifier)
         
@@ -347,17 +355,38 @@ async def get_gallery_stats(identifier: str):
         
         if not image_ids:
             return ApiResponse.ok({
-                "isFullyVerified": False,
+                "isFullyVerified": True,  # No photos = nothing to verify
                 "verifiedCount": 0,
                 "totalCount": 0
             })
         
+        # Get ALL faces for these photos (not just verified ones)
         faces_result = supabase_db_instance.client.table("photo_faces").select(
             "photo_id, verified"
-        ).in_("photo_id", image_ids).eq("verified", True).execute()
+        ).in_("photo_id", image_ids).execute()
         
-        verified_photo_ids = set(f["photo_id"] for f in (faces_result.data or []))
-        verified_count = len(verified_photo_ids)
+        all_faces = faces_result.data or []
+        
+        # Group faces by photo_id
+        faces_by_photo = {}
+        for face in all_faces:
+            pid = face["photo_id"]
+            if pid not in faces_by_photo:
+                faces_by_photo[pid] = []
+            faces_by_photo[pid].append(face)
+        
+        # Count verified photos
+        # Photo is verified if: no faces OR all faces verified=True
+        verified_count = 0
+        for photo_id in image_ids:
+            faces = faces_by_photo.get(photo_id, [])
+            if len(faces) == 0:
+                # No faces = verified (nothing to verify)
+                verified_count += 1
+            elif all(f.get("verified", False) for f in faces):
+                # All faces verified
+                verified_count += 1
+        
         total_count = len(image_ids)
         is_fully_verified = verified_count == total_count and total_count > 0
         
