@@ -3,28 +3,21 @@ Maintenance endpoints for face recognition system.
 - POST /rebuild-index
 - GET /index-status
 - GET /index-debug-person
-- POST /debug-recognition
+- GET /debug-recognition
 """
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
-from typing import List, Optional
 import numpy as np
+import json
 
 from core.config import VERSION
 from core.responses import ApiResponse
 from core.exceptions import IndexRebuildError
 from core.logging import get_logger
-from .dependencies import get_face_service
+from .dependencies import get_face_service, get_supabase_client
 
 logger = get_logger(__name__)
 router = APIRouter()
-
-
-class DebugRecognitionRequest(BaseModel):
-    """Request for debug recognition"""
-    embedding: List[float]
-    k: int = 50
 
 
 @router.post("/rebuild-index")
@@ -160,15 +153,17 @@ async def get_index_debug_person(
         return ApiResponse.fail(str(e), code="INDEX_ERROR").model_dump()
 
 
-@router.post("/debug-recognition")
+@router.get("/debug-recognition")
 async def debug_recognition(
-    request: DebugRecognitionRequest,
-    face_service=Depends(get_face_service)
+    face_id: str = Query(..., description="Face ID to test recognition for"),
+    k: int = Query(50, description="Number of candidates to return"),
+    face_service=Depends(get_face_service),
+    supabase_client=Depends(get_supabase_client)
 ):
     """
-    Debug recognition: show ALL candidates from HNSW query and the algorithm's decision process.
+    Debug recognition: load embedding by face_id, query HNSW, show ALL candidates.
     
-    Pass the embedding from a face you want to test, and see:
+    Shows:
     - All k candidates returned by HNSW
     - Their similarity, source_confidence, verified status
     - Calculated final_confidence for each
@@ -180,8 +175,29 @@ async def debug_recognition(
         if not index.is_loaded():
             return ApiResponse.fail("Index not loaded", code="INDEX_ERROR").model_dump()
         
-        embedding = np.array(request.embedding, dtype=np.float32)
-        k = min(request.k, index.get_count())
+        # Load face from DB
+        face_result = supabase_client.client.table("photo_faces").select(
+            "id, person_id, insightface_descriptor, verified, recognition_confidence, people(real_name)"
+        ).eq("id", face_id).execute()
+        
+        if not face_result.data:
+            return ApiResponse.fail(f"Face {face_id} not found", code="NOT_FOUND").model_dump()
+        
+        face = face_result.data[0]
+        descriptor = face.get("insightface_descriptor")
+        
+        if not descriptor:
+            return ApiResponse.fail(f"Face {face_id} has no descriptor", code="NO_DESCRIPTOR").model_dump()
+        
+        # Parse embedding
+        if isinstance(descriptor, str):
+            embedding = np.array(json.loads(descriptor), dtype=np.float32)
+        elif isinstance(descriptor, list):
+            embedding = np.array(descriptor, dtype=np.float32)
+        else:
+            return ApiResponse.fail(f"Unknown descriptor type: {type(descriptor)}", code="INVALID_DESCRIPTOR").model_dump()
+        
+        k = min(k, index.get_count())
         
         # Query HNSW
         person_ids, similarities, verified_flags, source_confidences = index.query(embedding, k=k)
@@ -245,6 +261,13 @@ async def debug_recognition(
                 person_summary[pid]["has_verified"] = True
         
         return ApiResponse.ok({
+            "face_info": {
+                "face_id": face_id,
+                "current_person_id": face.get("person_id"),
+                "current_person_name": face.get("people", {}).get("real_name") if face.get("people") else None,
+                "db_verified": face.get("verified"),
+                "db_recognition_confidence": face.get("recognition_confidence")
+            },
             "query_k": k,
             "total_candidates": len(candidates),
             "winner": {
@@ -254,7 +277,7 @@ async def debug_recognition(
             },
             "early_exit_at": early_exit_at,
             "person_summary": person_summary,
-            "candidates": candidates,
+            "candidates": candidates[:30],  # Show first 30
             "hint": "Look at candidates to see if verified embeddings have lower similarity than non-verified"
         }).model_dump()
         
