@@ -14,7 +14,7 @@ from core.config import VERSION
 from core.responses import ApiResponse
 from core.exceptions import IndexRebuildError
 from core.logging import get_logger
-from .dependencies import get_face_service, get_supabase_client
+from .dependencies import get_face_service
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -157,8 +157,7 @@ async def get_index_debug_person(
 async def debug_recognition(
     face_id: str = Query(..., description="Face ID to test recognition for"),
     k: int = Query(50, description="Number of candidates to return"),
-    face_service=Depends(get_face_service),
-    supabase_client=Depends(get_supabase_client)
+    face_service=Depends(get_face_service)
 ):
     """
     Debug recognition: load embedding by face_id, query HNSW, show ALL candidates.
@@ -175,8 +174,11 @@ async def debug_recognition(
         if not index.is_loaded():
             return ApiResponse.fail("Index not loaded", code="INDEX_ERROR").model_dump()
         
+        # Use face_service.supabase_db - the correct client
+        db = face_service.supabase_db
+        
         # Load face from DB
-        face_result = supabase_client.client.table("photo_faces").select(
+        face_result = db.client.table("photo_faces").select(
             "id, person_id, insightface_descriptor, verified, recognition_confidence, people(real_name)"
         ).eq("id", face_id).execute()
         
