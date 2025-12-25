@@ -76,7 +76,7 @@
 | `updatePersonAction` | ❌ | ✅ |
 
 **Файлы с прямым Supabase (нужно мигрировать):**
-```
+\`\`\`
 app/admin/actions/cleanup.ts      # 12KB - сложные UPDATE/DELETE
 app/admin/actions/integrity.ts    # 28KB - проверки БД
 app/api/comments/*/route.ts       # Комментарии
@@ -85,7 +85,7 @@ app/api/favorites/*/route.ts      # Избранное
 app/page.tsx                      # Публичная главная
 app/gallery/[id]/page.tsx         # Публичная галерея
 app/players/*/page.tsx            # Публичные игроки
-```
+\`\`\`
 
 **Оценка:** 22-32 часа
 
@@ -106,14 +106,14 @@ app/players/*/page.tsx            # Публичные игроки
 ### 1.3 Dependency Injection: Убрать глобальные переменные
 
 **Проблема:** Все роутеры используют глобальные переменные вместо FastAPI Depends:
-```python
+\`\`\`python
 # Сейчас (плохо)
 supabase_db_instance: SupabaseDatabase = None
 
 def set_services(supabase_db):
     global supabase_db_instance
     supabase_db_instance = supabase_db
-```
+\`\`\`
 
 **Решение:** Правильный FastAPI DI через `Depends()`.
 
@@ -153,13 +153,13 @@ def set_services(supabase_db):
 **Проблема:** Два класса для работы с БД — `SupabaseClient` и `SupabaseDatabase` — дублируют методы.
 
 **Решение:** Создать единый Repository слой:
-```
+\`\`\`
 python/repositories/
 ├── base.py           # Базовый класс
 ├── faces_repo.py     # CRUD для photo_faces
 ├── people_repo.py    # CRUD для people
 └── ...
-```
+\`\`\`
 
 **Оценка:** 6-8 часов
 
@@ -169,7 +169,7 @@ python/repositories/
 
 **Было:** `python/routers/people.py` = 1000+ строк
 **Стало:** Модульная структура:
-```
+\`\`\`
 python/routers/people/
 ├── __init__.py           # Экспорт router
 ├── crud.py               # GET/POST/PUT/DELETE
@@ -179,7 +179,7 @@ python/routers/people/
 ├── avatar.py             # Аватары
 ├── helpers.py            # Вспомогательные функции
 └── models.py             # Pydantic models
-```
+\`\`\`
 
 ---
 
@@ -278,14 +278,14 @@ python/routers/people/
 
 ## 📝 Как добавлять задачи
 
-```markdown
+\`\`\`markdown
 ### X.X Название задачи
 
 **Проблема:** Описание проблемы
 **Решение:** Что нужно сделать
 **Файлы:** Какие файлы затронуты
 **Оценка:** X-Y часов
-```
+\`\`\`
 
 ---
 
