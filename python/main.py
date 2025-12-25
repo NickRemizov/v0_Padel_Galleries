@@ -139,7 +139,7 @@ galleries.set_services(supabase_db, face_service)
 locations.set_services(supabase_db)
 organizers.set_services(supabase_db)
 cities.set_services(supabase_db)
-admin.set_services(supabase_db)
+admin.set_services(supabase_db, face_service)  # v1.1: added face_service for debug endpoints
 logger.info("✓ Service instances injected into all routers")
 
 # ============================================================
