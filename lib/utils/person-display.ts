@@ -9,7 +9,7 @@ export function getPersonSecondaryInfo(person: Person): string {
     return person.telegram_name
   }
   if (person.telegram_nickname) {
-    return `@${person.telegram_nickname}`
+    return person.telegram_nickname
   }
   if (person.gmail) {
     return person.gmail
