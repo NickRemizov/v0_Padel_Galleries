@@ -4,6 +4,7 @@ Basic CRUD endpoints: list, get, create, update, delete
 """
 
 from fastapi import APIRouter, Query
+from uuid import UUID
 
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
@@ -41,21 +42,6 @@ async def get_people(with_stats: bool = Query(False)):
         raise DatabaseError(str(e), operation="get_people")
 
 
-@router.get("/{identifier}")
-async def get_person(identifier: str):
-    """Get a person by ID or slug."""
-    try:
-        person = resolve_person(identifier)
-        if person:
-            return ApiResponse.ok(person)
-        raise NotFoundError("Person", identifier)
-    except NotFoundError:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting person {identifier}: {e}")
-        raise DatabaseError(str(e), operation="get_person")
-
-
 @router.post("/")
 async def create_person(data: PersonCreate):
     """Create a new person."""
@@ -73,13 +59,53 @@ async def create_person(data: PersonCreate):
         raise DatabaseError(str(e), operation="create_person")
 
 
-@router.put("/{identifier}")
-async def update_person(identifier: str, data: PersonUpdate):
-    """Update a person by ID or slug."""
+# ============ SLUG-BASED ROUTES ============
+
+@router.get("/slug/{slug}")
+async def get_person_by_slug(slug: str):
+    """Get a person by slug."""
+    try:
+        person = resolve_person(slug)
+        if person:
+            return ApiResponse.ok(person)
+        raise NotFoundError("Person", slug)
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting person by slug {slug}: {e}")
+        raise DatabaseError(str(e), operation="get_person_by_slug")
+
+
+# ============ UUID-BASED ROUTES ============
+
+@router.get("/{identifier:uuid}")
+async def get_person(identifier: UUID):
+    """Get a person by UUID."""
     supabase_db = get_supabase_db()
     
     try:
-        person_id = get_person_id(identifier)
+        result = supabase_db.client.table("people").select("*").eq("id", str(identifier)).execute()
+        if result.data and len(result.data) > 0:
+            return ApiResponse.ok(result.data[0])
+        raise NotFoundError("Person", str(identifier))
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting person {identifier}: {e}")
+        raise DatabaseError(str(e), operation="get_person")
+
+
+@router.put("/{identifier:uuid}")
+async def update_person(identifier: UUID, data: PersonUpdate):
+    """Update a person by UUID."""
+    supabase_db = get_supabase_db()
+    
+    try:
+        # Verify person exists
+        result = supabase_db.client.table("people").select("id").eq("id", str(identifier)).execute()
+        if not result.data:
+            raise NotFoundError("Person", str(identifier))
+        person_id = str(identifier)
         
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
@@ -88,7 +114,7 @@ async def update_person(identifier: str, data: PersonUpdate):
         if result.data:
             logger.info(f"Updated person {person_id}")
             return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", identifier)
+        raise NotFoundError("Person", str(identifier))
     except (NotFoundError, ValidationError):
         raise
     except Exception as e:
@@ -96,14 +122,18 @@ async def update_person(identifier: str, data: PersonUpdate):
         raise DatabaseError(str(e), operation="update_person")
 
 
-@router.delete("/{identifier}")
-async def delete_person(identifier: str):
+@router.delete("/{identifier:uuid}")
+async def delete_person(identifier: UUID):
     """Delete a person and cleanup related data."""
     supabase_db = get_supabase_db()
     face_service = get_face_service()
     
     try:
-        person_id = get_person_id(identifier)
+        # Verify person exists
+        result = supabase_db.client.table("people").select("id").eq("id", str(identifier)).execute()
+        if not result.data:
+            raise NotFoundError("Person", str(identifier))
+        person_id = str(identifier)
         
         # Cleanup deprecated face_descriptors table (if exists)
         for table_name in ["face_descriptors_DEPRECATED", "face_descriptors"]:
