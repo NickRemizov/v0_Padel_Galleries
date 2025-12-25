@@ -16,6 +16,12 @@ def get_supabase_db():
     return supabase_db_instance
 
 
+def get_face_service():
+    """Get face_service instance from package globals."""
+    from . import face_service_instance
+    return face_service_instance
+
+
 def format_short_date(date_str: Optional[str]) -> str:
     """Format date as DD.MM"""
     if not date_str:
