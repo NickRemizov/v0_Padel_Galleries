@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { logger } from "@/lib/logger"
 
+/**
+ * Cleanup actions for photo_faces and gallery_images
+ * v2.1: Fixed float comparison - use >= 0.99 instead of == 1.0
+ */
+
 interface FixedRecord {
   id: string
   gallery_title: string
@@ -11,13 +16,20 @@ interface FixedRecord {
   person_name?: string
 }
 
+/**
+ * Threshold for "100%" confidence comparison
+ * v2.1: Changed from exact 1.0 to >= 0.99 to catch 0.999999... values
+ */
+const CONFIDENCE_100_THRESHOLD = 0.99
+
 export async function syncVerifiedAndConfidenceAction() {
   const supabase = await createClient()
 
   try {
     logger.debug("actions/cleanup", "Starting sync of verified and recognition_confidence fields...")
 
-    // 1. Найти записи где verified=true но confidence≠1
+    // 1. Найти записи где verified=true но confidence < 0.99
+    // v2.1: Using .lt() instead of .neq() for proper float comparison
     const { data: verifiedToFix } = await supabase
       .from("photo_faces")
       .select(`
@@ -26,7 +38,7 @@ export async function syncVerifiedAndConfidenceAction() {
         people(real_name)
       `)
       .eq("verified", true)
-      .neq("recognition_confidence", 1.0)
+      .lt("recognition_confidence", CONFIDENCE_100_THRESHOLD)
 
     const verifiedFixedList: FixedRecord[] = (verifiedToFix || []).map((item: any) => ({
       id: item.id,
@@ -41,7 +53,7 @@ export async function syncVerifiedAndConfidenceAction() {
         .from("photo_faces")
         .update({ recognition_confidence: 1.0 })
         .eq("verified", true)
-        .neq("recognition_confidence", 1.0)
+        .lt("recognition_confidence", CONFIDENCE_100_THRESHOLD)
     }
 
     const verifiedCount = verifiedFixedList.length
@@ -50,31 +62,49 @@ export async function syncVerifiedAndConfidenceAction() {
       `Updated ${verifiedCount} records: set recognition_confidence=1 where verified=true`,
     )
 
-    // 2. Найти записи где confidence=1 но verified=false
-    const { data: confidenceToFix } = await supabase
-      .from("photo_faces")
-      .select(`
-        id, photo_id, person_id,
-        gallery_images(original_filename, galleries(title)),
-        people(real_name)
-      `)
-      .eq("recognition_confidence", 1.0)
-      .eq("verified", false)
+    // 2. Найти записи где confidence >= 0.99 но verified=false (С ПАГИНАЦИЕЙ)
+    // v2.1: Using .gte() instead of .eq() and adding pagination
+    let allConfidenceToFix: any[] = []
+    let offset = 0
+    const pageSize = 1000
 
-    const confidenceFixedList: FixedRecord[] = (confidenceToFix || []).map((item: any) => ({
+    while (true) {
+      const { data: batch } = await supabase
+        .from("photo_faces")
+        .select(`
+          id, photo_id, person_id,
+          gallery_images(original_filename, galleries(title)),
+          people(real_name)
+        `)
+        .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+        .eq("verified", false)
+        .range(offset, offset + pageSize - 1)
+
+      if (!batch || batch.length === 0) break
+      allConfidenceToFix = allConfidenceToFix.concat(batch)
+      if (batch.length < pageSize) break
+      offset += pageSize
+    }
+
+    console.log(`[v2.1] Found ${allConfidenceToFix.length} faces with confidence >= ${CONFIDENCE_100_THRESHOLD} but verified=false`)
+
+    const confidenceFixedList: FixedRecord[] = allConfidenceToFix.map((item: any) => ({
       id: item.id,
       gallery_title: item.gallery_images?.galleries?.title || "Unknown",
       filename: item.gallery_images?.original_filename || item.photo_id,
       person_name: item.people?.real_name,
     }))
 
-    // Исправить их
-    if (confidenceFixedList.length > 0) {
-      await supabase
-        .from("photo_faces")
-        .update({ verified: true })
-        .eq("recognition_confidence", 1.0)
-        .eq("verified", false)
+    // Исправить их батчами
+    if (allConfidenceToFix.length > 0) {
+      const idsToFix = allConfidenceToFix.map((f) => f.id)
+      for (let i = 0; i < idsToFix.length; i += 500) {
+        const batch = idsToFix.slice(i, i + 500)
+        await supabase
+          .from("photo_faces")
+          .update({ verified: true })
+          .in("id", batch)
+      }
     }
 
     const confidenceCount = confidenceFixedList.length
@@ -146,7 +176,7 @@ export async function syncVerifiedAndConfidenceAction() {
     const { count: totalConfidence1 } = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
-      .eq("recognition_confidence", 1.0)
+      .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
 
     const { count: totalProcessed } = await supabase
       .from("gallery_images")
@@ -157,7 +187,7 @@ export async function syncVerifiedAndConfidenceAction() {
 
     logger.debug(
       "actions/cleanup",
-      `Final stats: ${totalVerified} verified, ${totalConfidence1} recognition_confidence=1, ${totalProcessed} processed, ${totalImages} total images`,
+      `Final stats: ${totalVerified} verified, ${totalConfidence1} recognition_confidence>=0.99, ${totalProcessed} processed, ${totalImages} total images`,
     )
 
     revalidatePath("/admin")
