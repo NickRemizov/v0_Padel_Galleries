@@ -5,6 +5,11 @@ import { apiFetch } from "@/lib/apiClient"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
+/**
+ * People actions
+ * v2.1: Added pagination to findDuplicatePeopleAction
+ */
+
 // - getPersonPhotosAction (moved to entities.ts)
 // - updatePersonAvatarAction (moved to entities.ts)
 // - updatePersonVisibilityAction (moved to entities.ts)
@@ -336,6 +341,7 @@ export interface DuplicatePerson {
 
 /**
  * Найти дубликаты игроков по совпадению полей
+ * v2.1: Added pagination for photo_faces query
  */
 export async function findDuplicatePeopleAction(): Promise<{
   success: boolean
@@ -359,14 +365,28 @@ export async function findDuplicatePeopleAction(): Promise<{
       return { success: true, data: [] }
     }
 
-    // Подсчитываем фото для каждого человека
-    const { data: photoCounts } = await supabase
-      .from("photo_faces")
-      .select("person_id")
-      .not("person_id", "is", null)
+    // Подсчитываем фото для каждого человека (С ПАГИНАЦИЕЙ)
+    let allPhotoCounts: any[] = []
+    let offset = 0
+    const pageSize = 1000
+
+    while (true) {
+      const { data: batch } = await supabase
+        .from("photo_faces")
+        .select("person_id")
+        .not("person_id", "is", null)
+        .range(offset, offset + pageSize - 1)
+
+      if (!batch || batch.length === 0) break
+      allPhotoCounts = allPhotoCounts.concat(batch)
+      if (batch.length < pageSize) break
+      offset += pageSize
+    }
+
+    console.log(`[v2.1] Loaded ${allPhotoCounts.length} photo_faces with pagination`)
 
     const photoCountMap = new Map<string, number>()
-    photoCounts?.forEach((pf: any) => {
+    allPhotoCounts.forEach((pf: any) => {
       photoCountMap.set(pf.person_id, (photoCountMap.get(pf.person_id) || 0) + 1)
     })
 
