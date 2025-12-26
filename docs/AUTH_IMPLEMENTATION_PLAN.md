@@ -40,12 +40,12 @@
 **Цель:** Создать auth функции БЕЗ изменения поведения
 
 **Файлы:**
-```
+\`\`\`
 python/services/auth.py  — добавить новые функции (не удалять старые!)
-```
+\`\`\`
 
 **Новые функции:**
-```python
+\`\`\`python
 async def verify_supabase_token(token: str) -> dict
     """Проверка Supabase JWT, возврат user info"""
 
@@ -57,7 +57,7 @@ async def require_auth(credentials) -> dict
 
 async def require_admin(credentials) -> dict
     """Для admin-only эндпоинтов"""
-```
+\`\`\`
 
 **Тест:** Backend запускается, всё работает как раньше
 
@@ -74,7 +74,7 @@ async def require_admin(credentials) -> dict
 **Шаги:**
 
 ### 1.1 Backend
-```python
+\`\`\`python
 # python/routers/admin/training.py
 from services.auth import require_admin
 
@@ -83,10 +83,10 @@ async def execute_training(
     user: dict = Depends(require_admin)  # ← добавить
 ):
     ...
-```
+\`\`\`
 
 ### 1.2 Frontend proxy
-```typescript
+\`\`\`typescript
 // app/api/admin/training/execute/route.ts
 import { createClient } from '@/lib/supabase/server'
 
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
   
   return new Response(response.body, { status: response.status })
 }
-```
+\`\`\`
 
 ### 1.3 Тесты
 - [ ] Без auth → 401
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
 
 После работающей авторизации:
 
-```python
+\`\`\`python
 # main.py
 import re
 
@@ -178,7 +178,7 @@ def is_origin_allowed(origin: str) -> bool:
         if re.match(pattern, origin):
             return True
     return False
-```
+\`\`\`
 
 **Оценка:** 1 час
 
