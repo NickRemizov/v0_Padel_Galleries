@@ -2,6 +2,20 @@
 
 import { revalidatePath } from "next/cache"
 import { apiFetch } from "@/lib/apiClient"
+import { createClient } from "@/lib/supabase/server"
+
+/**
+ * Helper to get auth headers for protected endpoints
+ */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (session?.access_token) {
+    return { "Authorization": `Bearer ${session.access_token}` }
+  }
+  return {}
+}
 
 /**
  * Process photo for face detection and recognition
@@ -24,8 +38,10 @@ export async function processPhotoAction(
   },
 ) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/recognition/process-photo", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         photo_id: photoId,
         force_redetect: forceRedetect,
@@ -75,8 +91,10 @@ export async function batchVerifyFacesAction(
   keptFaces: Array<{ id: string | null; person_id: string | null }>,
 ) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/faces/batch-verify", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         photo_id: photoId,
         kept_faces: keptFaces,
@@ -115,8 +133,10 @@ export async function savePhotoFaceAction(
   isVerified: boolean,
 ) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/faces/save", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         photo_id: photoId,
         person_id: personId,
@@ -152,8 +172,10 @@ export async function savePhotoFaceAction(
 
 export async function deleteGalleryImageAction(photoId: string) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/images/${photoId}`, {
       method: "DELETE",
+      headers,
     })
 
     if (result.success) {
@@ -193,9 +215,11 @@ export async function batchDeleteGalleryImagesAction(imageIds: string[], gallery
 
     console.log(`[batchDeleteGalleryImagesAction] Deleting ${imageIds.length} images from gallery ${galleryId}`)
 
+    const headers = await getAuthHeaders()
     // Use POST instead of DELETE - DELETE with body is unreliable
     const result = await apiFetch("/api/galleries/batch-delete-images", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         image_ids: imageIds,
         gallery_id: galleryId,
@@ -227,8 +251,10 @@ export async function batchDeleteGalleryImagesAction(imageIds: string[], gallery
 
 export async function deleteAllGalleryImagesAction(galleryId: string) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/images/gallery/${galleryId}/all`, {
       method: "DELETE",
+      headers,
     })
 
     if (result.success || result.deleted_count > 0) {
@@ -266,8 +292,10 @@ export async function addGalleryImagesAction(
   }>,
 ) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/images/batch-add", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         galleryId,
         images: uploadedImages,
@@ -300,8 +328,10 @@ export async function getBatchPhotoFacesAction(photoIds: string[]) {
 
     console.log("[v0] [getBatchPhotoFacesAction] Calling FastAPI /api/faces/batch...")
 
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/faces/batch", {
       method: "POST",
+      headers,
       body: JSON.stringify({ photo_ids: photoIds }),
     })
 
@@ -349,8 +379,10 @@ export async function getPhotoFacesAction(photoId: string) {
 
 export async function deletePhotoFaceAction(faceId: string) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/faces/delete", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         face_id: faceId,
       }),
@@ -386,8 +418,10 @@ export async function updatePhotoFaceAction(
   },
 ) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/faces/update", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         face_id: faceId,
         ...updates,
@@ -418,8 +452,10 @@ export async function updatePhotoFaceAction(
 
 export async function markPhotoAsProcessedAction(photoId: string) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/images/${photoId}/mark-processed`, {
       method: "PATCH",
+      headers,
     })
 
     if (!result.success) {
@@ -447,10 +483,12 @@ export async function clusterUnknownFacesAction(galleryId: string) {
   try {
     console.log("[v0] [clusterUnknownFacesAction] START - Gallery ID:", galleryId)
 
+    const headers = await getAuthHeaders()
     const result = await apiFetch<{ success: boolean; data: { clusters: any[]; ungrouped_faces: any[] } }>(
       `/api/recognition/cluster-unknown-faces?gallery_id=${galleryId}&min_cluster_size=2`,
       {
         method: "POST",
+        headers,
       },
     )
 
@@ -498,8 +536,10 @@ export async function assignFacesToPersonAction(faceIds: string[], personId: str
   try {
     console.log("[assignFacesToPersonAction] Assigning", faceIds.length, "faces to person:", personId)
 
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/faces/batch-assign", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         face_ids: faceIds,
         person_id: personId,
@@ -541,8 +581,10 @@ export async function recognizeUnknownFacesAction(galleryId?: string, confidence
   try {
     console.log("[recognizeUnknownFacesAction] START - Gallery ID:", galleryId)
 
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/faces/recognize-unknown", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         gallery_id: galleryId || null,
         confidence_threshold: confidenceThreshold || null,
