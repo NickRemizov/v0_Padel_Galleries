@@ -1,5 +1,6 @@
 import { env } from "./env"
 import { randomUUID } from "crypto"
+import { createClient } from "@/lib/supabase/client"
 
 export class ApiError extends Error {
   constructor(
@@ -31,10 +32,28 @@ interface ApiFetchOptions extends RequestInit {
    * If false (default), return {success: false, error, code} for HTTP errors.
    */
   throwOnError?: boolean
+  /**
+   * Skip authentication header (for public endpoints)
+   */
+  skipAuth?: boolean
+}
+
+/**
+ * Get Supabase access token for API authentication
+ */
+async function getAuthToken(): Promise<string | null> {
+  try {
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token || null
+  } catch (e) {
+    console.warn("[apiClient] Failed to get auth token:", e)
+    return null
+  }
 }
 
 export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<ApiResponseFormat<T>> {
-  const { timeout = 30000, retries = 3, throwOnError = false, headers = {}, ...fetchOptions } = options
+  const { timeout = 30000, retries = 3, throwOnError = false, skipAuth = false, headers = {}, ...fetchOptions } = options
 
   if (!env.FASTAPI_URL) {
     const errorResponse: ApiResponseFormat<T> = {
@@ -53,6 +72,15 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
   const requestId = randomUUID()
 
+  // Get auth token for write operations
+  let authHeaders: Record<string, string> = {}
+  if (!skipAuth) {
+    const token = await getAuthToken()
+    if (token) {
+      authHeaders["Authorization"] = `Bearer ${token}`
+    }
+  }
+
   const fetchWithTimeout = async (attemptNumber: number): Promise<ApiResponseFormat<T>> => {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -68,6 +96,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         headers: {
           "Content-Type": "application/json",
           "x-request-id": requestId,
+          ...authHeaders,
           ...headers,
         },
         signal: controller.signal,
