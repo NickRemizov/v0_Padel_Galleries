@@ -7,6 +7,8 @@ Uses core/ for configuration, exceptions, and logging.
 v4.1: Migrated to SupabaseService (modular architecture)
 - Removed: SupabaseDatabase, SupabaseClient (legacy)
 - Added: SupabaseService with modular repositories
+
+v4.2: Added AuthMiddleware for write operation protection
 """
 
 from dotenv import load_dotenv
@@ -35,6 +37,9 @@ from services.supabase import SupabaseService, get_supabase_service
 from services.face_recognition import FaceRecognitionService
 from services.training_service import TrainingService
 from services.auth import get_current_user, get_current_user_optional, verify_google_token, create_access_token
+
+# v4.2: Auth middleware
+from middleware.auth import AuthMiddleware
 
 # Router imports
 from routers import (
@@ -79,6 +84,15 @@ app.add_middleware(
 )
 
 logger.info("CORS middleware configured")
+
+# ============================================================
+# Auth Middleware (v4.2)
+# Protects all POST/PUT/PATCH/DELETE on /api/* with admin auth
+# Must be added AFTER CORS middleware (executes in reverse order)
+# ============================================================
+
+app.add_middleware(AuthMiddleware)
+logger.info("Auth middleware configured - write operations require admin token")
 
 # ============================================================
 # Global Exception Handlers
