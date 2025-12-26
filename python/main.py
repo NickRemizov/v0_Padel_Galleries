@@ -3,6 +3,10 @@ Padel Tournament Face Recognition API - Main Entry Point
 
 This is the FastAPI application entry point.
 Uses core/ for configuration, exceptions, and logging.
+
+v4.1: Migrated to SupabaseService (modular architecture)
+- Removed: SupabaseDatabase, SupabaseClient (legacy)
+- Added: SupabaseService with modular repositories
 """
 
 from dotenv import load_dotenv
@@ -26,11 +30,10 @@ from core.logging import setup_logging, get_logger
 setup_logging(level="INFO" if not settings.debug else "DEBUG")
 logger = get_logger(__name__)
 
-# Service imports
+# v4.1: Use unified SupabaseService
+from services.supabase import SupabaseService, get_supabase_service
 from services.face_recognition import FaceRecognitionService
 from services.training_service import TrainingService
-from services.supabase_database import SupabaseDatabase
-from services.supabase_client import SupabaseClient
 from services.auth import get_current_user, get_current_user_optional, verify_google_token, create_access_token
 
 # Router imports
@@ -115,31 +118,31 @@ async def generic_exception_handler(request: Request, exc: Exception):
 logger.info(f"Starting Padel Recognition API v{VERSION}")
 logger.info("Creating singleton service instances...")
 
-# 1. Database clients
-supabase_db = SupabaseDatabase()
-supabase_client = SupabaseClient()
-logger.info("✓ Created SupabaseDatabase and SupabaseClient")
+# v4.1: Single SupabaseService instead of separate clients
+supabase_service = get_supabase_service()
+logger.info("✓ Created SupabaseService (unified)")
 
-# 2. Face recognition service
-face_service = FaceRecognitionService(supabase_db=supabase_db)
+# Face recognition service - now uses SupabaseService internally
+face_service = FaceRecognitionService(supabase_service=supabase_service)
 logger.info("✓ Created FaceRecognitionService")
 
-# 3. Training service
-training_service = TrainingService(face_service=face_service, supabase_client=supabase_client)
+# Training service - now uses SupabaseService internally
+training_service = TrainingService(face_service=face_service, supabase_service=supabase_service)
 logger.info("✓ Created TrainingService")
 
-# 4. Inject services into routers
+# v4.1: Inject SupabaseService into routers
+# Routers receive supabase_service which provides access to all repositories
 training.set_training_service(training_service)
-faces.set_services(face_service, supabase_db)
-recognition.set_services(face_service, supabase_client)
-images.set_services(supabase_db, face_service)
-photographers.set_services(supabase_db)
-people.set_services(supabase_db, face_service)
-galleries.set_services(supabase_db, face_service)
-locations.set_services(supabase_db)
-organizers.set_services(supabase_db)
-cities.set_services(supabase_db)
-admin.set_services(supabase_db, face_service)  # v1.1: added face_service for debug endpoints
+faces.set_services(face_service, supabase_service)
+recognition.set_services(face_service, supabase_service)
+images.set_services(supabase_service, face_service)
+photographers.set_services(supabase_service)
+people.set_services(supabase_service, face_service)
+galleries.set_services(supabase_service, face_service)
+locations.set_services(supabase_service)
+organizers.set_services(supabase_service)
+cities.set_services(supabase_service)
+admin.set_services(supabase_service, face_service)
 logger.info("✓ Service instances injected into all routers")
 
 # ============================================================
@@ -163,13 +166,18 @@ def get_training_service() -> TrainingService:
     """Dependency injection for TrainingService"""
     return training_service
 
-def get_supabase_db() -> SupabaseDatabase:
-    """Dependency injection for SupabaseDatabase"""
-    return supabase_db
+def get_supabase() -> SupabaseService:
+    """Dependency injection for SupabaseService"""
+    return supabase_service
 
-def get_supabase_client() -> SupabaseClient:
-    """Dependency injection for SupabaseClient"""
-    return supabase_client
+# Legacy aliases for backward compatibility
+def get_supabase_db():
+    """Legacy: Use get_supabase() instead"""
+    return supabase_service
+
+def get_supabase_client():
+    """Legacy: Use get_supabase() instead"""
+    return supabase_service
 
 # ============================================================
 # Root Endpoints
