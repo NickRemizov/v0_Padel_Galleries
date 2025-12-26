@@ -1,14 +1,18 @@
 """
 People API - CRUD Operations
 Basic CRUD endpoints: list, get, create, update, delete
+
+v1.0: Original implementation
+v1.1: Added require_admin protection for write operations (Phase 1)
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from uuid import UUID
 
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
+from services.auth import require_admin
 
 from .models import PersonCreate, PersonUpdate
 from .helpers import (
@@ -43,11 +47,15 @@ async def get_people(with_stats: bool = Query(False)):
 
 
 @router.post("/")
-async def create_person(data: PersonCreate):
-    """Create a new person."""
+async def create_person(
+    data: PersonCreate,
+    admin_user: dict = Depends(require_admin)  # Phase 1: Require admin auth
+):
+    """Create a new person. Requires admin authentication."""
     supabase_db = get_supabase_db()
     
     try:
+        logger.info(f"Creating person '{data.real_name}' by admin: {admin_user.get('email')}")
         insert_data = data.model_dump(exclude_none=True)
         result = supabase_db.client.table("people").insert(insert_data).execute()
         if result.data:
@@ -96,11 +104,17 @@ async def get_person(identifier: UUID):
 
 
 @router.put("/{identifier:uuid}")
-async def update_person(identifier: UUID, data: PersonUpdate):
-    """Update a person by UUID."""
+async def update_person(
+    identifier: UUID, 
+    data: PersonUpdate,
+    admin_user: dict = Depends(require_admin)  # Phase 1: Require admin auth
+):
+    """Update a person by UUID. Requires admin authentication."""
     supabase_db = get_supabase_db()
     
     try:
+        logger.info(f"Updating person {identifier} by admin: {admin_user.get('email')}")
+        
         # Verify person exists
         result = supabase_db.client.table("people").select("id").eq("id", str(identifier)).execute()
         if not result.data:
@@ -123,12 +137,17 @@ async def update_person(identifier: UUID, data: PersonUpdate):
 
 
 @router.delete("/{identifier:uuid}")
-async def delete_person(identifier: UUID):
-    """Delete a person and cleanup related data."""
+async def delete_person(
+    identifier: UUID,
+    admin_user: dict = Depends(require_admin)  # Phase 1: Require admin auth
+):
+    """Delete a person and cleanup related data. Requires admin authentication."""
     supabase_db = get_supabase_db()
     face_service = get_face_service()
     
     try:
+        logger.info(f"Deleting person {identifier} by admin: {admin_user.get('email')}")
+        
         # Verify person exists
         result = supabase_db.client.table("people").select("id").eq("id", str(identifier)).execute()
         if not result.data:
