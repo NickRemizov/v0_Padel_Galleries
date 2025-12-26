@@ -1,4 +1,6 @@
 import { env } from "./env"
+import { randomUUID } from "crypto"
+import { createClient } from "@/lib/supabase/client"
 
 export class ApiError extends Error {
   constructor(
@@ -25,37 +27,22 @@ interface ApiResponseFormat<T = any> {
 interface ApiFetchOptions extends RequestInit {
   timeout?: number
   retries?: number
+  /**
+   * If true, throw ApiError on HTTP errors (legacy behavior).
+   * If false (default), return {success: false, error, code} for HTTP errors.
+   */
   throwOnError?: boolean
+  /**
+   * Skip authentication header (for public endpoints)
+   */
   skipAuth?: boolean
 }
 
 /**
- * Check if running on server
- */
-const isServer = typeof window === "undefined"
-
-/**
- * Generate UUID
- */
-function generateUUID(): string {
-  if (isServer) {
-    return require("crypto").randomUUID()
-  }
-  return crypto.randomUUID()
-}
-
-/**
- * Get Supabase access token (browser only)
- * Server Actions don't need auth - GET is public, POST auth handled by backend
+ * Get Supabase access token for API authentication
  */
 async function getAuthToken(): Promise<string | null> {
-  if (isServer) {
-    // Server Actions: skip auth, backend handles it
-    return null
-  }
-  
   try {
-    const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
     return session?.access_token || null
@@ -83,11 +70,11 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
   const normalizedPath = path.startsWith("/") ? path : `/${path}`
   const url = `${env.FASTAPI_URL}${normalizedPath}`
 
-  const requestId = generateUUID()
+  const requestId = randomUUID()
 
-  // Get auth token (browser only)
+  // Get auth token for write operations
   let authHeaders: Record<string, string> = {}
-  if (!skipAuth && !isServer) {
+  if (!skipAuth) {
     const token = await getAuthToken()
     if (token) {
       authHeaders["Authorization"] = `Bearer ${token}`
@@ -100,6 +87,9 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
     try {
       console.log(`[apiClient] Request ${requestId} (attempt ${attemptNumber}): ${fetchOptions.method || "GET"} ${url}`)
+      if (fetchOptions.body) {
+        console.log(`[apiClient] Request ${requestId} body:`, fetchOptions.body)
+      }
 
       const response = await fetch(url, {
         ...fetchOptions,
@@ -114,6 +104,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
       clearTimeout(timeoutId)
 
+      // Try to parse JSON response body (backend always returns JSON)
       const contentType = response.headers.get("content-type")
       let responseBody: any = null
 
@@ -126,35 +117,49 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       }
 
       if (!response.ok) {
+        // Check if we should retry (5xx errors)
         const shouldRetry = (response.status >= 500 || response.status === 503) && attemptNumber < retries
 
         if (shouldRetry) {
           const backoffDelay = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000)
-          console.warn(`[apiClient] Request ${requestId} failed with ${response.status}, retrying...`)
+          console.warn(
+            `[apiClient] Request ${requestId} failed with ${response.status}, retrying after ${backoffDelay}ms...`,
+          )
           await new Promise((resolve) => setTimeout(resolve, backoffDelay))
           return fetchWithTimeout(attemptNumber + 1)
         }
 
+        // Backend returns {success: false, error: "...", code: "..."} format
+        // Use it directly if available
         if (responseBody && typeof responseBody === "object" && "success" in responseBody) {
+          console.log(`[apiClient] Request ${requestId} failed with ${response.status}:`, responseBody)
           if (throwOnError) {
             throw new ApiError(response.status, responseBody.code, responseBody.error)
           }
           return responseBody as ApiResponseFormat<T>
         }
 
+        // Fallback: construct error response from HTTP status
         let errorMessage = `HTTP ${response.status}`
         let errorCode: string | undefined
 
         if (responseBody) {
+          // Handle FastAPI validation errors (detail is array of error objects)
           if (Array.isArray(responseBody.detail)) {
-            errorMessage = responseBody.detail
-              .map((err: any) => `${err.loc?.join(".") || "unknown"}: ${err.msg || "error"}`)
+            const validationErrors = responseBody.detail
+              .map((err: any) => {
+                const field = Array.isArray(err.loc) ? err.loc.join(".") : "unknown"
+                return `${field}: ${err.msg || err.message || "validation error"}`
+              })
               .join("; ")
+            errorMessage = validationErrors || errorMessage
             errorCode = "VALIDATION_ERROR"
           } else {
             errorMessage = responseBody.message || responseBody.detail || errorMessage
             errorCode = responseBody.code
           }
+        } else {
+          errorMessage = response.statusText || errorMessage
         }
 
         const errorResponse: ApiResponseFormat<T> = {
@@ -163,6 +168,8 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
           code: errorCode || `HTTP_${response.status}`,
         }
 
+        console.log(`[apiClient] Request ${requestId} failed with ${response.status}:`, errorResponse)
+
         if (throwOnError) {
           throw new ApiError(response.status, errorResponse.code, errorResponse.error)
         }
@@ -170,10 +177,13 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         return errorResponse
       }
 
+      // Success response
       if (responseBody) {
+        console.log(`[apiClient] Request ${requestId} succeeded - Response:`, JSON.stringify(responseBody, null, 2))
         return responseBody
       }
 
+      // Non-JSON success response (rare)
       const textBody = await response.text()
       return { success: true, data: textBody as any }
     } catch (error) {
@@ -182,13 +192,14 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       if (error instanceof Error && error.name === "AbortError") {
         if (attemptNumber < retries) {
           const backoffDelay = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000)
+          console.warn(`[apiClient] Request ${requestId} timed out, retrying after ${backoffDelay}ms...`)
           await new Promise((resolve) => setTimeout(resolve, backoffDelay))
           return fetchWithTimeout(attemptNumber + 1)
         }
 
         const errorResponse: ApiResponseFormat<T> = {
           success: false,
-          error: `Request timed out after ${timeout}ms`,
+          error: `Request timed out after ${timeout}ms (${retries} attempts)`,
           code: "TIMEOUT",
         }
 
@@ -203,6 +214,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         throw error
       }
 
+      // Network or other error
       const errorResponse: ApiResponseFormat<T> = {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
