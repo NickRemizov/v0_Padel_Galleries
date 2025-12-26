@@ -82,7 +82,7 @@
 ### Фаза 5: Унификация Response Envelope ✅
 Все recognition endpoints теперь возвращают единый формат `ApiResponse`:
 
-```json
+\`\`\`json
 {
   "success": true,
   "data": { ... },
@@ -90,7 +90,7 @@
   "code": null,
   "meta": null
 }
-```
+\`\`\`
 
 **Исправленные файлы:**
 - [x] `recognize.py` — `/recognize-face` → ApiResponse + исправлен await на sync методе
@@ -109,7 +109,7 @@
 
 ## Архитектура после рефакторинга
 
-```
+\`\`\`
 main.py
   └── SupabaseService (singleton)
         ├── .client          → raw Supabase client
@@ -127,7 +127,7 @@ main.py
 
 Роутеры получают SupabaseService и вызывают методы через
 backward compatibility layer (делегирует в репозитории)
-```
+\`\`\`
 
 ---
 
@@ -135,7 +135,7 @@ backward compatibility layer (делегирует в репозитории)
 
 **ВСЕ endpoints теперь возвращают единый формат:**
 
-```json
+\`\`\`json
 // Success
 {
   "success": true,
@@ -153,16 +153,16 @@ backward compatibility layer (делегирует в репозитории)
   "code": "ERROR_CODE",
   "meta": null
 }
-```
+\`\`\`
 
 **Frontend должен читать данные из `result.data`:**
-```typescript
+\`\`\`typescript
 const result = await fetch('/api/recognition/detect-faces', ...);
 const json = await result.json();
 if (json.success) {
   const faces = json.data.faces;  // ← данные в data
 }
-```
+\`\`\`
 
 ---
 
@@ -209,7 +209,7 @@ if (json.success) {
 
 ## Примеры тестирования
 
-```bash
+\`\`\`bash
 # Health check
 curl http://vlcpadel.com:8001/api/health
 
@@ -221,7 +221,7 @@ curl http://vlcpadel.com:8001/api/recognition/index-status
 
 # Consistency audit
 curl http://vlcpadel.com:8001/api/people/consistency-audit
-```
+\`\`\`
 
 ---
 
