@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { RefreshCw, Loader2, CheckCircle2, AlertCircle, TrendingUp, AlertTriangle, UserCircle } from "lucide-react"
 import { TrainingHistoryList } from "./training-history-list"
-import { apiFetch } from "@/lib/apiClient"
+import { browserApiFetch } from "@/lib/browserApiClient"
 
 const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
 
@@ -104,11 +104,11 @@ export function FaceTrainingManager() {
     setFastapiError(false)
     setHttpsRequired(false)
     try {
-      console.log("[v0] Loading training data via apiFetch")
+      console.log("[v0] Loading training data via browserApiFetch")
 
       const [configRes, historyRes] = await Promise.all([
-        apiFetch<Config>("/api/admin/training/config"),
-        apiFetch<{ sessions: TrainingSession[] }>("/api/admin/training/history?limit=10"),
+        browserApiFetch<Config>("/api/admin/training/config"),
+        browserApiFetch<{ sessions: TrainingSession[] }>("/api/admin/training/history?limit=10"),
       ])
 
       console.log("[v0] Config response:", configRes)
@@ -171,7 +171,7 @@ export function FaceTrainingManager() {
     try {
       console.log("[v0] Preparing dataset...")
 
-      const response = await apiFetch<{ dataset_stats: DatasetStats }>("/api/admin/training/prepare", {
+      const response = await browserApiFetch<{ dataset_stats: DatasetStats }>("/api/admin/training/prepare", {
         method: "POST",
         body: JSON.stringify({
           filters: {},
@@ -216,7 +216,7 @@ export function FaceTrainingManager() {
     try {
       console.log("[v0] Starting training...")
 
-      const response = await apiFetch<{ session_id: string }>("/api/admin/training/execute", {
+      const response = await browserApiFetch<{ session_id: string }>("/api/admin/training/execute", {
         method: "POST",
         body: JSON.stringify({
           mode: "full",
@@ -251,7 +251,7 @@ export function FaceTrainingManager() {
 
   async function checkTrainingStatus(sessionId: string) {
     try {
-      const response = await apiFetch<{ status: string; progress?: { percentage: number } }>(
+      const response = await browserApiFetch<{ status: string; progress?: { percentage: number } }>(
         `/api/admin/training/status/${sessionId}`
       )
 
@@ -276,7 +276,7 @@ export function FaceTrainingManager() {
     try {
       console.log("[v0] Saving config:", localConfig)
 
-      const response = await apiFetch("/api/admin/training/config", {
+      const response = await browserApiFetch("/api/admin/training/config", {
         method: "PUT",
         body: JSON.stringify(localConfig),
       })
