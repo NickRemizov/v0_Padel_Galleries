@@ -1,3 +1,5 @@
+"use client"
+
 import { env } from "./env"
 
 export class ApiError extends Error {
@@ -25,57 +27,26 @@ interface ApiResponseFormat<T = any> {
 interface ApiFetchOptions extends RequestInit {
   timeout?: number
   retries?: number
-  /**
-   * If true, throw ApiError on HTTP errors (legacy behavior).
-   * If false (default), return {success: false, error, code} for HTTP errors.
-   */
   throwOnError?: boolean
-  /**
-   * Skip authentication header (for public endpoints)
-   */
   skipAuth?: boolean
 }
 
 /**
- * Check if we're running on the server
- */
-function isServer(): boolean {
-  return typeof window === "undefined"
-}
-
-/**
- * Generate UUID (works in both browser and Node.js)
+ * Generate UUID (works in browser)
  */
 function generateUUID(): string {
-  if (isServer()) {
-    // Node.js
-    const { randomUUID } = require("crypto")
-    return randomUUID()
-  } else {
-    // Browser
-    return crypto.randomUUID()
-  }
+  return crypto.randomUUID()
 }
 
 /**
- * Get Supabase access token for API authentication
- * Works in both browser and server (Server Actions) environments
+ * Get Supabase access token from browser client
  */
 async function getAuthToken(): Promise<string | null> {
   try {
-    if (isServer()) {
-      // Server-side: use server client
-      const { createClient } = await import("@/lib/supabase/server")
-      const supabase = await createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      return session?.access_token || null
-    } else {
-      // Browser: use client
-      const { createClient } = await import("@/lib/supabase/client")
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      return session?.access_token || null
-    }
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token || null
   } catch (e) {
     console.warn("[apiClient] Failed to get auth token:", e)
     return null
@@ -134,7 +105,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
       clearTimeout(timeoutId)
 
-      // Try to parse JSON response body (backend always returns JSON)
       const contentType = response.headers.get("content-type")
       let responseBody: any = null
 
@@ -147,7 +117,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       }
 
       if (!response.ok) {
-        // Check if we should retry (5xx errors)
         const shouldRetry = (response.status >= 500 || response.status === 503) && attemptNumber < retries
 
         if (shouldRetry) {
@@ -159,8 +128,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
           return fetchWithTimeout(attemptNumber + 1)
         }
 
-        // Backend returns {success: false, error: "...", code: "..."} format
-        // Use it directly if available
         if (responseBody && typeof responseBody === "object" && "success" in responseBody) {
           console.log(`[apiClient] Request ${requestId} failed with ${response.status}:`, responseBody)
           if (throwOnError) {
@@ -169,12 +136,10 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
           return responseBody as ApiResponseFormat<T>
         }
 
-        // Fallback: construct error response from HTTP status
         let errorMessage = `HTTP ${response.status}`
         let errorCode: string | undefined
 
         if (responseBody) {
-          // Handle FastAPI validation errors (detail is array of error objects)
           if (Array.isArray(responseBody.detail)) {
             const validationErrors = responseBody.detail
               .map((err: any) => {
@@ -207,13 +172,11 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         return errorResponse
       }
 
-      // Success response
       if (responseBody) {
         console.log(`[apiClient] Request ${requestId} succeeded - Response:`, JSON.stringify(responseBody, null, 2))
         return responseBody
       }
 
-      // Non-JSON success response (rare)
       const textBody = await response.text()
       return { success: true, data: textBody as any }
     } catch (error) {
@@ -244,7 +207,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         throw error
       }
 
-      // Network or other error
       const errorResponse: ApiResponseFormat<T> = {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
