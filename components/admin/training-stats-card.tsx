@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { apiFetch } from "@/lib/apiClient"
+import { browserApiFetch } from "@/lib/browserApiClient"
 
 interface Statistics {
   players: {
@@ -140,7 +140,7 @@ export function TrainingStatsCard() {
 
   async function fetchStats() {
     try {
-      const response = await apiFetch<Statistics>("/api/admin/face-statistics?top=15")
+      const response = await browserApiFetch<Statistics>("/api/admin/face-statistics?top=15")
 
       if (!response.success || !response.data) {
         console.error("[v0] Failed to fetch statistics:", response.error)
