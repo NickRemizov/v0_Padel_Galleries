@@ -1,94 +1,147 @@
-from fastapi import HTTPException, Security, Depends
+"""
+Authentication service for FastAPI.
+Verifies Supabase JWT tokens.
+
+v2.0: Added Supabase JWT verification
+"""
+
+from fastapi import HTTPException, Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
-from datetime import datetime, timedelta
 from typing import Optional
 import os
 from dotenv import load_dotenv
-import httpx
+
+from core.logging import get_logger
 
 load_dotenv()
 
-security = HTTPBearer()
+logger = get_logger(__name__)
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change_this_secret_key")
+security = HTTPBearer(auto_error=False)
+
+# Supabase JWT settings
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 часа
+
+# Public endpoints that don't require auth (patterns)
+PUBLIC_PATHS = [
+    "/api/docs",
+    "/api/redoc", 
+    "/api/openapi.json",
+    "/api/health",
+    "/",
+]
+
+# Methods that require authentication
+PROTECTED_METHODS = ["POST", "PUT", "DELETE", "PATCH"]
 
 
-async def verify_google_token(token: str) -> dict:
-    """Проверка Google OAuth токена"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://oauth2.googleapis.com/tokeninfo?id_token={token}"
-            )
-            
-            if response.status_code != 200:
-                raise HTTPException(status_code=401, detail="Неверный Google токен")
-            
-            token_info = response.json()
-            
-            # Проверяем что токен для нашего приложения
-            if token_info.get("aud") != GOOGLE_CLIENT_ID:
-                raise HTTPException(status_code=401, detail="Токен не для этого приложения")
-            
-            return token_info
+def is_public_path(path: str) -> bool:
+    """Check if path is public (no auth required)."""
+    for public_path in PUBLIC_PATHS:
+        if path.startswith(public_path):
+            return True
+    return False
+
+
+async def verify_supabase_token(token: str) -> dict:
+    """
+    Verify Supabase JWT token and return user data.
     
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Ошибка проверки токена: {str(e)}")
-
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    """Создание JWT токена"""
-    to_encode = data.copy()
+    Returns:
+        dict with user info: {sub, email, role, ...}
     
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
-    
-    return encoded_jwt
-
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
-    """Получение текущего пользователя из JWT токена"""
-    token = credentials.credentials
+    Raises:
+        HTTPException 401 if token is invalid
+    """
+    if not SUPABASE_JWT_SECRET:
+        logger.error("SUPABASE_JWT_SECRET not configured!")
+        raise HTTPException(
+            status_code=500, 
+            detail="Authentication not configured on server"
+        )
     
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
-        user_email: str = payload.get("sub")
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=[ALGORITHM],
+            options={"verify_aud": False}  # Supabase doesn't always set aud
+        )
         
-        if user_email is None:
-            raise HTTPException(status_code=401, detail="Неверный токен")
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token: no user ID")
         
-        return {"email": user_email, "name": payload.get("name")}
+        return {
+            "id": user_id,
+            "email": payload.get("email"),
+            "role": payload.get("role", "authenticated"),
+            "aud": payload.get("aud"),
+        }
+        
+    except JWTError as e:
+        logger.warning(f"JWT verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> dict:
+    """
+    Get current user from Supabase JWT token.
     
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Неверный токен")
+    Usage in endpoint:
+        @router.post("/something")
+        async def something(user: dict = Depends(get_current_user)):
+            print(user["email"])
+    """
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    
+    return await verify_supabase_token(credentials.credentials)
 
 
-# Опциональная аутентификация (для публичных endpoint'ов)
 async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Optional[dict]:
-    """Опциональная аутентификация - не требует токен"""
+    """
+    Get current user if token provided, None otherwise.
+    For endpoints that work for both authenticated and anonymous users.
+    """
     if credentials is None:
         return None
     
     try:
-        token = credentials.credentials
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
-        user_email: str = payload.get("sub")
-        
-        if user_email is None:
-            return None
-        
-        return {"email": user_email, "name": payload.get("name"), "sub": user_email}
-    except:
+        return await verify_supabase_token(credentials.credentials)
+    except HTTPException:
         return None
+
+
+async def require_auth_for_write(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> Optional[dict]:
+    """
+    Require authentication for write operations (POST/PUT/DELETE/PATCH).
+    GET requests pass through without auth.
+    
+    Usage: Add as dependency to router or individual endpoints.
+    """
+    # Allow GET, HEAD, OPTIONS without auth
+    if request.method not in PROTECTED_METHODS:
+        return None
+    
+    # Allow public paths
+    if is_public_path(request.url.path):
+        return None
+    
+    # Require auth for write operations
+    if credentials is None:
+        raise HTTPException(
+            status_code=401, 
+            detail="Authorization required for this operation"
+        )
+    
+    return await verify_supabase_token(credentials.credentials)
