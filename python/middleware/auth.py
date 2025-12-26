@@ -4,9 +4,10 @@ Protects all write operations (POST/PUT/PATCH/DELETE) with admin auth.
 GET/HEAD/OPTIONS requests are public.
 
 v1.0: Initial implementation
+v1.1: Fixed HTTPException handling from verify_supabase_token
 """
 
-from fastapi import Request
+from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -69,24 +70,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
         token = auth_header.replace("Bearer ", "")
         
         try:
+            # verify_supabase_token raises HTTPException on failure
             user = await verify_supabase_token(token)
-        except Exception as e:
-            logger.error(f"Auth middleware: Token verification failed: {e}")
+        except HTTPException as e:
+            logger.warning(f"Auth middleware: Token verification failed: {e.detail}")
             return JSONResponse(
-                {"detail": "Invalid token"},
-                status_code=401
+                {"detail": e.detail},
+                status_code=e.status_code
             )
-        
-        if not user:
-            logger.warning(f"Auth middleware: Invalid token for {method} {path}")
+        except Exception as e:
+            logger.error(f"Auth middleware: Unexpected error: {e}")
             return JSONResponse(
-                {"detail": "Invalid token"},
-                status_code=401
+                {"detail": "Authentication error"},
+                status_code=500
             )
         
         user_email = user.get("email", "")
         
-        if user_email not in ADMIN_EMAILS:
+        if user_email.lower() not in [e.lower() for e in ADMIN_EMAILS]:
             logger.warning(f"Auth middleware: Non-admin {user_email} tried {method} {path}")
             return JSONResponse(
                 {"detail": "Admin required"},
