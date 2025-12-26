@@ -1,7 +1,9 @@
 """
 Faces API - Statistics
 Statistics endpoint for admin panel
+
 v2.1: Added pagination for photo_faces query
+v2.2: Migrated to SupabaseService
 """
 
 from fastapi import APIRouter, Depends
@@ -10,7 +12,7 @@ from typing import Optional
 from core.responses import ApiResponse
 from core.exceptions import DatabaseError
 from core.logging import get_logger
-from services.supabase_database import SupabaseDatabase
+from services.supabase import SupabaseService
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -24,7 +26,7 @@ def get_supabase_db():
 @router.get("/statistics")
 async def get_face_statistics(
     confidence_threshold: Optional[float] = None,
-    supabase_db: SupabaseDatabase = Depends(get_supabase_db)
+    supabase_db: SupabaseService = Depends(get_supabase_db)
 ):
     """Get face recognition statistics for admin panel."""
     try:
@@ -37,7 +39,6 @@ async def get_face_statistics(
         people_data = people_response.data or []
         total_people = people_response.count or 0
         
-        # v2.1: Load ALL faces with pagination
         faces = []
         offset = 0
         page_size = 1000
@@ -57,7 +58,7 @@ async def get_face_statistics(
                 break
             offset += page_size
         
-        logger.info(f"[v2.1] Loaded {len(faces)} faces with pagination")
+        logger.info(f"Loaded {len(faces)} faces with pagination")
         
         verified_count = len([f for f in faces if f.get("verified")])
         high_conf_count = len([
