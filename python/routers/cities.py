@@ -1,6 +1,8 @@
 """
 Cities API Router
 CRUD operations for cities
+
+v1.1: Migrated to SupabaseService
 """
 
 from fastapi import APIRouter
@@ -10,15 +12,15 @@ from typing import Optional
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
-from services.supabase_database import SupabaseDatabase
+from services.supabase import SupabaseService
 
 logger = get_logger(__name__)
 router = APIRouter()
 
-supabase_db_instance: SupabaseDatabase = None
+supabase_db_instance: SupabaseService = None
 
 
-def set_services(supabase_db: SupabaseDatabase):
+def set_services(supabase_db: SupabaseService):
     global supabase_db_instance
     supabase_db_instance = supabase_db
 
@@ -37,7 +39,6 @@ class CityUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-# PostgreSQL error codes
 PG_UNIQUE_VIOLATION = "23505"
 PG_FOREIGN_KEY_VIOLATION = "23503"
 
@@ -90,7 +91,6 @@ async def create_city(data: CityCreate):
         error_str = str(e)
         logger.error(f"Error creating city: {e}")
         if "23505" in error_str or "duplicate" in error_str.lower():
-            # Use PostgreSQL error code for frontend compatibility
             raise ValidationError("Город с таким slug уже существует", code=PG_UNIQUE_VIOLATION)
         raise DatabaseError(error_str, operation="create_city")
 
