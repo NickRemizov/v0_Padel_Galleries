@@ -1,6 +1,4 @@
 import { env } from "./env"
-import { randomUUID } from "crypto"
-import { createClient } from "@/lib/supabase/client"
 
 export class ApiError extends Error {
   constructor(
@@ -39,13 +37,45 @@ interface ApiFetchOptions extends RequestInit {
 }
 
 /**
+ * Check if we're running on the server
+ */
+function isServer(): boolean {
+  return typeof window === "undefined"
+}
+
+/**
+ * Generate UUID (works in both browser and Node.js)
+ */
+function generateUUID(): string {
+  if (isServer()) {
+    // Node.js
+    const { randomUUID } = require("crypto")
+    return randomUUID()
+  } else {
+    // Browser
+    return crypto.randomUUID()
+  }
+}
+
+/**
  * Get Supabase access token for API authentication
+ * Works in both browser and server (Server Actions) environments
  */
 async function getAuthToken(): Promise<string | null> {
   try {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || null
+    if (isServer()) {
+      // Server-side: use server client
+      const { createClient } = await import("@/lib/supabase/server")
+      const supabase = await createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      return session?.access_token || null
+    } else {
+      // Browser: use client
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      return session?.access_token || null
+    }
   } catch (e) {
     console.warn("[apiClient] Failed to get auth token:", e)
     return null
@@ -70,7 +100,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
   const normalizedPath = path.startsWith("/") ? path : `/${path}`
   const url = `${env.FASTAPI_URL}${normalizedPath}`
 
-  const requestId = randomUUID()
+  const requestId = generateUUID()
 
   // Get auth token for write operations
   let authHeaders: Record<string, string> = {}
