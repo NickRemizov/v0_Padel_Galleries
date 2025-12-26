@@ -8,7 +8,21 @@ import { logger } from "@/lib/logger"
 /**
  * People actions
  * v2.1: Added pagination to findDuplicatePeopleAction
+ * v2.2: Added auth headers to all FastAPI write operations
  */
+
+/**
+ * Helper to get auth headers for protected endpoints
+ */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (session?.access_token) {
+    return { "Authorization": `Bearer ${session.access_token}` }
+  }
+  return {}
+}
 
 // - getPersonPhotosAction (moved to entities.ts)
 // - updatePersonAvatarAction (moved to entities.ts)
@@ -34,8 +48,10 @@ export async function getPersonPhotosWithDetailsAction(personId: string) {
 export async function verifyPersonOnPhotoAction(photoId: string, personId: string) {
   try {
     console.log("[verifyPersonOnPhotoAction] Verifying:", { photoId, personId })
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/people/${personId}/verify-on-photo?photo_id=${photoId}`, {
       method: "POST",
+      headers,
     })
     console.log("[verifyPersonOnPhotoAction] Result:", result)
 
@@ -55,8 +71,10 @@ export async function verifyPersonOnPhotoAction(photoId: string, personId: strin
 export async function unlinkPersonFromPhotoAction(photoId: string, personId: string) {
   try {
     console.log("[unlinkPersonFromPhotoAction] Unlinking:", { photoId, personId })
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/people/${personId}/unlink-from-photo?photo_id=${photoId}`, {
       method: "POST",
+      headers,
     })
     console.log("[unlinkPersonFromPhotoAction] Result:", result)
 
@@ -139,8 +157,10 @@ export async function clearFaceDescriptorAction(faceId: string): Promise<{
 }> {
   try {
     console.log("[clearFaceDescriptorAction] Clearing:", faceId)
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/faces/${faceId}/clear-descriptor`, {
       method: "POST",
+      headers,
     })
     console.log("[clearFaceDescriptorAction] Result:", result)
 
@@ -168,8 +188,10 @@ export async function setFaceExcludedAction(
 }> {
   try {
     console.log("[setFaceExcludedAction] Setting excluded:", faceId, excluded)
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/faces/${faceId}/set-excluded?excluded=${excluded}`, {
       method: "POST",
+      headers,
     })
     console.log("[setFaceExcludedAction] Result:", result)
 
@@ -197,9 +219,10 @@ export async function clearPersonOutliersAction(
 }> {
   try {
     console.log("[clearPersonOutliersAction] Clearing outliers for:", personId)
+    const headers = await getAuthHeaders()
     const result = await apiFetch(
       `/api/people/${personId}/clear-outliers?outlier_threshold=${outlierThreshold}`,
-      { method: "POST" }
+      { method: "POST", headers }
     )
     console.log("[clearPersonOutliersAction] Result:", result)
 
@@ -288,9 +311,10 @@ export async function auditAllEmbeddingsAction(
 ): Promise<{ success: boolean; data?: MassAuditData; error?: string }> {
   try {
     console.log("[auditAllEmbeddingsAction] Starting mass audit...")
+    const headers = await getAuthHeaders()
     const result = await apiFetch(
       `/api/people/audit-all-embeddings?outlier_threshold=${outlierThreshold}&min_descriptors=${minDescriptors}`,
-      { method: "POST" }
+      { method: "POST", headers }
     )
     console.log("[auditAllEmbeddingsAction] Result:", result.success)
 
@@ -342,6 +366,9 @@ export interface DuplicatePerson {
 /**
  * Найти дубликаты игроков по совпадению полей
  * v2.1: Added pagination for photo_faces query
+ * 
+ * NOTE: This function uses direct Supabase access (read-only).
+ * TODO: Move to FastAPI backend for consistency.
  */
 export async function findDuplicatePeopleAction(): Promise<{
   success: boolean
@@ -464,6 +491,9 @@ async function getConfidenceThreshold(): Promise<number> {
 
 /**
  * Удалить игрока (обнулить person_id на фото)
+ * 
+ * NOTE: This function uses direct Supabase access (write operation).
+ * TODO: Move to FastAPI backend for proper auth protection.
  */
 export async function deletePersonWithUnlinkAction(personId: string): Promise<{
   success: boolean
@@ -512,6 +542,9 @@ export async function deletePersonWithUnlinkAction(personId: string): Promise<{
  * Объединить дублей в одного игрока
  * @param keepPersonId - ID игрока, которого оставляем
  * @param mergePersonIds - ID игроков, которых объединяем с основным
+ * 
+ * NOTE: This function uses direct Supabase access (write operation).
+ * TODO: Move to FastAPI backend for proper auth protection.
  */
 export async function mergePeopleAction(
   keepPersonId: string,
