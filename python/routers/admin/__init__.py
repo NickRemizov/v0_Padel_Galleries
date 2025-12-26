@@ -5,22 +5,23 @@ Migrated from frontend direct Supabase access to centralized FastAPI.
 
 v1.0: Initial modular structure (refactored from monolithic admin.py)
 v1.1: Added face_service_instance for debug endpoints
+v1.2: Migrated to SupabaseService (removed SupabaseDatabase)
 """
 
 from fastapi import APIRouter
 
-from services.supabase_database import SupabaseDatabase
+from services.supabase import SupabaseService
 from services.face_recognition import FaceRecognitionService
 from core.logging import get_logger
 
 logger = get_logger(__name__)
 
 # Global service instances (set via set_services)
-supabase_db_instance: SupabaseDatabase = None
+supabase_db_instance: SupabaseService = None
 face_service_instance: FaceRecognitionService = None
 
 
-def set_services(supabase_db: SupabaseDatabase, face_service: FaceRecognitionService = None):
+def set_services(supabase_db: SupabaseService, face_service: FaceRecognitionService = None):
     """Set service instances for dependency injection."""
     global supabase_db_instance, face_service_instance
     supabase_db_instance = supabase_db
