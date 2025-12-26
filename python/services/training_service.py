@@ -5,6 +5,8 @@ Coordinates dataset preparation, training execution, and metrics calculation.
 Delegates to specialized modules:
 - training/dataset.py - Dataset preparation
 - training/metrics.py - Metrics calculation
+
+v4.1: Migrated to SupabaseService (modular architecture)
 """
 
 import uuid
@@ -15,7 +17,8 @@ from datetime import datetime, timedelta
 import numpy as np
 import hnswlib
 
-from services.supabase_client import SupabaseClient
+# v4.1: Use SupabaseService instead of SupabaseClient
+from services.supabase import SupabaseService, get_supabase_service
 from services.face_recognition import FaceRecognitionService
 from services.training.dataset import (
     prepare_dataset as _prepare_dataset,
@@ -37,19 +40,46 @@ class TrainingService:
     """
     Facade for training operations.
     Manages training sessions and coordinates training pipeline.
+    
+    v4.1: Now uses SupabaseService with modular repositories.
     """
     
     def __init__(
         self,
         face_service: 'FaceRecognitionService' = None,
-        supabase_client: 'SupabaseClient' = None
+        supabase_service: Optional['SupabaseService'] = None,
+        supabase_client=None  # Legacy parameter for backward compatibility
     ):
-        """Initialize training service with dependencies"""
+        """
+        Initialize training service with dependencies.
+        
+        Args:
+            face_service: FaceRecognitionService instance
+            supabase_service: New SupabaseService instance (preferred)
+            supabase_client: Legacy SupabaseClient (deprecated)
+        """
         self.face_service = face_service if face_service else FaceRecognitionService()
-        self.supabase = supabase_client if supabase_client else SupabaseClient()
+        
+        # v4.1: Use SupabaseService
+        if supabase_service is not None:
+            self._supabase = supabase_service
+        elif supabase_client is not None:
+            logger.warning("[TrainingService] Using legacy supabase_client - please migrate to SupabaseService")
+            self._supabase = get_supabase_service()
+        else:
+            self._supabase = get_supabase_service()
+        
+        # Shortcut accessors to repositories
+        self._training = self._supabase.training
+        self._config = self._supabase.config
+        self._faces = self._supabase.faces
+        
+        # Legacy compatibility alias
+        self.supabase = self._supabase
+        
         self.current_session_id = None
         self.current_progress = {'current': 0, 'total': 0, 'step': ''}
-        logger.info("[TrainingService] Initialized")
+        logger.info("[TrainingService] Initialized v4.1")
     
     # ==================== Dataset Preparation ====================
     
@@ -58,7 +88,7 @@ class TrainingService:
         Prepare dataset for training (without starting training).
         Delegates to training.dataset module.
         """
-        return await _prepare_dataset(self.supabase, filters, options)
+        return await _prepare_dataset(self._supabase, filters, options)
     
     # ==================== Training Execution ====================
     
@@ -90,7 +120,8 @@ class TrainingService:
             'status': 'running'
         }
         
-        await self.supabase.create_training_session(session_data)
+        # v4.1: Use training repository
+        self._training.create_training_session(session_data)
         logger.info(f"[TrainingService] Training session created: {session_id}")
         
         return session_id
@@ -118,8 +149,8 @@ class TrainingService:
                 'step': 'Loading verified faces from database'
             }
             
-            # Load faces with descriptors
-            faces = await self.supabase.get_verified_faces_with_descriptors(
+            # v4.1: Use training repository
+            faces = await self._training.get_verified_faces_with_descriptors(
                 event_ids=filters.get('event_ids'),
                 person_ids=filters.get('person_ids'),
                 date_from=filters.get('date_from'),
@@ -202,7 +233,8 @@ class TrainingService:
                 'status': 'completed'
             }
             
-            await self.supabase.update_training_session(session_id, updates)
+            # v4.1: Use training repository
+            self._training.update_training_session(session_id, updates)
             
             self.current_progress['step'] = 'Completed'
             logger.info("[TrainingService] Training completed successfully")
@@ -212,7 +244,7 @@ class TrainingService:
             import traceback
             logger.error(traceback.format_exc())
             
-            await self.supabase.update_training_session(session_id, {
+            self._training.update_training_session(session_id, {
                 'status': 'failed',
                 'metrics': {'error': str(e)}
             })
@@ -243,7 +275,7 @@ class TrainingService:
             
             try:
                 photo_url = photo_faces[0]['photo_url']
-                image = await download_photo(photo_url, supabase_client=self.supabase)
+                image = await download_photo(photo_url, supabase_client=self._supabase)
                 
                 detected_faces = self.face_service.app.get(image)
                 
@@ -265,11 +297,11 @@ class TrainingService:
                         descriptors.append(descriptor)
                         person_ids.append(face_data['person_id'])
                         
-                        # Save to database
-                        await self.supabase.update_face_descriptor(
+                        # v4.1: Use training repository
+                        await self._training.update_face_descriptor(
                             face_id=face_data['face_id'],
                             descriptor=descriptor,
-                            confidence=confidence,
+                            det_score=confidence,
                             bbox={
                                 'x': float(best_match.bbox[0]),
                                 'y': float(best_match.bbox[1]),
@@ -314,7 +346,8 @@ class TrainingService:
     
     def get_training_status(self, session_id: str) -> Dict:
         """Get training status by session ID."""
-        session = self.supabase.get_training_session(session_id)
+        # v4.1: Use training repository
+        session = self._training.get_training_session(session_id)
         if not session:
             return {'error': 'Session not found'}
         
@@ -351,8 +384,9 @@ class TrainingService:
     def get_training_history(self, limit: int = 10, offset: int = 0) -> Dict:
         """Get training history from Supabase."""
         try:
-            sessions = self.supabase.get_training_history(limit, offset)
-            total = self.supabase.get_training_sessions_count()
+            # v4.1: Use training repository
+            sessions = self._training.get_training_history(limit, offset)
+            total = self._training.get_training_sessions_count()
             
             return {
                 'sessions': sessions,
@@ -385,8 +419,8 @@ class TrainingService:
         try:
             self.face_service._ensure_initialized()
             
-            # Query unverified faces
-            query = self.supabase.client.table("photo_faces").select(
+            # Query unverified faces using raw client
+            query = self._supabase.client.table("photo_faces").select(
                 "id, photo_id, insightface_bbox, insightface_descriptor, "
                 "gallery_images(id, image_url, gallery_id)"
             ).or_("verified.is.null,verified.eq.false")
@@ -422,7 +456,8 @@ class TrainingService:
                 
                 if result and result[0]:
                     person_id, confidence = result
-                    await self.supabase.update_recognition_result(
+                    # v4.1: Use faces repository
+                    self._faces.update_recognition_result(
                         face_id=face_id,
                         person_id=person_id,
                         recognition_confidence=confidence,
@@ -431,7 +466,7 @@ class TrainingService:
                     recognized_count += 1
                     logger.info(f"Recognized face {face_id} as {person_id} ({confidence:.2f})")
                 else:
-                    await self.supabase.update_recognition_result(
+                    self._faces.update_recognition_result(
                         face_id=face_id,
                         person_id=None,
                         recognition_confidence=0.0,
@@ -467,7 +502,7 @@ class TrainingService:
             photo_url = photo['image_url']
             bbox = face_data['insightface_bbox']
             
-            image = await download_photo(photo_url, supabase_client=self.supabase)
+            image = await download_photo(photo_url, supabase_client=self._supabase)
             detected_faces = self.face_service.app.get(image)
             
             if not detected_faces:
@@ -478,10 +513,11 @@ class TrainingService:
             if best_match and best_iou > 0.3:
                 descriptor = best_match.embedding
                 
-                await self.supabase.update_face_descriptor(
+                # v4.1: Use training repository
+                await self._training.update_face_descriptor(
                     face_id=face_data['id'],
                     descriptor=descriptor,
-                    confidence=float(best_match.det_score),
+                    det_score=float(best_match.det_score),
                     bbox={
                         'x': float(best_match.bbox[0]),
                         'y': float(best_match.bbox[1]),

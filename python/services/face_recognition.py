@@ -12,11 +12,13 @@ v4.0: New recognition algorithm with adaptive early exit
 - Formula: final_confidence = source_confidence × similarity
 - Early exit when similarity < best_final_confidence
 - No separate penalty for non-verified faces
+
+v4.1: Migrated to SupabaseService (modular architecture)
 """
 
 import os
 import numpy as np
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Union
 from datetime import datetime
 import uuid
 import io
@@ -39,22 +41,51 @@ from services.quality_filters import (
     DEFAULT_QUALITY_FILTERS
 )
 from services.grouping import group_tournament_faces
-from services.supabase_database import SupabaseDatabase
+
+# New modular Supabase service
+from services.supabase import SupabaseService, get_supabase_service
 
 
 class FaceRecognitionService:
     """
     Facade for face detection and recognition.
     Coordinates model, index, and quality filtering.
+    
+    v4.1: Now uses SupabaseService with modular repositories.
     """
     
-    def __init__(self, supabase_db: 'SupabaseDatabase' = None):
-        """Initialize the service with dependencies"""
-        logger.info("[FaceRecognition] Initializing FaceRecognitionService...")
+    def __init__(self, supabase_service: Optional['SupabaseService'] = None, supabase_db=None):
+        """
+        Initialize the service with dependencies.
         
-        # Database
-        self.supabase_db = supabase_db if supabase_db else SupabaseDatabase()
-        logger.info("[FaceRecognition] SupabaseDatabase connected")
+        Args:
+            supabase_service: New SupabaseService instance (preferred)
+            supabase_db: Legacy SupabaseDatabase (deprecated, for backward compatibility)
+        """
+        logger.info("[FaceRecognition] Initializing FaceRecognitionService v4.1...")
+        
+        # Use new SupabaseService or create one
+        if supabase_service is not None:
+            self._supabase = supabase_service
+        elif supabase_db is not None:
+            # Legacy: wrap old SupabaseDatabase in compatibility layer
+            logger.warning("[FaceRecognition] Using legacy supabase_db - please migrate to SupabaseService")
+            self._supabase = get_supabase_service()
+            # Keep reference for methods that might use legacy API
+            self._legacy_db = supabase_db
+        else:
+            self._supabase = get_supabase_service()
+        
+        # Shortcut accessors to repositories
+        self._embeddings = self._supabase.embeddings
+        self._config = self._supabase.config
+        self._faces = self._supabase.faces
+        self._people = self._supabase.people
+        
+        # Legacy compatibility alias
+        self.supabase_db = self._supabase
+        
+        logger.info("[FaceRecognition] SupabaseService connected")
         
         # InsightFace model (lazy initialization)
         self._model = InsightFaceModel()
@@ -107,7 +138,8 @@ class FaceRecognitionService:
         
         try:
             # Get ALL embeddings (verified and non-verified) with metadata
-            person_ids, embeddings, verified_flags, confidences = self.supabase_db.get_all_player_embeddings()
+            # v4.1: Use embeddings repository
+            person_ids, embeddings, verified_flags, confidences = self._embeddings.get_all_player_embeddings()
             
             if len(embeddings) > 0:
                 success = self._players_index.load_from_embeddings(
@@ -281,7 +313,8 @@ class FaceRecognitionService:
         self._ensure_initialized()
         
         if confidence_threshold is None:
-            config = self.supabase_db.get_recognition_config_sync()
+            # v4.1: Use config repository
+            config = self._config.get_recognition_config()
             confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
         logger.info(f"[v4.0] Recognizing face (threshold={confidence_threshold:.2f})")
@@ -360,7 +393,8 @@ class FaceRecognitionService:
     async def load_quality_filters(self):
         """Load quality filters from database config"""
         try:
-            config = self.supabase_db.get_recognition_config()
+            # v4.1: Use config repository
+            config = self._config.get_recognition_config()
             if 'quality_filters' in config:
                 self.quality_filters = config['quality_filters']
                 logger.info(f"[FaceRecognition] Quality filters loaded: {self.quality_filters}")
@@ -370,7 +404,8 @@ class FaceRecognitionService:
     async def update_quality_filters(self, filters: Dict):
         """Update quality filters in database and cache"""
         try:
-            await self.supabase_db.update_recognition_config({"quality_filters": filters})
+            # v4.1: Use config repository
+            self._config.update_recognition_config({"quality_filters": filters})
             self.quality_filters = filters
             logger.info(f"[FaceRecognition] Quality filters updated: {filters}")
         except Exception as e:
@@ -404,94 +439,6 @@ class FaceRecognitionService:
         return groups, ungrouped
     
     # ==================== Pipeline Methods ====================
-    
-    async def add_player_to_archive(
-        self,
-        player_id: str,
-        name: str,
-        photos: List[UploadFile],
-        email: str = None,
-        phone: str = None,
-        notes: str = None
-    ) -> Dict:
-        """Add player to archive with photos"""
-        self._ensure_initialized()
-        
-        self.supabase_db.add_player(player_id, name, email, phone, notes)
-        
-        embeddings_added = 0
-        
-        for photo in photos:
-            contents = await photo.read()
-            image = Image.open(io.BytesIO(contents))
-            img_array = np.array(image.convert('RGB'))
-            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-            
-            faces = self._model.get_faces(img_array)
-            
-            if len(faces) > 0:
-                face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-                
-                embedding_id = str(uuid.uuid4())
-                self.supabase_db.add_player_embedding(
-                    embedding_id, player_id, face.embedding,
-                    photo.filename, float(face.det_score), is_verified=True
-                )
-                embeddings_added += 1
-        
-        self._load_players_index()
-        
-        return {"player_id": player_id, "name": name, "embeddings_added": embeddings_added}
-    
-    async def process_gallery_batch(
-        self,
-        gallery_id: str,
-        files: List[UploadFile],
-        batch_size: int = 10
-    ) -> Dict:
-        """Batch process gallery photos"""
-        self._ensure_initialized()
-        
-        total_faces = 0
-        recognized_faces = 0
-        
-        for i in range(0, len(files), batch_size):
-            batch = files[i:i + batch_size]
-            
-            for file in batch:
-                contents = await file.read()
-                image = Image.open(io.BytesIO(contents))
-                img_array = np.array(image.convert('RGB'))
-                img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-                
-                faces = self._model.get_faces(img_array)
-                total_faces += len(faces)
-                
-                for face in faces:
-                    face_id = str(uuid.uuid4())
-                    embedding = face.embedding
-                    bbox = [float(x) for x in face.bbox]
-                    
-                    # recognize_face returns (person_id, final_confidence)
-                    person_id, confidence = await self.recognize_face(embedding)
-                    
-                    if person_id:
-                        recognized_faces += 1
-                    
-                    # Save final_confidence to DB (includes chain decay for non-verified)
-                    self.supabase_db.add_gallery_face(
-                        face_id, gallery_id, file.filename,
-                        bbox, embedding, person_id, confidence or 0.0
-                    )
-            
-            logger.info(f"[FaceRecognition] Processed {min(i + batch_size, len(files))}/{len(files)} photos")
-        
-        return {
-            "total_photos": len(files),
-            "total_faces": total_faces,
-            "recognized_faces": recognized_faces,
-            "recognition_rate": (recognized_faces / total_faces * 100) if total_faces > 0 else 0
-        }
     
     async def process_uploaded_photos(
         self, 
@@ -550,19 +497,6 @@ class FaceRecognitionService:
         logger.info(f"[FaceRecognition] Returning {len(all_faces)} faces")
         return all_faces
     
-    async def apply_feedback(
-        self,
-        face_id: str,
-        new_player_id: str,
-        confidence: float,
-        user_email: str = None
-    ):
-        """Apply user feedback for recognition improvement"""
-        success = self.supabase_db.update_face_player(face_id, new_player_id, confidence, user_email)
-        if success:
-            logger.info(f"[FaceRecognition] Feedback applied: {face_id} -> {new_player_id}")
-        return success
-    
     async def clear_tournament_data(self, tournament_id: Optional[str] = None):
         """Clear tournament data"""
         if tournament_id:
@@ -577,27 +511,3 @@ class FaceRecognitionService:
             self.index_store.clear()
             self._tournament_index.clear()
             logger.info("[FaceRecognition] All tournament data cleared")
-    
-    async def get_gallery_results(self, gallery_id: str) -> Dict:
-        """Get recognition results for gallery"""
-        stats = self.supabase_db.get_gallery_stats(gallery_id)
-        faces = self.supabase_db.get_gallery_faces(gallery_id)
-        
-        players_dict = {}
-        for face in faces:
-            player_id = face.get("player_id")
-            if player_id:
-                if player_id not in players_dict:
-                    player_info = self.supabase_db.get_player_info(player_id)
-                    players_dict[player_id] = {
-                        "player_id": player_id,
-                        "name": player_info.get("name") if player_info else "Unknown",
-                        "faces": []
-                    }
-                players_dict[player_id]["faces"].append(face)
-        
-        return {
-            "stats": stats,
-            "players": list(players_dict.values()),
-            "unrecognized_faces": [f for f in faces if not f.get("player_id")]
-        }
