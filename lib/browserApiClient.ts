@@ -2,7 +2,9 @@
 
 /**
  * Browser-only API client for client components
- * Uses NEXT_PUBLIC_FASTAPI_URL for direct FastAPI calls from browser
+ * 
+ * Routes /api/admin/* through Next.js API routes (proxy) to avoid CORS/Mixed Content.
+ * Other paths go directly to FastAPI (for future HTTPS setup).
  */
 
 const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
@@ -21,8 +23,9 @@ interface ApiFetchOptions extends RequestInit {
 }
 
 /**
- * Browser API client - calls FastAPI directly
- * For use in "use client" components
+ * Browser API client
+ * - /api/admin/* → Next.js API routes (proxy to FastAPI, avoids CORS/Mixed Content)
+ * - Other paths → Direct FastAPI (when HTTPS is configured)
  */
 export async function browserApiFetch<T = any>(
   path: string,
@@ -30,16 +33,27 @@ export async function browserApiFetch<T = any>(
 ): Promise<ApiResponseFormat<T>> {
   const { timeout = 30000, retries = 3, headers = {}, ...fetchOptions } = options
 
-  if (!FASTAPI_URL) {
-    return {
-      success: false,
-      error: "NEXT_PUBLIC_FASTAPI_URL is not configured",
-      code: "CONFIG_ERROR",
-    }
-  }
-
   const normalizedPath = path.startsWith("/") ? path : `/${path}`
-  const url = `${FASTAPI_URL}${normalizedPath}`
+  
+  // Route admin endpoints through Next.js proxy to avoid CORS/Mixed Content
+  const isAdminPath = normalizedPath.startsWith("/api/admin/")
+  
+  let url: string
+  if (isAdminPath) {
+    // Use relative URL → goes to Next.js API routes (same origin)
+    url = normalizedPath
+  } else {
+    // Direct FastAPI call (requires HTTPS when configured)
+    if (!FASTAPI_URL) {
+      return {
+        success: false,
+        error: "NEXT_PUBLIC_FASTAPI_URL is not configured",
+        code: "CONFIG_ERROR",
+      }
+    }
+    url = `${FASTAPI_URL}${normalizedPath}`
+  }
+  
   const requestId = crypto.randomUUID()
 
   const fetchWithTimeout = async (attemptNumber: number): Promise<ApiResponseFormat<T>> => {
