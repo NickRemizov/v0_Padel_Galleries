@@ -1,5 +1,3 @@
-"use client"
-
 import { env } from "./env"
 
 export class ApiError extends Error {
@@ -32,16 +30,30 @@ interface ApiFetchOptions extends RequestInit {
 }
 
 /**
- * Generate UUID (works in browser)
+ * Check if running on server
+ */
+const isServer = typeof window === "undefined"
+
+/**
+ * Generate UUID
  */
 function generateUUID(): string {
+  if (isServer) {
+    return require("crypto").randomUUID()
+  }
   return crypto.randomUUID()
 }
 
 /**
- * Get Supabase access token from browser client
+ * Get Supabase access token (browser only)
+ * Server Actions don't need auth - GET is public, POST auth handled by backend
  */
 async function getAuthToken(): Promise<string | null> {
+  if (isServer) {
+    // Server Actions: skip auth, backend handles it
+    return null
+  }
+  
   try {
     const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
@@ -73,9 +85,9 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
   const requestId = generateUUID()
 
-  // Get auth token for write operations
+  // Get auth token (browser only)
   let authHeaders: Record<string, string> = {}
-  if (!skipAuth) {
+  if (!skipAuth && !isServer) {
     const token = await getAuthToken()
     if (token) {
       authHeaders["Authorization"] = `Bearer ${token}`
@@ -88,9 +100,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
     try {
       console.log(`[apiClient] Request ${requestId} (attempt ${attemptNumber}): ${fetchOptions.method || "GET"} ${url}`)
-      if (fetchOptions.body) {
-        console.log(`[apiClient] Request ${requestId} body:`, fetchOptions.body)
-      }
 
       const response = await fetch(url, {
         ...fetchOptions,
@@ -121,15 +130,12 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
         if (shouldRetry) {
           const backoffDelay = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000)
-          console.warn(
-            `[apiClient] Request ${requestId} failed with ${response.status}, retrying after ${backoffDelay}ms...`,
-          )
+          console.warn(`[apiClient] Request ${requestId} failed with ${response.status}, retrying...`)
           await new Promise((resolve) => setTimeout(resolve, backoffDelay))
           return fetchWithTimeout(attemptNumber + 1)
         }
 
         if (responseBody && typeof responseBody === "object" && "success" in responseBody) {
-          console.log(`[apiClient] Request ${requestId} failed with ${response.status}:`, responseBody)
           if (throwOnError) {
             throw new ApiError(response.status, responseBody.code, responseBody.error)
           }
@@ -141,20 +147,14 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
 
         if (responseBody) {
           if (Array.isArray(responseBody.detail)) {
-            const validationErrors = responseBody.detail
-              .map((err: any) => {
-                const field = Array.isArray(err.loc) ? err.loc.join(".") : "unknown"
-                return `${field}: ${err.msg || err.message || "validation error"}`
-              })
+            errorMessage = responseBody.detail
+              .map((err: any) => `${err.loc?.join(".") || "unknown"}: ${err.msg || "error"}`)
               .join("; ")
-            errorMessage = validationErrors || errorMessage
             errorCode = "VALIDATION_ERROR"
           } else {
             errorMessage = responseBody.message || responseBody.detail || errorMessage
             errorCode = responseBody.code
           }
-        } else {
-          errorMessage = response.statusText || errorMessage
         }
 
         const errorResponse: ApiResponseFormat<T> = {
@@ -162,8 +162,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
           error: errorMessage,
           code: errorCode || `HTTP_${response.status}`,
         }
-
-        console.log(`[apiClient] Request ${requestId} failed with ${response.status}:`, errorResponse)
 
         if (throwOnError) {
           throw new ApiError(response.status, errorResponse.code, errorResponse.error)
@@ -173,7 +171,6 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       }
 
       if (responseBody) {
-        console.log(`[apiClient] Request ${requestId} succeeded - Response:`, JSON.stringify(responseBody, null, 2))
         return responseBody
       }
 
@@ -185,14 +182,13 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       if (error instanceof Error && error.name === "AbortError") {
         if (attemptNumber < retries) {
           const backoffDelay = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000)
-          console.warn(`[apiClient] Request ${requestId} timed out, retrying after ${backoffDelay}ms...`)
           await new Promise((resolve) => setTimeout(resolve, backoffDelay))
           return fetchWithTimeout(attemptNumber + 1)
         }
 
         const errorResponse: ApiResponseFormat<T> = {
           success: false,
-          error: `Request timed out after ${timeout}ms (${retries} attempts)`,
+          error: `Request timed out after ${timeout}ms`,
           code: "TIMEOUT",
         }
 
