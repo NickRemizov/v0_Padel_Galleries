@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { apiFetch } from "@/lib/apiClient"
 
 interface Statistics {
   players: {
@@ -139,10 +140,17 @@ export function TrainingStatsCard() {
 
   async function fetchStats() {
     try {
-      const response = await fetch("/api/admin/face-statistics?top=15")
-      const data = await response.json()
+      const response = await apiFetch<Statistics>("/api/admin/face-statistics?top=15")
 
-      if (!data || !data.players || typeof data.players.total !== "number") {
+      if (!response.success || !response.data) {
+        console.error("[v0] Failed to fetch statistics:", response.error)
+        setError(response.error || "Не удалось загрузить статистику")
+        setStats(null)
+        return
+      }
+
+      const data = response.data
+      if (!data.players || typeof data.players.total !== "number") {
         console.error("[v0] Invalid statistics data structure:", data)
         setError("Получены некорректные данные статистики")
         setStats(null)
