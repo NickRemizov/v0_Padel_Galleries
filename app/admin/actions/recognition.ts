@@ -7,7 +7,6 @@ export async function getRecognitionConfigAction() {
   logger.debug("actions/recognition", "[getRecognitionConfigAction] Reading config from DB")
 
   try {
-    // Правильный путь: /api/v2/config (training.router с prefix="/api/v2")
     const result = await apiFetch("/api/v2/config", {
       method: "GET",
     })
@@ -28,7 +27,6 @@ export async function getRecognitionConfigAction() {
     }
 
     logger.debug("actions/recognition", "Config loaded successfully", result.data)
-    // FIX: return result.data, not result (which is {success, data, ...})
     return { success: true, config: result.data }
   } catch (error: any) {
     logger.error("actions/recognition", "Error reading config", error)
@@ -78,7 +76,12 @@ export async function getMissingDescriptorsCountAction(): Promise<{
     const result = await apiFetch("/api/recognition/missing-descriptors-count", {
       method: "GET",
     })
-    return { success: true, count: result.data?.count || result.count || 0 }
+    
+    if (!result.success) {
+      return { success: false, count: 0, error: result.error }
+    }
+    
+    return { success: true, count: result.data?.count || 0 }
   } catch (error) {
     logger.error("actions/recognition", "Error getting missing descriptors count", error)
     return { success: false, count: 0, error: String(error) }
@@ -103,13 +106,25 @@ export async function regenerateMissingDescriptorsAction(): Promise<{
     const result = await apiFetch("/api/recognition/regenerate-missing-descriptors", {
       method: "POST",
     })
-    const data = result.data || result
+    
+    if (!result.success) {
+      return {
+        success: false,
+        total_faces: 0,
+        regenerated: 0,
+        failed: 0,
+        details: [],
+        error: result.error,
+      }
+    }
+    
+    const data = result.data
     return {
       success: true,
-      total_faces: data.total_faces || 0,
-      regenerated: data.regenerated || 0,
-      failed: data.failed || 0,
-      details: data.details || [],
+      total_faces: data?.total_faces || 0,
+      regenerated: data?.regenerated || 0,
+      failed: data?.failed || 0,
+      details: data?.details || [],
     }
   } catch (error) {
     logger.error("actions/recognition", "Error regenerating missing descriptors", error)
@@ -150,8 +165,7 @@ export async function getMissingDescriptorsListAction(): Promise<{
       return { success: false, faces: [], count: 0, error: result.error || "Failed to get list" }
     }
 
-    const data = result.data || result
-    return { success: true, faces: data.faces || [], count: data.count || 0 }
+    return { success: true, faces: result.data?.faces || [], count: result.data?.count || 0 }
   } catch (error: any) {
     logger.error("actions/recognition", "Error getting missing descriptors list", error)
     return { success: false, faces: [], count: 0, error: error.message || String(error) }
@@ -169,7 +183,15 @@ export async function regenerateSingleDescriptorAction(faceId: string): Promise<
       method: "POST",
     })
 
-    return result.data || result
+    if (!result.success) {
+      return { success: false, error: result.error }
+    }
+
+    return {
+      success: true,
+      iou: result.data?.iou,
+      det_score: result.data?.det_score,
+    }
   } catch (error: any) {
     logger.error("actions/recognition", `Error regenerating descriptor for ${faceId}`, error)
     return { success: false, error: error.message || String(error) }
@@ -178,7 +200,6 @@ export async function regenerateSingleDescriptorAction(faceId: string): Promise<
 
 /**
  * Получить список галерей с необработанными фото
- * Использует бэкенд API: GET /api/galleries/with-unprocessed-photos
  */
 export async function getGalleriesWithUnprocessedPhotosAction(): Promise<{
   success: boolean
@@ -210,8 +231,7 @@ export async function getGalleriesWithUnprocessedPhotosAction(): Promise<{
 }
 
 /**
- * Получить список галерей с неверифицированными лицами (recognition_confidence < 1)
- * Использует бэкенд API: GET /api/galleries/with-unverified-faces
+ * Получить список галерей с неверифицированными лицами
  */
 export async function getGalleriesWithUnverifiedFacesAction(): Promise<{
   success: boolean
@@ -244,7 +264,6 @@ export async function getGalleriesWithUnverifiedFacesAction(): Promise<{
 
 /**
  * Получить фото галереи для распознавания (необработанные)
- * Использует бэкенд API: GET /api/galleries/{gallery_id}/unprocessed-photos
  */
 export async function getGalleryPhotosForRecognitionAction(galleryId: string): Promise<{
   success: boolean
@@ -274,8 +293,7 @@ export async function getGalleryPhotosForRecognitionAction(galleryId: string): P
 }
 
 /**
- * Получить фото галереи с неверифицированными лицами (recognition_confidence < 1)
- * Использует бэкенд API: GET /api/galleries/{gallery_id}/unverified-photos
+ * Получить фото галереи с неверифицированными лицами
  */
 export async function getGalleryUnverifiedPhotosAction(galleryId: string): Promise<{
   success: boolean
@@ -306,7 +324,6 @@ export async function getGalleryUnverifiedPhotosAction(galleryId: string): Promi
 
 /**
  * Глобальная кластеризация неизвестных лиц (по всей базе)
- * Вызывает бэкенд без gallery_id
  */
 export async function clusterAllUnknownFacesAction(): Promise<{
   success: boolean
@@ -331,7 +348,6 @@ export async function clusterAllUnknownFacesAction(): Promise<{
   try {
     logger.debug("actions/recognition", "[clusterAllUnknownFacesAction] Starting global clustering")
 
-    // Вызываем без gallery_id - бэкенд вернёт кластеры по всей базе
     const result = await apiFetch<{ clusters: any[]; ungrouped_faces: any[] }>(
       `/api/recognition/cluster-unknown-faces?min_cluster_size=2`,
       {
@@ -339,14 +355,17 @@ export async function clusterAllUnknownFacesAction(): Promise<{
       },
     )
 
-    const data = result.data || result
-    logger.debug("actions/recognition", `[clusterAllUnknownFacesAction] Found ${data.clusters?.length || 0} clusters`)
+    if (!result.success) {
+      return { success: false, error: result.error }
+    }
+
+    logger.debug("actions/recognition", `[clusterAllUnknownFacesAction] Found ${result.data?.clusters?.length || 0} clusters`)
 
     return {
       success: true,
       data: {
-        clusters: data.clusters || [],
-        ungrouped_faces: data.ungrouped_faces || [],
+        clusters: result.data?.clusters || [],
+        ungrouped_faces: result.data?.ungrouped_faces || [],
       },
     }
   } catch (error: any) {
@@ -360,7 +379,6 @@ export async function clusterAllUnknownFacesAction(): Promise<{
 
 /**
  * Отклонить (удалить) кластер лиц
- * Удаляет лица из photo_faces таблицы
  */
 export async function rejectFaceClusterAction(faceIds: string[]): Promise<{
   success: boolean
@@ -378,12 +396,15 @@ export async function rejectFaceClusterAction(faceIds: string[]): Promise<{
       },
     )
 
-    const data = result.data || result
-    logger.debug("actions/recognition", `[rejectFaceClusterAction] Deleted ${data.deleted} faces`)
+    if (!result.success) {
+      return { success: false, error: result.error }
+    }
+
+    logger.debug("actions/recognition", `[rejectFaceClusterAction] Deleted ${result.data?.deleted} faces`)
 
     return {
       success: true,
-      deleted: data.deleted || 0,
+      deleted: result.data?.deleted || 0,
     }
   } catch (error: any) {
     logger.error("actions/recognition", "Error rejecting face cluster", error)
