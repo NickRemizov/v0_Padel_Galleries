@@ -5,7 +5,8 @@ import Link from "next/link"
 import type { Person } from "@/lib/types"
 import { apiFetch } from "@/lib/apiClient"
 
-export const revalidate = 300
+// Force dynamic rendering - too many API calls for SSG
+export const dynamic = 'force-dynamic'
 
 export default async function PlayersPage() {
   let players: Person[] = []
@@ -15,10 +16,6 @@ export default async function PlayersPage() {
     const response = await apiFetch<any>("/api/people", {
       method: "GET",
     })
-
-    console.log("[v0] /api/people raw response type:", typeof response)
-    console.log("[v0] /api/people is array:", Array.isArray(response))
-    console.log("[v0] /api/people has success:", 'success' in (response || {}))
 
     // Handle both formats:
     // 1. Direct array: [...]
@@ -32,8 +29,6 @@ export default async function PlayersPage() {
       peopleData = response.data
     }
 
-    console.log("[v0] peopleData count:", peopleData.length)
-
     // Filter players: show_in_players_gallery=true AND has avatar
     const filteredPlayers = peopleData
       .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
@@ -44,9 +39,8 @@ export default async function PlayersPage() {
         },
       }))
 
-    console.log("[v0] filteredPlayers count:", filteredPlayers.length)
-
     // Get photo dates for each player from FastAPI
+    // TODO: Create batch endpoint to avoid N+1 queries
     for (const player of filteredPlayers) {
       try {
         const photosResponse = await apiFetch<any>(`/api/people/${player.id}/photos`, {
