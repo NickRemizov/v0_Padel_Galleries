@@ -24,18 +24,21 @@
 - [x] Составить карту зависимостей
 - [x] Убедиться что backend запускается
 
-### Фаза 1: Миграция Backend на SupabaseService 🔄
-- [ ] 1.1 Обновить main.py — заменить старые импорты
-- [ ] 1.2 Обновить инъекцию в роутеры
-- [ ] 1.3 Обновить роутеры (faces, people, recognition, admin, images, galleries)
-- [ ] 1.4 Проверить FaceRecognitionService
-- [ ] 1.5 Smoke test всех endpoints
+### Фаза 1: Миграция Backend на SupabaseService ✅
+- [x] 1.1 Обновить main.py — заменить старые импорты
+- [x] 1.2 Обновить инъекцию в роутеры (теперь получают SupabaseService)
+- [x] 1.3 Добавить backward compatibility в SupabaseService
+- [x] 1.4 Обновить FaceRecognitionService v4.1
+- [x] 1.5 Обновить TrainingService v4.1
 
-### Фаза 2: Удаление старых файлов
+**Коммиты:**
+- `e1a0548` - main.py + SupabaseService backward compat
+- `747eff3` - FaceRecognitionService + TrainingService
+
+### Фаза 2: Удаление старых файлов 🔄
 - [ ] 2.1 Удалить `services/supabase_client.py`
 - [ ] 2.2 Удалить `services/supabase_database.py`
-- [ ] 2.3 Обновить импорты если нужно
-- [ ] 2.4 Финальная проверка
+- [ ] 2.3 Перезапустить backend и проверить
 
 ### Фаза 3: Исправление P0 багов
 
@@ -62,48 +65,33 @@
 
 ---
 
-## Текущий прогресс
+## Архитектура после Фазы 1
 
-### Фаза 1.1 — Анализ main.py
-
-**Текущие импорты:**
-```python
-from services.supabase_database import SupabaseDatabase
-from services.supabase_client import SupabaseClient
 ```
+main.py
+  └── SupabaseService (singleton)
+        ├── .client          → raw Supabase client
+        ├── .config          → ConfigRepository
+        ├── .embeddings      → EmbeddingsRepository  
+        ├── .training        → TrainingRepository
+        ├── .faces           → FacesRepository
+        └── .people          → PeopleRepository
+        
+  └── FaceRecognitionService
+        └── uses SupabaseService.embeddings, .config
+        
+  └── TrainingService
+        └── uses SupabaseService.training, .faces
 
-**Целевые импорты:**
-```python
-from services.supabase import SupabaseService
+Роутеры получают SupabaseService и вызывают методы через
+backward compatibility layer (делегирует в репозитории)
 ```
-
-**Инъекция в роутеры (текущая):**
-```python
-supabase_db = SupabaseDatabase()
-supabase_client = SupabaseClient()
-
-faces.set_services(face_service, supabase_db)
-recognition.set_services(face_service, supabase_client)
-images.set_services(supabase_db, face_service)
-people.set_services(supabase_db, face_service)
-galleries.set_services(supabase_db, face_service)
-admin.set_services(supabase_db, face_service)
-# ...
-```
-
----
-
-## Связанные документы
-
-- `docs/01_P0-P1_findings.md` — Аудит P0/P1 проблем
-- `docs/02_Unify_response_envelopes.md` — План унификации envelope
-- `python/services/supabase/__init__.py` — Новый SupabaseService
 
 ---
 
 ## Критерии завершения
 
-- [ ] Backend использует только `SupabaseService`
+- [x] Backend использует только `SupabaseService`
 - [ ] Удалены файлы `supabase_client.py` и `supabase_database.py` (-54KB)
 - [ ] Все P0 баги исправлены
 - [ ] Backend запускается и проходит smoke test
