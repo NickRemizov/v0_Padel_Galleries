@@ -1,17 +1,19 @@
 """
 Dependency injection for recognition endpoints.
 Shared instances and setup functions.
+
+v1.1: Migrated to SupabaseService
 """
 
 from services.face_recognition import FaceRecognitionService
-from services.supabase_client import SupabaseClient
+from services.supabase import SupabaseService
 
 # Global instances (set by main.py on startup)
 face_service_instance: FaceRecognitionService = None
-supabase_client_instance: SupabaseClient = None
+supabase_client_instance: SupabaseService = None
 
 
-def set_services(face_service: FaceRecognitionService, supabase_client: SupabaseClient):
+def set_services(face_service: FaceRecognitionService, supabase_client: SupabaseService):
     """
     Set the service instances. Called from main.py during startup.
     """
@@ -27,8 +29,8 @@ def get_face_service() -> FaceRecognitionService:
     return face_service_instance
 
 
-def get_supabase_client() -> SupabaseClient:
+def get_supabase_client() -> SupabaseService:
     """Dependency for FastAPI endpoints"""
     if supabase_client_instance is None:
-        raise RuntimeError("SupabaseClient not initialized. Check server startup logs.")
+        raise RuntimeError("SupabaseService not initialized. Check server startup logs.")
     return supabase_client_instance
