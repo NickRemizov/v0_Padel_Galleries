@@ -1,6 +1,9 @@
 """
 Training API Router
 Endpoints for model training and batch recognition
+
+v1.0: Original implementation
+v1.1: Added require_admin protection for /train/execute (Phase 1)
 """
 
 from fastapi import APIRouter, BackgroundTasks, Depends
@@ -12,6 +15,7 @@ from core.responses import ApiResponse
 from core.exceptions import ValidationError, DatabaseError, NotFoundError
 from core.logging import get_logger
 from services.training_service import TrainingService
+from services.auth import require_admin
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -90,10 +94,13 @@ async def prepare_training(
 async def execute_training(
     request: ExecuteRequest,
     background_tasks: BackgroundTasks,
-    training_service: TrainingService = Depends(lambda: training_service_instance)
+    training_service: TrainingService = Depends(lambda: training_service_instance),
+    admin_user: dict = Depends(require_admin)  # Phase 1: Require admin auth
 ):
-    """Запуск обучения модели в фоне."""
+    """Запуск обучения модели в фоне. Требует авторизацию администратора."""
     try:
+        logger.info(f"Training started by admin: {admin_user.get('email')}")
+        
         if request.mode not in ['full', 'incremental']:
             raise ValidationError("mode must be 'full' or 'incremental'", field="mode")
         
