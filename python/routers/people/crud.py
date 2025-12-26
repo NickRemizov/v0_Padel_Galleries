@@ -3,7 +3,8 @@ People API - CRUD Operations
 Basic CRUD endpoints: list, get, create, update, delete
 
 v1.0: Original implementation
-v1.1: Added require_admin protection for write operations (Phase 1)
+v1.1: Added per-endpoint require_admin (Phase 1)
+v1.2: Refactored to router-level dependencies (cleaner)
 """
 
 from fastapi import APIRouter, Query, Depends
@@ -24,6 +25,10 @@ from .helpers import (
 )
 
 logger = get_logger(__name__)
+
+# ============================================================
+# PUBLIC ROUTER - No authentication required
+# ============================================================
 router = APIRouter()
 
 
@@ -46,29 +51,6 @@ async def get_people(with_stats: bool = Query(False)):
         raise DatabaseError(str(e), operation="get_people")
 
 
-@router.post("/")
-async def create_person(
-    data: PersonCreate,
-    admin_user: dict = Depends(require_admin)  # Phase 1: Require admin auth
-):
-    """Create a new person. Requires admin authentication."""
-    supabase_db = get_supabase_db()
-    
-    try:
-        logger.info(f"Creating person '{data.real_name}' by admin: {admin_user.get('email')}")
-        insert_data = data.model_dump(exclude_none=True)
-        result = supabase_db.client.table("people").insert(insert_data).execute()
-        if result.data:
-            logger.info(f"Created person: {data.real_name}")
-            return ApiResponse.ok(result.data[0])
-        raise DatabaseError("Insert failed", operation="create_person")
-    except Exception as e:
-        logger.error(f"Error creating person: {e}")
-        raise DatabaseError(str(e), operation="create_person")
-
-
-# ============ SLUG-BASED ROUTES ============
-
 @router.get("/slug/{slug}")
 async def get_person_by_slug(slug: str):
     """Get a person by slug."""
@@ -83,8 +65,6 @@ async def get_person_by_slug(slug: str):
         logger.error(f"Error getting person by slug {slug}: {e}")
         raise DatabaseError(str(e), operation="get_person_by_slug")
 
-
-# ============ UUID-BASED ROUTES ============
 
 @router.get("/{identifier:uuid}")
 async def get_person(identifier: UUID):
@@ -103,17 +83,41 @@ async def get_person(identifier: UUID):
         raise DatabaseError(str(e), operation="get_person")
 
 
-@router.put("/{identifier:uuid}")
-async def update_person(
-    identifier: UUID, 
-    data: PersonUpdate,
-    admin_user: dict = Depends(require_admin)  # Phase 1: Require admin auth
-):
+# ============================================================
+# PROTECTED ROUTER - Requires admin authentication
+# All endpoints here automatically require admin auth
+# ============================================================
+protected_router = APIRouter(
+    dependencies=[Depends(require_admin)],
+    tags=["people-admin"]
+)
+
+
+@protected_router.post("/")
+async def create_person(data: PersonCreate):
+    """Create a new person. Requires admin authentication."""
+    supabase_db = get_supabase_db()
+    
+    try:
+        logger.info(f"Creating person: {data.real_name}")
+        insert_data = data.model_dump(exclude_none=True)
+        result = supabase_db.client.table("people").insert(insert_data).execute()
+        if result.data:
+            logger.info(f"Created person: {data.real_name}")
+            return ApiResponse.ok(result.data[0])
+        raise DatabaseError("Insert failed", operation="create_person")
+    except Exception as e:
+        logger.error(f"Error creating person: {e}")
+        raise DatabaseError(str(e), operation="create_person")
+
+
+@protected_router.put("/{identifier:uuid}")
+async def update_person(identifier: UUID, data: PersonUpdate):
     """Update a person by UUID. Requires admin authentication."""
     supabase_db = get_supabase_db()
     
     try:
-        logger.info(f"Updating person {identifier} by admin: {admin_user.get('email')}")
+        logger.info(f"Updating person: {identifier}")
         
         # Verify person exists
         result = supabase_db.client.table("people").select("id").eq("id", str(identifier)).execute()
@@ -136,17 +140,14 @@ async def update_person(
         raise DatabaseError(str(e), operation="update_person")
 
 
-@router.delete("/{identifier:uuid}")
-async def delete_person(
-    identifier: UUID,
-    admin_user: dict = Depends(require_admin)  # Phase 1: Require admin auth
-):
+@protected_router.delete("/{identifier:uuid}")
+async def delete_person(identifier: UUID):
     """Delete a person and cleanup related data. Requires admin authentication."""
     supabase_db = get_supabase_db()
     face_service = get_face_service()
     
     try:
-        logger.info(f"Deleting person {identifier} by admin: {admin_user.get('email')}")
+        logger.info(f"Deleting person: {identifier}")
         
         # Verify person exists
         result = supabase_db.client.table("people").select("id").eq("id", str(identifier)).execute()
@@ -184,3 +185,7 @@ async def delete_person(
     except Exception as e:
         logger.error(f"Error deleting person {identifier}: {e}")
         raise DatabaseError(str(e), operation="delete_person")
+
+
+# Include protected router into main router
+router.include_router(protected_router)
