@@ -4,19 +4,20 @@ CRUD and advanced operations for people (players)
 Supports both UUID and slug identifiers for human-readable URLs
 
 v1.0: Initial modular structure (refactored from monolithic people.py)
+v1.1: Migrated to SupabaseService (removed SupabaseDatabase)
 """
 
 from fastapi import APIRouter
 
-from services.supabase_database import SupabaseDatabase
+from services.supabase import SupabaseService
 from services.face_recognition import FaceRecognitionService
 
 # Global service instances (set via set_services)
-supabase_db_instance: SupabaseDatabase = None
+supabase_db_instance: SupabaseService = None
 face_service_instance: FaceRecognitionService = None
 
 
-def set_services(supabase_db: SupabaseDatabase, face_service: FaceRecognitionService):
+def set_services(supabase_db: SupabaseService, face_service: FaceRecognitionService):
     """Set service instances for dependency injection."""
     global supabase_db_instance, face_service_instance
     supabase_db_instance = supabase_db
