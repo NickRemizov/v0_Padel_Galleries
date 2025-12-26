@@ -1,38 +1,38 @@
 """
 Face recognition endpoints.
 - POST /recognize-face
+
+v1.1: Unified to ApiResponse format
 """
 
 from fastapi import APIRouter, Depends
 import numpy as np
 
 from core.config import VERSION
+from core.responses import ApiResponse
 from core.exceptions import RecognitionError
 from core.logging import get_logger
-from models.recognition_schemas import (
-    RecognizeFaceRequest,
-    FaceRecognitionResponse,
-)
 from .dependencies import get_face_service, get_supabase_client
 
 logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/recognize-face", response_model=FaceRecognitionResponse)
+@router.post("/recognize-face")
 async def recognize_face(
-    request: RecognizeFaceRequest,
+    request: dict,
     face_service=Depends(get_face_service)
 ):
     """Recognize a single face using the trained model"""
     supabase_client = get_supabase_client()
     try:
-        config = await supabase_client.get_recognition_config()
-        threshold = request.confidence_threshold or config.get('recognition_threshold', 0.60)
+        # get_recognition_config is sync method - no await
+        config = supabase_client.get_recognition_config()
+        threshold = request.get("confidence_threshold") or config.get('recognition_threshold', 0.60)
         
         logger.info(f"[v{VERSION}] Recognizing face, threshold: {threshold}")
         
-        embedding = np.array(request.embedding, dtype=np.float32)
+        embedding = np.array(request.get("embedding"), dtype=np.float32)
         
         person_id, confidence = await face_service.recognize_face(
             embedding, 
@@ -41,10 +41,10 @@ async def recognize_face(
         
         logger.info(f"[v{VERSION}] Result: person_id={person_id}, confidence={confidence}")
         
-        return {
+        return ApiResponse.ok({
             "person_id": person_id,
             "confidence": confidence,
-        }
+        }).model_dump()
         
     except Exception as e:
         logger.error(f"[v{VERSION}] Error: {str(e)}")
