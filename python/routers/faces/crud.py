@@ -1,7 +1,9 @@
 """
 Faces API - CRUD Operations
 Basic face CRUD endpoints: get, save, update, delete
+
 v4.7: Fix verified/confidence sync in update_face
+v4.8: Migrated to SupabaseService
 """
 
 from fastapi import APIRouter, Depends
@@ -10,7 +12,7 @@ from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
 from services.face_recognition import FaceRecognitionService
-from services.supabase_database import SupabaseDatabase
+from services.supabase import SupabaseService
 
 from .models import (
     SaveFaceRequest,
@@ -36,7 +38,7 @@ def get_supabase_db():
 @router.post("/batch")
 async def get_batch_photo_faces(
     request: BatchPhotoIdsRequest,
-    supabase_db: SupabaseDatabase = Depends(get_supabase_db)
+    supabase_db: SupabaseService = Depends(get_supabase_db)
 ):
     """Get all faces for multiple photos in a single request."""
     try:
@@ -45,10 +47,7 @@ async def get_batch_photo_faces(
         if not request.photo_ids:
             return ApiResponse.ok([])
         
-        result = supabase_db.client.table("photo_faces") \
-            .select("*, people(id, real_name, telegram_name)") \
-            .in_("photo_id", request.photo_ids) \
-            .execute()
+        result = supabase_db.client.table("photo_faces").select("*, people(id, real_name, telegram_name)").in_("photo_id", request.photo_ids).execute()
         
         logger.info(f"Found {len(result.data or [])} faces")
         return ApiResponse.ok(result.data or [])
@@ -61,16 +60,13 @@ async def get_batch_photo_faces(
 @router.get("/photo/{photo_id}")
 async def get_photo_faces(
     photo_id: str,
-    supabase_db: SupabaseDatabase = Depends(get_supabase_db)
+    supabase_db: SupabaseService = Depends(get_supabase_db)
 ):
     """Get all faces for a single photo."""
     try:
         logger.info(f"Getting faces for photo: {photo_id}")
         
-        result = supabase_db.client.table("photo_faces") \
-            .select("*, people(id, real_name, telegram_name)") \
-            .eq("photo_id", photo_id) \
-            .execute()
+        result = supabase_db.client.table("photo_faces").select("*, people(id, real_name, telegram_name)").eq("photo_id", photo_id).execute()
         
         logger.info(f"Found {len(result.data or [])} faces for photo {photo_id}")
         return ApiResponse.ok(result.data or [])
@@ -84,7 +80,7 @@ async def get_photo_faces(
 async def save_face(
     request: SaveFaceRequest,
     face_service: FaceRecognitionService = Depends(get_face_service),
-    supabase_db: SupabaseDatabase = Depends(get_supabase_db)
+    supabase_db: SupabaseService = Depends(get_supabase_db)
 ):
     """Save a face with descriptor to database and update recognition index."""
     try:
@@ -145,13 +141,12 @@ async def save_face(
 async def update_face(
     request: UpdateFaceRequest,
     face_service: FaceRecognitionService = Depends(get_face_service),
-    supabase_db: SupabaseDatabase = Depends(get_supabase_db)
+    supabase_db: SupabaseService = Depends(get_supabase_db)
 ):
     """Update an existing face record."""
     try:
         logger.info(f"Updating face {request.face_id}")
         
-        # Get current face data to check if person_id is changing
         current_response = supabase_db.client.table("photo_faces").select(
             "id, person_id, insightface_descriptor, excluded_from_index"
         ).eq("id", request.face_id).execute()
@@ -168,25 +163,19 @@ async def update_face(
         
         if request.person_id is not None:
             update_data["person_id"] = request.person_id
-            # Check if person_id is actually changing
             if request.person_id != current_person_id:
                 person_id_changed = True
-                # Reset excluded_from_index when person changes (v4.6)
                 update_data["excluded_from_index"] = False
                 logger.info(f"[update_face] person_id changing {current_person_id} -> {request.person_id}, resetting excluded_from_index")
                 
         if request.verified is not None:
             update_data["verified"] = request.verified
-            # v4.7: Sync confidence when verified=true with person_id
-            # This fixes the bug where verified=true but confidence stays at old value (e.g. 0.83)
             if request.verified:
-                # Use person_id from request or current face
                 effective_person_id = request.person_id if request.person_id is not None else current_person_id
                 if effective_person_id:
                     update_data["recognition_confidence"] = 1.0
                     logger.info(f"[update_face] v4.7: verified=true with person_id, setting confidence=1.0")
         
-        # Explicit recognition_confidence from request takes precedence
         if request.recognition_confidence is not None:
             update_data["recognition_confidence"] = request.recognition_confidence
         
@@ -197,7 +186,6 @@ async def update_face(
         if not response.data:
             raise NotFoundError("Face", request.face_id)
         
-        # Rebuild index if person_id changed and face has descriptor
         index_rebuilt = False
         if person_id_changed and has_descriptor:
             try:
@@ -205,7 +193,7 @@ async def update_face(
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
                     index_rebuilt = True
-                    logger.info(f"[update_face] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                    logger.info(f"[update_face] Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
             except Exception as index_error:
                 logger.error(f"[update_face] Error rebuilding index: {index_error}")
         
@@ -226,11 +214,11 @@ async def update_face(
 async def delete_face(
     request: DeleteFaceRequest,
     face_service: FaceRecognitionService = Depends(get_face_service),
-    supabase_db: SupabaseDatabase = Depends(get_supabase_db)
+    supabase_db: SupabaseService = Depends(get_supabase_db)
 ):
     """Delete a face record and rebuild recognition index if needed."""
     try:
-        logger.info(f"[v4.0] Deleting face {request.face_id}")
+        logger.info(f"Deleting face {request.face_id}")
         
         check_response = supabase_db.client.table("photo_faces").select(
             "id, person_id, verified, insightface_descriptor"
@@ -243,24 +231,23 @@ async def delete_face(
         had_descriptor = face_data.get('insightface_descriptor') is not None
         had_person_id = face_data.get('person_id') is not None
         
-        logger.info(f"[v4.0] Face has descriptor: {had_descriptor}, person_id: {had_person_id}")
+        logger.info(f"Face has descriptor: {had_descriptor}, person_id: {had_person_id}")
         
         supabase_db.client.table("photo_faces").delete().eq("id", request.face_id).execute()
-        logger.info(f"[v4.0] Face deleted from DB: {request.face_id}")
+        logger.info(f"Face deleted from DB: {request.face_id}")
         
-        # Rebuild index if face had descriptor (was in index)
         index_updated = False
         if had_descriptor:
             try:
-                logger.info("[v4.0] Rebuilding index after face deletion...")
+                logger.info("Rebuilding index after face deletion...")
                 rebuild_result = await face_service.rebuild_players_index()
                 if rebuild_result.get("success"):
                     index_updated = True
-                    logger.info(f"[v4.0] ✓ Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                    logger.info(f"Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
                 else:
-                    logger.error(f"[v4.0] ✗ Index rebuild failed: {rebuild_result}")
+                    logger.error(f"Index rebuild failed: {rebuild_result}")
             except Exception as index_error:
-                logger.error(f"[v4.0] Error rebuilding index: {index_error}")
+                logger.error(f"Error rebuilding index: {index_error}")
         
         return ApiResponse.ok({"deleted": True, "index_updated": index_updated})
         
