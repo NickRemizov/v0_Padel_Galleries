@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { RefreshCw, Loader2, CheckCircle2, AlertCircle, TrendingUp, AlertTriangle, UserCircle } from "lucide-react"
 import { TrainingHistoryList } from "./training-history-list"
+import { apiFetch } from "@/lib/apiClient"
 
 const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
 
@@ -103,35 +104,21 @@ export function FaceTrainingManager() {
     setFastapiError(false)
     setHttpsRequired(false)
     try {
-      console.log("[v0] Loading training data from API routes")
+      console.log("[v0] Loading training data via apiFetch")
 
       const [configRes, historyRes] = await Promise.all([
-        fetch("/api/admin/training/config"),
-        fetch("/api/admin/training/history?limit=10"),
+        apiFetch<Config>("/api/admin/training/config"),
+        apiFetch<{ sessions: TrainingSession[] }>("/api/admin/training/history?limit=10"),
       ])
 
-      console.log("[v0] Config response status:", configRes.status)
-      console.log("[v0] History response status:", historyRes.status)
+      console.log("[v0] Config response:", configRes)
+      console.log("[v0] History response:", historyRes)
 
-      if (configRes.ok) {
-        const configData = await configRes.json()
+      if (configRes.success && configRes.data) {
+        const configData = configRes.data
         console.log("[v0] Config data received:", configData)
-        console.log("[v0] quality_filters from backend:", configData.quality_filters)
-        console.log("[v0] min_blur_score from backend:", configData.quality_filters?.min_blur_score)
-        console.log("[v0] auto_avatar_on_create from backend:", configData.auto_avatar_on_create)
 
-        if (configData.error === "https_required") {
-          setHttpsRequired(true)
-          setFastapiError(true)
-          setConfig(DEFAULT_CONFIG)
-          setLocalConfig(DEFAULT_CONFIG)
-        } else if (configData.error === "connection_failed" || configData.error === "server_error") {
-          // Backend error - use default config
-          setFastapiError(true)
-          setConfig(DEFAULT_CONFIG)
-          setLocalConfig(DEFAULT_CONFIG)
-        } else if (configData.confidence_thresholds && typeof configData.confidence_thresholds === "object") {
-          // Valid config received - merge with defaults to ensure all fields exist
+        if (configData.confidence_thresholds && typeof configData.confidence_thresholds === "object") {
           const validConfig = {
             ...DEFAULT_CONFIG,
             ...configData,
@@ -146,31 +133,26 @@ export function FaceTrainingManager() {
             auto_avatar_on_create: configData.auto_avatar_on_create ?? DEFAULT_CONFIG.auto_avatar_on_create,
           }
           console.log("[v0] Merged config:", validConfig)
-          console.log("[v0] Final min_blur_score:", validConfig.quality_filters.min_blur_score)
-          console.log("[v0] Final auto_avatar_on_create:", validConfig.auto_avatar_on_create)
           setFastapiError(false)
           setConfig(validConfig)
           setLocalConfig(validConfig)
         } else {
-          // Invalid config structure - use defaults
           console.warn("[v0] Invalid config structure, using defaults")
           setFastapiError(true)
           setConfig(DEFAULT_CONFIG)
           setLocalConfig(DEFAULT_CONFIG)
         }
       } else {
-        const errorText = await configRes.text()
-        console.error("[v0] Config request failed:", configRes.status, errorText)
+        console.error("[v0] Config request failed:", configRes.error)
         setFastapiError(true)
         setConfig(DEFAULT_CONFIG)
         setLocalConfig(DEFAULT_CONFIG)
       }
 
-      if (historyRes.ok) {
-        const historyData = await historyRes.json()
-        setSessions(historyData.sessions || [])
+      if (historyRes.success && historyRes.data) {
+        setSessions(historyRes.data.sessions || [])
       } else {
-        console.error("[v0] History request failed")
+        console.error("[v0] History request failed:", historyRes.error)
         setSessions([])
       }
     } catch (error) {
@@ -189,9 +171,8 @@ export function FaceTrainingManager() {
     try {
       console.log("[v0] Preparing dataset...")
 
-      const response = await fetch("/api/admin/training/prepare", {
+      const response = await apiFetch<{ dataset_stats: DatasetStats }>("/api/admin/training/prepare", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           filters: {},
           options: {
@@ -203,18 +184,16 @@ export function FaceTrainingManager() {
         }),
       })
 
-      console.log("[v0] Prepare response status:", response.status)
+      console.log("[v0] Prepare response:", response)
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error("[v0] Prepare dataset error:", errorData)
-        alert(`Ошибка при подготовке датасета: ${errorData.error || "Неизвестная ошибка"}`)
+      if (!response.success) {
+        console.error("[v0] Prepare dataset error:", response.error)
+        alert(`Ошибка при подготовке датасета: ${response.error || "Неизвестная ошибка"}`)
         return
       }
 
-      const data = await response.json()
-      console.log("[v0] Dataset prepared:", data)
-      setDatasetStats(data.dataset_stats)
+      console.log("[v0] Dataset prepared:", response.data)
+      setDatasetStats(response.data?.dataset_stats || null)
       alert("Датасет успешно подготовлен!")
     } catch (error) {
       console.error("[v0] Error preparing dataset:", error)
@@ -237,9 +216,8 @@ export function FaceTrainingManager() {
     try {
       console.log("[v0] Starting training...")
 
-      const response = await fetch("/api/admin/training/execute", {
+      const response = await apiFetch<{ session_id: string }>("/api/admin/training/execute", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: "full",
           filters: {},
@@ -252,20 +230,17 @@ export function FaceTrainingManager() {
         }),
       })
 
-      console.log("[v0] Training response status:", response.status)
+      console.log("[v0] Training response:", response)
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error("[v0] Training error:", errorData)
-        alert(`Ошибка при запуске обучения: ${errorData.error || "Неизвестная ошибка"}`)
+      if (!response.success) {
+        console.error("[v0] Training error:", response.error)
+        alert(`Ошибка при запуске обучения: ${response.error || "Неизвестная ошибка"}`)
         setTraining(false)
         return
       }
 
-      const data = await response.json()
-      console.log("[v0] Training started:", data)
-
-      setCurrentSessionId(data.session_id)
+      console.log("[v0] Training started:", response.data)
+      setCurrentSessionId(response.data?.session_id || null)
       alert("Обучение запущено!")
     } catch (error) {
       console.error("[v0] Error starting training:", error)
@@ -276,18 +251,21 @@ export function FaceTrainingManager() {
 
   async function checkTrainingStatus(sessionId: string) {
     try {
-      const response = await fetch(`/api/admin/training/status/${sessionId}`)
-      const data = await response.json()
+      const response = await apiFetch<{ status: string; progress?: { percentage: number } }>(
+        `/api/admin/training/status/${sessionId}`
+      )
 
-      if (data.progress) {
-        setTrainingProgress(data.progress.percentage)
-      }
+      if (response.success && response.data) {
+        if (response.data.progress) {
+          setTrainingProgress(response.data.progress.percentage)
+        }
 
-      if (data.status === "completed" || data.status === "failed") {
-        setTraining(false)
-        setCurrentSessionId(null)
-        setTrainingProgress(0)
-        loadData()
+        if (response.data.status === "completed" || response.data.status === "failed") {
+          setTraining(false)
+          setCurrentSessionId(null)
+          setTrainingProgress(0)
+          loadData()
+        }
       }
     } catch (error) {
       console.error("[v0] Error checking training status:", error)
@@ -298,25 +276,15 @@ export function FaceTrainingManager() {
     try {
       console.log("[v0] Saving config:", localConfig)
 
-      const response = await fetch("/api/admin/training/config", {
+      const response = await apiFetch("/api/admin/training/config", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(localConfig),
       })
 
-      console.log("[v0] Save config response status:", response.status)
+      console.log("[v0] Save config response:", response)
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("[v0] Save config failed:", response.status, errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
-      }
-
-      const data = await response.json()
-      console.log("[v0] Save config response:", data)
-
-      if (data.error) {
-        throw new Error(data.error)
+      if (!response.success) {
+        throw new Error(response.error || "Failed to save config")
       }
 
       setConfig(localConfig)
@@ -398,7 +366,7 @@ export function FaceTrainingManager() {
                 <li>Сервер недоступен из интернета (для деплоя)</li>
                 <li>Порт закрыт файрволом</li>
               </ul>
-              <p className="mt-2 font-medium">Текущий URL: {process.env.NEXT_PUBLIC_FASTAPI_URL || "не установлен"}</p>
+              <p className="mt-2 font-medium">Текущий URL: {FASTAPI_URL}</p>
             </div>
           </div>
         </div>
