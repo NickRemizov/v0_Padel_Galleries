@@ -1,7 +1,21 @@
 "use server"
 
 import { apiFetch } from "@/lib/apiClient"
+import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+
+/**
+ * Helper to get auth headers for protected endpoints
+ */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (session?.access_token) {
+    return { "Authorization": `Bearer ${session.access_token}` }
+  }
+  return {}
+}
 
 export async function getRecognitionConfigAction() {
   logger.debug("actions/recognition", "[getRecognitionConfigAction] Reading config from DB")
@@ -100,8 +114,10 @@ export async function regenerateMissingDescriptorsAction(): Promise<{
   error?: string
 }> {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/recognition/regenerate-missing-descriptors", {
       method: "POST",
+      headers,
     })
     const data = result.data || result
     return {
@@ -165,8 +181,10 @@ export async function regenerateSingleDescriptorAction(faceId: string): Promise<
   error?: string
 }> {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/recognition/regenerate-single-descriptor?face_id=${faceId}`, {
       method: "POST",
+      headers,
     })
 
     return result.data || result
@@ -331,11 +349,13 @@ export async function clusterAllUnknownFacesAction(): Promise<{
   try {
     logger.debug("actions/recognition", "[clusterAllUnknownFacesAction] Starting global clustering")
 
+    const headers = await getAuthHeaders()
     // Вызываем без gallery_id - бэкенд вернёт кластеры по всей базе
     const result = await apiFetch<{ clusters: any[]; ungrouped_faces: any[] }>(
       `/api/recognition/cluster-unknown-faces?min_cluster_size=2`,
       {
         method: "POST",
+        headers,
       },
     )
 
@@ -370,10 +390,12 @@ export async function rejectFaceClusterAction(faceIds: string[]): Promise<{
   try {
     logger.debug("actions/recognition", `[rejectFaceClusterAction] Rejecting ${faceIds.length} faces`)
 
+    const headers = await getAuthHeaders()
     const result = await apiFetch<{ deleted: number }>(
       `/api/recognition/reject-face-cluster`,
       {
         method: "POST",
+        headers,
         body: JSON.stringify(faceIds),
       },
     )
