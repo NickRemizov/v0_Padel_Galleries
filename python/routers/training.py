@@ -177,7 +177,8 @@ async def batch_recognize_photos(
         if request.confidence_threshold is not None:
             threshold = request.confidence_threshold
         else:
-            config = await training_service.supabase.get_recognition_config()
+            # Sync method - no await
+            config = training_service.supabase.get_recognition_config()
             threshold = config.get('confidence_threshold', 0.60)
         
         result = await training_service.batch_recognize(
@@ -198,7 +199,8 @@ async def get_config(
 ):
     """Получить текущую конфигурацию."""
     try:
-        config = await training_service.supabase.get_recognition_config()
+        # Sync method - no await
+        config = training_service.supabase.get_recognition_config()
         return ApiResponse.ok(config)
     except Exception as e:
         logger.error(f"Error getting config: {e}")
@@ -215,7 +217,8 @@ async def update_config(
         settings = updates.model_dump(exclude_none=True)
         
         if settings:
-            await training_service.supabase.update_recognition_config(settings)
+            # Sync method - no await
+            training_service.supabase.update_recognition_config(settings)
         
         logger.info(f"Config updated: {list(settings.keys())}")
         return ApiResponse.ok({
