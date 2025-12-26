@@ -1,7 +1,21 @@
 "use server"
 
 import { apiFetch } from "@/lib/apiClient"
+import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+
+/**
+ * Helper to get auth headers for protected endpoints
+ */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (session?.access_token) {
+    return { "Authorization": `Bearer ${session.access_token}` }
+  }
+  return {}
+}
 
 // ===== PEOPLE =====
 
@@ -30,26 +44,32 @@ export async function addPersonAction(data: {
   show_in_players_gallery?: boolean
   show_photos_in_galleries?: boolean
 }) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch("/api/people", {
     method: "POST",
     body: JSON.stringify(data),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function updatePersonAction(personId: string, data: Record<string, any>) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch(`/api/people/${personId}`, {
     method: "PUT",
     body: JSON.stringify(data),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function updatePersonAvatarAction(personId: string, avatarUrl: string) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch(`/api/people/${personId}/avatar?avatar_url=${encodeURIComponent(avatarUrl)}`, {
     method: "PATCH",
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
@@ -60,16 +80,22 @@ export async function updatePersonVisibilityAction(
   field: "show_in_players_gallery" | "show_photos_in_galleries",
   value: boolean,
 ) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch(`/api/people/${personId}/visibility`, {
     method: "PATCH",
     body: JSON.stringify({ [field]: value }),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function deletePersonAction(personId: string) {
-  const result = await apiFetch(`/api/people/${personId}`, { method: "DELETE" })
+  const headers = await getAuthHeaders()
+  const result = await apiFetch(`/api/people/${personId}`, { 
+    method: "DELETE",
+    headers,
+  })
   if (result.success) revalidatePath("/admin")
   return result
 }
@@ -81,25 +107,33 @@ export async function getPhotographersAction() {
 }
 
 export async function addPhotographerAction(name: string) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch("/api/photographers", {
     method: "POST",
     body: JSON.stringify({ name }),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function updatePhotographerAction(photographerId: string, name: string) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch(`/api/photographers/${photographerId}`, {
     method: "PUT",
     body: JSON.stringify({ name }),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function deletePhotographerAction(photographerId: string) {
-  const result = await apiFetch(`/api/photographers/${photographerId}`, { method: "DELETE" })
+  const headers = await getAuthHeaders()
+  const result = await apiFetch(`/api/photographers/${photographerId}`, { 
+    method: "DELETE",
+    headers,
+  })
   if (result.success) revalidatePath("/admin")
   return result
 }
@@ -117,9 +151,11 @@ export async function addLocationAction(data: {
   maps_url?: string
   website_url?: string
 }) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch("/api/locations", {
     method: "POST",
     body: JSON.stringify(data),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
@@ -132,16 +168,22 @@ export async function updateLocationAction(locationId: string, data: {
   maps_url?: string | null
   website_url?: string | null
 }) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch(`/api/locations/${locationId}`, {
     method: "PUT",
     body: JSON.stringify(data),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function deleteLocationAction(locationId: string) {
-  const result = await apiFetch(`/api/locations/${locationId}`, { method: "DELETE" })
+  const headers = await getAuthHeaders()
+  const result = await apiFetch(`/api/locations/${locationId}`, { 
+    method: "DELETE",
+    headers,
+  })
   if (result.success) revalidatePath("/admin")
   return result
 }
@@ -153,25 +195,33 @@ export async function getOrganizersAction() {
 }
 
 export async function addOrganizerAction(name: string) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch("/api/organizers", {
     method: "POST",
     body: JSON.stringify({ name }),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function updateOrganizerAction(organizerId: string, name: string) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch(`/api/organizers/${organizerId}`, {
     method: "PUT",
     body: JSON.stringify({ name }),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function deleteOrganizerAction(organizerId: string) {
-  const result = await apiFetch(`/api/organizers/${organizerId}`, { method: "DELETE" })
+  const headers = await getAuthHeaders()
+  const result = await apiFetch(`/api/organizers/${organizerId}`, { 
+    method: "DELETE",
+    headers,
+  })
   if (result.success) revalidatePath("/admin")
   return result
 }
@@ -192,9 +242,11 @@ export async function addCityAction(data: {
   country?: string
   is_active?: boolean
 }) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch("/api/cities", {
     method: "POST",
     body: JSON.stringify(data),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
@@ -206,24 +258,32 @@ export async function updateCityAction(cityId: string, data: {
   country?: string
   is_active?: boolean
 }) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch(`/api/cities/${cityId}`, {
     method: "PUT",
     body: JSON.stringify(data),
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function toggleCityActiveAction(cityId: string) {
+  const headers = await getAuthHeaders()
   const result = await apiFetch(`/api/cities/${cityId}/toggle`, {
     method: "PATCH",
+    headers,
   })
   if (result.success) revalidatePath("/admin")
   return result
 }
 
 export async function deleteCityAction(cityId: string) {
-  const result = await apiFetch(`/api/cities/${cityId}`, { method: "DELETE" })
+  const headers = await getAuthHeaders()
+  const result = await apiFetch(`/api/cities/${cityId}`, { 
+    method: "DELETE",
+    headers,
+  })
   if (result.success) revalidatePath("/admin")
   return result
 }
