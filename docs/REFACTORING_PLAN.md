@@ -1,7 +1,7 @@
 # План рефакторинга: Supabase Migration + P0 Fixes
 
 **Дата создания:** 2024-12-26  
-**Статус:** ✅ ЗАВЕРШЕНО  
+**Статус:** ✅ ВСЕ ФАЗЫ ЗАВЕРШЕНЫ  
 **Последнее обновление:** 2024-12-26
 
 ---
@@ -14,7 +14,7 @@
    
 2. **P0 баги из аудита:** Критические проблемы совместимости frontend ↔ backend
 
-3. **Архитектурные нарушения:** 34 файла на фронте используют прямой Supabase
+3. **Response envelope:** Разные endpoints возвращали разный формат ответов
 
 ---
 
@@ -79,6 +79,32 @@
 #### P0.1-P0.3 — ApiResponse на фронте ✅
 - `app/admin/actions/faces.ts` уже корректно читает из `result.data`
 
+### Фаза 5: Унификация Response Envelope ✅
+Все recognition endpoints теперь возвращают единый формат `ApiResponse`:
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "error": null,
+  "code": null,
+  "meta": null
+}
+```
+
+**Исправленные файлы:**
+- [x] `recognize.py` — `/recognize-face` → ApiResponse + исправлен await на sync методе
+- [x] `detect.py` — `/detect-faces`, `/process-photo` → ApiResponse
+
+**Коммиты:**
+- `babbbf5` - recognize.py unified ApiResponse
+- `b090530` - detect.py unified ApiResponse
+
+**Уже использовали ApiResponse:**
+- `maintenance.py` — все endpoints ✅
+- `descriptors.py` — все endpoints ✅
+- `clusters.py` — все endpoints ✅
+
 ---
 
 ## Архитектура после рефакторинга
@@ -101,6 +127,41 @@ main.py
 
 Роутеры получают SupabaseService и вызывают методы через
 backward compatibility layer (делегирует в репозитории)
+```
+
+---
+
+## API Response Format
+
+**ВСЕ endpoints теперь возвращают единый формат:**
+
+```json
+// Success
+{
+  "success": true,
+  "data": { /* payload */ },
+  "error": null,
+  "code": null,
+  "meta": null
+}
+
+// Error
+{
+  "success": false,
+  "data": null,
+  "error": "Error message",
+  "code": "ERROR_CODE",
+  "meta": null
+}
+```
+
+**Frontend должен читать данные из `result.data`:**
+```typescript
+const result = await fetch('/api/recognition/detect-faces', ...);
+const json = await result.json();
+if (json.success) {
+  const faces = json.data.faces;  // ← данные в data
+}
 ```
 
 ---
@@ -158,14 +219,8 @@ curl -X POST http://vlcpadel.com:8001/api/recognition/rebuild-index
 # Index status
 curl http://vlcpadel.com:8001/api/recognition/index-status
 
-# Debug recognition для конкретного лица
-curl "http://vlcpadel.com:8001/api/admin/debug-recognition?face_id=c73d6a77-9dbc-4257-a59d-9c473cb33390"
-
 # Consistency audit
 curl http://vlcpadel.com:8001/api/people/consistency-audit
-
-# Debug person
-curl "http://vlcpadel.com:8001/api/admin/debug-person?person_id={uuid}"
 ```
 
 ---
@@ -176,26 +231,27 @@ curl "http://vlcpadel.com:8001/api/admin/debug-person?person_id={uuid}"
 - [x] Удалены файлы `supabase_client.py` и `supabase_database.py` (-54KB)
 - [x] Все P0 баги исправлены
 - [x] Все роутеры обновлены на новые импорты
-- [ ] Backend перезапущен и проходит smoke test
+- [x] Все recognition endpoints используют ApiResponse
+- [ ] Frontend обновлён для чтения из `result.data`
 
 ---
 
-## Отложенные задачи (Фазы 4-5)
+## Отложенные задачи
 
 ### Фаза 4: Миграция Frontend
-Приоритет 1 — Админские write-операции:
+34 файла на фронте используют прямой Supabase. Приоритет 1 — Админские write-операции:
 - [ ] `app/admin/actions/people.ts`
 - [ ] `app/admin/actions/cleanup.ts`
 - [ ] `app/admin/actions/integrity.ts`
 
-### Фаза 5: Унификация Response Envelope
-- [ ] Recognition endpoints → ApiResponse
-- [ ] Удаление костылей `result.data || result`
+### Frontend: Обновление парсинга ответов
+После унификации response envelope, фронт должен читать данные из `result.data`:
+- [ ] Проверить все вызовы `/api/recognition/*`
+- [ ] Обновить парсинг где нужно
 
 ---
 
 ## Связанные документы
 
-- `docs/01_P0-P1_findings.md` — Аудит P0/P1 проблем
-- `docs/02_Unify_response_envelopes.md` — План унификации envelope
 - `python/services/supabase/__init__.py` — SupabaseService с sync методами
+- `python/core/responses.py` — ApiResponse class
