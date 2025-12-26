@@ -162,8 +162,8 @@ async def process_photo(
     DB changes and index rebuild happen ONLY in batch-verify when user clicks Save.
     """
     try:
-        # Load config from DB
-        config = await supabase_client.get_recognition_config()
+        # Load config from DB (sync method - no await)
+        config = supabase_client.get_recognition_config()
         quality_filters_config = config.get('quality_filters', {})
         db_confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
