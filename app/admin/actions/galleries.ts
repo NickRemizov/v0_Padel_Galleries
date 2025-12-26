@@ -1,7 +1,21 @@
 "use server"
 
 import { apiFetch, ApiError } from "@/lib/apiClient"
+import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+
+/**
+ * Helper to get auth headers for protected endpoints
+ */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (session?.access_token) {
+    return { "Authorization": `Bearer ${session.access_token}` }
+  }
+  return {}
+}
 
 export async function getGalleriesAction(sortBy: "created_at" | "shoot_date" = "created_at") {
   try {
@@ -95,8 +109,10 @@ export async function addGalleryAction(formData: FormData) {
 
     console.log("[addGalleryAction] Sending data:", data)
 
+    const headers = await getAuthHeaders()
     const result = await apiFetch("/api/galleries", {
       method: "POST",
+      headers,
       body: JSON.stringify(data),
     })
     if (result.success) revalidatePath("/admin")
@@ -144,8 +160,10 @@ export async function updateGalleryAction(galleryId: string, formData: FormData)
 
     console.log("[updateGalleryAction] Sending data:", data)
 
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/galleries/${galleryId}`, {
       method: "PUT",
+      headers,
       body: JSON.stringify(data),
     })
     if (result.success) revalidatePath("/admin")
@@ -161,8 +179,10 @@ export async function updateGalleryAction(galleryId: string, formData: FormData)
 
 export async function updateGallerySortOrderAction(galleryId: string, sortOrder: string) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/galleries/${galleryId}/sort-order?sort_order=${encodeURIComponent(sortOrder)}`, {
       method: "PATCH",
+      headers,
     })
     if (result.success) revalidatePath("/admin")
     return result
@@ -177,8 +197,10 @@ export async function updateGallerySortOrderAction(galleryId: string, sortOrder:
 
 export async function deleteGalleryAction(galleryId: string) {
   try {
+    const headers = await getAuthHeaders()
     const result = await apiFetch(`/api/galleries/${galleryId}?delete_images=true`, {
       method: "DELETE",
+      headers,
     })
     if (result.success) revalidatePath("/admin")
     return result
