@@ -4,7 +4,7 @@ CRUD operations for galleries
 Supports both UUID and slug identifiers for human-readable URLs
 
 v1.1: Migrated to SupabaseService (removed SupabaseDatabase)
-v1.2: Added router-level auth protection for write operations
+v1.2: Added auth protection using dependencies parameter
 """
 
 from fastapi import APIRouter, Query, Depends
@@ -20,6 +20,10 @@ from services.face_recognition import FaceRecognitionService
 from services.auth import require_admin
 
 logger = get_logger(__name__)
+router = APIRouter()
+
+# Dependency list for protected endpoints
+admin_required = [Depends(require_admin)]
 
 supabase_db_instance: SupabaseService = None
 face_service_instance: FaceRecognitionService = None
@@ -82,10 +86,8 @@ class BatchDeleteImagesRequest(BaseModel):
 
 
 # ============================================================
-# PUBLIC ROUTER - No authentication required
+# PUBLIC ENDPOINTS - No authentication required
 # ============================================================
-router = APIRouter()
-
 
 @router.get("")
 async def get_galleries(
@@ -373,16 +375,11 @@ async def get_gallery_stats(identifier: str):
 
 
 # ============================================================
-# PROTECTED ROUTER - Requires admin authentication
-# All endpoints here automatically require admin auth
+# PROTECTED ENDPOINTS - Require admin authentication
+# Using dependencies parameter in decorator
 # ============================================================
-protected_router = APIRouter(
-    dependencies=[Depends(require_admin)],
-    tags=["galleries-admin"]
-)
 
-
-@protected_router.post("")
+@router.post("", dependencies=admin_required)
 async def create_gallery(data: GalleryCreate):
     """Create a new gallery. Requires admin authentication."""
     try:
@@ -398,7 +395,7 @@ async def create_gallery(data: GalleryCreate):
         raise DatabaseError(str(e), operation="create_gallery")
 
 
-@protected_router.put("/{identifier}")
+@router.put("/{identifier}", dependencies=admin_required)
 async def update_gallery(identifier: str, data: GalleryUpdate):
     """Update a gallery by ID or slug. Requires admin authentication."""
     try:
@@ -421,7 +418,7 @@ async def update_gallery(identifier: str, data: GalleryUpdate):
         raise DatabaseError(str(e), operation="update_gallery")
 
 
-@protected_router.patch("/{identifier}/sort-order")
+@router.patch("/{identifier}/sort-order", dependencies=admin_required)
 async def update_sort_order(identifier: str, sort_order: str = Query(...)):
     """Update gallery sort order. Requires admin authentication."""
     try:
@@ -438,7 +435,7 @@ async def update_sort_order(identifier: str, sort_order: str = Query(...)):
         raise DatabaseError(str(e), operation="update_sort_order")
 
 
-@protected_router.post("/batch-delete-images")
+@router.post("/batch-delete-images", dependencies=admin_required)
 async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
     """Batch delete multiple images from a gallery. Requires admin authentication."""
     try:
@@ -488,7 +485,7 @@ async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
         raise DatabaseError(str(e), operation="batch_delete_gallery_images")
 
 
-@protected_router.delete("/{identifier}")
+@router.delete("/{identifier}", dependencies=admin_required)
 async def delete_gallery(identifier: str, delete_images: bool = Query(True)):
     """Delete a gallery and optionally all its images. Requires admin authentication."""
     try:
@@ -522,7 +519,3 @@ async def delete_gallery(identifier: str, delete_images: bool = Query(True)):
     except Exception as e:
         logger.error(f"Error deleting gallery {identifier}: {e}")
         raise DatabaseError(str(e), operation="delete_gallery")
-
-
-# Include protected router into main router
-router.include_router(protected_router)
