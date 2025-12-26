@@ -4,10 +4,10 @@ CRUD operations for galleries
 Supports both UUID and slug identifiers for human-readable URLs
 
 v1.1: Migrated to SupabaseService (removed SupabaseDatabase)
-v1.2: Added auth protection using dependencies parameter
+v1.3: Removed per-endpoint auth (moved to middleware)
 """
 
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import Optional, List
 
@@ -17,13 +17,9 @@ from core.logging import get_logger
 from core.slug import resolve_identifier, is_uuid
 from services.supabase import SupabaseService
 from services.face_recognition import FaceRecognitionService
-from services.auth import require_admin
 
 logger = get_logger(__name__)
 router = APIRouter()
-
-# Dependency list for protected endpoints
-admin_required = [Depends(require_admin)]
 
 supabase_db_instance: SupabaseService = None
 face_service_instance: FaceRecognitionService = None
@@ -84,10 +80,6 @@ class BatchDeleteImagesRequest(BaseModel):
     image_ids: List[str]
     gallery_id: str
 
-
-# ============================================================
-# PUBLIC ENDPOINTS - No authentication required
-# ============================================================
 
 @router.get("")
 async def get_galleries(
@@ -374,16 +366,10 @@ async def get_gallery_stats(identifier: str):
         raise DatabaseError(str(e), operation="get_gallery_stats")
 
 
-# ============================================================
-# PROTECTED ENDPOINTS - Require admin authentication
-# Using dependencies parameter in decorator
-# ============================================================
-
-@router.post("", dependencies=admin_required)
+@router.post("")
 async def create_gallery(data: GalleryCreate):
-    """Create a new gallery. Requires admin authentication."""
+    """Create a new gallery."""
     try:
-        logger.info(f"Creating gallery: {data.title}")
         insert_data = data.model_dump(exclude_none=True)
         result = supabase_db_instance.client.table("galleries").insert(insert_data).execute()
         if result.data:
@@ -395,12 +381,11 @@ async def create_gallery(data: GalleryCreate):
         raise DatabaseError(str(e), operation="create_gallery")
 
 
-@router.put("/{identifier}", dependencies=admin_required)
+@router.put("/{identifier}")
 async def update_gallery(identifier: str, data: GalleryUpdate):
-    """Update a gallery by ID or slug. Requires admin authentication."""
+    """Update a gallery by ID or slug."""
     try:
         gallery_id = _get_gallery_id(identifier)
-        logger.info(f"Updating gallery: {gallery_id}")
         
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
@@ -418,12 +403,11 @@ async def update_gallery(identifier: str, data: GalleryUpdate):
         raise DatabaseError(str(e), operation="update_gallery")
 
 
-@router.patch("/{identifier}/sort-order", dependencies=admin_required)
+@router.patch("/{identifier}/sort-order")
 async def update_sort_order(identifier: str, sort_order: str = Query(...)):
-    """Update gallery sort order. Requires admin authentication."""
+    """Update gallery sort order."""
     try:
         gallery_id = _get_gallery_id(identifier)
-        logger.info(f"Updating sort order for gallery: {gallery_id}")
         
         supabase_db_instance.client.table("galleries").update({"sort_order": sort_order}).eq("id", gallery_id).execute()
         logger.info(f"Updated sort order for gallery {gallery_id}")
@@ -435,9 +419,9 @@ async def update_sort_order(identifier: str, sort_order: str = Query(...)):
         raise DatabaseError(str(e), operation="update_sort_order")
 
 
-@router.post("/batch-delete-images", dependencies=admin_required)
+@router.post("/batch-delete-images")
 async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
-    """Batch delete multiple images from a gallery. Requires admin authentication."""
+    """Batch delete multiple images from a gallery."""
     try:
         image_ids = data.image_ids
         gallery_id = data.gallery_id
@@ -485,12 +469,11 @@ async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
         raise DatabaseError(str(e), operation="batch_delete_gallery_images")
 
 
-@router.delete("/{identifier}", dependencies=admin_required)
+@router.delete("/{identifier}")
 async def delete_gallery(identifier: str, delete_images: bool = Query(True)):
-    """Delete a gallery and optionally all its images. Requires admin authentication."""
+    """Delete a gallery and optionally all its images."""
     try:
         gallery_id = _get_gallery_id(identifier)
-        logger.info(f"Deleting gallery: {gallery_id}")
         
         if delete_images:
             images = supabase_db_instance.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
