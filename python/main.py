@@ -5,8 +5,7 @@ This is the FastAPI application entry point.
 Uses core/ for configuration, exceptions, and logging.
 
 v4.1: Migrated to SupabaseService (modular architecture)
-- Removed: SupabaseDatabase, SupabaseClient (legacy)
-- Added: SupabaseService with modular repositories
+v4.2: Added auth middleware for write operations
 """
 
 from dotenv import load_dotenv
@@ -18,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
 # Core imports - new architecture foundation
@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 from services.supabase import SupabaseService, get_supabase_service
 from services.face_recognition import FaceRecognitionService
 from services.training_service import TrainingService
-from services.auth import get_current_user, get_current_user_optional, verify_google_token, create_access_token
+from services.auth import verify_supabase_token
 
 # Router imports
 from routers import (
@@ -54,6 +54,96 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
+
+# ============================================================
+# Auth Middleware
+# ============================================================
+
+# Paths that don't require authentication
+PUBLIC_PATHS = [
+    "/",
+    "/api/docs",
+    "/api/redoc",
+    "/api/openapi.json",
+    "/api/health",
+    "/uploads",
+]
+
+# Methods that require authentication
+PROTECTED_METHODS = ["POST", "PUT", "DELETE", "PATCH"]
+
+
+def is_public_path(path: str) -> bool:
+    """Check if path is public."""
+    for public_path in PUBLIC_PATHS:
+        if path == public_path or path.startswith(public_path + "/") or path.startswith(public_path + "?"):
+            return True
+    # Static files
+    if path.startswith("/uploads"):
+        return True
+    return False
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware that requires Supabase JWT for write operations.
+    GET requests pass through without auth.
+    """
+    
+    async def dispatch(self, request: Request, call_next):
+        # Allow all GET, HEAD, OPTIONS
+        if request.method not in PROTECTED_METHODS:
+            return await call_next(request)
+        
+        # Allow public paths
+        if is_public_path(request.url.path):
+            return await call_next(request)
+        
+        # Check Authorization header
+        auth_header = request.headers.get("Authorization")
+        
+        if not auth_header:
+            logger.warning(f"[AUTH] No auth header for {request.method} {request.url.path}")
+            return JSONResponse(
+                status_code=401,
+                content=ApiResponse.fail(
+                    message="Authorization required",
+                    code="AUTH_REQUIRED"
+                ).model_dump()
+            )
+        
+        # Extract token from "Bearer <token>"
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=401,
+                content=ApiResponse.fail(
+                    message="Invalid authorization format. Use: Bearer <token>",
+                    code="INVALID_AUTH_FORMAT"
+                ).model_dump()
+            )
+        
+        token = auth_header[7:]  # Remove "Bearer "
+        
+        try:
+            user = await verify_supabase_token(token)
+            # Store user in request state for endpoints to use
+            request.state.user = user
+            logger.debug(f"[AUTH] Authenticated: {user.get('email')} for {request.method} {request.url.path}")
+        except Exception as e:
+            logger.warning(f"[AUTH] Token verification failed: {e}")
+            return JSONResponse(
+                status_code=401,
+                content=ApiResponse.fail(
+                    message="Invalid or expired token",
+                    code="INVALID_TOKEN"
+                ).model_dump()
+            )
+        
+        return await call_next(request)
+
+
+# Add auth middleware BEFORE CORS (order matters)
+app.add_middleware(AuthMiddleware)
 
 # ============================================================
 # CORS Configuration
@@ -79,6 +169,7 @@ app.add_middleware(
 )
 
 logger.info("CORS middleware configured")
+logger.info("Auth middleware configured (write operations require Supabase JWT)")
 
 # ============================================================
 # Global Exception Handlers
