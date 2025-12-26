@@ -4,8 +4,7 @@ Services package.
 Main modules:
 - face_recognition.py - FaceRecognitionService facade
 - training_service.py - TrainingService facade
-- supabase_client.py - Supabase client wrapper
-- supabase_database.py - Database operations
+- supabase/ - Modular Supabase service (SupabaseService)
 
 Supporting modules (extracted from main services):
 - insightface_model.py - InsightFace model management
@@ -19,16 +18,18 @@ Training subpackage (services/training/):
 
 Other:
 - auth.py - Authentication service
+
+v4.1: Removed legacy supabase_client.py and supabase_database.py
+      Use SupabaseService from services.supabase instead
 """
 
 from services.face_recognition import FaceRecognitionService
 from services.training_service import TrainingService
-from services.supabase_client import SupabaseClient
-from services.supabase_database import SupabaseDatabase
+from services.supabase import SupabaseService, get_supabase_service
 
 __all__ = [
     'FaceRecognitionService',
     'TrainingService',
-    'SupabaseClient', 
-    'SupabaseDatabase',
+    'SupabaseService',
+    'get_supabase_service',
 ]
