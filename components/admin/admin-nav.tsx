@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * Admin Navigation Component
+ * 
+ * @migrated 2025-12-27 - Removed direct Supabase browser client
+ * Now uses getCitiesAction (FastAPI) instead of browser Supabase
+ */
+
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -23,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { getCitiesAction } from "@/app/admin/actions/entities"
 
 interface City {
   id: string
@@ -47,15 +54,10 @@ export function AdminNav() {
 
   useEffect(() => {
     const loadCities = async () => {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from("cities")
-        .select("id, name, slug")
-        .eq("is_active", true)
-        .order("name")
-      
-      if (data) {
-        setCities(data)
+      // Use server action instead of browser Supabase client
+      const result = await getCitiesAction(true) // activeOnly = true
+      if (result.success && result.data) {
+        setCities(result.data)
       }
     }
 
