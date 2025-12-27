@@ -1,8 +1,8 @@
-# 🎾 Padel Tournament Face Recognition Server v4.2
+# 🎾 Padel Tournament Face Recognition Server v5.1
 
 Сервер для автоматического распознавания и группировки игроков на турнирах по паделу с OAuth аутентификацией и системой обучения моделей.
 
-## 🆕 Что нового в v4.2
+## 🆕 Что нового в v5.1
 
 - ✅ **AuthMiddleware** — централизованная защита всех write-операций
 - ✅ **Оптимизация /api/people** — параметр `for_gallery=true` (101 запрос → 1)
@@ -46,7 +46,7 @@ curl http://vlcpadel.com:8001/api/people/
 
 ## 🔧 API Endpoints
 
-### People API (Оптимизировано в v4.2)
+### People API (Оптимизировано в v5.1)
 
 ```bash
 # Базовый список людей
@@ -155,7 +155,7 @@ cd python && ./start.sh
 
 ## 📊 Производительность
 
-| Операция | До v4.2 | После v4.2 |
+| Операция | До v5.1 | После v5.1 |
 |----------|---------|------------|
 | Players gallery load | 5-10 сек (101 запрос) | ~50ms (1 запрос) |
 | API response format | Разный | Унифицированный ApiResponse |
@@ -176,21 +176,20 @@ tail -f server.log
 
 ## 🆕 Changelog
 
-### v4.2.0 (Текущая)
+### v5.1.0 (Текущая)
 - ✅ AuthMiddleware — централизованная защита write-операций
 - ✅ Оптимизация GET /api/people?for_gallery=true
 - ✅ On-Demand Revalidation для Next.js ISR
 - ✅ Frontend токены во всех action файлах
 
+### v5.0.0
+- ✅ All routers migrated to ApiResponse + custom exceptions
+
 ### v4.1.0
 - ✅ People router модуляризация (crud, photos, avatar, outliers, consistency)
-- ✅ Unified ApiResponse format
+- ✅ Admin router added
 
 ### v4.0.0
 - ✅ Clean Architecture implementation
 - ✅ Custom exceptions hierarchy
 - ✅ Centralized logging
-
-### v3.2.8
-- ✅ Метрики распознавания: blur_score, distance_to_nearest, top_matches
-- ✅ Параметр apply_quality_filters
