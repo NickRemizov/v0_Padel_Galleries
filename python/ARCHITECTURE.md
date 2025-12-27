@@ -1,4 +1,4 @@
-# Backend Architecture v4.2
+# Backend Architecture v5.1
 
 ## Overview
 
@@ -27,7 +27,7 @@ python/
 
 ## Security
 
-### AuthMiddleware (v4.2)
+### AuthMiddleware (v5.1)
 
 Централизованная защита всех write-операций:
 
@@ -128,7 +128,7 @@ AppException (base, 500)
 
 ## API Optimizations
 
-### Players Gallery (v1.4)
+### Players Gallery (v5.1)
 
 Параметр `for_gallery=true` возвращает оптимизированные данные:
 
@@ -196,8 +196,9 @@ Error response:
 
 ## Version History
 
-- v4.2.0 - AuthMiddleware, centralized security
-- v4.1.0 - People router modularization
+- v5.1.0 - AuthMiddleware, for_gallery optimization, On-Demand Revalidation
+- v5.0.0 - All routers migrated to ApiResponse + custom exceptions
+- v4.1.0 - People router modularization, Admin router
 - v4.0.0 - Clean Architecture implementation
 - v3.x - Modular recognition package
 - v2.x - Basic face recognition
