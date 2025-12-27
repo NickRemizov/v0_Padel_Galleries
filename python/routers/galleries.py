@@ -6,6 +6,7 @@ Supports both UUID and slug identifiers for human-readable URLs
 v1.1: Migrated to SupabaseService (removed SupabaseDatabase)
 v1.3: Removed per-endpoint auth (moved to middleware)
 v1.4: Fixed stats - requires has_been_processed=true for verified status
+v1.5: Frontend-compatible format (_count, gallery_images with people)
 """
 
 from fastapi import APIRouter, Query
@@ -19,7 +20,7 @@ from core.slug import resolve_identifier, is_uuid
 from services.supabase import SupabaseService
 from services.face_recognition import FaceRecognitionService
 
-logger = get_logger(__name__)
+logger = get_logger(__name__)\
 router = APIRouter()
 
 supabase_db_instance: SupabaseService = None
@@ -84,10 +85,15 @@ class BatchDeleteImagesRequest(BaseModel):
 
 @router.get("")
 async def get_galleries(
-    sort_by: str = Query("created_at", enum=["created_at", "shoot_date"]),
+    sort_by: str = Query("shoot_date", enum=["created_at", "shoot_date"]),
     with_relations: bool = Query(True)
 ):
-    """Get all galleries."""
+    """Get all galleries for public listing.
+    
+    Returns format compatible with Next.js frontend:
+    - _count.gallery_images instead of photo_count
+    - photographers, locations, organizers as nested objects
+    """
     try:
         select = "*"
         if with_relations:
@@ -96,10 +102,11 @@ async def get_galleries(
         result = supabase_db_instance.client.table("galleries").select(select).order(sort_by, desc=True).execute()
         galleries = result.data or []
         
-        # Calculate photo_count from gallery_images
+        # Transform to frontend-compatible format
         for gallery in galleries:
             images = gallery.pop("gallery_images", None)
-            gallery["photo_count"] = len(images) if images else 0
+            # Frontend expects _count.gallery_images
+            gallery["_count"] = {"gallery_images": len(images) if images else 0}
         
         return ApiResponse.ok(galleries)
     except Exception as e:
@@ -219,22 +226,72 @@ async def get_galleries_with_unrecognized_faces():
 
 
 @router.get("/{identifier}")
-async def get_gallery(identifier: str):
-    """Get a gallery by ID or slug."""
+async def get_gallery(identifier: str, full: bool = Query(False)):
+    """Get a gallery by ID or slug.
+    
+    Args:
+        identifier: Gallery ID or slug
+        full: If True, include gallery_images with people (for public gallery page)
+    """
     try:
         gallery = _resolve_gallery(
             identifier,
             select="*, photographers(id, name), locations(id, name), organizers(id, name)"
         )
         
-        if gallery:
+        if not gallery:
+            raise NotFoundError("Gallery", identifier)
+        
+        gallery_id = gallery["id"]
+        
+        if full:
+            # Full mode: include images with people for public gallery page
+            images_result = supabase_db_instance.client.table("gallery_images").select(
+                "id, gallery_id, image_url, original_url, original_filename, file_size, width, height, display_order, download_count, created_at, slug"
+            ).eq("gallery_id", gallery_id).order("original_filename").execute()
+            
+            images = images_result.data or []
+            
+            if images:
+                image_ids = [img["id"] for img in images]
+                
+                # Get faces with person info, filter by show_photos_in_galleries
+                faces_result = supabase_db_instance.client.table("photo_faces").select(
+                    "photo_id, person_id, confidence, people(id, real_name, show_photos_in_galleries)"
+                ).in_("photo_id", image_ids).not_.is_("person_id", "null").execute()
+                
+                faces = faces_result.data or []
+                
+                # Group people by photo, respecting show_photos_in_galleries
+                people_by_photo = {}
+                for face in faces:
+                    photo_id = face["photo_id"]
+                    person = face.get("people")
+                    if person and person.get("show_photos_in_galleries", True):
+                        if photo_id not in people_by_photo:
+                            people_by_photo[photo_id] = []
+                        # Avoid duplicates
+                        person_ids = [p["id"] for p in people_by_photo[photo_id]]
+                        if person["id"] not in person_ids:
+                            people_by_photo[photo_id].append({
+                                "id": person["id"],
+                                "name": person["real_name"]
+                            })
+                
+                # Add people to each image
+                for img in images:
+                    img["people"] = people_by_photo.get(img["id"], [])
+            
+            gallery["gallery_images"] = images
+            gallery["_count"] = {"gallery_images": len(images)}
+        else:
+            # Simple mode: just count
             count_result = supabase_db_instance.client.table("gallery_images").select(
                 "id", count="exact"
-            ).eq("gallery_id", gallery["id"]).execute()
-            gallery["photo_count"] = count_result.count or 0
-            
-            return ApiResponse.ok(gallery)
-        raise NotFoundError("Gallery", identifier)
+            ).eq("gallery_id", gallery_id).execute()
+            gallery["_count"] = {"gallery_images": count_result.count or 0}
+        
+        return ApiResponse.ok(gallery)
     except NotFoundError:
         raise
     except Exception as e:
