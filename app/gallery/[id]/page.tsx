@@ -15,7 +15,8 @@ export default async function GalleryPage({ params }: { params: Promise<{ id: st
   const { id } = await params
 
   // Fetch gallery with images and people from FastAPI
-  const result = await apiFetch(`/api/galleries/${id}`)
+  // full=true returns gallery_images with people array
+  const result = await apiFetch(`/api/galleries/${id}?full=true`)
 
   if (!result.success || !result.data) {
     notFound()
