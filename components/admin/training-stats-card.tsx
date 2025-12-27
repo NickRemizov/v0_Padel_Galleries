@@ -140,8 +140,17 @@ export function TrainingStatsCard() {
   async function fetchStats() {
     try {
       const response = await fetch("/api/admin/face-statistics?top=15")
-      const data = await response.json()
+      const result = await response.json()
 
+      // Unified format: {success, data, error, code}
+      if (!result.success) {
+        console.error("[v0] Failed to fetch statistics:", result.error)
+        setError(result.error || "Не удалось загрузить статистику")
+        setStats(null)
+        return
+      }
+
+      const data = result.data
       if (!data || !data.players || typeof data.players.total !== "number") {
         console.error("[v0] Invalid statistics data structure:", data)
         setError("Получены некорректные данные статистики")
