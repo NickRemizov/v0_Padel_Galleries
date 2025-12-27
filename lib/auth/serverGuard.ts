@@ -39,3 +39,17 @@ export async function requireAdmin() {
   // Всё ок, возвращаем пользователя
   return { user, error: null }
 }
+
+/**
+ * Get auth headers for protected API calls to FastAPI backend
+ * Returns Authorization header with Supabase JWT token
+ */
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (session?.access_token) {
+    return { "Authorization": `Bearer ${session.access_token}` }
+  }
+  return {}
+}
