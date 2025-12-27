@@ -84,8 +84,11 @@ export function FaceTaggingDialog({
       try {
         const response = await fetch("/api/admin/training/config")
         if (response.ok) {
-          const config = await response.json()
-          setAutoAvatarEnabled(config.auto_avatar_on_create ?? true)
+          const result = await response.json()
+          // Unified format: {success, data, error, code}
+          if (result.success && result.data) {
+            setAutoAvatarEnabled(result.data.auto_avatar_on_create ?? true)
+          }
         }
       } catch (error) {
         console.error("[FaceTaggingDialog] Error loading config:", error)
