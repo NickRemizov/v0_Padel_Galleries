@@ -20,7 +20,7 @@ from core.slug import resolve_identifier, is_uuid
 from services.supabase import SupabaseService
 from services.face_recognition import FaceRecognitionService
 
-logger = get_logger(__name__)\
+logger = get_logger(__name__)
 router = APIRouter()
 
 supabase_db_instance: SupabaseService = None
