@@ -7,6 +7,7 @@ v1.1: Migrated to SupabaseService (removed SupabaseDatabase)
 v1.3: Removed per-endpoint auth (moved to middleware)
 v1.4: Fixed stats - requires has_been_processed=true for verified status
 v1.5: Frontend-compatible format (_count, gallery_images with people)
+v1.6: Both photo_count and _count for backward compatibility
 """
 
 from fastapi import APIRouter, Query
@@ -90,9 +91,9 @@ async def get_galleries(
 ):
     """Get all galleries for public listing.
     
-    Returns format compatible with Next.js frontend:
-    - _count.gallery_images instead of photo_count
-    - photographers, locations, organizers as nested objects
+    Returns both formats for compatibility:
+    - _count.gallery_images: public frontend (gallery-card.tsx)
+    - photo_count: admin frontend (gallery-list.tsx)
     """
     try:
         select = "*"
@@ -105,8 +106,10 @@ async def get_galleries(
         # Transform to frontend-compatible format
         for gallery in galleries:
             images = gallery.pop("gallery_images", None)
-            # Frontend expects _count.gallery_images
-            gallery["_count"] = {"gallery_images": len(images) if images else 0}
+            count = len(images) if images else 0
+            # Both formats for compatibility
+            gallery["_count"] = {"gallery_images": count}
+            gallery["photo_count"] = count
         
         return ApiResponse.ok(galleries)
     except Exception as e:
@@ -283,13 +286,17 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
                     img["people"] = people_by_photo.get(img["id"], [])
             
             gallery["gallery_images"] = images
-            gallery["_count"] = {"gallery_images": len(images)}
+            count = len(images)
+            gallery["_count"] = {"gallery_images": count}
+            gallery["photo_count"] = count
         else:
             # Simple mode: just count
             count_result = supabase_db_instance.client.table("gallery_images").select(
                 "id", count="exact"
             ).eq("gallery_id", gallery_id).execute()
-            gallery["_count"] = {"gallery_images": count_result.count or 0}
+            count = count_result.count or 0
+            gallery["_count"] = {"gallery_images": count}
+            gallery["photo_count"] = count
         
         return ApiResponse.ok(gallery)
     except NotFoundError:
