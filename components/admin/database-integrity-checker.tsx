@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * Database Integrity Checker Component
+ * 
+ * @migrated 2025-12-27 - Removed direct Supabase browser client
+ * Now uses /api/admin/training/config (FastAPI) instead of browser Supabase
+ */
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,7 +33,6 @@ import {
 } from "@/app/admin/actions/integrity"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import FaceCropPreview from "@/components/FaceCropPreview"
-import { createClient } from "@/lib/supabase/client"
 import { FaceTaggingDialog } from "@/components/admin/face-tagging-dialog"
 import { DuplicatePeopleDialog } from "@/components/admin/duplicate-people-dialog"
 
@@ -73,21 +79,17 @@ export function DatabaseIntegrityChecker() {
   } | null>(null)
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
 
-  const supabaseClient = createClient()
-
   useEffect(() => {
-    // Load confidence threshold from settings (lightweight operation)
+    // Load confidence threshold from settings via API (no browser Supabase)
     const loadSettings = async () => {
       try {
-        const supabase = createClient()
-        const { data } = await supabase
-          .from("face_recognition_config")
-          .select("value")
-          .eq("key", "recognition_settings")
-          .single()
-
-        if (data?.value?.confidence_thresholds?.high_data) {
-          setConfidenceThreshold(data.value.confidence_thresholds.high_data)
+        const response = await fetch("/api/admin/training/config")
+        if (response.ok) {
+          const result = await response.json()
+          // Unified format: {success, data, error, code}
+          if (result.success && result.data?.confidence_thresholds?.high_data) {
+            setConfidenceThreshold(result.data.confidence_thresholds.high_data)
+          }
         }
       } catch (error) {
         console.error("[IntegrityChecker] Failed to load settings:", error)
