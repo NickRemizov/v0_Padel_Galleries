@@ -3,7 +3,7 @@
  * 
  * Proxies to FastAPI: GET /api/admin/face-statistics
  * 
- * @migrated 2025-12-15 - Removed direct Supabase access
+ * @migrated 2025-12-27 - Unified response format
  */
 
 import { apiFetch } from "@/lib/apiClient"
@@ -11,18 +11,25 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const top = searchParams.get("top") || "15"
+  try {
+    const searchParams = request.nextUrl.searchParams
+    const top = searchParams.get("top") || "15"
 
-  const result = await apiFetch(`/api/admin/face-statistics?top=${top}`)
+    const result = await apiFetch(`/api/admin/face-statistics?top=${top}`)
 
-  if (!result.success) {
+    // Pass through unified response format
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 500
+    })
+  } catch (error) {
+    console.error("[v0] Error fetching face statistics:", error)
     return NextResponse.json(
-      { error: result.error || "Failed to fetch statistics" },
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to fetch statistics",
+        code: "FETCH_ERROR"
+      },
       { status: 500 }
     )
   }
-
-  // Return data directly to maintain backward compatibility
-  return NextResponse.json(result.data)
 }

@@ -8,36 +8,43 @@
  * - id: Gallery UUID for detailed stats
  * - search: Search term for gallery title
  * 
- * @migrated 2025-12-15 - Removed direct Supabase access
+ * @migrated 2025-12-27 - Unified response format
  */
 
 import { apiFetch } from "@/lib/apiClient"
 import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const galleryId = searchParams.get("id")
-  const searchTerm = searchParams.get("search")
-  const showAll = searchParams.get("all") === "true"
+  try {
+    const { searchParams } = new URL(request.url)
+    const galleryId = searchParams.get("id")
+    const searchTerm = searchParams.get("search")
+    const showAll = searchParams.get("all") === "true"
 
-  // Build query string
-  const params = new URLSearchParams()
-  if (showAll) params.set("all", "true")
-  if (galleryId) params.set("id", galleryId)
-  if (searchTerm) params.set("search", searchTerm)
-  
-  const queryString = params.toString()
-  const url = `/api/admin/check-gallery${queryString ? `?${queryString}` : ""}`
+    // Build query string
+    const params = new URLSearchParams()
+    if (showAll) params.set("all", "true")
+    if (galleryId) params.set("id", galleryId)
+    if (searchTerm) params.set("search", searchTerm)
+    
+    const queryString = params.toString()
+    const url = `/api/admin/check-gallery${queryString ? `?${queryString}` : ""}`
 
-  const result = await apiFetch(url)
+    const result = await apiFetch(url)
 
-  if (!result.success) {
-    const status = result.code === "NOT_FOUND" ? 404 : 500
+    // Pass through unified response format
+    return NextResponse.json(result, {
+      status: result.success ? 200 : (result.code === "NOT_FOUND" ? 404 : 500)
+    })
+  } catch (error) {
+    console.error("[v0] Error checking gallery:", error)
     return NextResponse.json(
-      { error: result.error || "Check failed" },
-      { status }
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Check failed",
+        code: "FETCH_ERROR"
+      },
+      { status: 500 }
     )
   }
-
-  return NextResponse.json(result.data)
 }

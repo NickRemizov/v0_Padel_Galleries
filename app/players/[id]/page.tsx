@@ -27,28 +27,25 @@ function sortByGalleryOrder(images: any[], sortOrder: string): any[] {
 export default async function PlayerGalleryPage({ params }: PlayerGalleryPageProps) {
   const { id } = await params
 
-  // Get player from FastAPI
+  // Get player from FastAPI - unified format: {success, data, error, code}
   const playerResponse = await apiFetch<any>(`/api/people/${id}`, {
     method: "GET",
   })
 
-  // Handle response format
-  const player = playerResponse.success !== undefined 
-    ? (playerResponse.success ? playerResponse.data || playerResponse : null)
-    : playerResponse
-
-  if (!player || playerResponse.error) {
+  if (!playerResponse.success || !playerResponse.data) {
     notFound()
   }
 
-  // Get player photos from FastAPI
+  const player = playerResponse.data
+
+  // Get player photos from FastAPI - unified format
   const photosResponse = await apiFetch<any>(`/api/people/${id}/photos`, {
     method: "GET",
   })
 
-  // Extract photos from response - API returns {success, data: [...]}
+  // Extract photos from response
   // Each item has nested gallery_images object with galleries inside
-  const rawPhotos = photosResponse.data || photosResponse.photos || []
+  const rawPhotos = photosResponse.success ? (photosResponse.data || []) : []
 
   // Transform photos to expected format
   // API format: { id, photo_id, gallery_images: { id, image_url, gallery_id, original_filename, galleries: { title, shoot_date, sort_order } } }

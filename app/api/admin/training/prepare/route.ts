@@ -1,5 +1,13 @@
+/**
+ * Training Prepare API Route
+ * 
+ * Proxies to FastAPI: POST /api/v2/train/prepare
+ * 
+ * @migrated 2025-12-27 - Unified response format
+ */
+
 import { type NextRequest, NextResponse } from "next/server"
-import { apiFetch, ApiError } from "@/lib/apiClient"
+import { apiFetch } from "@/lib/apiClient"
 import { requireAdmin } from "@/lib/auth/serverGuard"
 
 export async function POST(request: NextRequest) {
@@ -10,45 +18,25 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     console.log("[v0] Preparing dataset")
-    console.log("[v0] Request body:", JSON.stringify(body))
 
-    const response = await apiFetch("/api/v2/train/prepare", {
+    const result = await apiFetch("/api/v2/train/prepare", {
       method: "POST",
       body: JSON.stringify(body),
     })
 
-    // apiFetch returns {success, data, error, code, meta}
-    if (response.success && response.data) {
-      console.log("[v0] Successfully prepared dataset")
-      return NextResponse.json(response.data)
-    }
-
-    // Backend returned error
-    console.error("[v0] Backend returned error:", response.error)
-    return NextResponse.json(
-      { error: response.error || "Failed to prepare dataset" },
-      { status: 500 },
-    )
+    // Pass through unified response format
+    return NextResponse.json(result, {
+      status: result.success ? 200 : 500
+    })
   } catch (error) {
     console.error("[v0] Error preparing dataset:", error)
-
-    if (error instanceof ApiError) {
-      if (error.status === 503 || error.status === 404) {
-        return NextResponse.json(
-          {
-            error:
-              "FastAPI training endpoints not available. Please deploy the updated FastAPI code with training endpoints.",
-          },
-          { status: 503 },
-        )
-      }
-
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to prepare dataset" },
-      { status: 500 },
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to prepare dataset",
+        code: "FETCH_ERROR"
+      },
+      { status: 500 }
     )
   }
 }

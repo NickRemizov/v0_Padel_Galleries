@@ -17,21 +17,15 @@ export default async function PlayersPage() {
       method: "GET",
     })
 
-    // Handle both formats:
-    // 1. Direct array: [...]
-    // 2. Wrapped: {success: true, data: [...]}
-    let peopleData: any[] = []
-    if (Array.isArray(response)) {
-      peopleData = response
-    } else if (response && response.success && Array.isArray(response.data)) {
-      peopleData = response.data
-    } else if (response && Array.isArray(response.data)) {
-      peopleData = response.data
+    // Unified API response format: {success, data, error, code}
+    if (!response.success || !Array.isArray(response.data)) {
+      console.error("[v0] Failed to fetch players:", response.error)
+      return renderPage([])
     }
 
     // Filter players: show_in_players_gallery=true AND has avatar
     // Map to expected format with _count and _mostRecentGalleryDate
-    const filteredPlayers = peopleData
+    const filteredPlayers = response.data
       .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
       .map((player: any) => ({
         ...player,
@@ -58,6 +52,10 @@ export default async function PlayersPage() {
     console.error("[v0] Error fetching players:", error)
   }
 
+  return renderPage(players)
+}
+
+function renderPage(players: Person[]) {
   return (
     <main className="min-h-screen bg-background border-background">
       <div className="mx-auto py-12 shadow-none">
