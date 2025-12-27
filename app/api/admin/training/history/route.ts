@@ -1,5 +1,13 @@
+/**
+ * Training History API Route
+ * 
+ * Proxies to FastAPI: GET /api/v2/train/history
+ * 
+ * @migrated 2025-12-27 - Fixed error handling (no longer masks errors)
+ */
+
 import { type NextRequest, NextResponse } from "next/server"
-import { apiFetch, ApiError } from "@/lib/apiClient"
+import { apiFetch } from "@/lib/apiClient"
 import { requireAdmin } from "@/lib/auth/serverGuard"
 
 export async function GET(request: NextRequest) {
@@ -13,16 +21,21 @@ export async function GET(request: NextRequest) {
 
     const response = await apiFetch(`/api/v2/train/history?limit=${limit}&offset=${offset}`)
 
-    // apiFetch returns {success, data, error, code, meta}
-    // Extract data for the frontend
-    if (response.success && response.data) {
-      return NextResponse.json(response.data)
-    }
-
-    // Backend returned error or no data
-    return NextResponse.json({ sessions: [], total: 0 })
+    // Pass through the response as-is (unified contract)
+    // On success: {success: true, data: {sessions: [...], total: N}}
+    // On error: {success: false, error: "...", code: "..."}
+    return NextResponse.json(response, {
+      status: response.success ? 200 : 500
+    })
   } catch (error) {
     console.error("[v0] Error fetching training history:", error)
-    return NextResponse.json({ sessions: [], total: 0 })
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to fetch training history",
+        code: "FETCH_ERROR"
+      },
+      { status: 500 }
+    )
   }
 }
