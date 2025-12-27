@@ -17,6 +17,23 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return {}
 }
 
+/**
+ * Revalidate all paths affected by people changes
+ */
+function revalidatePeoplePaths() {
+  revalidatePath("/admin")
+  revalidatePath("/players")  // Public players gallery
+}
+
+/**
+ * Revalidate all paths affected by gallery changes
+ */
+function revalidateGalleryPaths() {
+  revalidatePath("/admin")
+  revalidatePath("/")         // Home page with galleries
+  revalidatePath("/gallery")  // Gallery pages
+}
+
 // ===== PEOPLE =====
 
 export async function getPeopleAction(withStats = false) {
@@ -50,7 +67,7 @@ export async function addPersonAction(data: {
     body: JSON.stringify(data),
     headers,
   })
-  if (result.success) revalidatePath("/admin")
+  if (result.success) revalidatePeoplePaths()
   return result
 }
 
@@ -61,7 +78,7 @@ export async function updatePersonAction(personId: string, data: Record<string, 
     body: JSON.stringify(data),
     headers,
   })
-  if (result.success) revalidatePath("/admin")
+  if (result.success) revalidatePeoplePaths()
   return result
 }
 
@@ -71,7 +88,7 @@ export async function updatePersonAvatarAction(personId: string, avatarUrl: stri
     method: "PATCH",
     headers,
   })
-  if (result.success) revalidatePath("/admin")
+  if (result.success) revalidatePeoplePaths()
   return result
 }
 
@@ -86,7 +103,7 @@ export async function updatePersonVisibilityAction(
     body: JSON.stringify({ [field]: value }),
     headers,
   })
-  if (result.success) revalidatePath("/admin")
+  if (result.success) revalidatePeoplePaths()
   return result
 }
 
@@ -96,7 +113,7 @@ export async function deletePersonAction(personId: string) {
     method: "DELETE",
     headers,
   })
-  if (result.success) revalidatePath("/admin")
+  if (result.success) revalidatePeoplePaths()
   return result
 }
 
