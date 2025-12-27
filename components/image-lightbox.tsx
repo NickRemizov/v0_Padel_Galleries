@@ -89,9 +89,11 @@ export function ImageLightbox({
 
       try {
         const response = await fetch(`/api/images/${currentImage.id}/people`)
-        if (response.ok) {
-          const people = await response.json()
-          setVerifiedPeople(people)
+        const result = await response.json()
+        
+        // Handle unified API response format: {success, data, error, code}
+        if (result.success && Array.isArray(result.data)) {
+          setVerifiedPeople(result.data)
         } else {
           setVerifiedPeople([])
         }
