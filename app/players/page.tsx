@@ -11,8 +11,9 @@ export default async function PlayersPage() {
   let players: Person[] = []
 
   try {
-    // Call FastAPI backend
-    const response = await apiFetch<any>("/api/people", {
+    // Call FastAPI backend with for_gallery=true for optimized response
+    // Returns photo_count and most_recent_gallery_date in ONE request (no N+1!)
+    const response = await apiFetch<any>("/api/people?for_gallery=true", {
       method: "GET",
     })
 
@@ -29,56 +30,19 @@ export default async function PlayersPage() {
     }
 
     // Filter players: show_in_players_gallery=true AND has avatar
+    // Map to expected format with _count and _mostRecentGalleryDate
     const filteredPlayers = peopleData
       .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
       .map((player: any) => ({
         ...player,
         _count: {
-          photo_faces: player.faces_count || player.photo_count || 0,
+          photo_faces: player.photo_count || 0,
         },
+        _mostRecentGalleryDate: player.most_recent_gallery_date || null,
       }))
 
-    // Get photo dates for each player PARALLEL (Promise.all instead of sequential for loop)
-    const playersWithDates = await Promise.all(
-      filteredPlayers.map(async (player) => {
-        try {
-          const photosResponse = await apiFetch<any>(`/api/people/${player.id}/photos`, {
-            method: "GET",
-          })
-          
-          const photos = photosResponse.photos || photosResponse.data || []
-          
-          let mostRecentDate: string | null = null
-          if (photos.length > 0) {
-            const dates = photos
-              .map((p: any) => p.gallery_shoot_date)
-              .filter((date: any) => date != null)
-            
-            if (dates.length > 0) {
-              mostRecentDate = dates.sort((a: string, b: string) => b.localeCompare(a))[0]
-            }
-          }
-          
-          return {
-            ...player,
-            _mostRecentGalleryDate: mostRecentDate,
-            _count: {
-              ...player._count,
-              photo_faces: photos.length,
-            },
-          }
-        } catch (e) {
-          console.error(`[v0] Error fetching photos for player ${player.id}:`, e)
-          return {
-            ...player,
-            _mostRecentGalleryDate: null,
-          }
-        }
-      })
-    )
-
     // Sort by most recent gallery date (descending), then by name
-    players = playersWithDates.sort((a: any, b: any) => {
+    players = filteredPlayers.sort((a: any, b: any) => {
       if (!a._mostRecentGalleryDate && !b._mostRecentGalleryDate) {
         return a.real_name.localeCompare(b.real_name)
       }
