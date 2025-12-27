@@ -54,9 +54,7 @@ export interface Gallery {
   locations?: Location
   organizers?: Organizer
   gallery_images?: GalleryImage[]
-  _count?: {
-    gallery_images: number
-  }
+  photo_count?: number
 }
 
 export interface User {

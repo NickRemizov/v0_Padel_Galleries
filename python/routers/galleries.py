@@ -6,8 +6,7 @@ Supports both UUID and slug identifiers for human-readable URLs
 v1.1: Migrated to SupabaseService (removed SupabaseDatabase)
 v1.3: Removed per-endpoint auth (moved to middleware)
 v1.4: Fixed stats - requires has_been_processed=true for verified status
-v1.5: Frontend-compatible format (_count, gallery_images with people)
-v1.6: Both photo_count and _count for backward compatibility
+v1.5: Unified format - photo_count only (removed _count)
 """
 
 from fastapi import APIRouter, Query
@@ -89,11 +88,9 @@ async def get_galleries(
     sort_by: str = Query("shoot_date", enum=["created_at", "shoot_date"]),
     with_relations: bool = Query(True)
 ):
-    """Get all galleries for public listing.
+    """Get all galleries for listing.
     
-    Returns both formats for compatibility:
-    - _count.gallery_images: public frontend (gallery-card.tsx)
-    - photo_count: admin frontend (gallery-list.tsx)
+    Returns galleries with photo_count field.
     """
     try:
         select = "*"
@@ -103,13 +100,9 @@ async def get_galleries(
         result = supabase_db_instance.client.table("galleries").select(select).order(sort_by, desc=True).execute()
         galleries = result.data or []
         
-        # Transform to frontend-compatible format
         for gallery in galleries:
             images = gallery.pop("gallery_images", None)
-            count = len(images) if images else 0
-            # Both formats for compatibility
-            gallery["_count"] = {"gallery_images": count}
-            gallery["photo_count"] = count
+            gallery["photo_count"] = len(images) if images else 0
         
         return ApiResponse.ok(galleries)
     except Exception as e:
@@ -286,17 +279,13 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
                     img["people"] = people_by_photo.get(img["id"], [])
             
             gallery["gallery_images"] = images
-            count = len(images)
-            gallery["_count"] = {"gallery_images": count}
-            gallery["photo_count"] = count
+            gallery["photo_count"] = len(images)
         else:
             # Simple mode: just count
             count_result = supabase_db_instance.client.table("gallery_images").select(
                 "id", count="exact"
             ).eq("gallery_id", gallery_id).execute()
-            count = count_result.count or 0
-            gallery["_count"] = {"gallery_images": count}
-            gallery["photo_count"] = count
+            gallery["photo_count"] = count_result.count or 0
         
         return ApiResponse.ok(gallery)
     except NotFoundError:
