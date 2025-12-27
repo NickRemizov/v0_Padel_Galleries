@@ -113,31 +113,20 @@ export function FaceTrainingManager() {
       console.log("[v0] Config response status:", configRes.status)
       console.log("[v0] History response status:", historyRes.status)
 
+      // Handle config - unified format: {success, data, error, code}
       if (configRes.ok) {
-        const configData = await configRes.json()
-        console.log("[v0] Config data received:", configData)
-        console.log("[v0] quality_filters from backend:", configData.quality_filters)
-        console.log("[v0] min_blur_score from backend:", configData.quality_filters?.min_blur_score)
-        console.log("[v0] auto_avatar_on_create from backend:", configData.auto_avatar_on_create)
+        const configResult = await configRes.json()
+        console.log("[v0] Config result:", configResult)
 
-        if (configData.error === "https_required") {
-          setHttpsRequired(true)
-          setFastapiError(true)
-          setConfig(DEFAULT_CONFIG)
-          setLocalConfig(DEFAULT_CONFIG)
-        } else if (configData.error === "connection_failed" || configData.error === "server_error") {
-          // Backend error - use default config
-          setFastapiError(true)
-          setConfig(DEFAULT_CONFIG)
-          setLocalConfig(DEFAULT_CONFIG)
-        } else if (configData.confidence_thresholds && typeof configData.confidence_thresholds === "object") {
-          // Valid config received - merge with defaults to ensure all fields exist
+        if (configResult.success && configResult.data) {
+          const configData = configResult.data
+          // Valid config received - merge with defaults
           const validConfig = {
             ...DEFAULT_CONFIG,
             ...configData,
             confidence_thresholds: {
               ...DEFAULT_CONFIG.confidence_thresholds,
-              ...configData.confidence_thresholds,
+              ...(configData.confidence_thresholds || {}),
             },
             quality_filters: {
               ...DEFAULT_CONFIG.quality_filters,
@@ -146,31 +135,34 @@ export function FaceTrainingManager() {
             auto_avatar_on_create: configData.auto_avatar_on_create ?? DEFAULT_CONFIG.auto_avatar_on_create,
           }
           console.log("[v0] Merged config:", validConfig)
-          console.log("[v0] Final min_blur_score:", validConfig.quality_filters.min_blur_score)
-          console.log("[v0] Final auto_avatar_on_create:", validConfig.auto_avatar_on_create)
           setFastapiError(false)
           setConfig(validConfig)
           setLocalConfig(validConfig)
         } else {
-          // Invalid config structure - use defaults
-          console.warn("[v0] Invalid config structure, using defaults")
+          // Backend error
+          console.warn("[v0] Config request failed:", configResult.error)
           setFastapiError(true)
           setConfig(DEFAULT_CONFIG)
           setLocalConfig(DEFAULT_CONFIG)
         }
       } else {
-        const errorText = await configRes.text()
-        console.error("[v0] Config request failed:", configRes.status, errorText)
+        console.error("[v0] Config request failed:", configRes.status)
         setFastapiError(true)
         setConfig(DEFAULT_CONFIG)
         setLocalConfig(DEFAULT_CONFIG)
       }
 
+      // Handle history - unified format: {success, data: {sessions, total}}
       if (historyRes.ok) {
-        const historyData = await historyRes.json()
-        setSessions(historyData.sessions || [])
+        const historyResult = await historyRes.json()
+        if (historyResult.success && historyResult.data) {
+          setSessions(historyResult.data.sessions || [])
+        } else {
+          console.warn("[v0] History request failed:", historyResult.error)
+          setSessions([])
+        }
       } else {
-        console.error("[v0] History request failed")
+        console.error("[v0] History request failed:", historyRes.status)
         setSessions([])
       }
     } catch (error) {
@@ -204,17 +196,17 @@ export function FaceTrainingManager() {
       })
 
       console.log("[v0] Prepare response status:", response.status)
+      const result = await response.json()
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error("[v0] Prepare dataset error:", errorData)
-        alert(`Ошибка при подготовке датасета: ${errorData.error || "Неизвестная ошибка"}`)
+      // Unified format: {success, data: {dataset_stats}}
+      if (!response.ok || !result.success) {
+        console.error("[v0] Prepare dataset error:", result.error)
+        alert(`Ошибка при подготовке датасета: ${result.error || "Неизвестная ошибка"}`)
         return
       }
 
-      const data = await response.json()
-      console.log("[v0] Dataset prepared:", data)
-      setDatasetStats(data.dataset_stats)
+      console.log("[v0] Dataset prepared:", result.data)
+      setDatasetStats(result.data.dataset_stats)
       alert("Датасет успешно подготовлен!")
     } catch (error) {
       console.error("[v0] Error preparing dataset:", error)
@@ -253,19 +245,18 @@ export function FaceTrainingManager() {
       })
 
       console.log("[v0] Training response status:", response.status)
+      const result = await response.json()
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error("[v0] Training error:", errorData)
-        alert(`Ошибка при запуске обучения: ${errorData.error || "Неизвестная ошибка"}`)
+      // Unified format: {success, data: {session_id}}
+      if (!response.ok || !result.success) {
+        console.error("[v0] Training error:", result.error)
+        alert(`Ошибка при запуске обучения: ${result.error || "Неизвестная ошибка"}`)
         setTraining(false)
         return
       }
 
-      const data = await response.json()
-      console.log("[v0] Training started:", data)
-
-      setCurrentSessionId(data.session_id)
+      console.log("[v0] Training started:", result.data)
+      setCurrentSessionId(result.data.session_id)
       alert("Обучение запущено!")
     } catch (error) {
       console.error("[v0] Error starting training:", error)
@@ -277,17 +268,20 @@ export function FaceTrainingManager() {
   async function checkTrainingStatus(sessionId: string) {
     try {
       const response = await fetch(`/api/admin/training/status/${sessionId}`)
-      const data = await response.json()
+      const result = await response.json()
 
-      if (data.progress) {
-        setTrainingProgress(data.progress.percentage)
-      }
-
-      if (data.status === "completed" || data.status === "failed") {
-        setTraining(false)
-        setCurrentSessionId(null)
-        setTrainingProgress(0)
-        loadData()
+      // Unified format: {success, data: {progress, status}}
+      if (result.success && result.data) {
+        const data = result.data
+        if (data.progress) {
+          setTrainingProgress(data.progress.percentage)
+        }
+        if (data.status === "completed" || data.status === "failed") {
+          setTraining(false)
+          setCurrentSessionId(null)
+          setTrainingProgress(0)
+          loadData()
+        }
       }
     } catch (error) {
       console.error("[v0] Error checking training status:", error)
@@ -305,20 +299,14 @@ export function FaceTrainingManager() {
       })
 
       console.log("[v0] Save config response status:", response.status)
+      const result = await response.json()
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("[v0] Save config failed:", response.status, errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      // Unified format: {success, data, error}
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to save config")
       }
 
-      const data = await response.json()
-      console.log("[v0] Save config response:", data)
-
-      if (data.error) {
-        throw new Error(data.error)
-      }
-
+      console.log("[v0] Config saved:", result.data)
       setConfig(localConfig)
       setFastapiError(false)
       alert("Настройки сохранены успешно!")
