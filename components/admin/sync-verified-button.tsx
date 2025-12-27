@@ -67,29 +67,33 @@ export function SyncVerifiedButton() {
     title: string,
     count: number,
     list: FixedRecord[],
-    colorClass: string
+    borderColor: string,
+    bgColor: string,
+    textColor: string
   ) => {
     if (count === 0) return null
 
     return (
-      <div className={`rounded-lg border ${colorClass} p-4`}>
-        <h4 className="font-medium mb-2">
-          {title} ({count}):
-        </h4>
-        <ScrollArea className="max-h-32">
-          <div className="space-y-1 text-sm">
-            {list.map((item, i) => (
-              <div key={item.id} className="text-amber-700">
-                <span className="font-medium">{item.gallery_title}</span>
-                <span className="text-amber-600 ml-1">/ {item.filename}</span>
-                {item.person_name && (
-                  <span className="text-amber-500 ml-1">({item.person_name})</span>
-                )}
-              </div>
-            ))}
-            {count > 100 && (
-              <div className="text-amber-600 italic">...и ещё {count - 100}</div>
-            )}
+      <div className={`rounded-lg border ${borderColor}`}>
+        <ScrollArea className="max-h-48">
+          <div className={`p-4 ${bgColor}`}>
+            <h4 className="font-medium mb-2">
+              {title} ({count}):
+            </h4>
+            <div className="space-y-1 text-sm">
+              {list.map((item) => (
+                <div key={item.id} className={textColor}>
+                  <span className="font-medium">{item.gallery_title}</span>
+                  <span className="opacity-80 ml-1">/ {item.filename}</span>
+                  {item.person_name && (
+                    <span className="opacity-60 ml-1">({item.person_name})</span>
+                  )}
+                </div>
+              ))}
+              {count > 100 && (
+                <div className="opacity-70 italic">...и ещё {count - 100}</div>
+              )}
+            </div>
           </div>
         </ScrollArea>
       </div>
@@ -174,21 +178,27 @@ export function SyncVerifiedButton() {
                   "Исправлено verified → confidence=1",
                   result.data.updatedVerified,
                   result.data.verifiedFixedList || [],
-                  "border-blue-200 bg-blue-50"
+                  "border-blue-200",
+                  "bg-blue-50",
+                  "text-blue-700"
                 )}
 
                 {renderFixedList(
                   "Исправлено confidence=1 → verified",
                   result.data.updatedConfidence,
                   result.data.confidenceFixedList || [],
-                  "border-purple-200 bg-purple-50"
+                  "border-purple-200",
+                  "bg-purple-50",
+                  "text-purple-700"
                 )}
 
                 {renderFixedList(
                   "Исправлено has_been_processed",
                   result.data.updatedProcessed,
                   result.data.processedFixedList || [],
-                  "border-amber-200 bg-amber-50"
+                  "border-amber-200",
+                  "bg-amber-50",
+                  "text-amber-700"
                 )}
 
                 {result.data.updatedVerified === 0 &&
