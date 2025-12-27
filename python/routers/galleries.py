@@ -7,6 +7,7 @@ v1.1: Migrated to SupabaseService (removed SupabaseDatabase)
 v1.3: Removed per-endpoint auth (moved to middleware)
 v1.4: Fixed stats - requires has_been_processed=true for verified status
 v1.5: Unified format - photo_count only (removed _count)
+v1.6: Fixed photo_faces query - removed non-existent confidence column
 """
 
 from fastapi import APIRouter, Query
@@ -253,7 +254,7 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
                 
                 # Get faces with person info, filter by show_photos_in_galleries
                 faces_result = supabase_db_instance.client.table("photo_faces").select(
-                    "photo_id, person_id, confidence, people(id, real_name, show_photos_in_galleries)"
+                    "photo_id, person_id, people(id, real_name, show_photos_in_galleries)"
                 ).in_("photo_id", image_ids).not_.is_("person_id", "null").execute()
                 
                 faces = faces_result.data or []
