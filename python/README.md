@@ -34,7 +34,7 @@
 **Публичные пути (без токена):** `/`, `/api/health`, `/api/docs`, `/api/redoc`
 
 **Проверка:**
-```bash
+\`\`\`bash
 # POST без токена → 401 Not authenticated
 curl -X POST http://vlcpadel.com:8001/api/people \
   -H "Content-Type: application/json" \
@@ -42,13 +42,13 @@ curl -X POST http://vlcpadel.com:8001/api/people \
 
 # GET без токена → 200 OK
 curl http://vlcpadel.com:8001/api/people/
-```
+\`\`\`
 
 ## 🔧 API Endpoints
 
 ### People API (Оптимизировано в v5.1)
 
-```bash
+\`\`\`bash
 # Базовый список людей
 GET /api/people/
 
@@ -59,11 +59,11 @@ GET /api/people/?with_stats=true
 GET /api/people/?for_gallery=true
 # Возвращает: photo_count, most_recent_gallery_date
 # Производительность: 1 запрос вместо 101
-```
+\`\`\`
 
 ### Recognition API
 
-```bash
+\`\`\`bash
 # Детекция лиц
 POST /detect-faces
 Content-Type: application/json
@@ -84,11 +84,11 @@ POST /cluster-unknown-faces?gallery_id=xxx
 
 # Перестроение индекса
 POST /rebuild-index
-```
+\`\`\`
 
 ### Training API
 
-```bash
+\`\`\`bash
 # Конфигурация
 GET /api/v2/config
 PUT /api/v2/config
@@ -101,30 +101,30 @@ POST /api/v2/train/prepare
 
 # Запуск обучения
 POST /api/v2/train/execute
-```
+\`\`\`
 
 ## 🔗 Интеграция с Vercel (Next.js)
 
 ### Environment Variables
 
-```env
+\`\`\`env
 FASTAPI_URL=http://vlcpadel.com:8001
 NEXT_PUBLIC_FASTAPI_URL=http://vlcpadel.com:8001
-```
+\`\`\`
 
 ### On-Demand Revalidation
 
 После изменений в админке ISR кеш сбрасывается автоматически:
 
-```typescript
+\`\`\`typescript
 // app/api/revalidate/route.ts
 POST /api/revalidate
 Body: { paths: ["/players", "/gallery"] }
-```
+\`\`\`
 
 ### Auth Headers (для защищённых операций)
 
-```typescript
+\`\`\`typescript
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
@@ -140,18 +140,18 @@ const result = await apiFetch("/api/people", {
   body: JSON.stringify(data),
   headers: await getAuthHeaders(),
 })
-```
+\`\`\`
 
 ## 📦 Установка
 
-```bash
+\`\`\`bash
 cd /home/nickr
 sudo rm -rf python
 unzip -o galeries.zip
 chmod +x SETUP.sh
 sudo ./SETUP.sh
 cd python && ./start.sh
-```
+\`\`\`
 
 ## 📊 Производительность
 
@@ -163,10 +163,10 @@ cd python && ./start.sh
 
 ## 📝 Логи
 
-```bash
+\`\`\`bash
 cd /home/nickr/python
 tail -f server.log
-```
+\`\`\`
 
 ## 📚 Документация
 

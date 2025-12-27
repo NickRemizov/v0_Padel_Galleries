@@ -4,7 +4,7 @@
 
 Clean Architecture с разделением ответственности:
 
-```
+\`\`\`
 python/
 ├── main.py                      # Entry point, DI, exception handlers
 ├── core/                        # Foundation (no dependencies)
@@ -23,7 +23,7 @@ python/
     ├── people/                 # Modular router (CRUD, photos, etc.)
     ├── galleries.py
     └── ...
-```
+\`\`\`
 
 ## Security
 
@@ -31,7 +31,7 @@ python/
 
 Централизованная защита всех write-операций:
 
-```python
+\`\`\`python
 # middleware/auth.py
 class AuthMiddleware(BaseHTTPMiddleware):
     """
@@ -43,10 +43,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
     - POST/PUT/PATCH/DELETE на /api/*: требуют admin token
     - Публичные пути: /, /api/health, /api/docs, /api/redoc, /api/openapi.json
     """
-```
+\`\`\`
 
 **Frontend интеграция:**
-```typescript
+\`\`\`typescript
 // Все action файлы используют getAuthHeaders()
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = await createClient()
@@ -56,10 +56,10 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   }
   return {}
 }
-```
+\`\`\`
 
 **Тестирование:**
-```bash
+\`\`\`bash
 # POST без токена → 401
 curl -X POST http://vlcpadel.com:8001/api/people \
   -H "Content-Type: application/json" \
@@ -67,7 +67,7 @@ curl -X POST http://vlcpadel.com:8001/api/people \
 
 # GET без токена → 200 (работает)
 curl http://vlcpadel.com:8001/api/people/
-```
+\`\`\`
 
 ## Key Principles
 
@@ -75,7 +75,7 @@ curl http://vlcpadel.com:8001/api/people/
 
 Все endpoints возвращают `ApiResponse`:
 
-```python
+\`\`\`python
 from core.responses import ApiResponse
 
 @router.get("/items/{id}")
@@ -85,13 +85,13 @@ async def get_item(id: str):
 
 # Returns:
 # {"success": true, "data": {...}, "error": null, "meta": null}
-```
+\`\`\`
 
 ### 2. Custom Exceptions
 
 Исключения автоматически преобразуются в HTTP ответы:
 
-```python
+\`\`\`python
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 
 # 404
@@ -102,21 +102,21 @@ raise ValidationError("Invalid image format", field="image")
 
 # 500
 raise DatabaseError("Connection failed", operation="save")
-```
+\`\`\`
 
 ### 3. Centralized Logging
 
-```python
+\`\`\`python
 from core.logging import get_logger
 
 logger = get_logger(__name__)
 logger.info("Processing photo")
 logger.error("Failed", exc_info=True)
-```
+\`\`\`
 
 ## Exception Hierarchy
 
-```
+\`\`\`
 AppException (base, 500)
 ├── NotFoundError (404)
 ├── ValidationError (422)
@@ -124,7 +124,7 @@ AppException (base, 500)
 ├── RecognitionError (500)
 ├── AuthenticationError (401)
 └── TrainingError (500)
-```
+\`\`\`
 
 ## API Optimizations
 
@@ -132,9 +132,9 @@ AppException (base, 500)
 
 Параметр `for_gallery=true` возвращает оптимизированные данные:
 
-```bash
+\`\`\`bash
 GET /api/people?for_gallery=true
-```
+\`\`\`
 
 Возвращает:
 - `photo_count` — количество фото игрока
@@ -148,7 +148,7 @@ GET /api/people?for_gallery=true
 
 All settings via environment variables:
 
-```bash
+\`\`\`bash
 # Server
 SERVER_HOST=0.0.0.0
 SERVER_PORT=8001
@@ -164,24 +164,24 @@ DEFAULT_MIN_FACE_SIZE=80
 
 # Admin (for AuthMiddleware)
 ADMIN_EMAILS=admin@example.com,admin2@example.com
-```
+\`\`\`
 
 ## Response Format
 
 All API responses follow this structure:
 
-```json
+\`\`\`json
 {
   "success": true,
   "data": { ... },
   "error": null,
   "meta": null
 }
-```
+\`\`\`
 
 Error response:
 
-```json
+\`\`\`json
 {
   "success": false,
   "data": null,
@@ -192,7 +192,7 @@ Error response:
   },
   "meta": null
 }
-```
+\`\`\`
 
 ## Version History
 
