@@ -18,34 +18,34 @@ export default async function HomePage() {
 
   if (!result.success) {
     return (
-      &lt;main className="min-h-screen bg-background border-background"&gt;
-        &lt;div className="mx-auto py-12 shadow-none"&gt;
-          &lt;header className="mb-12 text-center px-4"&gt;
-            &lt;h1 className="mb-4 font-serif font-bold tracking-tight text-foreground text-8xl"&gt;Padel in Valencia&lt;/h1&gt;
-            &lt;p className="text-muted-foreground"&gt;
+      <main className="min-h-screen bg-background border-background">
+        <div className="mx-auto py-12 shadow-none">
+          <header className="mb-12 text-center px-4">
+            <h1 className="mb-4 font-serif font-bold tracking-tight text-foreground text-8xl">Padel in Valencia</h1>
+            <p className="text-muted-foreground">
               {result.error || "Failed to load galleries. Please try again later."}
-            &lt;/p&gt;
-          &lt;/header&gt;
-        &lt;/div&gt;
-      &lt;/main&gt;
+            </p>
+          </header>
+        </div>
+      </main>
     )
   }
 
   const galleries = result.data || []
 
   return (
-    &lt;main className="min-h-screen bg-background border-background"&gt;
-      &lt;div className="mx-auto py-12 shadow-none"&gt;
-        &lt;header className="mb-12 text-center relative px-4"&gt;
-          &lt;div className="absolute right-0 top-0"&gt;
-            &lt;AuthButton /&gt;
-          &lt;/div&gt;
-          &lt;h1 className="mb-4 font-serif font-bold tracking-tight text-foreground text-8xl"&gt;Padel in Valencia&lt;/h1&gt;
-          &lt;MainNav /&gt;
-        &lt;/header&gt;
+    <main className="min-h-screen bg-background border-background">
+      <div className="mx-auto py-12 shadow-none">
+        <header className="mb-12 text-center relative px-4">
+          <div className="absolute right-0 top-0">
+            <AuthButton />
+          </div>
+          <h1 className="mb-4 font-serif font-bold tracking-tight text-foreground text-8xl">Padel in Valencia</h1>
+          <MainNav />
+        </header>
 
-        &lt;GalleryGrid galleries={(galleries as Gallery[]) || []} /&gt;
-      &lt;/div&gt;
-    &lt;/main&gt;
+        <GalleryGrid galleries={(galleries as Gallery[]) || []} />
+      </div>
+    </main>
   )
 }
