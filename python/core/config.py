@@ -18,12 +18,13 @@ from functools import lru_cache
 # Update this when deploying new features.
 #
 # Version history:
+#   5.1.0 - 2024-12-27: AuthMiddleware, for_gallery optimization, On-Demand Revalidation
 #   5.0.0 - 2024-12-21: All routers migrated to ApiResponse + custom exceptions
 #   4.1.0 - Admin router added
 #   4.0.0 - Clean architecture refactoring
 # =============================================================================
 
-VERSION = "5.0.0"
+VERSION = "5.1.0"
 
 
 @dataclass
