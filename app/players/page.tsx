@@ -16,10 +16,6 @@ export default async function PlayersPage() {
       method: "GET",
     })
 
-    console.log("[v0] /api/people raw response type:", typeof response)
-    console.log("[v0] /api/people is array:", Array.isArray(response))
-    console.log("[v0] /api/people has success:", 'success' in (response || {}))
-
     // Handle both formats:
     // 1. Direct array: [...]
     // 2. Wrapped: {success: true, data: [...]}
@@ -32,8 +28,6 @@ export default async function PlayersPage() {
       peopleData = response.data
     }
 
-    console.log("[v0] peopleData count:", peopleData.length)
-
     // Filter players: show_in_players_gallery=true AND has avatar
     const filteredPlayers = peopleData
       .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
@@ -44,38 +38,47 @@ export default async function PlayersPage() {
         },
       }))
 
-    console.log("[v0] filteredPlayers count:", filteredPlayers.length)
-
-    // Get photo dates for each player from FastAPI
-    for (const player of filteredPlayers) {
-      try {
-        const photosResponse = await apiFetch<any>(`/api/people/${player.id}/photos`, {
-          method: "GET",
-        })
-        
-        const photos = photosResponse.photos || photosResponse.data || []
-        
-        let mostRecentDate: string | null = null
-        if (photos.length > 0) {
-          const dates = photos
-            .map((p: any) => p.gallery_shoot_date)
-            .filter((date: any) => date != null)
+    // Get photo dates for each player PARALLEL (Promise.all instead of sequential for loop)
+    const playersWithDates = await Promise.all(
+      filteredPlayers.map(async (player) => {
+        try {
+          const photosResponse = await apiFetch<any>(`/api/people/${player.id}/photos`, {
+            method: "GET",
+          })
           
-          if (dates.length > 0) {
-            mostRecentDate = dates.sort((a: string, b: string) => b.localeCompare(a))[0]
+          const photos = photosResponse.photos || photosResponse.data || []
+          
+          let mostRecentDate: string | null = null
+          if (photos.length > 0) {
+            const dates = photos
+              .map((p: any) => p.gallery_shoot_date)
+              .filter((date: any) => date != null)
+            
+            if (dates.length > 0) {
+              mostRecentDate = dates.sort((a: string, b: string) => b.localeCompare(a))[0]
+            }
+          }
+          
+          return {
+            ...player,
+            _mostRecentGalleryDate: mostRecentDate,
+            _count: {
+              ...player._count,
+              photo_faces: photos.length,
+            },
+          }
+        } catch (e) {
+          console.error(`[v0] Error fetching photos for player ${player.id}:`, e)
+          return {
+            ...player,
+            _mostRecentGalleryDate: null,
           }
         }
-        
-        player._mostRecentGalleryDate = mostRecentDate
-        player._count.photo_faces = photos.length
-      } catch (e) {
-        console.error(`[v0] Error fetching photos for player ${player.id}:`, e)
-        player._mostRecentGalleryDate = null
-      }
-    }
+      })
+    )
 
     // Sort by most recent gallery date (descending), then by name
-    players = filteredPlayers.sort((a: any, b: any) => {
+    players = playersWithDates.sort((a: any, b: any) => {
       if (!a._mostRecentGalleryDate && !b._mostRecentGalleryDate) {
         return a.real_name.localeCompare(b.real_name)
       }
