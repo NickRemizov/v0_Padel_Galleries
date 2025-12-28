@@ -2,7 +2,7 @@
 Admin API - Face Statistics
 Comprehensive face recognition statistics endpoint
 
-v1.1: Fixed inconsistent_verified check - use >= 0.99 threshold instead of exact != 1
+v1.2: Use exact comparison (!=1) after normalization in sync tool
 """
 
 from typing import Dict
@@ -23,9 +23,6 @@ from .helpers import (
 
 logger = get_logger(__name__)
 router = APIRouter()
-
-# v1.1: Threshold for "100%" confidence comparison (must match cleanup.ts)
-CONFIDENCE_100_THRESHOLD = 0.99
 
 
 @router.get("/face-statistics")
@@ -231,9 +228,8 @@ async def get_face_statistics(top: int = 15):
                     "facesUnknown": faces["unknown"]
                 })
         
-        # v1.1: Fixed integrity check - use < 0.99 instead of != 1
-        # This matches the threshold used in cleanup.ts syncVerifiedAndConfidenceAction
-        inconsistent_result = client.table("photo_faces").select("*", count="exact", head=True).eq("verified", True).lt("recognition_confidence", CONFIDENCE_100_THRESHOLD).execute()
+        # v1.2: Use exact comparison != 1 (after sync tool normalizes >= 0.999 to 1.0)
+        inconsistent_result = client.table("photo_faces").select("*", count="exact", head=True).eq("verified", True).neq("recognition_confidence", 1).execute()
         inconsistent_count = inconsistent_result.count or 0
         
         # Orphaned descriptors (try RPC)
