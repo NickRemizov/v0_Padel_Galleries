@@ -48,6 +48,7 @@ export function GalleryImagesManager({
   shootDate,
   initialSortOrder,
   isFullyVerified,
+  onImagesChange,
   ...props
 }: GalleryImagesManagerProps & React.ComponentProps<typeof Button>) {
   // Dialog states
@@ -95,7 +96,9 @@ export function GalleryImagesManager({
   const handleUploadComplete = useCallback(async () => {
     await loadImages()
     await loadPhotoFaces()
-  }, [loadImages, loadPhotoFaces])
+    // Notify parent about images change
+    onImagesChange?.()
+  }, [loadImages, loadPhotoFaces, onImagesChange])
 
   const {
     uploading,
@@ -200,6 +203,8 @@ export function GalleryImagesManager({
     if (result.success) {
       // Update local state instead of reloading from server
       removeImages([imageId])
+      // Notify parent about images change
+      onImagesChange?.()
     } else if (result.error) {
       console.error("Failed to delete photo:", result.error)
     }
@@ -228,6 +233,8 @@ export function GalleryImagesManager({
         } else {
           // Update local state instead of reloading from server
           removeImages(imageIds)
+          // Notify parent about images change
+          onImagesChange?.()
         }
         clearSelection()
       } else {
@@ -240,6 +247,8 @@ export function GalleryImagesManager({
         } else {
           // Update local state instead of reloading from server
           removeImages(allImageIds)
+          // Notify parent about images change
+          onImagesChange?.()
         }
       }
     } finally {
