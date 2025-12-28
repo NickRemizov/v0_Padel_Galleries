@@ -1,0 +1,387 @@
+"use client"
+
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Loader2 } from "lucide-react"
+import type { TaggedFace, Person } from "@/lib/types"
+import type { BoundingBox } from "@/lib/avatar-utils"
+import { APP_VERSION } from "@/lib/version"
+
+import { AddPersonDialog } from "../add-person-dialog"
+import { FaceRecognitionDetailsDialog, type DetailedFace } from "../face-recognition-details-dialog"
+
+import type { FaceTaggingDialogProps, ImageFitMode } from "./types"
+import { getDisplayFileName, getFullFileName } from "./utils"
+import { useFaceCanvas, useFaceAPI, useKeyboardShortcuts } from "./hooks"
+import {
+  FaceTaggingToolbar,
+  FaceCanvas,
+  FaceBadgesStrip,
+  PersonSelector,
+  FaceTaggingFooter,
+} from "./components"
+
+export function FaceTaggingDialog({
+  imageId,
+  imageUrl,
+  open,
+  onOpenChange,
+  onSave,
+  hasBeenProcessed = false,
+  onPrevious,
+  onNext,
+  hasPrevious = false,
+  hasNext = false,
+}: FaceTaggingDialogProps) {
+  // UI state
+  const [taggedFaces, setTaggedFaces] = useState<TaggedFace[]>([])
+  const [selectedFaceIndex, setSelectedFaceIndex] = useState<number | null>(null)
+  const [detecting, setDetecting] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [showAddPerson, setShowAddPerson] = useState(false)
+  const [imageFitMode, setImageFitMode] = useState<ImageFitMode>("contain")
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false)
+  const [detailedFaces, setDetailedFaces] = useState<DetailedFace[]>([])
+  const [hasRedetectedData, setHasRedetectedData] = useState(false)
+  const [personSelectOpen, setPersonSelectOpen] = useState(false)
+  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
+  const [isLandscape, setIsLandscape] = useState(false)
+
+  // Refs
+  const containerRef = useRef<HTMLDivElement>(null)
+  const loadedForImageIdRef = useRef<string | null>(null)
+  const currentImageIdRef = useRef<string>(imageId)
+  const taggedFacesRef = useRef<TaggedFace[]>([])
+  const justSavedRef = useRef<boolean>(false)
+
+  // Custom hooks
+  const { canvasRef, imageRef, clearCanvas, drawFaces } = useFaceCanvas()
+  const {
+    people,
+    setPeople,
+    saving,
+    redetecting,
+    loadingFaces,
+    loadPeople,
+    loadFacesForImage,
+    redetectFaces,
+    saveFaces,
+  } = useFaceAPI({ imageId, onSave })
+
+  // Sync refs
+  useEffect(() => {
+    currentImageIdRef.current = imageId
+    justSavedRef.current = false
+  }, [imageId])
+
+  useEffect(() => {
+    taggedFacesRef.current = taggedFaces
+  }, [taggedFaces])
+
+  // Load config on open
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const response = await fetch("/api/admin/training/config")
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.data) {
+            setAutoAvatarEnabled(result.data.auto_avatar_on_create ?? true)
+          }
+        }
+      } catch (error) {
+        console.error("[FaceTaggingDialog] Error loading config:", error)
+      }
+    }
+    if (open) loadConfig()
+  }, [open])
+
+  // Computed values
+  const displayFileName = useMemo(() => getDisplayFileName(imageUrl), [imageUrl])
+  const fullFileName = useMemo(() => getFullFileName(imageUrl), [imageUrl])
+  const isLoading = loadingFaces || !imageLoaded
+  const canSave = !saving
+  const selectedFace = selectedFaceIndex !== null ? taggedFaces[selectedFaceIndex] : null
+
+  const getSelectedFaceBbox = useCallback((): BoundingBox | undefined => {
+    if (selectedFaceIndex === null) return undefined
+    const face = taggedFaces[selectedFaceIndex]
+    if (!face?.face?.boundingBox) return undefined
+    return face.face.boundingBox as BoundingBox
+  }, [selectedFaceIndex, taggedFaces])
+
+  // Handlers
+  const handleOpenChange = useCallback((newOpen: boolean) => {
+    if (!newOpen && loadedForImageIdRef.current === currentImageIdRef.current) {
+      if (!justSavedRef.current) {
+        console.log(`[${APP_VERSION}] Dialog closing without save, updating badges`)
+        onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
+      }
+    }
+    if (!newOpen) justSavedRef.current = false
+    onOpenChange(newOpen)
+  }, [onOpenChange, onSave])
+
+  const handlePrevious = useCallback(() => {
+    if (!onPrevious) return
+    if (loadedForImageIdRef.current === currentImageIdRef.current) {
+      onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
+    }
+    onPrevious()
+  }, [onPrevious, onSave])
+
+  const handleNext = useCallback(() => {
+    if (!onNext) return
+    if (loadedForImageIdRef.current === currentImageIdRef.current) {
+      onSave?.(currentImageIdRef.current, taggedFacesRef.current, false)
+    }
+    onNext()
+  }, [onNext, onSave])
+
+  const handleFaceClick = useCallback((index: number) => {
+    setSelectedFaceIndex(index === selectedFaceIndex ? null : index)
+  }, [selectedFaceIndex])
+
+  const handlePersonSelect = useCallback((personId: string) => {
+    if (selectedFaceIndex === null) return
+    const person = people.find((p) => p.id === personId)
+    if (!person) return
+
+    const updated = [...taggedFaces]
+    updated[selectedFaceIndex] = {
+      ...updated[selectedFaceIndex],
+      personId: person.id,
+      personName: person.real_name,
+      verified: true,
+    }
+    setTaggedFaces(updated)
+    drawFaces(updated, selectedFaceIndex)
+    setPersonSelectOpen(false)
+  }, [selectedFaceIndex, people, taggedFaces, drawFaces])
+
+  const handleRemoveFace = useCallback((index: number) => {
+    const updated = taggedFaces.filter((_, i) => i !== index)
+    setTaggedFaces(updated)
+    setSelectedFaceIndex(null)
+    drawFaces(updated, null)
+  }, [taggedFaces, drawFaces])
+
+  const handlePersonCreated = useCallback((personId: string, personName: string) => {
+    setShowAddPerson(false)
+    loadPeople()
+
+    let targetIndex = selectedFaceIndex
+    if (targetIndex === null) {
+      targetIndex = taggedFaces.findIndex((face) => !face.personId)
+    }
+
+    if (targetIndex !== null && targetIndex >= 0 && targetIndex < taggedFaces.length) {
+      const updated = [...taggedFaces]
+      updated[targetIndex] = {
+        ...updated[targetIndex],
+        personId,
+        personName,
+        verified: true,
+      }
+      setTaggedFaces(updated)
+      setSelectedFaceIndex(targetIndex)
+      drawFaces(updated, targetIndex)
+    }
+  }, [selectedFaceIndex, taggedFaces, loadPeople, drawFaces])
+
+  const handleRedetect = useCallback(async () => {
+    try {
+      const { tagged, detailed } = await redetectFaces(imageId)
+      setTaggedFaces(tagged)
+      setDetailedFaces(detailed)
+      loadedForImageIdRef.current = imageId
+      drawFaces(tagged, null)
+      setHasRedetectedData(true)
+    } catch (error) {
+      alert(`Error: ${error}`)
+    }
+  }, [imageId, redetectFaces, drawFaces])
+
+  const handleAssignFromDetails = useCallback((faceIndex: number, personId: string, personName: string) => {
+    const updated = [...taggedFaces]
+    if (faceIndex >= 0 && faceIndex < updated.length) {
+      updated[faceIndex] = {
+        ...updated[faceIndex],
+        personId,
+        personName,
+        verified: true,
+      }
+      setTaggedFaces(updated)
+      drawFaces(updated, selectedFaceIndex)
+
+      const updatedDetailed = [...detailedFaces]
+      if (faceIndex < updatedDetailed.length) {
+        updatedDetailed[faceIndex] = { ...updatedDetailed[faceIndex], person_name: personName }
+        setDetailedFaces(updatedDetailed)
+      }
+    }
+  }, [taggedFaces, detailedFaces, selectedFaceIndex, drawFaces])
+
+  const handleSaveWithoutClosing = useCallback(async () => {
+    const updatedFaces = await saveFaces(imageId, taggedFaces, false)
+    if (updatedFaces) {
+      setTaggedFaces(updatedFaces)
+      drawFaces(updatedFaces, selectedFaceIndex)
+    }
+  }, [imageId, taggedFaces, selectedFaceIndex, saveFaces, drawFaces])
+
+  const handleSave = useCallback(async () => {
+    await saveFaces(imageId, taggedFaces, true, onOpenChange, justSavedRef)
+  }, [imageId, taggedFaces, saveFaces, onOpenChange])
+
+  const handleImageLoad = useCallback(() => {
+    const img = imageRef.current
+    if (img) setIsLandscape(img.naturalWidth > img.naturalHeight)
+    setImageLoaded(true)
+  }, [imageRef])
+
+  // Load faces when image changes
+  useEffect(() => {
+    if (!open) return
+
+    setTaggedFaces([])
+    setDetailedFaces([])
+    setSelectedFaceIndex(null)
+    setHasRedetectedData(false)
+    setImageLoaded(false)
+    loadedForImageIdRef.current = null
+    justSavedRef.current = false
+    clearCanvas()
+
+    loadFacesForImage(imageId, currentImageIdRef).then((faces) => {
+      if (currentImageIdRef.current === imageId) {
+        setTaggedFaces(faces)
+        loadedForImageIdRef.current = imageId
+      }
+    })
+  }, [imageId, open, clearCanvas, loadFacesForImage])
+
+  // Load people on open
+  useEffect(() => {
+    if (open) loadPeople()
+  }, [open, loadPeople])
+
+  // Draw faces when ready
+  useEffect(() => {
+    const isDataReady = loadedForImageIdRef.current === imageId && !loadingFaces
+    const isImageReady = imageLoaded && imageRef.current?.complete
+    if (isDataReady && isImageReady) {
+      drawFaces(taggedFaces, selectedFaceIndex)
+    }
+  }, [imageLoaded, taggedFaces, loadingFaces, imageId, selectedFaceIndex, drawFaces, imageRef])
+
+  // Redraw on mode/selection change
+  useEffect(() => {
+    if (loadedForImageIdRef.current === imageId && taggedFaces.length > 0 && imageRef.current?.complete) {
+      drawFaces(taggedFaces, selectedFaceIndex)
+    }
+  }, [imageFitMode, selectedFaceIndex, imageId, taggedFaces, drawFaces, imageRef])
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    open,
+    selectedFaceIndex,
+    onRemoveFace: handleRemoveFace,
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-[90vw] h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>\u0422\u0435\u0433\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u043b\u0438\u0446 {APP_VERSION}</DialogTitle>
+          <DialogDescription title={fullFileName}>
+            \u0424\u0430\u0439\u043b: {displayFileName} | \u041e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d\u043e \u043b\u0438\u0446: {taggedFaces.length}. \u041a\u043b\u0438\u043a\u043d\u0438\u0442\u0435 \u043d\u0430 \u043b\u0438\u0446\u043e, \u0447\u0442\u043e\u0431\u044b \u043d\u0430\u0437\u043d\u0430\u0447\u0438\u0442\u044c \u0447\u0435\u043b\u043e\u0432\u0435\u043a\u0430.
+          </DialogDescription>
+          <FaceTaggingToolbar
+            hasPrevious={hasPrevious}
+            hasNext={hasNext}
+            saving={saving}
+            imageFitMode={imageFitMode}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+            onSaveWithoutClosing={handleSaveWithoutClosing}
+            onSetFitMode={setImageFitMode}
+          />
+        </DialogHeader>
+
+        <div className="flex-1 flex flex-col gap-4 min-h-0">
+          {detecting ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2">\u041e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d\u0438\u0435 \u043b\u0438\u0446...</span>
+            </div>
+          ) : (
+            <>
+              <FaceCanvas
+                imageUrl={imageUrl}
+                isLoading={isLoading}
+                isLandscape={isLandscape}
+                imageFitMode={imageFitMode}
+                taggedFaces={taggedFaces}
+                canvasRef={canvasRef}
+                imageRef={imageRef}
+                containerRef={containerRef}
+                onImageLoad={handleImageLoad}
+                onFaceClick={handleFaceClick}
+              />
+
+              <div className="flex items-center gap-3 px-1 min-h-[52px]">
+                <FaceBadgesStrip
+                  taggedFaces={taggedFaces}
+                  selectedFaceIndex={selectedFaceIndex}
+                  onFaceClick={handleFaceClick}
+                />
+
+                {selectedFaceIndex !== null && selectedFace && (
+                  <PersonSelector
+                    selectedFace={selectedFace}
+                    people={people}
+                    open={personSelectOpen}
+                    onOpenChange={setPersonSelectOpen}
+                    onPersonSelect={handlePersonSelect}
+                    onRemoveFace={() => handleRemoveFace(selectedFaceIndex)}
+                  />
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <FaceTaggingFooter
+          canSave={canSave}
+          saving={saving}
+          redetecting={redetecting}
+          detecting={detecting}
+          hasRedetectedData={hasRedetectedData}
+          onAddPerson={() => setShowAddPerson(true)}
+          onRedetect={handleRedetect}
+          onShowMetrics={() => setShowDetailsDialog(true)}
+          onCancel={() => handleOpenChange(false)}
+          onSave={handleSave}
+        />
+      </DialogContent>
+
+      <AddPersonDialog
+        open={showAddPerson}
+        onOpenChange={setShowAddPerson}
+        onPersonCreated={handlePersonCreated}
+        faceImageUrl={imageUrl}
+        faceBbox={getSelectedFaceBbox()}
+        autoAvatarEnabled={autoAvatarEnabled}
+      />
+
+      <FaceRecognitionDetailsDialog
+        open={showDetailsDialog}
+        onOpenChange={setShowDetailsDialog}
+        faces={detailedFaces}
+        imageUrl={imageUrl}
+        onAssignPerson={handleAssignFromDetails}
+      />
+    </Dialog>
+  )
+}
