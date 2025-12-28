@@ -2,59 +2,58 @@
 
 ## Performance Issues
 
-### Медленное отображение удаления в галерее игроков (person-gallery-dialog)
-- **Файл:** `components/admin/person-gallery-dialog.tsx`
-- **Проблема:** При удалении игрока с фото UI обновляется медленно, несмотря на optimistic update
-- **Симптом:** Пользователь нажимает удалить → задержка ~1-2сек → фото исчезает
-- **Возможные причины:**
-  1. Тяжёлые вычисления в useMemo (sortedPhotos) при изменении photos - пересчёт для всех фото
-  2. Пересчёт calculateFaceStyles для каждого фото при любом изменении массива
-  3. Batch delete: N последовательных API вызовов вместо одного batch-запроса
-  4. React re-render всего grid при изменении одного элемента
-- **Предлагаемые решения:**
-  1. Мемоизация calculateFaceStyles через useMemo с зависимостью от конкретного фото
-  2. Виртуализация списка (react-window) для больших галерей
-  3. Batch API endpoint для удаления нескольких фото одним запросом
-  4. React.memo для карточек фото с правильными зависимостями
-- **Приоритет:** HIGH (влияет на UX)
+### ✅ FIXED: Медленное отображение удаления в галерее игроков (person-gallery-dialog)
+- **Файл:** `components/admin/person-gallery/`
+- **Проблема:** При удалении игрока с фото UI обновлялся медленно
+- **Причины:** React re-render всего grid, пересчёт calculateFaceStyles для всех фото
+- **Решение:**
+  1. ✅ React.memo на PersonGalleryPhotoCard - карточка перерисовывается только при изменении своих props
+  2. ✅ useMemo для calculateFaceStyles внутри карточки - зависит только от bbox/width/height
+  3. ✅ Stable callbacks через useCallback в PhotosList - предотвращает лишние рендеры
+  4. ✅ Optimistic updates уже были (удаление из state до API call)
+- **Статус:** FIXED
 
 ## Refactoring Queue
 
 Согласно docs/FRONTEND_REFACTORING_BRIEF.md:
 
-### Frontend - DONE ✅
-1. ✅ `gallery-images-manager.tsx` (39KB → 12 модулей)
-2. ✅ `face-tagging-dialog.tsx` (33KB → 11 модулей)
-3. ✅ `auto-recognition-dialog.tsx` (16KB → 8 модулей)
-4. ✅ `unknown-faces-review-dialog.tsx` (15KB → 8 модулей)
+### Frontend - По плану
+| # | Файл | Строк | Статус |
+|---|------|-------|--------|
+| 3.1 | `gallery-images-manager.tsx` | 1086 | ✅ DONE (12 модулей) |
+| 3.2 | `integrity.ts` | 926 | ❌ TODO |
+| 3.3 | `person-gallery-dialog.tsx` | 830 | ✅ DONE (12 модулей) + perf fix |
+| 3.4 | `database-integrity-checker.tsx` | 785 | ❌ TODO |
+| 3.5 | `sidebar.tsx` | 727 | ❌ TODO |
+| 3.6 | `face-training-manager.tsx` | 726 | ❌ TODO |
+| 3.7 | `people.ts` / `faces.ts` | 671/619 | ❌ TODO |
+| 3.8 | `image-lightbox.tsx` | 596 | ❌ TODO |
 
-### Backend - TODO
-5. `integrity.ts` (926 lines)
-6. `galleries.py` (578 lines)
+### Backend - По плану
+| # | Файл | Строк | Статус |
+|---|------|-------|--------|
+| 3.9 | `debug.py` | 596 | ❌ TODO |
+| 3.10 | `galleries.py` | 578 | ❌ TODO |
+| 3.11 | `training_service.py` | 540 | ❌ TODO |
+| 3.12 | `face_recognition.py` | 514 | ❌ TODO |
+| 3.13 | `descriptors.py` | 447 | ❌ TODO |
+
+### Дополнительно сделано (не в плане)
+- ✅ `face-tagging-dialog.tsx` (33KB → 11 модулей)
+- ✅ `auto-recognition-dialog.tsx` (16KB → 8 модулей)
+- ✅ `unknown-faces-review-dialog.tsx` (15KB → 8 модулей)
 
 ## Refactored Structure Summary
 
 ```
 components/admin/
 ├── gallery-images/           # 12 modules
-│   ├── types.ts
-│   ├── hooks/ (useGalleryData, useGallerySelection, useImageActions)
-│   └── components/ (Toolbar, ImageGrid, ImageCard, etc.)
-│
 ├── face-tagging/             # 11 modules
-│   ├── types.ts
-│   ├── utils/ (canvas-helpers, file-helpers)
-│   ├── hooks/ (useFaceCanvas, useFaceAPI, useKeyboardShortcuts)
-│   └── components/ (Toolbar, Canvas, Badges, PersonSelector, Footer)
-│
 ├── auto-recognition/         # 8 modules
-│   ├── types.ts
-│   ├── hooks/ (useAutoRecognition)
-│   └── components/ (Progress, Results, ResultItem)
-│
-└── unknown-faces-review/     # 8 modules
+├── unknown-faces-review/     # 8 modules
+└── person-gallery/           # 12 modules (NEW)
     ├── types.ts
-    ├── utils.ts
-    ├── hooks/ (useClusterReview)
-    └── components/ (FaceCard, Grid, Actions)
+    ├── utils/ (face-styles, sorting)
+    ├── hooks/ (usePersonGallery, usePhotoSelection, usePhotoNavigation)
+    └── components/ (Header, PhotosList, PhotoCard[memo], Footer, dialogs/)
 ```
