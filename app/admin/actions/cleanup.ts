@@ -6,7 +6,7 @@ import { logger } from "@/lib/logger"
 
 /**
  * Cleanup actions for photo_faces and gallery_images
- * v2.1: Fixed float comparison - use >= 0.99 instead of == 1.0
+ * v2.2: Normalize confidence >= 0.999 to exactly 1.0, then compare with == 1
  */
 
 interface FixedRecord {
@@ -17,10 +17,10 @@ interface FixedRecord {
 }
 
 /**
- * Threshold for "100%" confidence comparison
- * v2.1: Changed from exact 1.0 to >= 0.99 to catch 0.999999... values
+ * Threshold for normalizing "near 100%" confidence to exactly 1.0
+ * v2.2: Values >= 0.999 are normalized to 1.0 for clean comparisons
  */
-const CONFIDENCE_100_THRESHOLD = 0.99
+const CONFIDENCE_NORMALIZE_THRESHOLD = 0.999
 
 export async function syncVerifiedAndConfidenceAction() {
   const supabase = await createClient()
@@ -28,8 +28,56 @@ export async function syncVerifiedAndConfidenceAction() {
   try {
     logger.debug("actions/cleanup", "Starting sync of verified and recognition_confidence fields...")
 
-    // 1. Найти записи где verified=true но confidence < 0.99
-    // v2.1: Using .lt() instead of .neq() for proper float comparison
+    // === STEP 0: Normalize confidence >= 0.999 to exactly 1.0 ===
+    // This eliminates float precision issues (0.9999999... → 1.0)
+    let allToNormalize: any[] = []
+    let offset = 0
+    const pageSize = 1000
+
+    while (true) {
+      const { data: batch } = await supabase
+        .from("photo_faces")
+        .select(`
+          id, photo_id, recognition_confidence,
+          gallery_images(original_filename, galleries(title)),
+          people(real_name)
+        `)
+        .gte("recognition_confidence", CONFIDENCE_NORMALIZE_THRESHOLD)
+        .lt("recognition_confidence", 1)
+        .range(offset, offset + pageSize - 1)
+
+      if (!batch || batch.length === 0) break
+      allToNormalize = allToNormalize.concat(batch)
+      if (batch.length < pageSize) break
+      offset += pageSize
+    }
+
+    console.log(`[v2.2] Found ${allToNormalize.length} faces with confidence >= ${CONFIDENCE_NORMALIZE_THRESHOLD} and < 1 to normalize`)
+
+    const normalizedList: FixedRecord[] = allToNormalize.map((item: any) => ({
+      id: item.id,
+      gallery_title: item.gallery_images?.galleries?.title || "Unknown",
+      filename: item.gallery_images?.original_filename || item.photo_id,
+      person_name: item.people?.real_name,
+    }))
+
+    // Normalize to exactly 1.0
+    if (allToNormalize.length > 0) {
+      const idsToNormalize = allToNormalize.map((f) => f.id)
+      for (let i = 0; i < idsToNormalize.length; i += 500) {
+        const batch = idsToNormalize.slice(i, i + 500)
+        await supabase
+          .from("photo_faces")
+          .update({ recognition_confidence: 1.0 })
+          .in("id", batch)
+      }
+    }
+
+    const normalizedCount = normalizedList.length
+    logger.debug("actions/cleanup", `Normalized ${normalizedCount} records: set recognition_confidence=1.0 where >= 0.999`)
+
+    // === STEP 1: Fix verified=true but confidence != 1 ===
+    // After normalization, this catches only real issues
     const { data: verifiedToFix } = await supabase
       .from("photo_faces")
       .select(`
@@ -38,7 +86,7 @@ export async function syncVerifiedAndConfidenceAction() {
         people(real_name)
       `)
       .eq("verified", true)
-      .lt("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+      .neq("recognition_confidence", 1)
 
     const verifiedFixedList: FixedRecord[] = (verifiedToFix || []).map((item: any) => ({
       id: item.id,
@@ -47,26 +95,21 @@ export async function syncVerifiedAndConfidenceAction() {
       person_name: item.people?.real_name,
     }))
 
-    // Исправить их
+    // Fix them
     if (verifiedFixedList.length > 0) {
       await supabase
         .from("photo_faces")
         .update({ recognition_confidence: 1.0 })
         .eq("verified", true)
-        .lt("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+        .neq("recognition_confidence", 1)
     }
 
     const verifiedCount = verifiedFixedList.length
-    logger.debug(
-      "actions/cleanup",
-      `Updated ${verifiedCount} records: set recognition_confidence=1 where verified=true`,
-    )
+    logger.debug("actions/cleanup", `Updated ${verifiedCount} records: set recognition_confidence=1 where verified=true`)
 
-    // 2. Найти записи где confidence >= 0.99 но verified=false (С ПАГИНАЦИЕЙ)
-    // v2.1: Using .gte() instead of .eq() and adding pagination
+    // === STEP 2: Fix confidence=1 but verified=false ===
     let allConfidenceToFix: any[] = []
-    let offset = 0
-    const pageSize = 1000
+    offset = 0
 
     while (true) {
       const { data: batch } = await supabase
@@ -76,7 +119,7 @@ export async function syncVerifiedAndConfidenceAction() {
           gallery_images(original_filename, galleries(title)),
           people(real_name)
         `)
-        .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+        .eq("recognition_confidence", 1)
         .eq("verified", false)
         .range(offset, offset + pageSize - 1)
 
@@ -86,7 +129,7 @@ export async function syncVerifiedAndConfidenceAction() {
       offset += pageSize
     }
 
-    console.log(`[v2.1] Found ${allConfidenceToFix.length} faces with confidence >= ${CONFIDENCE_100_THRESHOLD} but verified=false`)
+    console.log(`[v2.2] Found ${allConfidenceToFix.length} faces with confidence=1 but verified=false`)
 
     const confidenceFixedList: FixedRecord[] = allConfidenceToFix.map((item: any) => ({
       id: item.id,
@@ -95,7 +138,7 @@ export async function syncVerifiedAndConfidenceAction() {
       person_name: item.people?.real_name,
     }))
 
-    // Исправить их батчами
+    // Fix them in batches
     if (allConfidenceToFix.length > 0) {
       const idsToFix = allConfidenceToFix.map((f) => f.id)
       for (let i = 0; i < idsToFix.length; i += 500) {
@@ -109,13 +152,10 @@ export async function syncVerifiedAndConfidenceAction() {
 
     const confidenceCount = confidenceFixedList.length
 
-    // 3. Проверить и исправить has_been_processed
-    // Если у фото есть записи в photo_faces, значит оно было обработано
-    // Загружаем ВСЕ photo_id с пагинацией (Supabase лимит 1000)
+    // === STEP 3: Fix has_been_processed ===
     let allPhotoIds: string[] = []
     {
       let offset = 0
-      const pageSize = 1000
       while (true) {
         const { data: batch } = await supabase
           .from("photo_faces")
@@ -131,12 +171,10 @@ export async function syncVerifiedAndConfidenceAction() {
 
     const photoIdsWithFaces = [...new Set(allPhotoIds)]
 
-    // Находим фото которые имеют faces но has_been_processed=false
     let processedFixCount = 0
     const processedFixedList: FixedRecord[] = []
 
     if (photoIdsWithFaces.length > 0) {
-      // Сначала находим проблемные записи
       for (let i = 0; i < photoIdsWithFaces.length; i += 500) {
         const batch = photoIdsWithFaces.slice(i, i + 500)
         const { data: problematic } = await supabase
@@ -156,7 +194,6 @@ export async function syncVerifiedAndConfidenceAction() {
         }
       }
 
-      // Теперь исправляем
       if (processedFixedList.length > 0) {
         const idsToFix = processedFixedList.map((f) => f.id)
         for (let i = 0; i < idsToFix.length; i += 500) {
@@ -167,7 +204,7 @@ export async function syncVerifiedAndConfidenceAction() {
       }
     }
 
-    // 4. Статистика
+    // === STEP 4: Statistics ===
     const { count: totalVerified } = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
@@ -176,7 +213,7 @@ export async function syncVerifiedAndConfidenceAction() {
     const { count: totalConfidence1 } = await supabase
       .from("photo_faces")
       .select("*", { count: "exact", head: true })
-      .gte("recognition_confidence", CONFIDENCE_100_THRESHOLD)
+      .eq("recognition_confidence", 1)
 
     const { count: totalProcessed } = await supabase
       .from("gallery_images")
@@ -187,11 +224,12 @@ export async function syncVerifiedAndConfidenceAction() {
 
     logger.debug(
       "actions/cleanup",
-      `Final stats: ${totalVerified} verified, ${totalConfidence1} recognition_confidence>=0.99, ${totalProcessed} processed, ${totalImages} total images`,
+      `Final stats: ${totalVerified} verified, ${totalConfidence1} confidence=1, ${totalProcessed} processed, ${totalImages} total images`,
     )
 
     revalidatePath("/admin")
     logger.info("actions/cleanup", "Sync verified and recognition_confidence completed", {
+      normalizedCount,
       verifiedCount,
       confidenceCount,
       processedFixCount,
@@ -204,9 +242,11 @@ export async function syncVerifiedAndConfidenceAction() {
     return {
       success: true,
       data: {
+        normalizedConfidence: normalizedCount,
         updatedVerified: verifiedCount,
         updatedConfidence: confidenceCount,
         updatedProcessed: processedFixCount,
+        normalizedList: normalizedList.slice(0, 100),
         verifiedFixedList: verifiedFixedList.slice(0, 100),
         confidenceFixedList: confidenceFixedList.slice(0, 100),
         processedFixedList: processedFixedList.slice(0, 100),
