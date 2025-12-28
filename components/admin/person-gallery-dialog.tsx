@@ -491,15 +491,30 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
       // Don't reload - just update local state
       
     } else if (confirmDialog.action === "delete") {
-      for (const photoId of selectedPhotos) {
-        console.log("[PersonGallery] Batch unlink photo:", photoId, "person:", personId)
-        const result = await unlinkPersonFromPhotoAction(photoId, personId)
-        console.log("[PersonGallery] Batch unlink result:", result)
-      }
+      const photosToDelete = Array.from(selectedPhotos)
+      
+      // Optimistic update - remove from local state immediately
+      setPhotos((prev) => prev.filter((photo) => !selectedPhotos.has(photo.id)))
       
       setConfirmDialog({ open: false, action: null, count: 0 })
       setSelectedPhotos(new Set())
-      await loadPhotos() // Delete requires reload (photos removed from list)
+      
+      // Process deletions in background
+      let hasError = false
+      for (const photoId of photosToDelete) {
+        console.log("[PersonGallery] Batch unlink photo:", photoId, "person:", personId)
+        const result = await unlinkPersonFromPhotoAction(photoId, personId)
+        console.log("[PersonGallery] Batch unlink result:", result)
+        if (!result.success) {
+          hasError = true
+          console.error("[PersonGallery] Batch unlink failed:", result.error)
+        }
+      }
+      
+      if (hasError) {
+        // Reload on error to sync state
+        await loadPhotos()
+      }
     }
   }
 
@@ -515,19 +530,21 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
 
   async function confirmSingleDelete() {
     if (!singleDeleteDialog.photoId) return
+    const photoId = singleDeleteDialog.photoId
 
-    console.log("[PersonGallery] Single unlink photo:", singleDeleteDialog.photoId, "person:", personId)
-    const result = await unlinkPersonFromPhotoAction(singleDeleteDialog.photoId, personId)
+    // Optimistic update - remove from local state immediately
+    setPhotos((prev) => prev.filter((photo) => photo.id !== photoId))
+    setSingleDeleteDialog({ open: false, photoId: null, filename: "", galleryName: "" })
+
+    console.log("[PersonGallery] Single unlink photo:", photoId, "person:", personId)
+    const result = await unlinkPersonFromPhotoAction(photoId, personId)
     console.log("[PersonGallery] Single unlink result:", result)
     
-    if (result.success) {
-      // Remove photo from local state - no reload needed
-      setPhotos((prev) => prev.filter((photo) => photo.id !== singleDeleteDialog.photoId))
-    } else {
+    if (!result.success) {
       console.error("[PersonGallery] Unlink failed:", result.error)
-      alert(`Ошибка удаления: ${result.error}`)
+      // Reload on error to sync state
+      await loadPhotos()
     }
-    setSingleDeleteDialog({ open: false, photoId: null, filename: "", galleryName: "" })
   }
 
   function formatShortDate(dateString: string | null): string {
