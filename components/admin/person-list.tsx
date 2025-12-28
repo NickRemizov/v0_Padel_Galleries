@@ -22,6 +22,7 @@ type PersonWithStats = Person & {
 
 interface PersonListProps {
   people: PersonWithStats[]
+  onUpdate?: () => void
 }
 
 /**
@@ -35,17 +36,42 @@ function getTelegramLink(nickname: string | null | undefined): string | null {
   return `https://t.me/${username}`
 }
 
-export function PersonList({ people }: PersonListProps) {
+export function PersonList({ people: initialPeople, onUpdate }: PersonListProps) {
+  // Local state for optimistic updates
+  const [localPeople, setLocalPeople] = useState<PersonWithStats[]>(initialPeople)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingPerson, setEditingPerson] = useState<PersonWithStats | null>(null)
   const [galleryPerson, setGalleryPerson] = useState<PersonWithStats | null>(null)
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null)
 
+  // Sync with props when they change (e.g., after search/filter)
+  if (initialPeople !== localPeople && initialPeople.length !== localPeople.length) {
+    // Only reset if the list structure changed (not just optimistic updates)
+    const initialIds = new Set(initialPeople.map(p => p.id))
+    const localIds = new Set(localPeople.map(p => p.id))
+    const hasStructuralChange = initialPeople.some(p => !localIds.has(p.id)) || 
+                                 localPeople.some(p => !initialIds.has(p.id) && !deletingId)
+    if (hasStructuralChange) {
+      setLocalPeople(initialPeople)
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("Вы уверены, что хотите удалить этого человека?")) return
 
     setDeletingId(id)
-    await deletePersonAction(id)
+    
+    // Optimistic update - remove from local state immediately
+    setLocalPeople(prev => prev.filter(p => p.id !== id))
+    
+    const result = await deletePersonAction(id)
+    
+    if (!result.success) {
+      // Rollback on error
+      setLocalPeople(initialPeople)
+      alert("Ошибка при удалении")
+    }
+    
     setDeletingId(null)
   }
 
@@ -55,11 +81,25 @@ export function PersonList({ people }: PersonListProps) {
     value: boolean,
   ) {
     setUpdatingVisibility(personId)
-    await updatePersonVisibilityAction(personId, field, value)
+    
+    // Optimistic update - update local state immediately
+    setLocalPeople(prev => prev.map(p => 
+      p.id === personId ? { ...p, [field]: value } : p
+    ))
+    
+    const result = await updatePersonVisibilityAction(personId, field, value)
+    
+    if (!result.success) {
+      // Rollback on error
+      setLocalPeople(prev => prev.map(p => 
+        p.id === personId ? { ...p, [field]: !value } : p
+      ))
+    }
+    
     setUpdatingVisibility(null)
   }
 
-  if (people.length === 0) {
+  if (localPeople.length === 0) {
     return (
       <Card>
         <CardContent className="flex min-h-[200px] items-center justify-center">
@@ -72,7 +112,7 @@ export function PersonList({ people }: PersonListProps) {
   return (
     <>
       <div className="grid gap-3">
-        {people.map((person) => {
+        {localPeople.map((person) => {
           const socialLinks = []
           
           // Telegram: используем telegram_nickname для создания ссылки
@@ -261,6 +301,7 @@ export function PersonList({ people }: PersonListProps) {
           person={editingPerson}
           open={!!editingPerson}
           onOpenChange={(open) => !open && setEditingPerson(null)}
+          onSuccess={onUpdate}
         />
       )}
 
