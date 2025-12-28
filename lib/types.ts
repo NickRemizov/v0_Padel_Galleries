@@ -22,6 +22,14 @@ export interface Organizer {
   created_at: string
 }
 
+/**
+ * Person info attached to images (from backend full=true response)
+ */
+export interface ImagePerson {
+  id: string
+  name: string
+}
+
 export interface GalleryImage {
   id: string
   gallery_id: string
@@ -34,6 +42,11 @@ export interface GalleryImage {
   display_order: number
   download_count: number
   created_at: string
+  /**
+   * Verified people on this image (populated when full=true)
+   * Added by backend: python/routers/galleries.py
+   */
+  people?: ImagePerson[]
 }
 
 export interface Gallery {
