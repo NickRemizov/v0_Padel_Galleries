@@ -181,7 +181,7 @@ export function FaceTaggingDialog({
       }
       const result = await response.json()
       console.log(`[${APP_VERSION}] Auto-recognize result:`, result)
-      return result.success && result.data?.recognized_count > 0
+      return result.success && result.data?.recognized > 0
     } catch (error) {
       console.error(`[${APP_VERSION}] Auto-recognize error:`, error)
       return false
