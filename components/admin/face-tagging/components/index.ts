@@ -1,0 +1,5 @@
+export { FaceTaggingToolbar } from "./FaceTaggingToolbar"
+export { FaceCanvas } from "./FaceCanvas"
+export { FaceBadgesStrip } from "./FaceBadgesStrip"
+export { PersonSelector } from "./PersonSelector"
+export { FaceTaggingFooter } from "./FaceTaggingFooter"
