@@ -229,7 +229,18 @@ export function FaceTaggingDialog({
   async function loadFacesForImage(targetImageId: string, isProcessed: boolean) {
     console.log(`[${APP_VERSION}] Loading faces for ${targetImageId}, processed=${isProcessed}`)
     try {
-      const result = await processPhotoAction(targetImageId)
+      let result;
+      
+      if (!isProcessed) {
+        // For unprocessed photos - run full detection WITHOUT frontend filters
+        // Backend will apply filters from config (recognition_config table)
+        console.log(`[${APP_VERSION}] Running full detection for unprocessed photo`)
+        result = await processPhotoAction(targetImageId, true, false)
+      } else {
+        // For processed photos - just load existing faces
+        result = await processPhotoAction(targetImageId)
+      }
+      
       if (currentImageIdRef.current !== targetImageId) {
         console.log(`[${APP_VERSION}] Image changed during load (${targetImageId} -> ${currentImageIdRef.current}), ignoring`)
         return
@@ -243,7 +254,8 @@ export function FaceTaggingDialog({
       }
       
       // Check if there are unverified faces that need auto-recognition
-      const hasUnverified = result.faces.some((f: any) => !f.verified && !f.person_id)
+      // Check only !verified - face may have preliminary recognition with person_id but not verified
+      const hasUnverified = result.faces.some((f: any) => !f.verified)
       
       // For processed photos with unverified faces, run auto-recognize (index search only)
       if (isProcessed && hasUnverified) {
