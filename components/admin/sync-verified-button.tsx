@@ -25,9 +25,11 @@ interface SyncResult {
   success: boolean
   error?: string
   data?: {
+    normalizedConfidence: number
     updatedVerified: number
     updatedConfidence: number
     updatedProcessed: number
+    normalizedList: FixedRecord[]
     verifiedFixedList: FixedRecord[]
     confidenceFixedList: FixedRecord[]
     processedFixedList: FixedRecord[]
@@ -117,7 +119,7 @@ export function SyncVerifiedButton() {
       </Button>
 
       <Dialog open={showResult} onOpenChange={setShowResult}>
-        <DialogContent className="sm:max-w-[550px] max-h-[90vh]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {result?.success ? (
@@ -135,7 +137,11 @@ export function SyncVerifiedButton() {
               <div className="space-y-4 pr-4">
                 <div className="rounded-lg border p-4">
                   <h4 className="font-medium mb-3">Обновлено записей:</h4>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="grid grid-cols-4 gap-3 text-sm">
+                    <div className="rounded bg-muted p-3">
+                      <div className="text-2xl font-bold text-center">{result.data.normalizedConfidence}</div>
+                      <div className="text-xs text-muted-foreground text-center">≥0.999 → 1.0</div>
+                    </div>
                     <div className="rounded bg-muted p-3">
                       <div className="text-2xl font-bold text-center">{result.data.updatedVerified}</div>
                       <div className="text-xs text-muted-foreground text-center">verified → confidence=1</div>
@@ -173,7 +179,16 @@ export function SyncVerifiedButton() {
                   </div>
                 </div>
 
-                {/* Детальные списки исправлений */}
+                {/* Detailed fix lists */}
+                {renderFixedList(
+                  "Нормализовано ≥0.999 → 1.0",
+                  result.data.normalizedConfidence,
+                  result.data.normalizedList || [],
+                  "border-cyan-200",
+                  "bg-cyan-50",
+                  "text-cyan-700"
+                )}
+
                 {renderFixedList(
                   "Исправлено verified → confidence=1",
                   result.data.updatedVerified,
@@ -201,7 +216,8 @@ export function SyncVerifiedButton() {
                   "text-amber-700"
                 )}
 
-                {result.data.updatedVerified === 0 &&
+                {result.data.normalizedConfidence === 0 &&
+                  result.data.updatedVerified === 0 &&
                   result.data.updatedConfidence === 0 &&
                   result.data.updatedProcessed === 0 && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
