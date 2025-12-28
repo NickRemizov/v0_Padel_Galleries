@@ -30,7 +30,7 @@
 ## 🏗️ Архитектура
 
 ### Единственный репозиторий
-```
+\`\`\`
 NickRemizov/v0_Padel_Galleries  ← ВСЁ ЗДЕСЬ
 ├── app/                        # Next.js frontend (App Router)
 │   └── admin/actions/         # Server Actions (people.ts, faces.ts...)
@@ -47,7 +47,7 @@ NickRemizov/v0_Padel_Galleries  ← ВСЁ ЗДЕСЬ
 │   └── core/                  # responses.py (ApiResponse), exceptions.py
 ├── docs/                       # Документация
 └── migrations/                 # SQL миграции
-```
+\`\`\`
 
 ### ⚠️ ВАЖНО: Padel_Galleries — МЁРТВЫЙ ФОРК
 Репозиторий `NickRemizov/Padel_Galleries` — неудачная попытка переезда. **Игнорировать полностью.**
@@ -66,12 +66,12 @@ NickRemizov/v0_Padel_Galleries  ← ВСЁ ЗДЕСЬ
 ## 🧠 Система распознавания (актуально v4.2)
 
 ### Алгоритм распознавания (v4.0 — адаптивный early exit)
-```
+\`\`\`
 1. Query HNSW для кандидатов (sorted by similarity)
 2. Для каждого: final_confidence = source_confidence × similarity  
 3. Трекинг best_final_confidence
 4. Early exit когда: similarity < best_final_confidence
-```
+\`\`\`
 
 ### Пороги (v2.3)
 | Контекст | search_threshold | save_threshold |
@@ -92,9 +92,9 @@ NickRemizov/v0_Padel_Galleries  ← ВСЁ ЗДЕСЬ
 ## ⛔ КРИТИЧЕСКИЕ ПРАВИЛА РАЗРАБОТКИ
 
 ### Правило 1: Архитектура данных (ГЛАВНОЕ!)
-```
+\`\`\`
 Frontend → Server Actions → FastAPI Backend → Supabase
-```
+\`\`\`
 
 **ЗАПРЕЩЕНО:** Прямые вызовы Supabase из frontend-компонентов.
 

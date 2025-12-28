@@ -8,7 +8,7 @@
 
 ## Как это работает (простыми словами)
 
-```
+\`\`\`
 Фото загружено → InsightFace находит лица → Каждое лицо = 512 чисел (эмбеддинг)
                                                     ↓
                                     Сравниваем с известными игроками (HNSW индекс)
@@ -17,7 +17,7 @@
                                                     ↓
                             >= 60%? → Присваиваем игроку
                             < 60%? → Бокс сохраняем, person_id = NULL
-```
+\`\`\`
 
 ---
 
@@ -65,7 +65,7 @@
 
 ## Алгоритм распознавания (v4.0 — Adaptive Early Exit)
 
-```python
+\`\`\`python
 # Для каждого кандидата из HNSW (sorted by similarity):
 final_confidence = source_confidence × similarity
 
@@ -76,7 +76,7 @@ final_confidence = source_confidence × similarity
 # Early exit когда:
 if similarity < best_final_confidence:
     break  # Дальнейшие кандидаты не могут улучшить результат
-```
+\`\`\`
 
 **Преимущества:**
 - Verified лица приоритетнее
@@ -141,7 +141,7 @@ if similarity < best_final_confidence:
 
 ## Архитектура (очень кратко)
 
-```
+\`\`\`
 Frontend (Next.js)
     ↓
 Server Actions (app/admin/actions/)
@@ -149,7 +149,7 @@ Server Actions (app/admin/actions/)
 FastAPI (vlcpadel.com:8001)
     ↓
 Supabase (photo_faces таблица)
-```
+\`\`\`
 
 ---
 
