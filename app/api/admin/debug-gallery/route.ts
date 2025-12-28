@@ -8,12 +8,17 @@
  * - fix: "true" to auto-fix has_been_processed flags
  * 
  * @migrated 2025-12-27 - Unified response format
+ * @secured 2025-12-28 - Added requireAdmin()
  */
 
 import { apiFetch } from "@/lib/apiClient"
 import { NextResponse } from "next/server"
+import { requireAdmin } from "@/lib/auth/serverGuard"
 
 export async function GET(request: Request) {
+  const { error: authError } = await requireAdmin()
+  if (authError) return authError
+
   try {
     const { searchParams } = new URL(request.url)
     const galleryId = searchParams.get("id")
