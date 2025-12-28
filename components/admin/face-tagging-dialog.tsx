@@ -178,7 +178,7 @@ export function FaceTaggingDialog({
     loadedForImageIdRef.current = null
     justSavedRef.current = false
     clearCanvas()
-    loadFacesForImage(imageId, hasBeenProcessed)
+    loadFacesForImage(imageId)
   }, [imageId, open])
 
   useEffect(() => {
@@ -203,21 +203,15 @@ export function FaceTaggingDialog({
     }
   }
 
-  async function loadFacesForImage(targetImageId: string, isProcessed: boolean) {
-    console.log(`[${APP_VERSION}] Loading faces for ${targetImageId}, processed=${isProcessed}`)
+  async function loadFacesForImage(targetImageId: string) {
+    console.log(`[${APP_VERSION}] Loading faces for ${targetImageId}`)
     try {
-      let result;
-      
-      if (!isProcessed) {
-        // For unprocessed photos - run full detection WITH quality filters from config
-        // Backend loads filters from recognition_config table
-        console.log(`[${APP_VERSION}] Running full detection for unprocessed photo (with config filters)`)
-        result = await processPhotoAction(targetImageId, true, true)
-      } else {
-        // For processed photos - backend will recognize unverified faces automatically (v2.2)
-        console.log(`[${APP_VERSION}] Loading faces for processed photo (backend handles recognition)`)
-        result = await processPhotoAction(targetImageId)
-      }
+      // Backend v2.2 handles both cases automatically:
+      // - No faces in DB → detect + recognize (CASE 1)
+      // - Faces exist → recognize unverified (CASE 2)
+      // force_redetect=false, apply_quality_filters=true
+      console.log(`[${APP_VERSION}] Calling processPhotoAction (backend auto-detects mode)`)
+      const result = await processPhotoAction(targetImageId, false, true)
       
       if (currentImageIdRef.current !== targetImageId) {
         console.log(`[${APP_VERSION}] Image changed during load (${targetImageId} -> ${currentImageIdRef.current}), ignoring`)
