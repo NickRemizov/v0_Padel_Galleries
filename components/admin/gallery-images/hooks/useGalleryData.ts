@@ -21,6 +21,7 @@ interface UseGalleryDataReturn {
   loadRecognitionStats: () => Promise<void>
   loadPhotoFaces: () => Promise<void>
   updatePhotoFacesCache: (imageId: string, faces: TaggedFace[]) => void
+  removeImages: (imageIds: string[]) => void
   hasVerifiedFaces: (imageId: string) => boolean
 }
 
@@ -146,6 +147,32 @@ export function useGalleryData(galleryId: string): UseGalleryDataReturn {
     )
   }, [])
 
+  // Remove images from local state - NO server reload!
+  const removeImages = useCallback((imageIds: string[]) => {
+    const idsSet = new Set(imageIds)
+    
+    // Remove from images array
+    setImages((prev) => prev.filter((img) => !idsSet.has(img.id)))
+    
+    // Clean up photoFacesMap
+    setPhotoFacesMap((prev) => {
+      const next = { ...prev }
+      for (const id of imageIds) {
+        delete next[id]
+      }
+      return next
+    })
+    
+    // Clean up recognitionStats
+    setRecognitionStats((prev) => {
+      const next = { ...prev }
+      for (const id of imageIds) {
+        delete next[id]
+      }
+      return next
+    })
+  }, [])
+
   const hasVerifiedFaces = useCallback(
     (imageId: string): boolean => {
       const faces = photoFacesMap[imageId]
@@ -167,6 +194,7 @@ export function useGalleryData(galleryId: string): UseGalleryDataReturn {
     loadRecognitionStats,
     loadPhotoFaces,
     updatePhotoFacesCache,
+    removeImages,
     hasVerifiedFaces,
   }
 }
