@@ -13,7 +13,10 @@ v2.0: process-photo is READ-ONLY for navigation (no DB writes, no index rebuild)
       DB changes happen only in batch-verify when user clicks Save
 v2.1: Unified to ApiResponse format
 v2.2: CASE 2 now runs recognition for unverified faces (cheap index search)
-      Threshold depends on apply_quality_filters: config value or 0.3
+v2.3: Separate search_threshold (for finding candidates) and save_threshold (for DB)
+      - search_threshold: 0.30 without filters, config with filters
+      - save_threshold: ALWAYS config value (e.g. 0.60)
+      - Boxes saved always, person_id only if confidence >= save_threshold
 """
 
 from fastapi import APIRouter, Depends
@@ -152,13 +155,12 @@ async def process_photo(
     """
     Process photo for face detection and recognition.
     
-    v2.2: Both cases now run recognition with appropriate threshold.
-    - Case 1 (new photo): Detect faces, save descriptors, recognize candidates
-    - Case 2 (existing photo): Load faces, recognize unverified, update DB
+    v2.3: Separate thresholds for search vs save:
+    - search_threshold: used to find candidates (0.30 without filters, config with filters)
+    - save_threshold: used to decide what to save to DB (ALWAYS config, e.g. 0.60)
     
-    Threshold depends on apply_quality_filters:
-    - True: use config threshold (e.g. 0.60)
-    - False: use 0.30 (no filters mode)
+    This allows showing low-confidence matches in UI (via top_matches) while
+    only saving high-confidence matches to the database.
     """
     try:
         photo_id = request.get("photo_id")
@@ -170,15 +172,18 @@ async def process_photo(
         quality_filters_config = config.get('quality_filters', {})
         db_confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
-        # v2.2: Recognition threshold depends on apply_quality_filters
-        recognition_threshold = db_confidence_threshold if apply_quality_filters else 0.30
+        # v2.3: Separate thresholds
+        # search_threshold: for finding candidates (low without filters to show options)
+        search_threshold = db_confidence_threshold if apply_quality_filters else 0.30
+        # save_threshold: for DB writes (ALWAYS config value)
+        save_threshold = db_confidence_threshold
         
         logger.info("=" * 80)
         logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST START")
         logger.info(f"[v{VERSION}] Photo ID: {photo_id}")
         logger.info(f"[v{VERSION}] Force redetect: {force_redetect}")
         logger.info(f"[v{VERSION}] Apply quality filters: {apply_quality_filters}")
-        logger.info(f"[v{VERSION}] Recognition threshold: {recognition_threshold}")
+        logger.info(f"[v{VERSION}] Search threshold: {search_threshold}, Save threshold: {save_threshold}")
         
         if apply_quality_filters:
             face_service.quality_filters = {
@@ -228,23 +233,33 @@ async def process_photo(
                 det_score = float(face["det_score"])
                 blur_score = float(face.get("blur_score", 0))
                 
-                # v2.2: Use recognition_threshold (depends on apply_quality_filters)
+                # Use search_threshold to find candidates
                 person_id, rec_confidence = await face_service.recognize_face(
                     embedding, 
-                    confidence_threshold=recognition_threshold
+                    confidence_threshold=search_threshold
                 )
                 
-                logger.info(f"[v{VERSION}] Face {idx+1}: person_id={person_id}, confidence={rec_confidence}, blur={blur_score:.1f}")
+                # v2.3: Only save person_id if confidence >= save_threshold
+                # Boxes are always saved, but person_id only if high confidence
+                save_person_id = None
+                save_confidence = None
+                if person_id and rec_confidence and rec_confidence >= save_threshold:
+                    save_person_id = person_id
+                    save_confidence = rec_confidence
+                    logger.info(f"[v{VERSION}] Face {idx+1}: SAVED person_id={person_id[:8]}..., confidence={rec_confidence:.3f} (>= {save_threshold})")
+                else:
+                    conf_str = f"{rec_confidence:.3f}" if rec_confidence else "None"
+                    logger.info(f"[v{VERSION}] Face {idx+1}: person_id=None (found={person_id[:8] if person_id else 'None'}..., conf={conf_str} < {save_threshold})")
                 
                 distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
                 
                 insert_data = {
                     "photo_id": photo_id,
-                    "person_id": person_id,
+                    "person_id": save_person_id,
                     "insightface_bbox": bbox,
                     "insightface_det_score": det_score,
                     "blur_score": blur_score,
-                    "recognition_confidence": rec_confidence,
+                    "recognition_confidence": save_confidence,
                     "verified": False,
                     "insightface_descriptor": f"[{','.join(map(str, embedding.tolist()))}]",
                 }
@@ -292,7 +307,7 @@ async def process_photo(
         
         # ========================================================================
         # CASE 2: Existing faces - recognize unverified faces
-        # v2.2: Now runs recognition for unverified faces and updates DB
+        # v2.3: Also uses save_threshold for DB updates
         # ========================================================================
         logger.info(f"[v{VERSION}] Case 2: Existing faces - recognizing unverified")
         
@@ -321,15 +336,15 @@ async def process_photo(
                 "top_matches": top_matches,
             }
             
-            # v2.2: Recognize unverified faces
+            # v2.3: Recognize unverified faces, but only save if >= save_threshold
             if not face.get("verified"):
                 person_id, rec_confidence = await face_service.recognize_face(
                     embedding, 
-                    confidence_threshold=recognition_threshold
+                    confidence_threshold=search_threshold
                 )
                 
-                # Update DB if found a match (or if confidence changed)
-                if person_id:
+                # Only update DB if confidence >= save_threshold
+                if person_id and rec_confidence and rec_confidence >= save_threshold:
                     old_person_id = face.get("person_id")
                     old_confidence = face.get("recognition_confidence") or 0
                     

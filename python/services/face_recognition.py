@@ -14,6 +14,7 @@ v4.0: New recognition algorithm with adaptive early exit
 - No separate penalty for non-verified faces
 
 v4.1: Migrated to SupabaseService (modular architecture)
+v4.2: Face size filter uses max(width, height)
 """
 
 import os
@@ -52,6 +53,7 @@ class FaceRecognitionService:
     Coordinates model, index, and quality filtering.
     
     v4.1: Now uses SupabaseService with modular repositories.
+    v4.2: Face size uses max(width, height) for filtering.
     """
     
     def __init__(self, supabase_service: Optional['SupabaseService'] = None, supabase_db=None):
@@ -62,7 +64,7 @@ class FaceRecognitionService:
             supabase_service: New SupabaseService instance (preferred)
             supabase_db: Legacy SupabaseDatabase (deprecated, for backward compatibility)
         """
-        logger.info("[FaceRecognition] Initializing FaceRecognitionService v4.1...")
+        logger.info("[FaceRecognition] Initializing FaceRecognitionService v4.2...")
         
         # Use new SupabaseService or create one
         if supabase_service is not None:
@@ -263,7 +265,8 @@ class FaceRecognitionService:
                         filters
                     )
                     
-                    face_size = min(face.bbox[2] - face.bbox[0], face.bbox[3] - face.bbox[1])
+                    # v4.2: Use max side for logging (consistent with filter)
+                    face_size = max(face.bbox[2] - face.bbox[0], face.bbox[3] - face.bbox[1])
                     logger.info(f"[FaceRecognition] Face {idx+1}: det={face.det_score:.3f}, size={face_size:.0f}px, blur={blur_score:.1f} - {reason}")
                     
                     if not passes:

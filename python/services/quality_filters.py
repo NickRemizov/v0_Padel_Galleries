@@ -90,10 +90,10 @@ def passes_quality_filters(
     if det_score < min_det:
         return False, f"det_score {det_score:.2f} < {min_det}"
     
-    # Check face size
+    # Check face size - use MAX side (v2.3)
     face_width = bbox[2] - bbox[0]
     face_height = bbox[3] - bbox[1]
-    face_size = min(face_width, face_height)
+    face_size = max(face_width, face_height)
     
     min_size = filters.get("min_face_size", DEFAULT_QUALITY_FILTERS["min_face_size"])
     if face_size < min_size:
