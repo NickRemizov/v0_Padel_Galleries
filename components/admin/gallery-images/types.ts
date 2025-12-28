@@ -30,6 +30,8 @@ export interface GalleryImagesManagerProps {
   shootDate?: string | null
   initialSortOrder?: string
   isFullyVerified?: boolean
+  /** Called when images count changes (add/delete) */
+  onImagesChange?: () => void
 }
 
 /**
