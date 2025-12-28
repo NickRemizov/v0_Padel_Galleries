@@ -60,6 +60,7 @@ export function FaceTaggingDialog({
   const [personSelectOpen, setPersonSelectOpen] = useState(false)
   const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
   const [isLandscape, setIsLandscape] = useState(false)
+  const [isAutoRecognizing, setIsAutoRecognizing] = useState(false)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
@@ -166,6 +167,27 @@ export function FaceTaggingDialog({
     onNext()
   }, [onNext, onSave])
 
+  // Auto-recognize unverified faces using HNSWLIB index
+  async function autoRecognizeFaces(targetImageId: string): Promise<boolean> {
+    try {
+      console.log(`[${APP_VERSION}] Auto-recognizing faces for ${targetImageId}`)
+      const response = await fetch(`/api/images/${targetImageId}/auto-recognize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      if (!response.ok) {
+        console.error(`[${APP_VERSION}] Auto-recognize failed: ${response.status}`)
+        return false
+      }
+      const result = await response.json()
+      console.log(`[${APP_VERSION}] Auto-recognize result:`, result)
+      return result.success && result.data?.recognized_count > 0
+    } catch (error) {
+      console.error(`[${APP_VERSION}] Auto-recognize error:`, error)
+      return false
+    }
+  }
+
   useEffect(() => {
     if (!open) return
     console.log(`[${APP_VERSION}] imageId changed to ${imageId}`)
@@ -175,10 +197,11 @@ export function FaceTaggingDialog({
     setHasRedetectedData(false)
     setImageLoaded(false)
     setLoadingFaces(true)
+    setIsAutoRecognizing(false)
     loadedForImageIdRef.current = null
     justSavedRef.current = false
     clearCanvas()
-    loadFacesForImage(imageId)
+    loadFacesForImage(imageId, hasBeenProcessed)
   }, [imageId, open])
 
   useEffect(() => {
@@ -203,8 +226,8 @@ export function FaceTaggingDialog({
     }
   }
 
-  async function loadFacesForImage(targetImageId: string) {
-    console.log(`[${APP_VERSION}] Loading faces for ${targetImageId}`)
+  async function loadFacesForImage(targetImageId: string, isProcessed: boolean) {
+    console.log(`[${APP_VERSION}] Loading faces for ${targetImageId}, processed=${isProcessed}`)
     try {
       const result = await processPhotoAction(targetImageId)
       if (currentImageIdRef.current !== targetImageId) {
@@ -218,6 +241,27 @@ export function FaceTaggingDialog({
         setLoadingFaces(false)
         return
       }
+      
+      // Check if there are unverified faces that need auto-recognition
+      const hasUnverified = result.faces.some((f: any) => !f.verified && !f.person_id)
+      
+      // For processed photos with unverified faces, run auto-recognize (index search only)
+      if (isProcessed && hasUnverified) {
+        console.log(`[${APP_VERSION}] Running auto-recognize for processed photo with unverified faces`)
+        setIsAutoRecognizing(true)
+        const recognized = await autoRecognizeFaces(targetImageId)
+        setIsAutoRecognizing(false)
+        
+        if (recognized && currentImageIdRef.current === targetImageId) {
+          // Reload faces after recognition
+          console.log(`[${APP_VERSION}] Reloading faces after auto-recognition`)
+          const updatedResult = await processPhotoAction(targetImageId)
+          if (updatedResult.success && updatedResult.faces) {
+            result.faces = updatedResult.faces
+          }
+        }
+      }
+      
       const tagged: TaggedFace[] = result.faces.map((f: any) => ({
         id: f.id,
         face: {
@@ -500,7 +544,7 @@ export function FaceTaggingDialog({
   }, [open, selectedFaceIndex])
 
   const canSave = !saving
-  const isLoading = loadingFaces || !imageLoaded
+  const isLoading = loadingFaces || !imageLoaded || isAutoRecognizing
   const selectedFace = selectedFaceIndex !== null ? taggedFaces[selectedFaceIndex] : null
   const selectedFaceBbox = getSelectedFaceBbox()
 
@@ -575,6 +619,7 @@ export function FaceTaggingDialog({
                 {isLoading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
                     <Loader2 className="h-8 w-8 animate-spin text-white" />
+                    {isAutoRecognizing && <span className="ml-2 text-white">Распознаю лица...</span>}
                   </div>
                 )}
                 <img ref={imageRef} src={imageUrl || "/placeholder.svg"} alt="Фото для тегирования" className="hidden" crossOrigin="anonymous"
