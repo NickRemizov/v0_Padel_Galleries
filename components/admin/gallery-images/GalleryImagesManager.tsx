@@ -81,6 +81,7 @@ export function GalleryImagesManager({
     loadRecognitionStats,
     loadPhotoFaces,
     updatePhotoFacesCache,
+    removeImages,
     hasVerifiedFaces,
   } = useGalleryData(galleryId)
 
@@ -193,10 +194,12 @@ export function GalleryImagesManager({
 
   const confirmSingleDelete = async () => {
     if (!singleDeleteDialog.imageId) return
-    const result = await deleteGalleryImageAction(singleDeleteDialog.imageId, galleryId)
+    const imageId = singleDeleteDialog.imageId
+    
+    const result = await deleteGalleryImageAction(imageId, galleryId)
     if (result.success) {
-      await loadImages()
-      await loadPhotoFaces()
+      // Update local state instead of reloading from server
+      removeImages([imageId])
     } else if (result.error) {
       console.error("Failed to delete photo:", result.error)
     }
@@ -215,26 +218,33 @@ export function GalleryImagesManager({
     setIsDeleting(true)
     try {
       if (selectionCount > 0) {
+        // Delete selected photos
         const imageIds = Array.from(selectedPhotos)
         console.log(`[GalleryImagesManager] Batch deleting ${imageIds.length} photos`)
         const result = await batchDeleteGalleryImagesAction(imageIds, galleryId)
         if (result.error) {
           console.error("Failed to batch delete photos:", result.error)
           alert(`Ошибка удаления: ${result.error}`)
+        } else {
+          // Update local state instead of reloading from server
+          removeImages(imageIds)
         }
         clearSelection()
       } else {
+        // Delete all photos
+        const allImageIds = images.map((img) => img.id)
         const result = await deleteAllGalleryImagesAction(galleryId)
         if (result.error) {
           console.error("Failed to delete all photos:", result.error)
           alert(`Ошибка удаления: ${result.error}`)
+        } else {
+          // Update local state instead of reloading from server
+          removeImages(allImageIds)
         }
       }
     } finally {
       setIsDeleting(false)
       setConfirmDialog({ open: false, action: null, count: 0 })
-      await loadImages()
-      await loadPhotoFaces()
     }
   }
 
