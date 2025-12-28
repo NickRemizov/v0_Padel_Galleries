@@ -157,7 +157,8 @@ export function GalleryView({ gallery }: GalleryViewProps) {
             </div>
 
             {sortedImages.map((image, index) => {
-              const imagePeople = (image as any).people || []
+              // Now properly typed - no more (image as any)
+              const imagePeople = image.people || []
 
               return (
                 <div
@@ -176,7 +177,7 @@ export function GalleryView({ gallery }: GalleryViewProps) {
                   {imagePeople.length > 0 && (
                     <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
                       <p className="text-white text-xs font-medium leading-tight">
-                        {imagePeople.map((person: any) => person.name).join(", ")}
+                        {imagePeople.map((person) => person.name).join(", ")}
                       </p>
                     </div>
                   )}
