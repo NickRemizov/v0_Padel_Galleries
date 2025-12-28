@@ -22,8 +22,39 @@
 
 Согласно docs/FRONTEND_REFACTORING_BRIEF.md:
 
-1. ✅ `gallery-images-manager.tsx` (39KB → 12 модулей) - DONE
-2. ✅ `face-tagging-dialog.tsx` (33KB → 11 модулей) - DONE
-3. ⏳ `auto-recognition-dialog.tsx` - IN PROGRESS
-4. `unknown-faces-review-dialog.tsx`
-5. Backend: `integrity.ts` (926 lines), `galleries.py` (578 lines)
+### Frontend - DONE ✅
+1. ✅ `gallery-images-manager.tsx` (39KB → 12 модулей)
+2. ✅ `face-tagging-dialog.tsx` (33KB → 11 модулей)
+3. ✅ `auto-recognition-dialog.tsx` (16KB → 8 модулей)
+4. ✅ `unknown-faces-review-dialog.tsx` (15KB → 8 модулей)
+
+### Backend - TODO
+5. `integrity.ts` (926 lines)
+6. `galleries.py` (578 lines)
+
+## Refactored Structure Summary
+
+```
+components/admin/
+├── gallery-images/           # 12 modules
+│   ├── types.ts
+│   ├── hooks/ (useGalleryData, useGallerySelection, useImageActions)
+│   └── components/ (Toolbar, ImageGrid, ImageCard, etc.)
+│
+├── face-tagging/             # 11 modules
+│   ├── types.ts
+│   ├── utils/ (canvas-helpers, file-helpers)
+│   ├── hooks/ (useFaceCanvas, useFaceAPI, useKeyboardShortcuts)
+│   └── components/ (Toolbar, Canvas, Badges, PersonSelector, Footer)
+│
+├── auto-recognition/         # 8 modules
+│   ├── types.ts
+│   ├── hooks/ (useAutoRecognition)
+│   └── components/ (Progress, Results, ResultItem)
+│
+└── unknown-faces-review/     # 8 modules
+    ├── types.ts
+    ├── utils.ts
+    ├── hooks/ (useClusterReview)
+    └── components/ (FaceCard, Grid, Actions)
+```
