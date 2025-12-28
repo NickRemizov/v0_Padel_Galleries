@@ -45,7 +45,6 @@ export function ImageLightbox({
   const [showCopied, setShowCopied] = useState(false)
   const [showComments, setShowComments] = useState(false)
   const [verifiedPeople, setVerifiedPeople] = useState<Array<{ id: string; name: string }>>([])
-  const [isRecognizing, setIsRecognizing] = useState(false)
   
   // UI visibility state - toggle by tap
   const [hideUI, setHideUI] = useState(false)
@@ -59,9 +58,6 @@ export function ImageLightbox({
   // Track displayed index separately for smooth transitions
   const [displayedIndex, setDisplayedIndex] = useState(currentIndex)
   const [isTransitioning, setIsTransitioning] = useState(false)
-  
-  // Track which images have been auto-recognized in this session
-  const recognizedImagesRef = useRef<Set<string>>(new Set())
 
   const minSwipeDistance = 50
 
@@ -84,40 +80,6 @@ export function ImageLightbox({
     }
   }, [currentIndex])
 
-  // Auto-recognize unverified faces when image changes
-  const autoRecognizeFaces = useCallback(async (imageId: string) => {
-    // Skip if already recognized in this session
-    if (recognizedImagesRef.current.has(imageId)) {
-      return
-    }
-    
-    try {
-      setIsRecognizing(true)
-      const response = await fetch(`/api/images/${imageId}/auto-recognize`, {
-        method: "POST"
-      })
-      const result = await response.json()
-      
-      if (result.success && result.data?.recognized > 0) {
-        console.log(`[v1.2] Auto-recognized ${result.data.recognized} faces on image ${imageId}`)
-        // Mark as recognized to avoid re-processing
-        recognizedImagesRef.current.add(imageId)
-        // Return true to indicate new recognitions were made
-        return true
-      }
-      
-      // Mark as processed even if no recognitions
-      recognizedImagesRef.current.add(imageId)
-      return false
-    } catch (error) {
-      console.error("[v1.2] Error auto-recognizing faces:", error)
-      return false
-    } finally {
-      setIsRecognizing(false)
-    }
-  }, [])
-
-  // Fetch verified people and trigger auto-recognition
   useEffect(() => {
     const fetchVerifiedPeople = async () => {
       if (!currentImage?.id) {
@@ -126,10 +88,6 @@ export function ImageLightbox({
       }
 
       try {
-        // First, trigger auto-recognition for unverified faces
-        const hadNewRecognitions = await autoRecognizeFaces(currentImage.id)
-        
-        // Then fetch verified people (including newly recognized)
         const response = await fetch(`/api/images/${currentImage.id}/people`)
         const result = await response.json()
         
@@ -146,7 +104,7 @@ export function ImageLightbox({
     }
 
     fetchVerifiedPeople()
-  }, [currentImage?.id, autoRecognizeFaces])
+  }, [currentImage?.id])
 
   const navigateWithAnimation = useCallback((direction: 'prev' | 'next') => {
     if (isTransitioningRef.current) return
@@ -443,13 +401,6 @@ export function ImageLightbox({
                 </Link>
               )
             })}
-          </div>
-        )}
-        
-        {/* Recognition indicator */}
-        {isRecognizing && (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-full text-sm z-30 animate-pulse">
-            Распознаю лица...
           </div>
         )}
 
