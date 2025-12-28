@@ -105,8 +105,8 @@ export async function batchVerifyFacesAction(
       revalidatePath("/admin")
       return {
         success: true,
-        verified: result.data?.verified ?? result.verified,
-        index_rebuilt: result.data?.index_rebuilt ?? result.index_rebuilt ?? false,
+        verified: result.data?.verified ?? 0,
+        index_rebuilt: result.data?.index_rebuilt ?? false,
       }
     } else {
       return {
@@ -123,6 +123,10 @@ export async function batchVerifyFacesAction(
   }
 }
 
+/**
+ * Save a new face to database
+ * Backend returns: { success, data: { face: {...}, index_updated: bool } }
+ */
 export async function savePhotoFaceAction(
   photoId: string,
   personId: string | null,
@@ -152,8 +156,8 @@ export async function savePhotoFaceAction(
       revalidatePath("/admin")
       return {
         success: true,
-        face_id: result.data?.id,
-        index_updated: result.index_updated,
+        face_id: result.data?.face?.id,
+        index_updated: result.data?.index_updated ?? false,
       }
     } else {
       return {
@@ -170,6 +174,10 @@ export async function savePhotoFaceAction(
   }
 }
 
+/**
+ * Delete a gallery image and its associated faces
+ * Backend returns: { success, data: { deleted, had_descriptors, index_rebuilt } }
+ */
 export async function deleteGalleryImageAction(photoId: string) {
   try {
     const headers = await getAuthHeaders()
@@ -182,13 +190,13 @@ export async function deleteGalleryImageAction(photoId: string) {
       revalidatePath("/admin")
       return {
         success: true,
-        had_descriptors: result.had_descriptors,
-        index_rebuilt: result.index_rebuilt,
+        had_descriptors: result.data?.had_descriptors ?? false,
+        index_rebuilt: result.data?.index_rebuilt ?? false,
       }
     } else {
       return {
         success: false,
-        error: result.message || "Failed to delete image",
+        error: result.error || "Failed to delete image",
       }
     }
   } catch (error) {
@@ -230,14 +238,14 @@ export async function batchDeleteGalleryImagesAction(imageIds: string[], gallery
       revalidatePath("/admin")
       return {
         success: true,
-        deleted_count: result.data?.deleted_count ?? result.deleted_count,
-        had_verified_faces: result.data?.had_verified_faces ?? result.had_verified_faces,
-        index_rebuilt: result.data?.index_rebuilt ?? result.index_rebuilt,
+        deleted_count: result.data?.deleted_count ?? 0,
+        had_verified_faces: result.data?.had_verified_faces ?? false,
+        index_rebuilt: result.data?.index_rebuilt ?? false,
       }
     } else {
       return {
         success: false,
-        error: result.detail || result.error || result.message || "Failed to delete images",
+        error: result.error || "Failed to delete images",
       }
     }
   } catch (error) {
@@ -249,6 +257,10 @@ export async function batchDeleteGalleryImagesAction(imageIds: string[], gallery
   }
 }
 
+/**
+ * Delete all images from a gallery
+ * Backend returns: { success, data: { deleted_count, failed_count, had_descriptors, index_rebuilt, message } }
+ */
 export async function deleteAllGalleryImagesAction(galleryId: string) {
   try {
     const headers = await getAuthHeaders()
@@ -257,18 +269,18 @@ export async function deleteAllGalleryImagesAction(galleryId: string) {
       headers,
     })
 
-    if (result.success || result.deleted_count > 0) {
+    if (result.success) {
       revalidatePath("/admin")
       return {
         success: true,
-        deleted_count: result.deleted_count,
-        had_descriptors: result.had_descriptors,
-        index_rebuilt: result.index_rebuilt,
+        deleted_count: result.data?.deleted_count ?? 0,
+        had_descriptors: result.data?.had_descriptors ?? false,
+        index_rebuilt: result.data?.index_rebuilt ?? false,
       }
     } else {
       return {
         success: false,
-        error: result.message || "Failed to delete images",
+        error: result.error || "Failed to delete images",
       }
     }
   } catch (error) {
@@ -280,6 +292,10 @@ export async function deleteAllGalleryImagesAction(galleryId: string) {
   }
 }
 
+/**
+ * Add multiple images to a gallery
+ * Backend returns: { success, data: { inserted_count, message } }
+ */
 export async function addGalleryImagesAction(
   galleryId: string,
   uploadedImages: Array<{
@@ -302,12 +318,18 @@ export async function addGalleryImagesAction(
       }),
     })
 
-    if (!result.success) {
-      throw new Error(result.message || "Failed to add images")
+    if (result.success) {
+      revalidatePath("/admin")
+      return { 
+        success: true, 
+        inserted_count: result.data?.inserted_count ?? 0 
+      }
+    } else {
+      return {
+        success: false,
+        error: result.error || "Failed to add images",
+      }
     }
-
-    revalidatePath("/admin")
-    return { success: true, inserted_count: result.inserted_count }
   } catch (error) {
     console.error("[addGalleryImagesAction] Error:", error)
     return {
@@ -377,6 +399,10 @@ export async function getPhotoFacesAction(photoId: string) {
   }
 }
 
+/**
+ * Delete a face from database
+ * Backend returns: { success, data: { deleted, index_updated } }
+ */
 export async function deletePhotoFaceAction(faceId: string) {
   try {
     const headers = await getAuthHeaders()
@@ -392,7 +418,7 @@ export async function deletePhotoFaceAction(faceId: string) {
       revalidatePath("/admin")
       return {
         success: true,
-        index_updated: result.index_updated,
+        index_updated: result.data?.index_updated ?? false,
       }
     } else {
       return {
@@ -458,12 +484,15 @@ export async function markPhotoAsProcessedAction(photoId: string) {
       headers,
     })
 
-    if (!result.success) {
-      throw new Error(result.message || "Failed to mark photo as processed")
+    if (result.success) {
+      revalidatePath("/admin")
+      return { success: true }
+    } else {
+      return {
+        success: false,
+        error: result.error || "Failed to mark photo as processed",
+      }
     }
-
-    revalidatePath("/admin")
-    return { success: true }
   } catch (error) {
     console.error("[markPhotoAsProcessedAction] Error:", error)
     return {
