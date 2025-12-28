@@ -13,13 +13,13 @@ Last updated: 2025-12-27
 Runtime works, but type safety is broken.
 
 **To fix:**
-```typescript
+\`\`\`typescript
 // lib/types.ts
 export interface GalleryImage {
   // ... existing fields
   people?: Array<{ id: string; name: string }>
 }
-```
+\`\`\`
 
 ## Technical Debt
 
