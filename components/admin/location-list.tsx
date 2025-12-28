@@ -10,21 +10,46 @@ import type { Location } from "@/lib/types"
 
 interface LocationListProps {
   locations: Location[]
+  onUpdate?: () => void
 }
 
-export function LocationList({ locations }: LocationListProps) {
+export function LocationList({ locations: initialLocations, onUpdate }: LocationListProps) {
+  // Local state for optimistic updates
+  const [localLocations, setLocalLocations] = useState<Location[]>(initialLocations)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingLocation, setEditingLocation] = useState<Location | null>(null)
+
+  // Sync with props when they change
+  if (initialLocations.length !== localLocations.length) {
+    const initialIds = new Set(initialLocations.map(l => l.id))
+    const localIds = new Set(localLocations.map(l => l.id))
+    const hasStructuralChange = initialLocations.some(l => !localIds.has(l.id)) || 
+                                 localLocations.some(l => !initialIds.has(l.id) && !deletingId)
+    if (hasStructuralChange) {
+      setLocalLocations(initialLocations)
+    }
+  }
 
   async function handleDelete(id: string) {
     if (!confirm("Вы уверены, что хотите удалить эту площадку?")) return
 
     setDeletingId(id)
-    await deleteLocationAction(id)
+    
+    // Optimistic update
+    setLocalLocations(prev => prev.filter(l => l.id !== id))
+    
+    const result = await deleteLocationAction(id)
+    
+    if (!result.success) {
+      // Rollback on error
+      setLocalLocations(initialLocations)
+      alert("Ошибка при удалении")
+    }
+    
     setDeletingId(null)
   }
 
-  if (locations.length === 0) {
+  if (localLocations.length === 0) {
     return (
       <Card>
         <CardContent className="flex min-h-[200px] items-center justify-center">
@@ -37,7 +62,7 @@ export function LocationList({ locations }: LocationListProps) {
   return (
     <>
       <div className="grid gap-3">
-        {locations.map((location) => (
+        {localLocations.map((location) => (
           <Card key={location.id}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-4">
@@ -104,6 +129,7 @@ export function LocationList({ locations }: LocationListProps) {
           location={editingLocation}
           open={!!editingLocation}
           onOpenChange={(open) => !open && setEditingLocation(null)}
+          onSuccess={onUpdate}
         />
       )}
     </>

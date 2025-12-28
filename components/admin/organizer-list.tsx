@@ -10,21 +10,46 @@ import type { Organizer } from "@/lib/types"
 
 interface OrganizerListProps {
   organizers: Organizer[]
+  onUpdate?: () => void
 }
 
-export function OrganizerList({ organizers }: OrganizerListProps) {
+export function OrganizerList({ organizers: initialOrganizers, onUpdate }: OrganizerListProps) {
+  // Local state for optimistic updates
+  const [localOrganizers, setLocalOrganizers] = useState<Organizer[]>(initialOrganizers)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingOrganizer, setEditingOrganizer] = useState<Organizer | null>(null)
+
+  // Sync with props when they change
+  if (initialOrganizers.length !== localOrganizers.length) {
+    const initialIds = new Set(initialOrganizers.map(o => o.id))
+    const localIds = new Set(localOrganizers.map(o => o.id))
+    const hasStructuralChange = initialOrganizers.some(o => !localIds.has(o.id)) || 
+                                 localOrganizers.some(o => !initialIds.has(o.id) && !deletingId)
+    if (hasStructuralChange) {
+      setLocalOrganizers(initialOrganizers)
+    }
+  }
 
   async function handleDelete(id: string) {
     if (!confirm("Вы уверены, что хотите удалить этого организатора?")) return
 
     setDeletingId(id)
-    await deleteOrganizerAction(id)
+    
+    // Optimistic update
+    setLocalOrganizers(prev => prev.filter(o => o.id !== id))
+    
+    const result = await deleteOrganizerAction(id)
+    
+    if (!result.success) {
+      // Rollback on error
+      setLocalOrganizers(initialOrganizers)
+      alert("Ошибка при удалении")
+    }
+    
     setDeletingId(null)
   }
 
-  if (organizers.length === 0) {
+  if (localOrganizers.length === 0) {
     return (
       <Card>
         <CardContent className="flex min-h-[200px] items-center justify-center">
@@ -37,7 +62,7 @@ export function OrganizerList({ organizers }: OrganizerListProps) {
   return (
     <>
       <div className="grid gap-2">
-        {organizers.map((organizer) => (
+        {localOrganizers.map((organizer) => (
           <Card key={organizer.id}>
             <CardContent className="flex items-center justify-between p-4">
               <span className="font-medium">{organizer.name}</span>
@@ -64,6 +89,7 @@ export function OrganizerList({ organizers }: OrganizerListProps) {
           organizer={editingOrganizer}
           open={!!editingOrganizer}
           onOpenChange={(open) => !open && setEditingOrganizer(null)}
+          onSuccess={onUpdate}
         />
       )}
     </>
