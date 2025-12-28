@@ -30,17 +30,24 @@ function formatDateTime(dateString: string): string {
   return `${day}.${month}.${year} ${hours}:${minutes}`
 }
 
-export function GalleryList({ galleries, photographers, locations, organizers, onDelete, onUpdate }: GalleryListProps) {
+export function GalleryList({ galleries: initialGalleries, photographers, locations, organizers, onDelete, onUpdate }: GalleryListProps) {
+  // Local state for optimistic updates
+  const [localGalleries, setLocalGalleries] = useState<Gallery[]>(initialGalleries)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [galleryStats, setGalleryStats] = useState<
     Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>
   >(new Map())
 
+  // Sync with props when they change (e.g., after server revalidation)
+  useEffect(() => {
+    setLocalGalleries(initialGalleries)
+  }, [initialGalleries])
+
   useEffect(() => {
     async function loadStats() {
-      if (galleries.length === 0) return
+      if (localGalleries.length === 0) return
 
-      const galleryIds = galleries.map((g) => g.id)
+      const galleryIds = localGalleries.map((g) => g.id)
       const result = await getGalleriesFaceRecognitionStatsAction(galleryIds)
 
       if (result.success && result.data) {
@@ -55,18 +62,35 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
     }
 
     loadStats()
-  }, [galleries])
+  }, [localGalleries])
 
   async function handleDelete(id: string) {
     if (!confirm("Вы уверены, что хотите удалить эту галерею?")) return
 
     setDeletingId(id)
-    await deleteGalleryAction(id)
+    
+    // Optimistic update - remove from local state immediately
+    setLocalGalleries(prev => prev.filter(g => g.id !== id))
+    
+    // Also clean up stats
+    setGalleryStats(prev => {
+      const next = new Map(prev)
+      next.delete(id)
+      return next
+    })
+    
+    const result = await deleteGalleryAction(id)
+    
+    if (!result.success) {
+      // Rollback on error
+      setLocalGalleries(initialGalleries)
+      alert("Ошибка при удалении галереи")
+    }
+    
     setDeletingId(null)
-    onDelete?.()
   }
 
-  if (galleries.length === 0) {
+  if (localGalleries.length === 0) {
     return (
       <Card>
         <CardContent className="flex min-h-[200px] items-center justify-center">
@@ -78,7 +102,7 @@ export function GalleryList({ galleries, photographers, locations, organizers, o
 
   return (
     <div className="grid gap-4">
-      {galleries.map((gallery) => {
+      {localGalleries.map((gallery) => {
         // photo_count приходит с бэкенда, gallery_images - fallback для обратной совместимости
         const imagesCount = gallery.photo_count ?? gallery.gallery_images?.length ?? 0
         const stats = galleryStats.get(gallery.id)
