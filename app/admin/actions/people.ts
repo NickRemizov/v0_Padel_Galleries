@@ -11,6 +11,7 @@ import { logger } from "@/lib/logger"
  * v2.1: Added pagination to findDuplicatePeopleAction
  * v2.2: Added auth headers to all FastAPI write operations
  * v2.3: Consolidated getAuthHeaders from lib/auth/serverGuard
+ * v2.4: Added batchVerifyPersonOnPhotosAction for bulk verification
  */
 
 // - getPersonPhotosAction (moved to entities.ts)
@@ -54,6 +55,43 @@ export async function verifyPersonOnPhotoAction(photoId: string, personId: strin
   } catch (error: any) {
     console.error("[verifyPersonOnPhotoAction] Error:", error)
     return { success: false, error: error.message || "Failed to verify person" }
+  }
+}
+
+/**
+ * Batch verify person on multiple photos in a single request.
+ * v2.4: New action for efficient bulk verification.
+ * 
+ * @param personId - Person ID to verify
+ * @param photoIds - Array of photo IDs to verify on
+ */
+export async function batchVerifyPersonOnPhotosAction(personId: string, photoIds: string[]) {
+  try {
+    console.log("[batchVerifyPersonOnPhotosAction] Batch verifying:", { personId, photoCount: photoIds.length })
+    
+    if (photoIds.length === 0) {
+      return { success: true, data: { verified_count: 0 } }
+    }
+    
+    const headers = await getAuthHeaders()
+    const result = await apiFetch(`/api/people/${personId}/batch-verify-on-photos`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ photo_ids: photoIds }),
+    })
+    
+    console.log("[batchVerifyPersonOnPhotosAction] Result:", result)
+
+    if (!result.success) {
+      console.error("[batchVerifyPersonOnPhotosAction] Failed:", result.error)
+      return { success: false, error: result.error || "Unknown error" }
+    }
+
+    revalidatePath("/admin")
+    return { success: true, data: result.data }
+  } catch (error: any) {
+    console.error("[batchVerifyPersonOnPhotosAction] Error:", error)
+    return { success: false, error: error.message || "Failed to batch verify person" }
   }
 }
 

@@ -23,6 +23,7 @@ import {
   getPersonPhotosWithDetailsAction,
   unlinkPersonFromPhotoAction,
   verifyPersonOnPhotoAction,
+  batchVerifyPersonOnPhotosAction,
 } from "@/app/admin/actions"
 import { FaceTaggingDialog } from "./face-tagging-dialog"
 import { AvatarSelector } from "./avatar-selector"
@@ -466,19 +467,24 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
           })
         : photos.filter((p) => !p.verified).map((p) => p.id)
       
-      // Call API for each photo
-      for (const photoId of photosToVerify) {
-        await verifyPersonOnPhotoAction(photoId, personId)
-      }
+      // v2.4: Single batch API call instead of N sequential calls
+      console.log("[PersonGallery] Batch verifying", photosToVerify.length, "photos")
+      const result = await batchVerifyPersonOnPhotosAction(personId, photosToVerify)
       
-      // Update local state (like handleVerify does) - NO reload!
-      setPhotos((prev) =>
-        prev.map((photo) => 
-          photosToVerify.includes(photo.id) 
-            ? { ...photo, verified: true, confidence: 1 } 
-            : photo
-        ),
-      )
+      if (result.success) {
+        console.log("[PersonGallery] Batch verify result:", result.data)
+        // Update local state - NO reload!
+        setPhotos((prev) =>
+          prev.map((photo) => 
+            photosToVerify.includes(photo.id) 
+              ? { ...photo, verified: true, confidence: 1 } 
+              : photo
+          ),
+        )
+      } else {
+        console.error("[PersonGallery] Batch verify failed:", result.error)
+        alert(`Ошибка верификации: ${result.error}`)
+      }
       
       setConfirmDialog({ open: false, action: null, count: 0 })
       setSelectedPhotos(new Set())

@@ -1,9 +1,13 @@
 """
 People API - Photo Operations
 Endpoints for person's photos: list, verify, unlink
+
+v2.0: Added batch-verify-on-photos endpoint for bulk verification
 """
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
+from typing import List
 from uuid import UUID
 
 from core.responses import ApiResponse
@@ -14,6 +18,11 @@ from .helpers import get_supabase_db, convert_bbox_to_array
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+class BatchVerifyRequest(BaseModel):
+    """Request body for batch verification."""
+    photo_ids: List[str]
 
 
 def _get_person_id_from_uuid(supabase_db, person_uuid: UUID) -> str:
@@ -179,6 +188,51 @@ async def verify_person_on_photo(identifier: UUID, photo_id: str = Query(...)):
     except Exception as e:
         logger.error(f"Error verifying person on photo: {e}")
         raise DatabaseError(str(e), operation="verify_person_on_photo")
+
+
+@router.post("/{identifier:uuid}/batch-verify-on-photos")
+async def batch_verify_person_on_photos(identifier: UUID, request: BatchVerifyRequest):
+    """
+    Batch verify person on multiple photos in a single DB operation.
+    
+    v2.0: New endpoint for efficient bulk verification.
+    Much faster than calling verify-on-photo N times.
+    
+    Args:
+        identifier: Person UUID
+        request: BatchVerifyRequest with photo_ids list
+        
+    Returns:
+        {verified_count: int} - number of faces verified
+    """
+    supabase_db = get_supabase_db()
+    
+    try:
+        person_id = _get_person_id_from_uuid(supabase_db, identifier)
+        photo_ids = request.photo_ids
+        
+        if not photo_ids:
+            return ApiResponse.ok({"verified_count": 0})
+        
+        logger.info(f"Batch verifying person {person_id} on {len(photo_ids)} photos")
+        
+        # Single UPDATE with IN clause - O(1) instead of O(n)
+        result = supabase_db.client.table("photo_faces")\
+            .update({"verified": True, "recognition_confidence": 1.0})\
+            .in_("photo_id", photo_ids)\
+            .eq("person_id", person_id)\
+            .execute()
+        
+        verified_count = len(result.data) if result.data else 0
+        logger.info(f"Batch verified {verified_count} faces")
+        
+        return ApiResponse.ok({"verified_count": verified_count})
+        
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error batch verifying person on photos: {e}")
+        raise DatabaseError(str(e), operation="batch_verify_person_on_photos")
 
 
 @router.post("/{identifier:uuid}/unlink-from-photo")
