@@ -3,26 +3,15 @@
 import { revalidatePath } from "next/cache"
 import { apiFetch } from "@/lib/apiClient"
 import { createClient } from "@/lib/supabase/server"
+import { getAuthHeaders } from "@/lib/auth/serverGuard"
 import { logger } from "@/lib/logger"
 
 /**
  * People actions
  * v2.1: Added pagination to findDuplicatePeopleAction
  * v2.2: Added auth headers to all FastAPI write operations
+ * v2.3: Consolidated getAuthHeaders from lib/auth/serverGuard
  */
-
-/**
- * Helper to get auth headers for protected endpoints
- */
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  
-  if (session?.access_token) {
-    return { "Authorization": `Bearer ${session.access_token}` }
-  }
-  return {}
-}
 
 // - getPersonPhotosAction (moved to entities.ts)
 // - updatePersonAvatarAction (moved to entities.ts)
