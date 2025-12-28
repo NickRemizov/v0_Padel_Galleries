@@ -12,6 +12,8 @@ Features:
 v2.0: process-photo is READ-ONLY for navigation (no DB writes, no index rebuild)
       DB changes happen only in batch-verify when user clicks Save
 v2.1: Unified to ApiResponse format
+v2.2: CASE 2 now runs recognition for unverified faces (cheap index search)
+      Threshold depends on apply_quality_filters: config value or 0.3
 """
 
 from fastapi import APIRouter, Depends
@@ -150,11 +152,13 @@ async def process_photo(
     """
     Process photo for face detection and recognition.
     
-    v2.0: READ-ONLY for existing photos (navigation).
+    v2.2: Both cases now run recognition with appropriate threshold.
     - Case 1 (new photo): Detect faces, save descriptors, recognize candidates
-    - Case 2 (existing photo): Just load faces and compute candidates (NO DB writes, NO rebuild)
+    - Case 2 (existing photo): Load faces, recognize unverified, update DB
     
-    DB changes and index rebuild happen ONLY in batch-verify when user clicks Save.
+    Threshold depends on apply_quality_filters:
+    - True: use config threshold (e.g. 0.60)
+    - False: use 0.30 (no filters mode)
     """
     try:
         photo_id = request.get("photo_id")
@@ -166,11 +170,15 @@ async def process_photo(
         quality_filters_config = config.get('quality_filters', {})
         db_confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
+        # v2.2: Recognition threshold depends on apply_quality_filters
+        recognition_threshold = db_confidence_threshold if apply_quality_filters else 0.30
+        
         logger.info("=" * 80)
         logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST START")
         logger.info(f"[v{VERSION}] Photo ID: {photo_id}")
         logger.info(f"[v{VERSION}] Force redetect: {force_redetect}")
         logger.info(f"[v{VERSION}] Apply quality filters: {apply_quality_filters}")
+        logger.info(f"[v{VERSION}] Recognition threshold: {recognition_threshold}")
         
         if apply_quality_filters:
             face_service.quality_filters = {
@@ -179,8 +187,6 @@ async def process_photo(
                 "min_blur_score": quality_filters_config.get('min_blur_score', 80)
             }
             logger.info(f"[v{VERSION}] Quality filters from DB: {face_service.quality_filters}")
-        
-        logger.info(f"[v{VERSION}] Confidence threshold from DB: {db_confidence_threshold}")
         
         if force_redetect:
             logger.info(f"[v{VERSION}] Force redetect - deleting existing faces")
@@ -222,9 +228,10 @@ async def process_photo(
                 det_score = float(face["det_score"])
                 blur_score = float(face.get("blur_score", 0))
                 
+                # v2.2: Use recognition_threshold (depends on apply_quality_filters)
                 person_id, rec_confidence = await face_service.recognize_face(
                     embedding, 
-                    confidence_threshold=db_confidence_threshold
+                    confidence_threshold=recognition_threshold
                 )
                 
                 logger.info(f"[v{VERSION}] Face {idx+1}: person_id={person_id}, confidence={rec_confidence}, blur={blur_score:.1f}")
@@ -284,17 +291,22 @@ async def process_photo(
             return ApiResponse.ok(response_faces).model_dump()
         
         # ========================================================================
-        # CASE 2: Existing faces - READ ONLY (no DB writes, no rebuild)
+        # CASE 2: Existing faces - recognize unverified faces
+        # v2.2: Now runs recognition for unverified faces and updates DB
         # ========================================================================
-        logger.info(f"[v{VERSION}] Case 2: Existing faces - READ ONLY mode")
+        logger.info(f"[v{VERSION}] Case 2: Existing faces - recognizing unverified")
         
         face_metrics = {}
+        recognized_count = 0
         
         for face in existing_faces:
+            face_id = face["id"]
             descriptor = face.get("insightface_descriptor")
+            
             if not descriptor:
                 continue
             
+            # Parse embedding
             if isinstance(descriptor, str):
                 embedding = np.array(json.loads(descriptor), dtype=np.float32)
             elif isinstance(descriptor, list):
@@ -302,12 +314,38 @@ async def process_photo(
             else:
                 continue
             
+            # Get metrics for all faces
             distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
-            face_metrics[face["id"]] = {
+            face_metrics[face_id] = {
                 "distance_to_nearest": distance_to_nearest,
                 "top_matches": top_matches,
             }
+            
+            # v2.2: Recognize unverified faces
+            if not face.get("verified"):
+                person_id, rec_confidence = await face_service.recognize_face(
+                    embedding, 
+                    confidence_threshold=recognition_threshold
+                )
+                
+                # Update DB if found a match (or if confidence changed)
+                if person_id:
+                    old_person_id = face.get("person_id")
+                    old_confidence = face.get("recognition_confidence") or 0
+                    
+                    # Update if new match or better confidence
+                    if person_id != old_person_id or rec_confidence > old_confidence:
+                        supabase_client.client.table("photo_faces").update({
+                            "person_id": person_id,
+                            "recognition_confidence": rec_confidence
+                        }).eq("id", face_id).execute()
+                        
+                        recognized_count += 1
+                        logger.info(f"[v{VERSION}] Recognized face {face_id[:8]}: person={person_id[:8]}, confidence={rec_confidence:.3f}")
         
+        logger.info(f"[v{VERSION}] Recognized {recognized_count} unverified faces")
+        
+        # Reload faces after potential updates
         final_result = supabase_client.client.table("photo_faces").select(
             "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_det_score, blur_score, people(id, real_name, telegram_name)"
         ).eq("photo_id", photo_id).execute()
@@ -323,7 +361,7 @@ async def process_photo(
                 "index_rebuilt": False,
             })
         
-        logger.info(f"[v{VERSION}] Returning {len(response_faces)} faces (READ ONLY, no DB changes)")
+        logger.info(f"[v{VERSION}] Returning {len(response_faces)} faces (recognized {recognized_count})")
         logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST END")
         logger.info("=" * 80)
         
