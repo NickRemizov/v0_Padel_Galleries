@@ -1,0 +1,1 @@
+export { useAutoRecognition } from "./useAutoRecognition"
