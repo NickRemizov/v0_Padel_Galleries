@@ -57,7 +57,7 @@ UI компонент для проверки целостности БД. Св�
 
 ## Структура отрефакторенных модулей
 
-```
+\`\`\`
 app/admin/actions/
 ├── integrity/                # 7 modules (926→850 lines)
 │   ├── index.ts              # Экспорты
@@ -76,7 +76,7 @@ components/admin/
 ├── face-tagging/             # 11 modules
 ├── auto-recognition/         # 8 modules
 └── unknown-faces-review/     # 8 modules
-```
+\`\`\`
 
 ---
 

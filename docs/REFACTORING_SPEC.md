@@ -36,7 +36,7 @@
 
 ### Паттерн рефакторинга (проверенный)
 
-```
+\`\`\`
 components/admin/{module}/
 ├── {Module}Dialog.tsx      # Контейнер-оркестратор
 ├── types.ts                # Интерфейсы и типы
@@ -53,7 +53,7 @@ components/admin/{module}/
 └── utils/
     ├── helpers.ts
     └── index.ts
-```
+\`\`\`
 
 ---
 
@@ -64,7 +64,7 @@ components/admin/{module}/
 #### 1.1 `app/admin/actions/integrity.ts` — 926 строк
 **Проблема:** Монолит проверок целостности БД.  
 **Решение:**
-```
+\`\`\`
 app/admin/actions/integrity/
 ├── index.ts              # Экспорты
 ├── types.ts              # IntegrityResult, CheckResult
@@ -78,12 +78,12 @@ app/admin/actions/integrity/
 └── utils/
     ├── normalize.ts      # Нормализация ошибок
     └── severity.ts       # Уровни severity
-```
+\`\`\`
 
 #### 1.2 `components/admin/database-integrity-checker.tsx` — 785 строк
 **Проблема:** UI + логика + прогресс + результаты в одном файле.  
 **Решение:**
-```
+\`\`\`
 components/admin/database-integrity/
 ├── DatabaseIntegrityChecker.tsx  # Контейнер
 ├── types.ts
@@ -95,12 +95,12 @@ components/admin/database-integrity/
 │   ├── IntegrityResultsTable.tsx # Таблица результатов
 │   └── IntegrityResultDetails.tsx # Детали ошибки
 └── index.ts
-```
+\`\`\`
 
 #### 1.3 `components/ui/sidebar.tsx` — 727 строк
 **Проблема:** Конфиг меню + рендер + состояние смешаны.  
 **Решение:**
-```
+\`\`\`
 components/ui/sidebar/
 ├── Sidebar.tsx           # Главный компонент
 ├── types.ts
@@ -113,12 +113,12 @@ components/ui/sidebar/
 │   ├── SidebarHeader.tsx
 │   └── SidebarFooter.tsx
 └── index.ts
-```
+\`\`\`
 
 #### 1.4 `components/admin/face-training-manager.tsx` — 726 строк
 **Проблема:** Запуск тренировки + статусы + история + polling.  
 **Решение:**
-```
+\`\`\`
 components/admin/face-training/
 ├── FaceTrainingManager.tsx
 ├── types.ts
@@ -130,12 +130,12 @@ components/admin/face-training/
 │   ├── TrainingHistory.tsx
 │   └── TrainingStatusPanel.tsx
 └── index.ts
-```
+\`\`\`
 
 #### 1.5 `app/admin/actions/people.ts` — 671 строк + `faces.ts` — 619 строк
 **Проблема:** Слишком много actions в одном файле.  
 **Решение:**
-```
+\`\`\`
 app/admin/actions/
 ├── people/
 │   ├── search.ts
@@ -147,12 +147,12 @@ app/admin/actions/
 │   ├── batch.ts
 │   ├── verify.ts
 │   └── index.ts
-```
+\`\`\`
 
 #### 1.6 `components/image-lightbox.tsx` — 596 строк
 **Проблема:** Навигация + рендер тегов + keyboard handling.  
 **Решение:**
-```
+\`\`\`
 components/lightbox/
 ├── ImageLightbox.tsx
 ├── types.ts
@@ -165,53 +165,53 @@ components/lightbox/
 │   ├── LightboxSidebar.tsx
 │   └── PeopleTagsOverlay.tsx
 └── index.ts
-```
+\`\`\`
 
 ### Приоритет 2: Backend (Python)
 
 #### 2.1 `python/routers/admin/debug.py` — 596 строк
-```
+\`\`\`
 python/routers/admin/debug/
 ├── __init__.py           # Сборка роутеров
 ├── debug_gallery.py
 ├── debug_faces.py
 └── debug_db.py
-```
+\`\`\`
 
 #### 2.2 `python/routers/galleries.py` — 578 строк
-```
+\`\`\`
 python/routers/galleries/
 ├── __init__.py
 ├── read.py               # GET list/detail
 ├── admin.py              # Admin operations
 └── assembler.py          # Сборка "full view"
-```
+\`\`\`
 
 #### 2.3 `python/services/training_service.py` — 540 строк
-```
+\`\`\`
 python/services/training/
 ├── __init__.py
 ├── session.py            # Жизненный цикл сессии
 ├── pipeline.py           # Шаги пайплайна
 ├── storage.py            # Статус/история
 └── models.py             # Структуры
-```
+\`\`\`
 
 #### 2.4 `python/services/face_recognition.py` — 514 строк
-```
+\`\`\`
 python/services/recognition/
 ├── __init__.py
 ├── detector.py           # ML: детект + эмбеддинг
 ├── processor.py          # Постпроцесс: thresholds, clustering
 └── persistence.py        # Запись результатов
-```
+\`\`\`
 
 #### 2.5 `python/routers/recognition/descriptors.py` — 447 строк
-```
+\`\`\`
 python/routers/recognition/
 ├── descriptors_endpoints.py  # Endpoints
 └── descriptors_service.py    # Логика
-```
+\`\`\`
 
 ---
 
@@ -262,7 +262,7 @@ python/routers/recognition/
 
 ## Команды
 
-```bash
+\`\`\`bash
 # Сборка frontend
 npm run build
 
@@ -274,7 +274,7 @@ npm run typecheck
 
 # Логи backend
 journalctl -u padel-api -f
-```
+\`\`\`
 
 ---
 
