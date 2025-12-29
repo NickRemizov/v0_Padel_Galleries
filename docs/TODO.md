@@ -1,7 +1,7 @@
 # TODO
 
 **Последнее обновление:** 2025-12-29  
-**Версия приложения:** v1.1.7
+**Версия приложения:** v1.1.8
 
 ---
 
@@ -17,12 +17,12 @@
 | `auto-recognition-dialog.tsx` | ~500 | 8 | 2025-12 |
 | `unknown-faces-review-dialog.tsx` | ~500 | 8 | 2025-12 |
 | `app/admin/actions/integrity.ts` | 926 | 7 | 2025-12-29 |
+| `database-integrity-checker.tsx` | 785 | 10 | 2025-12-29 |
 
 ### 🔄 Очередь (Frontend) — Приоритет 1
 
 | # | Файл | Строк | Приоритет | Статус |
 |---|------|-------|-----------|--------|
-| 1.2 | `database-integrity-checker.tsx` | 785 | HIGH | ❌ TODO |
 | 1.3 | `components/ui/sidebar.tsx` | 727 | MEDIUM | ❌ TODO |
 | 1.4 | `face-training-manager.tsx` | 726 | MEDIUM | ❌ TODO |
 | 1.5 | `actions/people.ts` + `faces.ts` | 671+619 | MEDIUM | ❌ TODO |
@@ -42,14 +42,9 @@
 
 ## Следующая задача
 
-**Рекомендуется:** `database-integrity-checker.tsx` (785 строк)
+**Рекомендуется:** `components/ui/sidebar.tsx` (727 строк)
 
-UI компонент для проверки целостности БД. Связан с уже отрефакторенным `integrity/` модулем.
-
-**План:**
-1. Разбить на хуки (useIntegrityRunner)
-2. Вынести компоненты (IntegrityRunControls, IntegritySummary, IntegrityResultsTable)
-3. Проверить интеграцию
+Конфиг меню + рендер + состояние смешаны.
 
 **Детальное ТЗ:** см. `docs/REFACTORING_SPEC.md`
 
@@ -57,26 +52,45 @@ UI компонент для проверки целостности БД. Св�
 
 ## Структура отрефакторенных модулей
 
-\`\`\`
+```
 app/admin/actions/
-├── integrity/                # 7 modules (926→850 lines)
-│   ├── index.ts              # Экспорты
-│   ├── types.ts              # IntegrityReport
-│   ├── constants.ts          # CONFIDENCE_100_THRESHOLD
-│   ├── utils.ts              # getConfidenceThreshold, loadAllPhotoFaces
-│   ├── check-integrity.ts    # checkDatabaseIntegrityFullAction
-│   ├── fix-integrity.ts      # fixIntegrityIssuesAction
-│   └── face-actions.ts       # confirmFaceAction, rejectFaceAction
+├── integrity/                # 7 modules
+│   ├── index.ts
+│   ├── types.ts
+│   ├── constants.ts
+│   ├── utils.ts
+│   ├── check-integrity.ts
+│   ├── fix-integrity.ts
+│   └── face-actions.ts
 │
-├── integrity.ts              # Реэкспорт (обратная совместимость)
+└── integrity.ts              # Реэкспорт
 
 components/admin/
+├── database-integrity/       # 10 modules
+│   ├── DatabaseIntegrityChecker.tsx
+│   ├── types.ts
+│   ├── index.ts
+│   ├── hooks/
+│   │   ├── useIntegrityChecker.ts
+│   │   └── index.ts
+│   ├── components/
+│   │   ├── IntegrityRunControls.tsx
+│   │   ├── IntegritySummary.tsx
+│   │   ├── IntegrityIssueRow.tsx
+│   │   ├── IntegrityFaceCard.tsx
+│   │   ├── PeopleWithoutFacesRow.tsx
+│   │   └── index.ts
+│   └── utils/
+│       ├── helpers.ts
+│       └── index.ts
+│
+├── database-integrity-checker.tsx  # Реэкспорт
 ├── gallery-images/           # 12 modules
 ├── person-gallery/           # 12 modules
 ├── face-tagging/             # 11 modules
 ├── auto-recognition/         # 8 modules
 └── unknown-faces-review/     # 8 modules
-\`\`\`
+```
 
 ---
 
@@ -86,7 +100,6 @@ components/admin/
 - **Проблема:** Вместо кириллицы отображались `\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430`
 - **Причина:** Файлы сохранялись с escaped Unicode вместо UTF-8
 - **Решение:** Заменены все Unicode escapes на кириллицу
-- **Файлы:** FaceCanvas.tsx, PersonGallery/* (8 файлов)
 - **Версия:** v1.1.6
 
 ### ✅ Build-time API calls
