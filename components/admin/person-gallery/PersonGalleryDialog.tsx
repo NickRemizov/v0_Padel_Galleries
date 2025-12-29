@@ -77,7 +77,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
       open: true,
       photoId,
       filename: photo.filename,
-      galleryName: photo.gallery_name || "\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0433\u0430\u043b\u0435\u0440\u0435\u044f",
+      galleryName: photo.gallery_name || "Неизвестная галерея",
     })
   }, [photos])
 
@@ -98,7 +98,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
       try {
         await batchVerifyPhotos(photosToVerify)
       } catch (error) {
-        alert(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0432\u0435\u0440\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u0438: ${error}`)
+        alert(`Ошибка верификации: ${error}`)
       }
     } else if (confirmDialog.action === "delete") {
       const photosToDelete = getSelectedPhotosArray()

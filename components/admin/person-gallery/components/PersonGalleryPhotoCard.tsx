@@ -82,7 +82,7 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
         {/* Verification badge */}
         {photo.verified ? (
           <div className="absolute left-2 bottom-2 z-10 bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm shadow-lg">
-            \u2713
+            ✓
           </div>
         ) : (
           <div
@@ -140,7 +140,7 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
           {photo.filename}
         </p>
         <p className="text-xs text-muted-foreground truncate">
-          {photo.gallery_name || "\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0433\u0430\u043b\u0435\u0440\u0435\u044f"}{" "}
+          {photo.gallery_name || "Неизвестная галерея"}{" "}
           {photo.shootDate ? formatShortDate(photo.shootDate) : ""}
         </p>
       </div>

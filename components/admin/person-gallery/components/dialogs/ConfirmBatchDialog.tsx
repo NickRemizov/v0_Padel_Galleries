@@ -45,16 +45,16 @@ export function ConfirmBatchDialog({
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435 \u0432\u0430\u0448\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435</AlertDialogTitle>
+          <AlertDialogTitle>Подтвердите ваше действие</AlertDialogTitle>
           <AlertDialogDescription>
             {state.action === "verify"
-              ? `\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u0438\u0433\u0440\u043e\u043a\u0430 ${personName} \u043d\u0430 ${state.count} \u0444\u043e\u0442\u043e?`
-              : `\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0438\u0433\u0440\u043e\u043a\u0430 ${personName} \u0441 ${state.count} \u0444\u043e\u0442\u043e?`}
+              ? `Подтвердить игрока ${personName} на ${state.count} фото?`
+              : `Удалить игрока ${personName} с ${state.count} фото?`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>\u041e\u0442\u043c\u0435\u043d\u0430</AlertDialogCancel>
-          <AlertDialogAction onClick={handleConfirm}>\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c</AlertDialogAction>
+          <AlertDialogCancel onClick={handleCancel}>Отмена</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirm}>Подтвердить</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
