@@ -45,7 +45,7 @@
 
 ## Refactored Structure Summary
 
-```
+\`\`\`
 components/admin/
 ├── gallery-images/           # 12 modules
 ├── face-tagging/             # 11 modules
@@ -56,4 +56,4 @@ components/admin/
     ├── utils/ (face-styles, sorting)
     ├── hooks/ (usePersonGallery, usePhotoSelection, usePhotoNavigation)
     └── components/ (Header, PhotosList, PhotoCard[memo], Footer, dialogs/)
-```
+\`\`\`
