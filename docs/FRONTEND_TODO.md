@@ -31,7 +31,7 @@
 
 ## Структура отрефакторенных модулей
 
-```
+\`\`\`
 app/admin/actions/
 ├── integrity/                # 7 модулей
 │   ├── index.ts
@@ -81,7 +81,7 @@ components/
     ├── face-tagging/         # 11 модулей
     ├── auto-recognition/     # 8 модулей
     └── unknown-faces-review/ # 8 модулей
-```
+\`\`\`
 
 ---
 
@@ -116,7 +116,7 @@ components/
 
 ### Выделение хуков
 
-```typescript
+\`\`\`typescript
 // БЫЛО: всё в компоненте
 const [data, setData] = useState([])
 const [loading, setLoading] = useState(false)
@@ -131,11 +131,11 @@ export function useGalleryImages(galleryId: string) {
   // ...
   return { data, loading, refetch }
 }
-```
+\`\`\`
 
 ### Композиция вместо монолита
 
-```typescript
+\`\`\`typescript
 // БЫЛО: один огромный компонент
 function GalleryImagesManager() {
   return (
@@ -155,7 +155,7 @@ function GalleryImagesManager() {
     </div>
   )
 }
-```
+\`\`\`
 
 ---
 

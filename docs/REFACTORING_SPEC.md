@@ -44,7 +44,7 @@
 
 ### Паттерн рефакторинга (проверенный)
 
-```
+\`\`\`
 components/admin/{module}/
 ├── {Module}Dialog.tsx      # Контейнер-оркестратор
 ├── types.ts                # Интерфейсы и типы
@@ -61,7 +61,7 @@ components/admin/{module}/
 └── utils/
     ├── helpers.ts
     └── index.ts
-```
+\`\`\`
 
 ---
 
@@ -78,48 +78,48 @@ components/admin/{module}/
 ### План разбиения Backend
 
 #### 2.1 `python/routers/admin/debug.py` → debug/
-```
+\`\`\`
 python/routers/admin/debug/
 ├── __init__.py           # Сборка роутеров
 ├── debug_gallery.py
 ├── debug_faces.py
 └── debug_db.py
-```
+\`\`\`
 
 #### 2.2 `python/routers/galleries.py` → galleries/
-```
+\`\`\`
 python/routers/galleries/
 ├── __init__.py
 ├── read.py               # GET list/detail
 ├── admin.py              # Admin operations
 └── assembler.py          # Сборка "full view"
-```
+\`\`\`
 
 #### 2.3 `python/services/training_service.py` → training/
-```
+\`\`\`
 python/services/training/
 ├── __init__.py
 ├── session.py            # Жизненный цикл сессии
 ├── pipeline.py           # Шаги пайплайна
 ├── storage.py            # Статус/история
 └── models.py             # Структуры
-```
+\`\`\`
 
 #### 2.4 `python/services/face_recognition.py` → recognition/
-```
+\`\`\`
 python/services/recognition/
 ├── __init__.py
 ├── detector.py           # ML: детект + эмбеддинг
 ├── processor.py          # Постпроцесс: thresholds, clustering
 └── persistence.py        # Запись результатов
-```
+\`\`\`
 
 #### 2.5 `python/routers/recognition/descriptors.py` → разделение
-```
+\`\`\`
 python/routers/recognition/
 ├── descriptors_endpoints.py  # Endpoints
 └── descriptors_service.py    # Логика
-```
+\`\`\`
 
 ---
 
@@ -159,7 +159,7 @@ python/routers/recognition/
 
 ## Команды
 
-```bash
+\`\`\`bash
 # Сборка frontend
 npm run build
 
@@ -171,7 +171,7 @@ npm run typecheck
 
 # Логи backend
 journalctl -u padel-api -f
-```
+\`\`\`
 
 ---
 
