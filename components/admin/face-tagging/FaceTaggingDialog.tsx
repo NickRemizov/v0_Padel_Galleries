@@ -86,8 +86,11 @@ export function FaceTaggingDialog({
         const response = await fetch("/api/admin/training/config")
         if (response.ok) {
           const result = await response.json()
+          console.log("[FaceTaggingDialog] Config response:", result)
           if (result.success && result.data) {
-            setAutoAvatarEnabled(result.data.auto_avatar_on_create === true)
+            const value = result.data.auto_avatar_on_create === true
+            console.log("[FaceTaggingDialog] auto_avatar_on_create:", result.data.auto_avatar_on_create, "-> setting:", value)
+            setAutoAvatarEnabled(value)
           }
         }
       } catch (error) {
