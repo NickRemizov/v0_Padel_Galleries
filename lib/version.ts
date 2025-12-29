@@ -8,4 +8,4 @@
 
 // Version is maintained in package.json
 // This file provides a clean export with 'v' prefix
-export const APP_VERSION = "v1.1.13"
+export const APP_VERSION = "v1.1.14"

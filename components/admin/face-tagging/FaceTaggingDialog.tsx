@@ -45,7 +45,7 @@ export function FaceTaggingDialog({
   const [detailedFaces, setDetailedFaces] = useState<DetailedFace[]>([])
   const [hasRedetectedData, setHasRedetectedData] = useState(false)
   const [personSelectOpen, setPersonSelectOpen] = useState(false)
-  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
+  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(false)
   const [isLandscape, setIsLandscape] = useState(false)
 
   // Refs
@@ -87,7 +87,7 @@ export function FaceTaggingDialog({
         if (response.ok) {
           const result = await response.json()
           if (result.success && result.data) {
-            setAutoAvatarEnabled(result.data.auto_avatar_on_create ?? true)
+            setAutoAvatarEnabled(result.data.auto_avatar_on_create === true)
           }
         }
       } catch (error) {
@@ -168,6 +168,13 @@ export function FaceTaggingDialog({
       autoAvatarEnabled && 
       !person.avatar_url && 
       (personWithStats.descriptor_count === 0 || personWithStats.descriptor_count === undefined)
+    
+    console.log("[FaceTaggingDialog] Avatar generation check:", {
+      autoAvatarEnabled,
+      hasAvatarUrl: !!person.avatar_url,
+      descriptorCount: personWithStats.descriptor_count,
+      shouldGenerateAvatar
+    })
     
     if (shouldGenerateAvatar) {
       const bbox = taggedFaces[selectedFaceIndex]?.face?.boundingBox as BoundingBox | undefined
