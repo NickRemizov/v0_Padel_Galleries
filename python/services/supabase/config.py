@@ -27,7 +27,8 @@ DEFAULT_CONFIG = {
         'min_detection_score': 0.70,
         'min_face_size': 80,
         'min_blur_score': 80
-    }
+    },
+    'auto_avatar_on_create': False  # v1.1.14: Default to false for safety
 }
 
 
@@ -76,6 +77,7 @@ class ConfigRepository:
                 'min_faces_per_person': DEFAULT_CONFIG['min_faces_per_person'],
                 'auto_retrain_threshold': DEFAULT_CONFIG['auto_retrain_threshold'],
                 'auto_retrain_percentage': DEFAULT_CONFIG['auto_retrain_percentage'],
+                'auto_avatar_on_create': DEFAULT_CONFIG['auto_avatar_on_create'],  # v1.1.14
             }
             
             # Merge with stored config
@@ -90,7 +92,8 @@ class ConfigRepository:
                 
                 # Update top-level fields
                 for key in ['context_weight', 'min_faces_per_person', 
-                           'auto_retrain_threshold', 'auto_retrain_percentage']:
+                           'auto_retrain_threshold', 'auto_retrain_percentage',
+                           'auto_avatar_on_create']:  # v1.1.14: Added
                     if key in stored:
                         result[key] = stored[key]
             

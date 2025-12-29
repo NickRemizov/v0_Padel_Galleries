@@ -44,7 +44,7 @@ export function ConfigurationCard({
               </p>
             </div>
             <Switch
-              checked={localConfig.auto_avatar_on_create ?? true}
+              checked={localConfig.auto_avatar_on_create === true}
               onCheckedChange={(checked) =>
                 setLocalConfig({
                   ...localConfig,
