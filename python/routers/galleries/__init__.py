@@ -4,6 +4,7 @@ CRUD and advanced operations for galleries
 Supports both UUID and slug identifiers for human-readable URLs
 
 v2.0: Modular structure (refactored from monolithic galleries.py)
+v2.1: Fixed router order - specific routes before parametric
 """
 
 from fastapi import APIRouter
@@ -33,10 +34,11 @@ from .filters import router as filters_router
 from .stats import router as stats_router
 
 # Include all sub-routers
-router.include_router(crud_router)
-router.include_router(photos_router)
-router.include_router(filters_router)
-router.include_router(stats_router)
+# ORDER MATTERS! Specific routes (/with-*) must come BEFORE parametric (/{identifier})
+router.include_router(filters_router)   # /with-unprocessed-photos, /with-unverified-faces
+router.include_router(photos_router)    # /{id}/*-photos, /batch-delete-images
+router.include_router(stats_router)     # /{id}/stats
+router.include_router(crud_router)      # /, /{identifier} - LAST (catches all)
 
 # Export for main.py
 __all__ = ["router", "set_services"]
