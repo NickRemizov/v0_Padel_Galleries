@@ -1,7 +1,7 @@
 # TODO
 
 **Последнее обновление:** 2025-12-29  
-**Версия приложения:** v1.1.10
+**Версия приложения:** v1.1.11
 
 ---
 
@@ -21,12 +21,11 @@
 | `face-training-manager.tsx` | 750 | 9 | 2025-12-29 |
 | `actions/people.ts` | 670 | 6 | 2025-12-29 |
 | `actions/faces.ts` | 520 | 5 | 2025-12-29 |
+| `image-lightbox.tsx` | 600 | 8 | 2025-12-29 |
 
-### 🔄 Очередь (Frontend) — Приоритет 1
+### ✅ Frontend рефакторинг завершён!
 
-| # | Файл | Строк | Приоритет | Статус |
-|---|------|-------|-----------|--------|
-| 1.6 | `image-lightbox.tsx` | 596 | LOW | ❌ TODO |
+Все крупные frontend файлы (>500 строк) разбиты на модули.
 
 ### 🔄 Очередь (Backend) — Приоритет 2
 
@@ -40,76 +39,45 @@
 
 ---
 
-## Следующая задача
-
-**Рекомендуется:** `image-lightbox.tsx` (596 строк)
-
-Компонент лайтбокса для просмотра изображений.
-
-**Детальное ТЗ:** см. `docs/REFACTORING_SPEC.md`
-
----
-
 ## Структура отрефакторенных модулей
 
 \`\`\`
 app/admin/actions/
 ├── integrity/                # 7 modules
-│   ├── index.ts
-│   ├── types.ts
-│   ├── constants.ts
-│   ├── utils.ts
-│   ├── check-integrity.ts
-│   ├── fix-integrity.ts
-│   └── face-actions.ts
-│
 ├── people/                   # 6 modules
-│   ├── index.ts
-│   ├── types.ts
-│   ├── photo-actions.ts
-│   ├── embedding-consistency.ts
-│   ├── consistency-audit.ts
-│   └── duplicate-people.ts
-│
 ├── faces/                    # 5 modules
-│   ├── index.ts
-│   ├── photo-processing.ts
-│   ├── face-crud.ts
-│   ├── face-batch.ts
-│   ├── gallery-images.ts
-│   └── recognition.ts
-│
 ├── integrity.ts              # Реэкспорт
 ├── people.ts                 # Реэкспорт
 └── faces.ts                  # Реэкспорт
 
-components/admin/
-├── database-integrity/       # 10 modules
-│   ├── DatabaseIntegrityChecker.tsx
+components/
+├── image-lightbox/           # 8 modules
+│   ├── ImageLightbox.tsx
 │   ├── types.ts
 │   ├── index.ts
 │   ├── hooks/
+│   │   ├── useLightboxState.ts
+│   │   └── useSwipeNavigation.ts
+│   ├── utils/
+│   │   └── formatters.ts
 │   └── components/
+│       ├── LightboxToolbar.tsx
+│       ├── NavigationButtons.tsx
+│       ├── PhotoCounter.tsx
+│       ├── PeopleLinks.tsx
+│       ├── FileInfoBar.tsx
+│       └── CommentsPanel.tsx
 │
-├── face-training/            # 9 modules
-│   ├── FaceTrainingManager.tsx
-│   ├── types.ts
-│   ├── constants.ts
-│   ├── index.ts
-│   ├── hooks/
-│   │   └── useFaceTraining.ts
-│   └── components/
-│       ├── ErrorBanners.tsx
-│       ├── TrainingControlCard.tsx
-│       └── ConfigurationCard.tsx
+├── image-lightbox.tsx        # Реэкспорт
 │
-├── database-integrity-checker.tsx  # Реэкспорт
-├── face-training-manager.tsx       # Реэкспорт
-├── gallery-images/           # 12 modules
-├── person-gallery/           # 12 modules
-├── face-tagging/             # 11 modules
-├── auto-recognition/         # 8 modules
-└── unknown-faces-review/     # 8 modules
+└── admin/
+    ├── database-integrity/   # 10 modules
+    ├── face-training/        # 9 modules
+    ├── gallery-images/       # 12 modules
+    ├── person-gallery/       # 12 modules
+    ├── face-tagging/         # 11 modules
+    ├── auto-recognition/     # 8 modules
+    └── unknown-faces-review/ # 8 modules
 \`\`\`
 
 ---
@@ -118,19 +86,15 @@ components/admin/
 
 ### ✅ Unicode escapes в UI
 - **Проблема:** Вместо кириллицы отображались `\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430`
-- **Причина:** Файлы сохранялись с escaped Unicode вместо UTF-8
 - **Решение:** Заменены все Unicode escapes на кириллицу
-- **Версия:** v1.1.6
 
 ### ✅ Build-time API calls
 - **Проблема:** Next.js 16 вызывал API во время сборки
-- **Решение:** `isBuildPhase()` в apiClient.ts возвращает пустые данные
-- **Версия:** v1.1.4
+- **Решение:** `isBuildPhase()` в apiClient.ts
 
-### ✅ Медленный UI в person-gallery
-- **Проблема:** При удалении фото UI тормозил
-- **Решение:** React.memo + useMemo + stable callbacks
-- **Версия:** v1.1.3
+### ✅ Training auth headers
+- **Проблема:** "Not authenticated" при сохранении настроек
+- **Решение:** Добавлены auth headers во все training routes
 
 ---
 
