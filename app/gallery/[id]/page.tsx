@@ -11,6 +11,7 @@ import type { Gallery } from "@/lib/types"
 
 // Force dynamic rendering - don't try to fetch during build
 export const dynamic = "force-dynamic"
+export const revalidate = 60
 
 export default async function GalleryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
