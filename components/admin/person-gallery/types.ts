@@ -6,6 +6,7 @@ export interface PersonGalleryDialogProps {
   personName: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  onPhotoCountChange?: (delta: number) => void
 }
 
 /**
