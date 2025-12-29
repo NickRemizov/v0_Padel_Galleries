@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("")
+@router.get("/")
 async def get_galleries(
     sort_by: str = Query("shoot_date", enum=["created_at", "shoot_date"]),
     with_relations: bool = Query(True)
@@ -126,7 +126,7 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
         raise DatabaseError(str(e), operation="get_gallery")
 
 
-@router.post("")
+@router.post("/")
 async def create_gallery(data: GalleryCreate):
     """Create a new gallery."""
     try:
