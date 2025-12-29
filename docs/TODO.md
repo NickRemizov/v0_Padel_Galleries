@@ -1,7 +1,7 @@
 # TODO
 
 **Последнее обновление:** 2025-12-29  
-**Версия приложения:** v1.1.6
+**Версия приложения:** v1.1.7
 
 ---
 
@@ -16,12 +16,12 @@
 | `face-tagging-dialog.tsx` | ~900 | 11 | 2025-12 |
 | `auto-recognition-dialog.tsx` | ~500 | 8 | 2025-12 |
 | `unknown-faces-review-dialog.tsx` | ~500 | 8 | 2025-12 |
+| `app/admin/actions/integrity.ts` | 926 | 7 | 2025-12-29 |
 
 ### 🔄 Очередь (Frontend) — Приоритет 1
 
 | # | Файл | Строк | Приоритет | Статус |
 |---|------|-------|-----------|--------|
-| 1.1 | `app/admin/actions/integrity.ts` | 926 | HIGH | ❌ TODO |
 | 1.2 | `database-integrity-checker.tsx` | 785 | HIGH | ❌ TODO |
 | 1.3 | `components/ui/sidebar.tsx` | 727 | MEDIUM | ❌ TODO |
 | 1.4 | `face-training-manager.tsx` | 726 | MEDIUM | ❌ TODO |
@@ -42,13 +42,13 @@
 
 ## Следующая задача
 
-**Рекомендуется начать с:** `integrity.ts` (926 строк) + `database-integrity-checker.tsx` (785 строк)
+**Рекомендуется:** `database-integrity-checker.tsx` (785 строк)
 
-Эти два файла связаны между собой (UI + actions) и их рефакторинг даст максимальный эффект.
+UI компонент для проверки целостности БД. Связан с уже отрефакторенным `integrity/` модулем.
 
 **План:**
-1. Разбить `integrity.ts` на checks по доменам
-2. Разбить `database-integrity-checker.tsx` на компоненты
+1. Разбить на хуки (useIntegrityRunner)
+2. Вынести компоненты (IntegrityRunControls, IntegritySummary, IntegrityResultsTable)
 3. Проверить интеграцию
 
 **Детальное ТЗ:** см. `docs/REFACTORING_SPEC.md`
@@ -58,28 +58,21 @@
 ## Структура отрефакторенных модулей
 
 ```
+app/admin/actions/
+├── integrity/                # 7 modules (926→850 lines)
+│   ├── index.ts              # Экспорты
+│   ├── types.ts              # IntegrityReport
+│   ├── constants.ts          # CONFIDENCE_100_THRESHOLD
+│   ├── utils.ts              # getConfidenceThreshold, loadAllPhotoFaces
+│   ├── check-integrity.ts    # checkDatabaseIntegrityFullAction
+│   ├── fix-integrity.ts      # fixIntegrityIssuesAction
+│   └── face-actions.ts       # confirmFaceAction, rejectFaceAction
+│
+├── integrity.ts              # Реэкспорт (обратная совместимость)
+
 components/admin/
 ├── gallery-images/           # 12 modules
-│   ├── types.ts
-│   ├── hooks/
-│   ├── components/
-│   └── utils/
-│
 ├── person-gallery/           # 12 modules
-│   ├── PersonGalleryDialog.tsx
-│   ├── types.ts
-│   ├── hooks/
-│   │   ├── usePersonGallery.ts
-│   │   ├── usePhotoSelection.ts
-│   │   └── usePhotoNavigation.ts
-│   ├── components/
-│   │   ├── PersonGalleryHeader.tsx
-│   │   ├── PersonGalleryPhotosList.tsx
-│   │   ├── PersonGalleryPhotoCard.tsx [memo]
-│   │   ├── PersonGalleryFooter.tsx
-│   │   └── dialogs/
-│   └── utils/
-│
 ├── face-tagging/             # 11 modules
 ├── auto-recognition/         # 8 modules
 └── unknown-faces-review/     # 8 modules
