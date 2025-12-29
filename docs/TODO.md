@@ -1,7 +1,7 @@
 # TODO
 
 **Последнее обновление:** 2025-12-29  
-**Версия приложения:** v1.1.9
+**Версия приложения:** v1.1.10
 
 ---
 
@@ -19,12 +19,13 @@
 | `app/admin/actions/integrity.ts` | 926 | 7 | 2025-12-29 |
 | `database-integrity-checker.tsx` | 785 | 10 | 2025-12-29 |
 | `face-training-manager.tsx` | 750 | 9 | 2025-12-29 |
+| `actions/people.ts` | 670 | 6 | 2025-12-29 |
+| `actions/faces.ts` | 520 | 5 | 2025-12-29 |
 
 ### 🔄 Очередь (Frontend) — Приоритет 1
 
 | # | Файл | Строк | Приоритет | Статус |
 |---|------|-------|-----------|--------|
-| 1.5 | `actions/people.ts` + `faces.ts` | 671+619 | MEDIUM | ❌ TODO |
 | 1.6 | `image-lightbox.tsx` | 596 | LOW | ❌ TODO |
 
 ### 🔄 Очередь (Backend) — Приоритет 2
@@ -41,9 +42,9 @@
 
 ## Следующая задача
 
-**Рекомендуется:** `actions/people.ts` + `faces.ts` (671+619 строк)
+**Рекомендуется:** `image-lightbox.tsx` (596 строк)
 
-Server actions для работы с игроками и лицами.
+Компонент лайтбокса для просмотра изображений.
 
 **Детальное ТЗ:** см. `docs/REFACTORING_SPEC.md`
 
@@ -62,7 +63,25 @@ app/admin/actions/
 │   ├── fix-integrity.ts
 │   └── face-actions.ts
 │
-└── integrity.ts              # Реэкспорт
+├── people/                   # 6 modules
+│   ├── index.ts
+│   ├── types.ts
+│   ├── photo-actions.ts
+│   ├── embedding-consistency.ts
+│   ├── consistency-audit.ts
+│   └── duplicate-people.ts
+│
+├── faces/                    # 5 modules
+│   ├── index.ts
+│   ├── photo-processing.ts
+│   ├── face-crud.ts
+│   ├── face-batch.ts
+│   ├── gallery-images.ts
+│   └── recognition.ts
+│
+├── integrity.ts              # Реэкспорт
+├── people.ts                 # Реэкспорт
+└── faces.ts                  # Реэкспорт
 
 components/admin/
 ├── database-integrity/       # 10 modules
