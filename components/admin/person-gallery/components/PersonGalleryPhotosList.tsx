@@ -35,7 +35,7 @@ export function PersonGalleryPhotosList({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <p className="text-muted-foreground">\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...</p>
+        <p className="text-muted-foreground">Загрузка...</p>
       </div>
     )
   }
@@ -43,7 +43,7 @@ export function PersonGalleryPhotosList({
   if (photos.length === 0) {
     return (
       <div className="flex items-center justify-center py-8">
-        <p className="text-muted-foreground">\u041d\u0435\u0442 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u043d\u044b\u0445 \u0444\u043e\u0442\u043e\u0433\u0440\u0430\u0444\u0438\u0439</p>
+        <p className="text-muted-foreground">Нет подтвержденных фотографий</p>
       </div>
     )
   }

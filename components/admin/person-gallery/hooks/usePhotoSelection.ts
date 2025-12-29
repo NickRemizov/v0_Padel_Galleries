@@ -43,18 +43,18 @@ export function usePhotoSelection({ photos, unverifiedCount }: UsePhotoSelection
   // Get verify button state
   const getVerifyButtonState = useCallback((): VerifyButtonState => {
     if (unverifiedCount === 0) {
-      return { disabled: true, text: "\u0412\u0441\u0435 \u0444\u043e\u0442\u043e \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u044b", count: 0 }
+      return { disabled: true, text: "Все фото подтверждены", count: 0 }
     }
     
     if (selectedPhotos.size > 0) {
       if (selectedUnverifiedCount > 0) {
-        return { disabled: false, text: `\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c ${selectedUnverifiedCount} \u0444\u043e\u0442\u043e`, count: selectedUnverifiedCount }
+        return { disabled: false, text: `Подтвердить ${selectedUnverifiedCount} фото`, count: selectedUnverifiedCount }
       } else {
-        return { disabled: true, text: "\u0412\u0441\u0435 \u0444\u043e\u0442\u043e \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u044b", count: 0 }
+        return { disabled: true, text: "Все фото подтверждены", count: 0 }
       }
     }
     
-    return { disabled: false, text: `\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u0432\u0441\u0435 \u0444\u043e\u0442\u043e (${unverifiedCount})`, count: unverifiedCount }
+    return { disabled: false, text: `Подтвердить все фото (${unverifiedCount})`, count: unverifiedCount }
   }, [unverifiedCount, selectedPhotos.size, selectedUnverifiedCount])
 
   // Get photos to verify (selected unverified or all unverified)
