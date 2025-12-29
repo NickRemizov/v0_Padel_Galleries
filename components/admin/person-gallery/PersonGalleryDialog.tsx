@@ -17,7 +17,7 @@ import {
   SingleDeleteDialog,
 } from "./components"
 
-export function PersonGalleryDialog({ personId, personName, open, onOpenChange }: PersonGalleryDialogProps) {
+export function PersonGalleryDialog({ personId, personName, open, onOpenChange, onPhotoCountChange }: PersonGalleryDialogProps) {
   const router = useRouter()
 
   // Data and operations
@@ -103,16 +103,20 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange }
     } else if (confirmDialog.action === "delete") {
       const photosToDelete = getSelectedPhotosArray()
       await batchDeletePhotos(photosToDelete)
+      // Уведомляем родителя об изменении количества фото
+      onPhotoCountChange?.(-photosToDelete.length)
     }
     setConfirmDialog({ open: false, action: null, count: 0 })
     clearSelection()
-  }, [confirmDialog.action, getPhotosToVerify, getSelectedPhotosArray, batchVerifyPhotos, batchDeletePhotos, clearSelection])
+  }, [confirmDialog.action, getPhotosToVerify, getSelectedPhotosArray, batchVerifyPhotos, batchDeletePhotos, clearSelection, onPhotoCountChange])
 
   const confirmSingleDelete = useCallback(async () => {
     if (!singleDeleteDialog.photoId) return
     await deletePhoto(singleDeleteDialog.photoId)
+    // Уведомляем родителя об удалении одного фото
+    onPhotoCountChange?.(-1)
     setSingleDeleteDialog({ open: false, photoId: null, filename: "", galleryName: "" })
-  }, [singleDeleteDialog.photoId, deletePhoto])
+  }, [singleDeleteDialog.photoId, deletePhoto, onPhotoCountChange])
 
   const handleOpenAvatarSelector = useCallback((photoId: string) => {
     setSelectedPhotoForAvatar(photoId)
