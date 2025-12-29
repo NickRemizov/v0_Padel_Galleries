@@ -1,0 +1,1 @@
+export { useFaceTraining } from "./useFaceTraining"
