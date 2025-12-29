@@ -8,7 +8,7 @@
 
 import { type NextRequest, NextResponse } from "next/server"
 import { apiFetch } from "@/lib/apiClient"
-import { requireAdmin } from "@/lib/auth/serverGuard"
+import { requireAdmin, getAuthHeaders } from "@/lib/auth/serverGuard"
 
 export async function GET(
   request: NextRequest, 
@@ -19,8 +19,11 @@ export async function GET(
 
   try {
     const { sessionId } = await params
+    const authHeaders = await getAuthHeaders()
 
-    const result = await apiFetch(`/api/v2/train/status/${sessionId}`)
+    const result = await apiFetch(`/api/v2/train/status/${sessionId}`, {
+      headers: authHeaders,
+    })
 
     // Pass through unified response format
     return NextResponse.json(result, {
