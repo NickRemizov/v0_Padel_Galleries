@@ -6,6 +6,7 @@ Migrated from frontend direct Supabase access to centralized FastAPI.
 v1.0: Initial modular structure (refactored from monolithic admin.py)
 v1.1: Added face_service_instance for debug endpoints
 v1.2: Migrated to SupabaseService (removed SupabaseDatabase)
+v1.3: Modularized debug.py into debug/ package
 """
 
 from fastapi import APIRouter
@@ -34,7 +35,7 @@ router = APIRouter()
 
 # Import sub-routers AFTER globals are defined
 from .statistics import router as statistics_router
-from .debug import router as debug_router
+from .debug import router as debug_router  # Now imports from debug/ package
 from .check import router as check_router
 
 # Include all sub-routers
