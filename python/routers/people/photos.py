@@ -3,6 +3,7 @@ People API - Photo Operations
 Endpoints for person's photos: list, verify, unlink
 
 v2.0: Added batch-verify-on-photos endpoint for bulk verification
+v2.1: Added index rebuild after unlink to invalidate FAISS cache
 """
 
 from fastapi import APIRouter, Query
@@ -14,7 +15,7 @@ from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
 
-from .helpers import get_supabase_db, convert_bbox_to_array
+from .helpers import get_supabase_db, convert_bbox_to_array, get_face_service
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -237,7 +238,12 @@ async def batch_verify_person_on_photos(identifier: UUID, request: BatchVerifyRe
 
 @router.post("/{identifier:uuid}/unlink-from-photo")
 async def unlink_person_from_photo(identifier: UUID, photo_id: str = Query(...)):
-    """Отвязывает человека от фото."""
+    """
+    Отвязывает человека от фото.
+    
+    v2.1: После unlink перестраивает HNSW индекс чтобы убрать
+    дескриптор из памяти и предотвратить ложное распознавание.
+    """
     supabase_db = get_supabase_db()
     
     try:
@@ -269,6 +275,16 @@ async def unlink_person_from_photo(identifier: UUID, photo_id: str = Query(...))
             .execute()
         
         logger.info(f"Unlinked {faces_count} faces")
+        
+        # Rebuild HNSW index to remove unlinked descriptor from memory
+        if faces_count > 0:
+            face_service = get_face_service()
+            rebuild_result = await face_service.rebuild_players_index()
+            if rebuild_result.get("success"):
+                logger.info(f"Index rebuilt after unlink: {rebuild_result.get('new_descriptor_count')} descriptors")
+            else:
+                logger.warning(f"Index rebuild failed: {rebuild_result.get('error')}")
+        
         return ApiResponse.ok({"unlinked_count": faces_count})
     except NotFoundError:
         raise
