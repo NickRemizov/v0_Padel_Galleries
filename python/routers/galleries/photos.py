@@ -15,8 +15,7 @@ from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
 
 from .models import BatchDeleteImagesRequest
-from .helpers import _get_gallery_id
-from . import supabase_db_instance, face_service_instance
+from .helpers import get_supabase_db, get_face_service, _get_gallery_id
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -25,10 +24,12 @@ router = APIRouter()
 @router.get("/{identifier}/unprocessed-photos")
 async def get_gallery_unprocessed_photos(identifier: str):
     """Get unprocessed photos from a gallery for recognition."""
+    supabase_db = get_supabase_db()
+    
     try:
-        gallery_id = _get_gallery_id(supabase_db_instance.client, identifier)
+        gallery_id = _get_gallery_id(identifier)
         
-        result = supabase_db_instance.client.table("gallery_images").select(
+        result = supabase_db.client.table("gallery_images").select(
             "id, image_url, original_filename, slug"
         ).eq("gallery_id", gallery_id).or_(
             "has_been_processed.is.null,has_been_processed.eq.false"
@@ -47,10 +48,12 @@ async def get_gallery_unprocessed_photos(identifier: str):
 @router.get("/{identifier}/unverified-photos")
 async def get_gallery_unverified_photos(identifier: str):
     """Get photos from a gallery that are NOT fully verified."""
+    supabase_db = get_supabase_db()
+    
     try:
-        gallery_id = _get_gallery_id(supabase_db_instance.client, identifier)
+        gallery_id = _get_gallery_id(identifier)
         
-        photos_result = supabase_db_instance.client.table("gallery_images").select(
+        photos_result = supabase_db.client.table("gallery_images").select(
             "id, image_url, original_filename, slug"
         ).eq("gallery_id", gallery_id).order("original_filename").execute()
         
@@ -60,7 +63,7 @@ async def get_gallery_unverified_photos(identifier: str):
         
         photo_ids = [p["id"] for p in photos]
         
-        all_faces_result = supabase_db_instance.client.table("photo_faces").select(
+        all_faces_result = supabase_db.client.table("photo_faces").select(
             "photo_id, recognition_confidence"
         ).in_("photo_id", photo_ids).execute()
         
@@ -98,6 +101,9 @@ async def get_gallery_unrecognized_photos(identifier: str):
 @router.post("/batch-delete-images")
 async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
     """Batch delete multiple images from a gallery."""
+    supabase_db = get_supabase_db()
+    face_service = get_face_service()
+    
     try:
         image_ids = data.image_ids
         gallery_id = data.gallery_id
@@ -111,15 +117,15 @@ async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
         
         logger.info(f"Batch deleting {len(image_ids)} images from gallery {gallery_id}")
         
-        verified_check = supabase_db_instance.client.table("photo_faces").select(
+        verified_check = supabase_db.client.table("photo_faces").select(
             "id", count="exact"
         ).in_("photo_id", image_ids).eq("verified", True).execute()
         
         had_verified_faces = (verified_check.count or 0) > 0
         
-        supabase_db_instance.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
+        supabase_db.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
         
-        delete_result = supabase_db_instance.client.table("gallery_images").delete().in_(
+        delete_result = supabase_db.client.table("gallery_images").delete().in_(
             "id", image_ids
         ).eq("gallery_id", gallery_id).execute()
         
@@ -127,9 +133,9 @@ async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
         logger.info(f"Deleted {deleted_count} images from gallery {gallery_id}")
         
         index_rebuilt = False
-        if had_verified_faces and face_service_instance:
+        if had_verified_faces and face_service:
             try:
-                await face_service_instance.rebuild_players_index()
+                await face_service.rebuild_players_index()
                 index_rebuilt = True
                 logger.info("Rebuilt players index after batch delete")
             except Exception as e:

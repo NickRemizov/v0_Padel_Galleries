@@ -17,8 +17,7 @@ from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
 
 from .models import GalleryCreate, GalleryUpdate
-from .helpers import _resolve_gallery, _get_gallery_id
-from . import supabase_db_instance, face_service_instance
+from .helpers import get_supabase_db, get_face_service, _resolve_gallery, _get_gallery_id
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -33,12 +32,14 @@ async def get_galleries(
     
     Returns galleries with photo_count field.
     """
+    supabase_db = get_supabase_db()
+    
     try:
         select = "*"
         if with_relations:
             select = "*, photographers(id, name), locations(id, name), organizers(id, name), gallery_images(id)"
         
-        result = supabase_db_instance.client.table("galleries").select(select).order(sort_by, desc=True).execute()
+        result = supabase_db.client.table("galleries").select(select).order(sort_by, desc=True).execute()
         galleries = result.data or []
         
         for gallery in galleries:
@@ -59,9 +60,10 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
         identifier: Gallery ID or slug
         full: If True, include gallery_images with people (for public gallery page)
     """
+    supabase_db = get_supabase_db()
+    
     try:
         gallery = _resolve_gallery(
-            supabase_db_instance.client,
             identifier,
             select="*, photographers(id, name), locations(id, name), organizers(id, name)"
         )
@@ -73,7 +75,7 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
         
         if full:
             # Full mode: include images with people for public gallery page
-            images_result = supabase_db_instance.client.table("gallery_images").select(
+            images_result = supabase_db.client.table("gallery_images").select(
                 "id, gallery_id, image_url, original_url, original_filename, file_size, width, height, display_order, download_count, created_at, slug"
             ).eq("gallery_id", gallery_id).order("original_filename").execute()
             
@@ -83,7 +85,7 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
                 image_ids = [img["id"] for img in images]
                 
                 # Get faces with person info, filter by show_photos_in_galleries
-                faces_result = supabase_db_instance.client.table("photo_faces").select(
+                faces_result = supabase_db.client.table("photo_faces").select(
                     "photo_id, person_id, people(id, real_name, show_photos_in_galleries)"
                 ).in_("photo_id", image_ids).not_.is_("person_id", "null").execute()
                 
@@ -113,7 +115,7 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
             gallery["photo_count"] = len(images)
         else:
             # Simple mode: just count
-            count_result = supabase_db_instance.client.table("gallery_images").select(
+            count_result = supabase_db.client.table("gallery_images").select(
                 "id", count="exact"
             ).eq("gallery_id", gallery_id).execute()
             gallery["photo_count"] = count_result.count or 0
@@ -129,9 +131,11 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
 @router.post("/")
 async def create_gallery(data: GalleryCreate):
     """Create a new gallery."""
+    supabase_db = get_supabase_db()
+    
     try:
         insert_data = data.model_dump(exclude_none=True)
-        result = supabase_db_instance.client.table("galleries").insert(insert_data).execute()
+        result = supabase_db.client.table("galleries").insert(insert_data).execute()
         if result.data:
             logger.info(f"Created gallery: {data.title}")
             return ApiResponse.ok(result.data[0])
@@ -144,14 +148,16 @@ async def create_gallery(data: GalleryCreate):
 @router.put("/{identifier}")
 async def update_gallery(identifier: str, data: GalleryUpdate):
     """Update a gallery by ID or slug."""
+    supabase_db = get_supabase_db()
+    
     try:
-        gallery_id = _get_gallery_id(supabase_db_instance.client, identifier)
+        gallery_id = _get_gallery_id(identifier)
         
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
             raise ValidationError("No fields to update")
         
-        result = supabase_db_instance.client.table("galleries").update(update_data).eq("id", gallery_id).execute()
+        result = supabase_db.client.table("galleries").update(update_data).eq("id", gallery_id).execute()
         if result.data:
             logger.info(f"Updated gallery {gallery_id}")
             return ApiResponse.ok(result.data[0])
@@ -166,10 +172,12 @@ async def update_gallery(identifier: str, data: GalleryUpdate):
 @router.patch("/{identifier}/sort-order")
 async def update_sort_order(identifier: str, sort_order: str = Query(...)):
     """Update gallery sort order."""
+    supabase_db = get_supabase_db()
+    
     try:
-        gallery_id = _get_gallery_id(supabase_db_instance.client, identifier)
+        gallery_id = _get_gallery_id(identifier)
         
-        supabase_db_instance.client.table("galleries").update({"sort_order": sort_order}).eq("id", gallery_id).execute()
+        supabase_db.client.table("galleries").update({"sort_order": sort_order}).eq("id", gallery_id).execute()
         logger.info(f"Updated sort order for gallery {gallery_id}")
         return ApiResponse.ok({"updated": True})
     except NotFoundError:
@@ -182,25 +190,28 @@ async def update_sort_order(identifier: str, sort_order: str = Query(...)):
 @router.delete("/{identifier}")
 async def delete_gallery(identifier: str, delete_images: bool = Query(True)):
     """Delete a gallery and optionally all its images."""
+    supabase_db = get_supabase_db()
+    face_service = get_face_service()
+    
     try:
-        gallery_id = _get_gallery_id(supabase_db_instance.client, identifier)
+        gallery_id = _get_gallery_id(identifier)
         
         if delete_images:
-            images = supabase_db_instance.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
+            images = supabase_db.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
             image_ids = [img["id"] for img in (images.data or [])]
             
             if image_ids:
-                supabase_db_instance.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
-                supabase_db_instance.client.table("gallery_images").delete().eq("gallery_id", gallery_id).execute()
+                supabase_db.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
+                supabase_db.client.table("gallery_images").delete().eq("gallery_id", gallery_id).execute()
                 logger.info(f"Deleted {len(image_ids)} images from gallery {gallery_id}")
         
-        supabase_db_instance.client.table("galleries").delete().eq("id", gallery_id).execute()
+        supabase_db.client.table("galleries").delete().eq("id", gallery_id).execute()
         logger.info(f"Deleted gallery {gallery_id}")
         
         index_rebuilt = False
-        if face_service_instance:
+        if face_service:
             try:
-                await face_service_instance.rebuild_players_index()
+                await face_service.rebuild_players_index()
                 index_rebuilt = True
                 logger.info(f"Rebuilt players index after deleting gallery {gallery_id}")
             except Exception as e:

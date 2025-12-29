@@ -13,7 +13,7 @@ from core.responses import ApiResponse
 from core.exceptions import DatabaseError
 from core.logging import get_logger
 
-from . import supabase_db_instance
+from .helpers import get_supabase_db
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -22,8 +22,10 @@ router = APIRouter()
 @router.get("/with-unprocessed-photos")
 async def get_galleries_with_unprocessed_photos():
     """Get galleries that have unprocessed photos (has_been_processed = false or null)."""
+    supabase_db = get_supabase_db()
+    
     try:
-        galleries_result = supabase_db_instance.client.table("galleries").select(
+        galleries_result = supabase_db.client.table("galleries").select(
             "id, title, shoot_date, slug"
         ).order("shoot_date", desc=True).execute()
         
@@ -33,12 +35,12 @@ async def get_galleries_with_unprocessed_photos():
         
         result = []
         for gallery in galleries:
-            total_result = supabase_db_instance.client.table("gallery_images").select(
+            total_result = supabase_db.client.table("gallery_images").select(
                 "id", count="exact"
             ).eq("gallery_id", gallery["id"]).execute()
             total_count = total_result.count or 0
             
-            unprocessed_result = supabase_db_instance.client.table("gallery_images").select(
+            unprocessed_result = supabase_db.client.table("gallery_images").select(
                 "id", count="exact"
             ).eq("gallery_id", gallery["id"]).or_(
                 "has_been_processed.is.null,has_been_processed.eq.false"
@@ -65,8 +67,10 @@ async def get_galleries_with_unprocessed_photos():
 @router.get("/with-unverified-faces")
 async def get_galleries_with_unverified_faces():
     """Get galleries that have photos NOT fully verified."""
+    supabase_db = get_supabase_db()
+    
     try:
-        galleries_result = supabase_db_instance.client.table("galleries").select(
+        galleries_result = supabase_db.client.table("galleries").select(
             "id, title, shoot_date, slug"
         ).order("shoot_date", desc=True).execute()
         
@@ -76,7 +80,7 @@ async def get_galleries_with_unverified_faces():
         
         result = []
         for gallery in galleries:
-            photos_result = supabase_db_instance.client.table("gallery_images").select(
+            photos_result = supabase_db.client.table("gallery_images").select(
                 "id"
             ).eq("gallery_id", gallery["id"]).execute()
             
@@ -87,7 +91,7 @@ async def get_galleries_with_unverified_faces():
             total_count = len(photos)
             photo_ids = [p["id"] for p in photos]
             
-            all_faces_result = supabase_db_instance.client.table("photo_faces").select(
+            all_faces_result = supabase_db.client.table("photo_faces").select(
                 "photo_id, recognition_confidence"
             ).in_("photo_id", photo_ids).execute()
             

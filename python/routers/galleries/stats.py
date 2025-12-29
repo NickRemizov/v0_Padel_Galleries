@@ -11,8 +11,7 @@ from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
 
-from .helpers import _get_gallery_id
-from . import supabase_db_instance
+from .helpers import get_supabase_db, _get_gallery_id
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -27,11 +26,13 @@ async def get_gallery_stats(identifier: str):
     - has_been_processed=true AND no faces detected, OR
     - has_been_processed=true AND all faces have verified=true
     """
+    supabase_db = get_supabase_db()
+    
     try:
-        gallery_id = _get_gallery_id(supabase_db_instance.client, identifier)
+        gallery_id = _get_gallery_id(identifier)
         
         # Fetch images with has_been_processed status
-        images_result = supabase_db_instance.client.table("gallery_images").select(
+        images_result = supabase_db.client.table("gallery_images").select(
             "id, has_been_processed"
         ).eq("gallery_id", gallery_id).execute()
         images = images_result.data or []
@@ -46,7 +47,7 @@ async def get_gallery_stats(identifier: str):
         image_ids = [img["id"] for img in images]
         processed_status = {img["id"]: img.get("has_been_processed", False) for img in images}
         
-        faces_result = supabase_db_instance.client.table("photo_faces").select(
+        faces_result = supabase_db.client.table("photo_faces").select(
             "photo_id, verified"
         ).in_("photo_id", image_ids).execute()
         
