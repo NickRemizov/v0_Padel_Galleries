@@ -21,8 +21,9 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
   const [redetecting, setRedetecting] = useState(false)
   const [loadingFaces, setLoadingFaces] = useState(false)
 
+  // v1.1.13: Load with stats to get descriptor_count for avatar generation check
   const loadPeople = useCallback(async () => {
-    const result = await getPeopleAction()
+    const result = await getPeopleAction(true)
     if (result.success && result.data) {
       setPeople(result.data)
     }
@@ -170,7 +171,7 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
       const result = await batchVerifyFacesAction(targetImageId, keptFaces)
       
       if (!result.success) {
-        alert(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u044f: ${result.error}`)
+        alert(`Ошибка сохранения: ${result.error}`)
         setSaving(false)
         return null
       }
@@ -194,7 +195,7 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
       return updatedFaces
     } catch (error) {
       console.error(`[${APP_VERSION}] Error saving:`, error)
-      alert(`\u041e\u0448\u0438\u0431\u043a\u0430: ${error instanceof Error ? error.message : String(error)}`)
+      alert(`Ошибка: ${error instanceof Error ? error.message : String(error)}`)
       setSaving(false)
       return null
     }

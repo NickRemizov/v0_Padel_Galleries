@@ -4,8 +4,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Loader2 } from "lucide-react"
 import type { TaggedFace, Person } from "@/lib/types"
-import type { BoundingBox } from "@/lib/avatar-utils"
+import { generateAvatarBlob, uploadAvatarBlob, type BoundingBox } from "@/lib/avatar-utils"
 import { APP_VERSION } from "@/lib/version"
+import { updatePersonAvatarAction } from "@/app/admin/actions"
 
 import { AddPersonDialog } from "../add-person-dialog"
 import { FaceRecognitionDetailsDialog, type DetailedFace } from "../face-recognition-details-dialog"
@@ -142,11 +143,13 @@ export function FaceTaggingDialog({
     setSelectedFaceIndex(index === selectedFaceIndex ? null : index)
   }, [selectedFaceIndex])
 
-  const handlePersonSelect = useCallback((personId: string) => {
+  // v1.1.13: Auto-generate avatar when assigning person without avatar and without photos
+  const handlePersonSelect = useCallback(async (personId: string) => {
     if (selectedFaceIndex === null) return
     const person = people.find((p) => p.id === personId)
     if (!person) return
 
+    // Update UI immediately
     const updated = [...taggedFaces]
     updated[selectedFaceIndex] = {
       ...updated[selectedFaceIndex],
@@ -157,7 +160,33 @@ export function FaceTaggingDialog({
     setTaggedFaces(updated)
     drawFaces(updated, selectedFaceIndex)
     setPersonSelectOpen(false)
-  }, [selectedFaceIndex, people, taggedFaces, drawFaces])
+
+    // v1.1.13: Auto-generate avatar for new person without avatar and without linked faces
+    // descriptor_count comes from backend with_stats=true (see useFaceAPI.loadPeople)
+    const personWithStats = person as Person & { descriptor_count?: number }
+    const shouldGenerateAvatar = 
+      autoAvatarEnabled && 
+      !person.avatar_url && 
+      (personWithStats.descriptor_count === 0 || personWithStats.descriptor_count === undefined)
+    
+    if (shouldGenerateAvatar) {
+      const bbox = taggedFaces[selectedFaceIndex]?.face?.boundingBox as BoundingBox | undefined
+      if (bbox) {
+        try {
+          console.log("[FaceTaggingDialog] Auto-generating avatar for existing person:", person.real_name)
+          const avatarBlob = await generateAvatarBlob(imageUrl, bbox)
+          const avatarUrl = await uploadAvatarBlob(avatarBlob, person.id)
+          await updatePersonAvatarAction(person.id, avatarUrl)
+          console.log("[FaceTaggingDialog] Avatar generated and assigned:", avatarUrl)
+          // Reload people to update avatar_url in UI
+          loadPeople()
+        } catch (error) {
+          console.error("[FaceTaggingDialog] Error generating avatar:", error)
+          // Don't fail the assignment - just log the error
+        }
+      }
+    }
+  }, [selectedFaceIndex, people, taggedFaces, drawFaces, autoAvatarEnabled, imageUrl, loadPeople])
 
   const handleRemoveFace = useCallback((index: number) => {
     const updated = taggedFaces.filter((_, i) => i !== index)
