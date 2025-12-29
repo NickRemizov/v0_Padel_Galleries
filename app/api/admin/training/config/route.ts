@@ -8,14 +8,18 @@
 
 import { type NextRequest, NextResponse } from "next/server"
 import { apiFetch } from "@/lib/apiClient"
-import { requireAdmin } from "@/lib/auth/serverGuard"
+import { requireAdmin, getAuthHeaders } from "@/lib/auth/serverGuard"
 
 export async function GET() {
   const { error: authError } = await requireAdmin()
   if (authError) return authError
 
   try {
-    const result = await apiFetch("/api/v2/config", { timeout: 5000 })
+    const authHeaders = await getAuthHeaders()
+    const result = await apiFetch("/api/v2/config", { 
+      timeout: 5000,
+      headers: authHeaders,
+    })
 
     // Pass through unified response format
     return NextResponse.json(result, {
@@ -40,11 +44,13 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json()
+    const authHeaders = await getAuthHeaders()
 
     const result = await apiFetch("/api/v2/config", {
       method: "PUT",
       body: JSON.stringify(body),
       timeout: 5000,
+      headers: authHeaders,
     })
 
     // Pass through unified response format
