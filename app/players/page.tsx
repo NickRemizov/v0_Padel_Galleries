@@ -5,6 +5,8 @@ import Link from "next/link"
 import type { Person } from "@/lib/types"
 import { apiFetch } from "@/lib/apiClient"
 
+// Force dynamic rendering - don't try to fetch during build
+export const dynamic = "force-dynamic"
 export const revalidate = 300
 
 export default async function PlayersPage() {

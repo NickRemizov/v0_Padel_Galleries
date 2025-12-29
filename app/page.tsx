@@ -10,6 +10,8 @@ import { AuthButton } from "@/components/auth-button"
 import { MainNav } from "@/components/main-nav"
 import type { Gallery } from "@/lib/types"
 
+// Force dynamic rendering - don't try to fetch during build
+export const dynamic = "force-dynamic"
 export const revalidate = 60
 
 export default async function HomePage() {

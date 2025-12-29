@@ -293,9 +293,9 @@ export function FaceTaggingDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-[90vw] h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>\u0422\u0435\u0433\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u043b\u0438\u0446 {APP_VERSION}</DialogTitle>
+          <DialogTitle>Тегирование лиц {APP_VERSION}</DialogTitle>
           <DialogDescription title={fullFileName}>
-            \u0424\u0430\u0439\u043b: {displayFileName} | \u041e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d\u043e \u043b\u0438\u0446: {taggedFaces.length}. \u041a\u043b\u0438\u043a\u043d\u0438\u0442\u0435 \u043d\u0430 \u043b\u0438\u0446\u043e, \u0447\u0442\u043e\u0431\u044b \u043d\u0430\u0437\u043d\u0430\u0447\u0438\u0442\u044c \u0447\u0435\u043b\u043e\u0432\u0435\u043a\u0430.
+            Файл: {displayFileName} | Обнаружено лиц: {taggedFaces.length}. Кликните на лицо, чтобы назначить человека.
           </DialogDescription>
           <FaceTaggingToolbar
             hasPrevious={hasPrevious}
@@ -313,7 +313,7 @@ export function FaceTaggingDialog({
           {detecting ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="ml-2">\u041e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d\u0438\u0435 \u043b\u0438\u0446...</span>
+              <span className="ml-2">Обнаружение лиц...</span>
             </div>
           ) : (
             <>

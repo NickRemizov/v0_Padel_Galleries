@@ -44,7 +44,7 @@ export function FaceTaggingToolbar({
             </span>
           </TooltipTrigger>
           <TooltipContent>
-            <p>\u041f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0435\u0435 \u0444\u043e\u0442\u043e</p>
+            <p>Предыдущее фото</p>
           </TooltipContent>
         </Tooltip>
 
@@ -62,7 +62,7 @@ export function FaceTaggingToolbar({
             </span>
           </TooltipTrigger>
           <TooltipContent>
-            <p>\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0431\u0435\u0437 \u0437\u0430\u043a\u0440\u044b\u0442\u0438\u044f \u043e\u043a\u043d\u0430</p>
+            <p>Сохранить без закрытия окна</p>
           </TooltipContent>
         </Tooltip>
 
@@ -81,7 +81,7 @@ export function FaceTaggingToolbar({
             </span>
           </TooltipTrigger>
           <TooltipContent>
-            <p>\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0435 \u0444\u043e\u0442\u043e</p>
+            <p>Следующее фото</p>
           </TooltipContent>
         </Tooltip>
 
@@ -97,7 +97,7 @@ export function FaceTaggingToolbar({
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>\u0412\u043f\u0438\u0441\u0430\u0442\u044c \u0432 \u043e\u043a\u043d\u043e</p>
+            <p>Вписать в окно</p>
           </TooltipContent>
         </Tooltip>
 
@@ -113,7 +113,7 @@ export function FaceTaggingToolbar({
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>\u041c\u0430\u0441\u0448\u0442\u0430\u0431 \u043f\u043e \u0434\u043b\u0438\u043d\u043d\u043e\u0439 \u0441\u0442\u043e\u0440\u043e\u043d\u0435</p>
+            <p>Масштаб по длинной стороне</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

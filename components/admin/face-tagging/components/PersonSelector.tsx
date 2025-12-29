@@ -42,15 +42,15 @@ export function PersonSelector({
             aria-expanded={open}
             className="w-[250px] justify-between"
           >
-            {currentPerson?.real_name || selectedFace.personName || "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0447\u0435\u043b\u043e\u0432\u0435\u043a\u0430..."}
+            {currentPerson?.real_name || selectedFace.personName || "Выберите человека..."}
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[300px] p-0">
           <Command>
-            <CommandInput placeholder="\u041f\u043e\u0438\u0441\u043a \u0438\u0433\u0440\u043e\u043a\u0430..." />
+            <CommandInput placeholder="Поиск игрока..." />
             <CommandList>
-              <CommandEmpty>\u0418\u0433\u0440\u043e\u043a \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d</CommandEmpty>
+              <CommandEmpty>Игрок не найден</CommandEmpty>
               <CommandGroup className="max-h-[300px] overflow-y-auto">
                 {people.map((person) => (
                   <CommandItem
@@ -81,7 +81,7 @@ export function PersonSelector({
               </div>
             </TooltipTrigger>
             <TooltipContent>
-              <p>\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u043e</p>
+              <p>Подтверждено</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
