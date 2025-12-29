@@ -33,8 +33,26 @@ interface ApiFetchOptions extends RequestInit {
   throwOnError?: boolean
 }
 
+/**
+ * Check if we're in build phase (static generation)
+ * During build, we should not make API calls to external services
+ */
+function isBuildPhase(): boolean {
+  // NEXT_PHASE is set during build
+  return process.env.NEXT_PHASE === 'phase-production-build'
+}
+
 export async function apiFetch<T = any>(path: string, options: ApiFetchOptions = {}): Promise<ApiResponseFormat<T>> {
   const { timeout = 30000, retries = 3, throwOnError = false, headers = {}, ...fetchOptions } = options
+
+  // Skip API calls during build phase to prevent build failures
+  if (isBuildPhase()) {
+    console.log(`[apiClient] Skipping API call during build phase: ${path}`)
+    return {
+      success: true,
+      data: [] as any, // Return empty array for list endpoints
+    }
+  }
 
   if (!env.FASTAPI_URL) {
     const errorResponse: ApiResponseFormat<T> = {

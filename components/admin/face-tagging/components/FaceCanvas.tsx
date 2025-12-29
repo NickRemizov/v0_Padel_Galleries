@@ -80,14 +80,14 @@ export function FaceCanvas({
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
           <Loader2 className="h-8 w-8 animate-spin text-white" />
-          <span className="ml-2 text-white">\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...</span>
+          <span className="ml-2 text-white">Загрузка...</span>
         </div>
       )}
 
       <img
         ref={imageRef}
         src={imageUrl || "/placeholder.svg"}
-        alt="\u0424\u043e\u0442\u043e \u0434\u043b\u044f \u0442\u0435\u0433\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f"
+        alt="Фото для тегирования"
         className="hidden"
         crossOrigin="anonymous"
         onLoad={onImageLoad}
