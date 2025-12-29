@@ -20,9 +20,10 @@ interface EditPersonDialogProps {
   person: Person
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSuccess?: (updatedPerson: Partial<Person>) => void
 }
 
-export function EditPersonDialog({ person, open, onOpenChange }: EditPersonDialogProps) {
+export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: EditPersonDialogProps) {
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(formData: FormData) {
@@ -46,6 +47,8 @@ export function EditPersonDialog({ person, open, onOpenChange }: EditPersonDialo
     setLoading(false)
 
     if (result.success) {
+      // Передаём обновлённые данные родителю
+      onSuccess?.({ id: person.id, ...data })
       onOpenChange(false)
     }
   }
