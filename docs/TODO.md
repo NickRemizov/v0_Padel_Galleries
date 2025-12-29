@@ -52,7 +52,7 @@
 
 ## Структура отрефакторенных модулей
 
-```
+\`\`\`
 app/admin/actions/
 ├── integrity/                # 7 modules
 │   ├── index.ts
@@ -90,7 +90,7 @@ components/admin/
 ├── face-tagging/             # 11 modules
 ├── auto-recognition/         # 8 modules
 └── unknown-faces-review/     # 8 modules
-```
+\`\`\`
 
 ---
 
