@@ -1,7 +1,7 @@
 # TODO
 
 **Последнее обновление:** 2025-12-29  
-**Версия приложения:** v1.1.8
+**Версия приложения:** v1.1.9
 
 ---
 
@@ -18,13 +18,12 @@
 | `unknown-faces-review-dialog.tsx` | ~500 | 8 | 2025-12 |
 | `app/admin/actions/integrity.ts` | 926 | 7 | 2025-12-29 |
 | `database-integrity-checker.tsx` | 785 | 10 | 2025-12-29 |
+| `face-training-manager.tsx` | 750 | 9 | 2025-12-29 |
 
 ### 🔄 Очередь (Frontend) — Приоритет 1
 
 | # | Файл | Строк | Приоритет | Статус |
 |---|------|-------|-----------|--------|
-| 1.3 | `components/ui/sidebar.tsx` | 727 | MEDIUM | ❌ TODO |
-| 1.4 | `face-training-manager.tsx` | 726 | MEDIUM | ❌ TODO |
 | 1.5 | `actions/people.ts` + `faces.ts` | 671+619 | MEDIUM | ❌ TODO |
 | 1.6 | `image-lightbox.tsx` | 596 | LOW | ❌ TODO |
 
@@ -42,9 +41,9 @@
 
 ## Следующая задача
 
-**Рекомендуется:** `components/ui/sidebar.tsx` (727 строк)
+**Рекомендуется:** `actions/people.ts` + `faces.ts` (671+619 строк)
 
-Конфиг меню + рендер + состояние смешаны.
+Server actions для работы с игроками и лицами.
 
 **Детальное ТЗ:** см. `docs/REFACTORING_SPEC.md`
 
@@ -52,7 +51,7 @@
 
 ## Структура отрефакторенных модулей
 
-\`\`\`
+```
 app/admin/actions/
 ├── integrity/                # 7 modules
 │   ├── index.ts
@@ -71,26 +70,28 @@ components/admin/
 │   ├── types.ts
 │   ├── index.ts
 │   ├── hooks/
-│   │   ├── useIntegrityChecker.ts
-│   │   └── index.ts
-│   ├── components/
-│   │   ├── IntegrityRunControls.tsx
-│   │   ├── IntegritySummary.tsx
-│   │   ├── IntegrityIssueRow.tsx
-│   │   ├── IntegrityFaceCard.tsx
-│   │   ├── PeopleWithoutFacesRow.tsx
-│   │   └── index.ts
-│   └── utils/
-│       ├── helpers.ts
-│       └── index.ts
+│   └── components/
+│
+├── face-training/            # 9 modules
+│   ├── FaceTrainingManager.tsx
+│   ├── types.ts
+│   ├── constants.ts
+│   ├── index.ts
+│   ├── hooks/
+│   │   └── useFaceTraining.ts
+│   └── components/
+│       ├── ErrorBanners.tsx
+│       ├── TrainingControlCard.tsx
+│       └── ConfigurationCard.tsx
 │
 ├── database-integrity-checker.tsx  # Реэкспорт
+├── face-training-manager.tsx       # Реэкспорт
 ├── gallery-images/           # 12 modules
 ├── person-gallery/           # 12 modules
 ├── face-tagging/             # 11 modules
 ├── auto-recognition/         # 8 modules
 └── unknown-faces-review/     # 8 modules
-\`\`\`
+```
 
 ---
 
