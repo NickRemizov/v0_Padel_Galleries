@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -44,17 +44,37 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
   const [galleryPerson, setGalleryPerson] = useState<PersonWithStats | null>(null)
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null)
 
-  // Sync with props when they change (e.g., after search/filter)
-  if (initialPeople !== localPeople && initialPeople.length !== localPeople.length) {
-    // Only reset if the list structure changed (not just optimistic updates)
-    const initialIds = new Set(initialPeople.map(p => p.id))
-    const localIds = new Set(localPeople.map(p => p.id))
-    const hasStructuralChange = initialPeople.some(p => !localIds.has(p.id)) || 
-                                 localPeople.some(p => !initialIds.has(p.id) && !deletingId)
-    if (hasStructuralChange) {
-      setLocalPeople(initialPeople)
-    }
-  }
+  // Sync with props when they change externally (e.g., after router.refresh)
+  useEffect(() => {
+    setLocalPeople(initialPeople)
+  }, [initialPeople])
+
+  // Handle person edit success - optimistic update
+  const handleEditSuccess = useCallback((updatedData: Partial<Person>) => {
+    if (!updatedData.id) return
+    
+    setLocalPeople(prev => prev.map(p => 
+      p.id === updatedData.id ? { ...p, ...updatedData } : p
+    ))
+    setEditingPerson(null)
+  }, [])
+
+  // Handle photo count change from gallery - optimistic update
+  const handlePhotoCountChange = useCallback((personId: string, delta: number) => {
+    setLocalPeople(prev => prev.map(p => {
+      if (p.id !== personId) return p
+      
+      // Уменьшаем счётчик verified_photos_count (или high_confidence)
+      const currentCount = (p.verified_photos_count || 0) + (p.high_confidence_photos_count || 0)
+      const newTotal = Math.max(0, currentCount + delta)
+      
+      // Пропорционально уменьшаем verified (упрощённая логика)
+      return {
+        ...p,
+        verified_photos_count: Math.max(0, (p.verified_photos_count || 0) + delta),
+      }
+    }))
+  }, [])
 
   async function handleDelete(id: string) {
     if (!confirm("Вы уверены, что хотите удалить этого человека?")) return
@@ -67,8 +87,13 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
     const result = await deletePersonAction(id)
     
     if (!result.success) {
-      // Rollback on error
-      setLocalPeople(initialPeople)
+      // Rollback on error - восстанавливаем из initialPeople
+      const deletedPerson = initialPeople.find(p => p.id === id)
+      if (deletedPerson) {
+        setLocalPeople(prev => [...prev, deletedPerson].sort((a, b) => 
+          a.real_name.localeCompare(b.real_name)
+        ))
+      }
       alert("Ошибка при удалении")
     }
     
@@ -301,7 +326,7 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
           person={editingPerson}
           open={!!editingPerson}
           onOpenChange={(open) => !open && setEditingPerson(null)}
-          onSuccess={onUpdate}
+          onSuccess={handleEditSuccess}
         />
       )}
 
@@ -311,6 +336,7 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
           personName={galleryPerson.real_name}
           open={!!galleryPerson}
           onOpenChange={(open) => !open && setGalleryPerson(null)}
+          onPhotoCountChange={(delta) => handlePhotoCountChange(galleryPerson.id, delta)}
         />
       )}
     </>
