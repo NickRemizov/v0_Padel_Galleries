@@ -8,7 +8,7 @@
 
 import { type NextRequest, NextResponse } from "next/server"
 import { apiFetch } from "@/lib/apiClient"
-import { requireAdmin } from "@/lib/auth/serverGuard"
+import { requireAdmin, getAuthHeaders } from "@/lib/auth/serverGuard"
 
 export async function POST(request: NextRequest) {
   const { error: authError } = await requireAdmin()
@@ -16,11 +16,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    const authHeaders = await getAuthHeaders()
 
     console.log("[v0] Preparing dataset")
 
     const result = await apiFetch("/api/v2/train/prepare", {
       method: "POST",
+      headers: authHeaders,
       body: JSON.stringify(body),
     })
 

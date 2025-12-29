@@ -8,7 +8,7 @@
 
 import { type NextRequest, NextResponse } from "next/server"
 import { apiFetch } from "@/lib/apiClient"
-import { requireAdmin } from "@/lib/auth/serverGuard"
+import { requireAdmin, getAuthHeaders } from "@/lib/auth/serverGuard"
 
 export async function GET(request: NextRequest) {
   const { error: authError } = await requireAdmin()
@@ -18,8 +18,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const limit = searchParams.get("limit") || "10"
     const offset = searchParams.get("offset") || "0"
+    const authHeaders = await getAuthHeaders()
 
-    const response = await apiFetch(`/api/v2/train/history?limit=${limit}&offset=${offset}`)
+    const response = await apiFetch(`/api/v2/train/history?limit=${limit}&offset=${offset}`, {
+      headers: authHeaders,
+    })
 
     // Pass through the response as-is (unified contract)
     // On success: {success: true, data: {sessions: [...], total: N}}
