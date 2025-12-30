@@ -1,10 +1,10 @@
-# Backend Architecture v5.1
+# Backend Architecture v5.2
 
 ## Overview
 
 Clean Architecture с разделением ответственности:
 
-\`\`\`
+```
 python/
 ├── main.py                      # Entry point, DI, exception handlers
 ├── core/                        # Foundation (no dependencies)
@@ -18,12 +18,140 @@ python/
 │   ├── supabase.py             # Unified DB client
 │   └── storage.py              # Photo cache, image utils
 ├── repositories/                # Data access layer
-├── services/                    # Business logic
-└── routers/                     # HTTP endpoints
-    ├── people/                 # Modular router (CRUD, photos, etc.)
-    ├── galleries.py
-    └── ...
-\`\`\`
+├── services/                    # Business logic (see below)
+└── routers/                     # HTTP endpoints (see below)
+```
+
+## Modular Router Structure (v5.2)
+
+Большие роутеры разбиты на модульные пакеты:
+
+```
+routers/
+├── people/                      # People CRUD, photos, embeddings
+│   ├── __init__.py             # Router aggregation, DI
+│   ├── crud.py                 # GET, POST, PUT, DELETE
+│   ├── photos.py               # Person photos endpoints
+│   ├── embeddings.py           # Descriptor management
+│   ├── helpers.py              # Shared utilities
+│   └── models.py               # Pydantic schemas
+│
+├── galleries/                   # Gallery management
+│   ├── __init__.py             # Router aggregation, DI
+│   ├── crud.py                 # GET /, GET /{id}, POST, PUT, DELETE
+│   ├── photos.py               # /{id}/unprocessed-photos, etc.
+│   ├── filters.py              # /with-unprocessed-photos, /with-unverified-faces
+│   ├── stats.py                # /{id}/stats
+│   ├── helpers.py              # get_supabase_db(), _resolve_gallery()
+│   └── models.py               # GalleryCreate, GalleryUpdate
+│
+├── images/                      # Image management
+│   ├── __init__.py             # Router aggregation
+│   ├── gallery.py              # /gallery/{id} operations
+│   ├── crud.py                 # /{id} delete, /batch-add
+│   ├── processing.py           # /{id}/mark-processed, /auto-recognize
+│   ├── faces.py                # /{id}/people
+│   ├── helpers.py
+│   └── models.py
+│
+├── recognition/                 # Face recognition
+│   ├── __init__.py
+│   ├── detect.py               # /detect-faces, /process-photo
+│   ├── recognize.py            # /recognize-face
+│   ├── clusters.py             # /cluster-unknown-faces
+│   ├── descriptors/            # Descriptor management
+│   │   ├── __init__.py
+│   │   ├── query.py            # /missing-descriptors-count, -list
+│   │   └── regenerate.py       # /generate-*, /regenerate-*
+│   ├── maintenance.py          # /rebuild-index
+│   └── dependencies.py         # DI setup
+│
+└── admin/                       # Admin endpoints
+    ├── __init__.py
+    ├── statistics.py           # Stats endpoints
+    ├── check.py                # Health checks
+    ├── debug/                  # Debug tools
+    │   ├── __init__.py
+    │   ├── gallery.py          # /debug-gallery
+    │   ├── faces.py            # /debug-photo, /debug-person
+    │   └── recognition.py      # /debug-recognition
+    └── helpers.py
+```
+
+## Modular Services Structure (v5.2)
+
+```
+services/
+├── supabase/                    # Database layer (facade pattern)
+│   ├── __init__.py             # SupabaseService facade
+│   ├── base.py                 # Supabase client singleton
+│   ├── config.py               # ConfigRepository
+│   ├── embeddings.py           # EmbeddingsRepository
+│   ├── faces.py                # FacesRepository
+│   ├── people.py               # PeopleRepository
+│   └── training.py             # TrainingRepository
+│
+├── training/                    # Training operations
+│   ├── __init__.py             # Exports
+│   ├── dataset.py              # Dataset preparation
+│   ├── metrics.py              # Metrics calculation
+│   ├── session.py              # Session management
+│   ├── pipeline.py             # Background training
+│   ├── storage.py              # HNSW index save/load
+│   └── batch.py                # Batch recognition
+│
+├── face_recognition.py          # FaceRecognitionService (facade)
+├── training_service.py          # TrainingService (thin facade)
+├── insightface_model.py         # InsightFace wrapper
+├── hnsw_index.py                # HNSW operations
+├── quality_filters.py           # Face quality checks
+└── grouping.py                  # Face clustering
+```
+
+## Key Patterns
+
+### 1. Dependency Injection for Modular Routers
+
+```python
+# routers/galleries/__init__.py
+supabase_db_instance: SupabaseService = None
+face_service_instance: FaceRecognitionService = None
+
+def set_services(supabase_db, face_service=None):
+    global supabase_db_instance, face_service_instance
+    supabase_db_instance = supabase_db
+    face_service_instance = face_service
+
+# routers/galleries/helpers.py - GETTER FUNCTIONS (import inside!)
+def get_supabase_db():
+    from . import supabase_db_instance  # Import INSIDE function
+    return supabase_db_instance
+```
+
+**⚠️ Critical:** Import globals inside getter functions, not at module level!
+
+### 2. Router Order for Parametric Routes
+
+```python
+# Specific routes BEFORE parametric routes
+router.include_router(filters_router)   # /with-unprocessed-photos
+router.include_router(photos_router)    # /{id}/unprocessed-photos
+router.include_router(stats_router)     # /{id}/stats
+router.include_router(crud_router)      # /{identifier} - LAST!
+```
+
+### 3. Sub-router Root Path
+
+```python
+# Use "/" not "" for root path in sub-routers
+router = APIRouter()
+
+@router.get("/")  # Correct
+async def list_items(): ...
+
+@router.get("")   # WRONG - causes routing issues
+async def list_items(): ...
+```
 
 ## Security
 
@@ -31,7 +159,7 @@ python/
 
 Централизованная защита всех write-операций:
 
-\`\`\`python
+```python
 # middleware/auth.py
 class AuthMiddleware(BaseHTTPMiddleware):
     """
@@ -41,41 +169,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
     - OPTIONS: всегда разрешены (CORS preflight)
     - GET/HEAD: всегда разрешены (публичное чтение)
     - POST/PUT/PATCH/DELETE на /api/*: требуют admin token
-    - Публичные пути: /, /api/health, /api/docs, /api/redoc, /api/openapi.json
     """
-\`\`\`
+```
 
-**Frontend интеграция:**
-\`\`\`typescript
-// Все action файлы используют getAuthHeaders()
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (session?.access_token) {
-    return { "Authorization": `Bearer ${session.access_token}` }
-  }
-  return {}
-}
-\`\`\`
-
-**Тестирование:**
-\`\`\`bash
-# POST без токена → 401
-curl -X POST http://vlcpadel.com:8001/api/people \
-  -H "Content-Type: application/json" \
-  -d '{"real_name": "Test"}'
-
-# GET без токена → 200 (работает)
-curl http://vlcpadel.com:8001/api/people/
-\`\`\`
-
-## Key Principles
-
-### 1. Unified API Response
+## Unified API Response
 
 Все endpoints возвращают `ApiResponse`:
 
-\`\`\`python
+```python
 from core.responses import ApiResponse
 
 @router.get("/items/{id}")
@@ -85,38 +186,11 @@ async def get_item(id: str):
 
 # Returns:
 # {"success": true, "data": {...}, "error": null, "meta": null}
-\`\`\`
-
-### 2. Custom Exceptions
-
-Исключения автоматически преобразуются в HTTP ответы:
-
-\`\`\`python
-from core.exceptions import NotFoundError, ValidationError, DatabaseError
-
-# 404
-raise NotFoundError("Person", person_id)
-
-# 422
-raise ValidationError("Invalid image format", field="image")
-
-# 500
-raise DatabaseError("Connection failed", operation="save")
-\`\`\`
-
-### 3. Centralized Logging
-
-\`\`\`python
-from core.logging import get_logger
-
-logger = get_logger(__name__)
-logger.info("Processing photo")
-logger.error("Failed", exc_info=True)
-\`\`\`
+```
 
 ## Exception Hierarchy
 
-\`\`\`
+```
 AppException (base, 500)
 ├── NotFoundError (404)
 ├── ValidationError (422)
@@ -124,31 +198,13 @@ AppException (base, 500)
 ├── RecognitionError (500)
 ├── AuthenticationError (401)
 └── TrainingError (500)
-\`\`\`
-
-## API Optimizations
-
-### Players Gallery (v5.1)
-
-Параметр `for_gallery=true` возвращает оптимизированные данные:
-
-\`\`\`bash
-GET /api/people?for_gallery=true
-\`\`\`
-
-Возвращает:
-- `photo_count` — количество фото игрока
-- `most_recent_gallery_date` — дата последней галереи
-
-**Производительность:**
-- До: 101 HTTP запрос, 5+ секунд
-- После: 1 запрос, ~50ms
+```
 
 ## Configuration
 
 All settings via environment variables:
 
-\`\`\`bash
+```bash
 # Server
 SERVER_HOST=0.0.0.0
 SERVER_PORT=8001
@@ -163,39 +219,12 @@ DEFAULT_RECOGNITION_THRESHOLD=0.60
 DEFAULT_MIN_FACE_SIZE=80
 
 # Admin (for AuthMiddleware)
-ADMIN_EMAILS=admin@example.com,admin2@example.com
-\`\`\`
-
-## Response Format
-
-All API responses follow this structure:
-
-\`\`\`json
-{
-  "success": true,
-  "data": { ... },
-  "error": null,
-  "meta": null
-}
-\`\`\`
-
-Error response:
-
-\`\`\`json
-{
-  "success": false,
-  "data": null,
-  "error": {
-    "code": "NOT_FOUND",
-    "message": "Person with id 'abc' not found",
-    "details": null
-  },
-  "meta": null
-}
-\`\`\`
+ADMIN_EMAILS=admin@example.com
+```
 
 ## Version History
 
+- v5.2.0 - Modular routers (galleries/, images/, admin/debug/, recognition/descriptors/), training/ package refactoring
 - v5.1.0 - AuthMiddleware, for_gallery optimization, On-Demand Revalidation
 - v5.0.0 - All routers migrated to ApiResponse + custom exceptions
 - v4.1.0 - People router modularization, Admin router
