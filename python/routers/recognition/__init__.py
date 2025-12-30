@@ -6,8 +6,10 @@ Structure:
 - detect.py: /detect-faces, /process-photo
 - recognize.py: /recognize-face
 - clusters.py: /cluster-unknown-faces, /reject-face-cluster
-- descriptors.py: /generate-descriptors, /missing-descriptors-*, /regenerate-*
+- descriptors/: /generate-descriptors, /missing-descriptors-*, /regenerate-*
 - maintenance.py: /rebuild-index
+
+v1.1: Modularized descriptors.py into descriptors/ package
 """
 
 from fastapi import APIRouter
@@ -17,7 +19,7 @@ from .dependencies import set_services, face_service_instance, supabase_client_i
 from . import detect
 from . import recognize
 from . import clusters
-from . import descriptors
+from .descriptors import router as descriptors_router  # Now imports from descriptors/ package
 from . import maintenance
 
 logging.basicConfig(
@@ -32,7 +34,7 @@ router = APIRouter()
 router.include_router(detect.router)
 router.include_router(recognize.router)
 router.include_router(clusters.router)
-router.include_router(descriptors.router)
+router.include_router(descriptors_router)  # Changed from descriptors.router
 router.include_router(maintenance.router)
 
 # Re-export set_services for main.py compatibility
