@@ -19,7 +19,7 @@ Backend работает стабильно. Цель рефакторинга �
 
 ## 📊 Текущая структура
 
-```
+\`\`\`
 python/
 ├── main.py                    # Entry point, DI
 ├── core/                      # ✅ Хорошо структурирован
@@ -42,7 +42,7 @@ python/
 │   ├── training_service.py   # 21KB
 │   └── ...
 └── repositories/             # Частично используется
-```
+\`\`\`
 
 ---
 
@@ -52,27 +52,27 @@ python/
 **Проблема:** Один файл содержит все операции с галереями
 
 **Решение:** Разбить по паттерну people/
-```
+\`\`\`
 routers/galleries/
 ├── __init__.py           # Router aggregation
 ├── crud.py               # Create/Read/Update/Delete
 ├── images.py             # Операции с фото галереи
 ├── stats.py              # Статистика галереи
 └── helpers.py            # Общие функции
-```
+\`\`\`
 
 ### images.py (18KB)
 **Проблема:** Смешаны CRUD, processing, face operations
 
 **Решение:**
-```
+\`\`\`
 routers/images/
 ├── __init__.py
 ├── crud.py               # Basic CRUD
 ├── processing.py         # Process, redetect
 ├── faces.py              # Face-related operations
 └── helpers.py
-```
+\`\`\`
 
 ---
 
@@ -80,7 +80,7 @@ routers/images/
 
 ### services/supabase/ (6 файлов)
 **Текущее:**
-```
+\`\`\`
 supabase/
 ├── __init__.py           # 10KB - SupabaseService class
 ├── base.py               # Client singleton
@@ -89,7 +89,7 @@ supabase/
 ├── faces.py              # Face operations
 ├── people.py             # People operations
 └── training.py           # Training operations
-```
+\`\`\`
 
 **Проблемы:**
 - `__init__.py` слишком большой (10KB)
@@ -108,7 +108,7 @@ supabase/
 ### Добавить Pydantic models
 **Где:** `python/models/` (новая папка)
 
-```python
+\`\`\`python
 # models/person.py
 from pydantic import BaseModel
 
@@ -127,7 +127,7 @@ class GalleryCreate(BaseModel):
     name: str
     event_date: date
     location_id: str | None
-```
+\`\`\`
 
 **Зачем:**
 - Автоматическая валидация
@@ -155,7 +155,7 @@ class GalleryCreate(BaseModel):
 
 ## 📋 Чеклист для рефакторинга роутера
 
-```markdown
+\`\`\`markdown
 ## Рефакторинг: [routers/xxx.py]
 
 ### Подготовка
@@ -176,7 +176,7 @@ class GalleryCreate(BaseModel):
 - [ ] Frontend работает
 - [ ] Commit + push
 - [ ] Рестарт backend на сервере
-```
+\`\`\`
 
 ---
 
@@ -192,7 +192,7 @@ class GalleryCreate(BaseModel):
 ## 📝 Пример: как разбить galleries.py
 
 **До (один файл 22KB):**
-```python
+\`\`\`python
 # routers/galleries.py
 router = APIRouter(prefix="/api/galleries")
 
@@ -207,10 +207,10 @@ async def get_gallery_images(): ...
 
 @router.get("/{id}/stats")
 async def get_gallery_stats(): ...
-```
+\`\`\`
 
 **После (модульная структура):**
-```python
+\`\`\`python
 # routers/galleries/__init__.py
 from fastapi import APIRouter
 from .crud import router as crud_router
@@ -236,7 +236,7 @@ router = APIRouter()
 
 @router.get("/{gallery_id}/images")
 async def get_gallery_images(): ...
-```
+\`\`\`
 
 ---
 
