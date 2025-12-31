@@ -6,89 +6,101 @@ Last updated: 2025-12-31
 
 *No critical issues at this time.*
 
-## Technical Debt
+## Architecture Decisions
 
-### 1. Full Codebase Audit Needed
-**Status:** In Progress  
-**Priority:** High  
+### Direct Supabase Access in Admin Actions
+**Status:** Intentional  
+**Decision date:** 2025-12-31
 
-Unknown number of "compatibility workarounds" in codebase from rapid migrations.
-Need systematic audit for:
-- Duplicate data formats (like the fixed `_count` vs `photo_count`)
-- `as any` type casts masking real issues
-- Dead code from migrations
-- Mismatches between TypeScript types and actual API responses
+Admin service actions (`cleanup.ts`, `debug.ts`, `integrity/*`) access Supabase directly instead of going through FastAPI. This is **intentionally left as-is** because:
+- These are rarely-used service/debug functions
+- Migration effort not justified for low-usage features
+- May be disabled entirely in the future
 
-**Task file:** See `AI_HANDOFF_RECOMMENDATIONS.md` (audit completed 2025-12-31)
-
-### 2. Direct Supabase Access in Admin Actions
-**Status:** Documented  
-**Priority:** Medium  
-
-Some admin server actions still use direct Supabase client instead of FastAPI.
-Plan: migrate core domain writes to FastAPI endpoints (Phase 1 in handoff doc).
-
-**Files with direct Supabase (admin):**
+**Files:**
 - `app/admin/actions/cleanup.ts`
 - `app/admin/actions/debug.ts`
 - `app/admin/actions/integrity/*`
 
-**Explicitly allowed (not to migrate):**
-- Social layer: comments, likes, favorites
-- Auth/telegram mapping
+**Note:** If these functions are used frequently or cause FAISS index sync issues, consider migrating to FastAPI endpoints.
 
-### 3. Unused API Routes
+### Social Layer on Frontend
+**Status:** Intentional
+
+Social features (comments, likes, favorites) use direct Supabase access from Next.js. This is by design — social data is separate from core recognition domain.
+
+## Technical Debt
+
+### 1. Unused API Routes
 **Status:** Documented  
 **Priority:** Low  
 
-Several Next.js API routes exist but have no frontend calls.
-See `AI_HANDOFF_RECOMMENDATIONS.md` section "Non-used Next API routes" for full list.
+Several Next.js API routes exist but have no frontend calls:
+- `app/api/admin/check-gallery/`
+- `app/api/admin/debug-gallery/`
+- `app/api/face-detection/detect/`
+- `app/api/face-detection/recognize/`
+- `app/api/favorites/` (list endpoint)
+- `app/api/galleries/` and `[id]/`
+- `app/api/images/[imageId]/auto-recognize/`
+- `app/api/recognition/rebuild-index/`
+- `app/api/revalidate/`
 
-### 4. Security: Hardcoded Fallback Secret
+**Decision:** Keep for now. Review when doing major cleanup.
+
+### 2. Dead Code Candidates
+**Status:** Pending review  
+**Priority:** Low
+
+Files with 0 imports (candidates for deletion):
+- `lib/debounce.ts`
+- `lib/supabase/client.ts`
+- `lib/supabase/safe-call.ts`
+- `lib/supabase/with-supabase.ts`
+- `python/routers/config.py` (not connected in main.py)
+
+**Decision:** Owner to review and delete manually if confirmed unused.
+
+### 3. Security: Hardcoded Fallback Secret
 **Status:** Open  
 **Priority:** Low  
-**Location:** `app/api/revalidate/route.ts`
+**Location:** `app/api/revalidate/route.ts:15`
 
-`REVALIDATE_TOKEN` has hardcoded fallback value. Should require env var.
+`REVALIDATE_TOKEN` has hardcoded fallback `"padel-revalidate-2024"`. Should require env var.
+
+### 4. Auth Role Check Disabled
+**Status:** Documented (do not change without auth review)  
+**Location:** `lib/auth/serverGuard.ts:27-37`
+
+Role-based admin check is commented out. Currently only checks authentication, not authorization.
+Re-enable after Supabase roles are configured.
 
 ## Recently Fixed
 
-### 2025-12-31: P0 Fixes from Audit
+### 2025-12-31: Codebase Audit Completed
+
+Full audit of v0 export completed. Key findings addressed:
+- P0-1: `confidence` → `recognition_confidence` in debug.ts
+- P0-2: ApiResponse parsing in global-unknown-faces-dialog.tsx
+- Documentation updated to reflect actual code state
+
+**Audit document:** `AI_HANDOFF_RECOMMENDATIONS.md`
+
+### 2025-12-31: P0 Fixes
 
 **Commit:** `97205d7` - fix(P0-1): replace deprecated 'confidence' with 'recognition_confidence'  
 **Commit:** `2b9b5e2` - fix(P0-2): correctly parse ApiResponse envelope in loadConfig()
 
-**P0-1: photo_faces.confidence in debug.ts**
-- **Problem:** `app/admin/actions/debug.ts` used deprecated `confidence` column
-- **Fix:** Replaced all usage with `recognition_confidence` (the correct column per migration 20241214)
-
-**P0-2: ApiResponse envelope parsing**
-- **Problem:** `components/admin/global-unknown-faces-dialog.tsx` read config as raw JSON
-- **Fix:** Now correctly parses `result.data.auto_avatar_on_create`
-
-### 2025-12-31: GalleryImage.people Type
-**Status:** Was already fixed
-
-**Problem (documented 2025-12-27):** `GalleryImage` type missing `people[]` array.  
-**Reality:** `lib/types.ts` already includes `people?: ImagePerson[]`. Documentation was outdated.
-
 ### 2025-12-27: photo_count Unification
-**Commits:** `f59f2ee`, `8a0f8ec`
 
-**Problem:** API returned same data in two formats:
-- `_count.gallery_images` (Prisma legacy)
-- `photo_count` (simple format)
+**Problem:** API returned same data in two formats  
+**Fix:** Unified to `photo_count` everywhere
 
-**Fix:** Unified to `photo_count` everywhere.
+## Process Rules
 
-## Process Improvements
-
-From 2025-12-27 session, established rules:
 1. **Audit BEFORE coding** - find ALL usage points first
 2. **Single format** - never return same data in multiple formats
 3. **Atomic changes** - backend + frontend in same commit when format changes
 4. **Verify column names** - check actual DB schema before writing queries
-
-From 2025-12-31 audit:
-5. **Check API response format** - Next routes return ApiResponse envelope, parse accordingly
+5. **Check API response format** - Next routes return ApiResponse envelope
 6. **Verify migrations applied** - column renames affect all code using old names
