@@ -1,4 +1,4 @@
-import { TrainingStatsCard } from "@/components/admin/training-stats-card"
+import { TrainingStatsCard } from "@/components/admin/training-stats"
 
 export default function StatisticsPage() {
   return (
