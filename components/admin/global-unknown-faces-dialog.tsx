@@ -76,8 +76,10 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     try {
       const response = await fetch("/api/admin/training/config")
       if (response.ok) {
-        const config = await response.json()
-        setAutoAvatarEnabled(config.auto_avatar_on_create ?? true)
+        const result = await response.json()
+        if (result.success && result.data) {
+          setAutoAvatarEnabled(result.data.auto_avatar_on_create ?? true)
+        }
       }
     } catch (error) {
       console.error("[GlobalUnknownFaces] Error loading config:", error)
