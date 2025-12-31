@@ -34,20 +34,3 @@ export const modeLabels = {
     badge: "к верификации",
   },
 }
-
-export function formatDate(dateStr: string | null): string {
-  if (!dateStr) return ""
-  try {
-    const date = new Date(dateStr)
-    const day = date.getDate().toString().padStart(2, "0")
-    const month = (date.getMonth() + 1).toString().padStart(2, "0")
-    return `${day}.${month}`
-  } catch {
-    return ""
-  }
-}
-
-export function formatGalleryTitle(title: string, shootDate: string | null): string {
-  const dateStr = formatDate(shootDate)
-  return dateStr ? `${title} ${dateStr}` : title
-}

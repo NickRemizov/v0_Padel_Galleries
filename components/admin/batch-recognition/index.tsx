@@ -12,7 +12,6 @@ import {
 } from "@/app/admin/actions/recognition"
 import { processPhotoAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import type { GalleryInfo, ProcessingResult, ProcessingMode } from "./types"
-import { formatGalleryTitle } from "./types"
 import { GallerySelector } from "./GallerySelector"
 import { ProcessingView } from "./ProcessingView"
 
@@ -90,6 +89,23 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
 
   function deselectAll() {
     setGalleries((prev) => prev.map((g) => ({ ...g, selected: false })))
+  }
+
+  function formatDate(dateStr: string | null): string {
+    if (!dateStr) return ""
+    try {
+      const date = new Date(dateStr)
+      const day = date.getDate().toString().padStart(2, "0")
+      const month = (date.getMonth() + 1).toString().padStart(2, "0")
+      return `${day}.${month}`
+    } catch {
+      return ""
+    }
+  }
+
+  function formatGalleryTitle(title: string, shootDate: string | null): string {
+    const dateStr = formatDate(shootDate)
+    return dateStr ? `${title} ${dateStr}` : title
   }
 
   async function startProcessing() {
@@ -179,7 +195,9 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
       } catch (error) {
         setResults((prev) =>
           prev.map((r, idx) =>
-            idx === i ? { ...r, status: "error" as const, error: error instanceof Error ? error.message : "Unknown error" } : r
+            idx === i
+              ? { ...r, status: "error" as const, error: error instanceof Error ? error.message : "Unknown error" }
+              : r
           )
         )
       }
@@ -189,11 +207,6 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
     setStage("done")
     onComplete?.()
   }
-
-  const selectedCount = galleries.filter((g) => g.selected).length
-  const totalToProcess = galleries
-    .filter((g) => g.selected)
-    .reduce((sum, g) => sum + g.photos_to_process, 0)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -213,16 +226,14 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
           </div>
         ) : stage === "select" ? (
           <GallerySelector
-            mode={mode}
-            onModeChange={setMode}
             galleries={galleries}
+            mode={mode}
+            applyQualityFilters={applyQualityFilters}
+            onModeChange={setMode}
             onToggleGallery={toggleGallery}
             onSelectAll={selectAll}
             onDeselectAll={deselectAll}
-            applyQualityFilters={applyQualityFilters}
-            onQualityFiltersChange={setApplyQualityFilters}
-            selectedCount={selectedCount}
-            totalToProcess={totalToProcess}
+            onApplyQualityFiltersChange={setApplyQualityFilters}
             onStartProcessing={startProcessing}
           />
         ) : (

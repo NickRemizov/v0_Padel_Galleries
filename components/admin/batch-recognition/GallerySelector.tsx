@@ -1,41 +1,54 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Images } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Images, Play } from "lucide-react"
 import type { GalleryInfo, ProcessingMode } from "./types"
-import { modeLabels, formatDate } from "./types"
+import { modeLabels } from "./types"
 
 interface GallerySelectorProps {
-  mode: ProcessingMode
-  onModeChange: (mode: ProcessingMode) => void
   galleries: GalleryInfo[]
+  mode: ProcessingMode
+  applyQualityFilters: boolean
+  onModeChange: (mode: ProcessingMode) => void
   onToggleGallery: (id: string) => void
   onSelectAll: () => void
   onDeselectAll: () => void
-  applyQualityFilters: boolean
-  onQualityFiltersChange: (value: boolean) => void
-  selectedCount: number
-  totalToProcess: number
+  onApplyQualityFiltersChange: (value: boolean) => void
   onStartProcessing: () => void
 }
 
 export function GallerySelector({
-  mode,
-  onModeChange,
   galleries,
+  mode,
+  applyQualityFilters,
+  onModeChange,
   onToggleGallery,
   onSelectAll,
   onDeselectAll,
-  applyQualityFilters,
-  onQualityFiltersChange,
-  selectedCount,
-  totalToProcess,
+  onApplyQualityFiltersChange,
   onStartProcessing,
 }: GallerySelectorProps) {
+  const selectedCount = galleries.filter((g) => g.selected).length
+  const totalToProcess = galleries
+    .filter((g) => g.selected)
+    .reduce((sum, g) => sum + g.photos_to_process, 0)
+
+  function formatDate(dateStr: string | null): string {
+    if (!dateStr) return ""
+    try {
+      const date = new Date(dateStr)
+      const day = date.getDate().toString().padStart(2, "0")
+      const month = (date.getMonth() + 1).toString().padStart(2, "0")
+      return `${day}.${month}`
+    } catch {
+      return ""
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Tabs value={mode} onValueChange={(v) => onModeChange(v as ProcessingMode)}>
@@ -61,7 +74,7 @@ export function GallerySelector({
               <Checkbox
                 id="apply-quality-filters"
                 checked={applyQualityFilters}
-                onCheckedChange={(checked) => onQualityFiltersChange(checked as boolean)}
+                onCheckedChange={(checked) => onApplyQualityFiltersChange(checked as boolean)}
               />
               <label htmlFor="apply-quality-filters" className="text-sm">
                 Применять настройки качества
@@ -116,6 +129,7 @@ export function GallerySelector({
               Выбрано: {selectedCount} галерей, {totalToProcess} фото
             </div>
             <Button onClick={onStartProcessing} disabled={selectedCount === 0}>
+              <Play className="mr-2 h-4 w-4" />
               Начать обработку
             </Button>
           </div>
