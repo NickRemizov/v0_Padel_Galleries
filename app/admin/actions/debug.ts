@@ -21,7 +21,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
 
     const { data: photoFaces, error: facesError } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id, confidence, verified, gallery_images(id, original_filename, gallery_id)")
+      .select("id, photo_id, person_id, recognition_confidence, verified, gallery_images(id, original_filename, gallery_id)")
       .eq("person_id", person.id)
 
     if (facesError) throw facesError
@@ -35,7 +35,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
     for (const photoId of photoIds) {
       const { data: allFacesOnPhoto, error: allFacesError } = await supabase
         .from("photo_faces")
-        .select("id, person_id, confidence, verified, people(real_name, telegram_name)")
+        .select("id, person_id, recognition_confidence, verified, people(real_name, telegram_name)")
         .eq("photo_id", photoId)
 
       if (allFacesError) {
@@ -51,7 +51,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
           personName: face.people?.real_name || face.people?.telegram_name || "Unknown",
           personId: face.person_id,
           verified: face.verified,
-          confidence: face.confidence,
+          recognition_confidence: face.recognition_confidence,
         })) || []
 
       photoDetails.push({
@@ -73,7 +73,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
       logger.debug(`[v0]   Total faces: ${photo.faces.length}`)
       photo.faces.forEach((face, faceIndex) => {
         logger.debug(
-          `[v0]   Face ${faceIndex + 1}: ${face.personName} (verified=${face.verified}, confidence=${face.confidence})`,
+          `[v0]   Face ${faceIndex + 1}: ${face.personName} (verified=${face.verified}, recognition_confidence=${face.recognition_confidence})`,
         )
       })
     })
@@ -111,7 +111,7 @@ export async function debugPhotoFacesAction(filename: string) {
 
     const { data: photoFaces, error: facesError } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id, confidence, verified, insightface_bbox, people(real_name, telegram_name)")
+      .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, people(real_name, telegram_name)")
       .eq("photo_id", photo.id)
 
     if (facesError) throw facesError
@@ -128,7 +128,7 @@ export async function debugPhotoFacesAction(filename: string) {
       logger.debug(`\n[v0] Face ${index + 1}:`)
       logger.debug(`[v0]   Person: ${personName}`)
       logger.debug(`[v0]   Verified: ${face.verified}`)
-      logger.debug(`[v0]   Confidence: ${face.confidence}`)
+      logger.debug(`[v0]   Recognition Confidence: ${face.recognition_confidence}`)
       logger.debug(`[v0]   Bounding Box:`, face.insightface_bbox)
     })
     logger.debug(`[v0] ========== END DEBUG ==========\n`)
@@ -145,7 +145,7 @@ export async function debugPhotoFacesAction(filename: string) {
             personName: face.people?.real_name || face.people?.telegram_name || "Unknown",
             personId: face.person_id,
             verified: face.verified,
-            confidence: face.confidence,
+            recognition_confidence: face.recognition_confidence,
             boundingBox: face.insightface_bbox,
           })) || [],
       },
@@ -192,9 +192,9 @@ export async function checkDatabaseIntegrityAction() {
     // Check verified faces with wrong confidence
     const { data: verifiedWithWrongConfidence } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id, confidence, verified")
+      .select("id, photo_id, person_id, recognition_confidence, verified")
       .eq("verified", true)
-      .not("confidence", "eq", 1.0)
+      .not("recognition_confidence", "eq", 1.0)
 
     report.photoFaces.verifiedWithWrongConfidence = verifiedWithWrongConfidence?.length || 0
     if (verifiedWithWrongConfidence && verifiedWithWrongConfidence.length > 0) {
@@ -231,7 +231,7 @@ export async function fixIntegrityIssueAction(issueType: string, options?: any) 
       case "verifiedWithoutPerson": {
         const { error } = await supabase
           .from("photo_faces")
-          .update({ verified: false, confidence: null })
+          .update({ verified: false, recognition_confidence: null })
           .eq("verified", true)
           .is("person_id", null)
 
@@ -250,9 +250,9 @@ export async function fixIntegrityIssueAction(issueType: string, options?: any) 
       case "verifiedWithWrongConfidence": {
         const { error } = await supabase
           .from("photo_faces")
-          .update({ confidence: 1.0 })
+          .update({ recognition_confidence: 1.0 })
           .eq("verified", true)
-          .not("confidence", "eq", 1.0)
+          .not("recognition_confidence", "eq", 1.0)
 
         if (error) throw error
 
@@ -260,7 +260,7 @@ export async function fixIntegrityIssueAction(issueType: string, options?: any) 
           .from("photo_faces")
           .select("id", { count: "exact", head: true })
           .eq("verified", true)
-          .eq("confidence", 1.0)
+          .eq("recognition_confidence", 1.0)
 
         fixed = count || 0
         break
