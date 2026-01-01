@@ -11,6 +11,7 @@ import { Trash2, Pencil, Images } from "lucide-react"
 import { deletePersonAction, updatePersonVisibilityAction } from "@/app/admin/actions"
 import { EditPersonDialog } from "./edit-person-dialog"
 import { PersonGalleryDialog } from "./person-gallery-dialog"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { getInitials } from "@/lib/utils/get-initials"
 import type { Person } from "@/lib/types"
 
@@ -43,6 +44,10 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
   const [editingPerson, setEditingPerson] = useState<PersonWithStats | null>(null)
   const [galleryPerson, setGalleryPerson] = useState<PersonWithStats | null>(null)
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; person: PersonWithStats | null }>({
+    open: false,
+    person: null,
+  })
 
   // Sync with props when they change externally (e.g., after router.refresh)
   useEffect(() => {
@@ -76,9 +81,15 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
     }))
   }, [])
 
-  async function handleDelete(id: string) {
-    if (!confirm("Вы уверены, что хотите удалить этого человека?")) return
+  function handleDeleteClick(person: PersonWithStats) {
+    setDeleteConfirm({ open: true, person })
+  }
 
+  async function handleDeleteConfirm() {
+    if (!deleteConfirm.person) return
+    const id = deleteConfirm.person.id
+
+    setDeleteConfirm({ open: false, person: null })
     setDeletingId(id)
     
     // Optimistic update - remove from local state immediately
@@ -279,7 +290,7 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => handleDelete(person.id)}
+                        onClick={() => handleDeleteClick(person)}
                         disabled={deletingId === person.id}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -339,6 +350,13 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
           onPhotoCountChange={(delta) => handlePhotoCountChange(galleryPerson.id, delta)}
         />
       )}
+
+      <DeleteConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, person: open ? deleteConfirm.person : null })}
+        onConfirm={handleDeleteConfirm}
+        description={`Вы уверены, что хотите удалить игрока "${deleteConfirm.person?.real_name}"? Это действие невозможно отменить.`}
+      />
     </>
   )
 }
