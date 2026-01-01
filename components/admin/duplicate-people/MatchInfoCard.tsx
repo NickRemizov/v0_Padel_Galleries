@@ -1,3 +1,5 @@
+"use client"
+
 import { Card, CardContent } from "@/components/ui/card"
 import { AlertTriangle } from "lucide-react"
 import { FIELD_LABELS, FIELD_ICONS } from "./constants"

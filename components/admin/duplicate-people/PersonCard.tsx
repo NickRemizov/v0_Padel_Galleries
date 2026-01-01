@@ -1,5 +1,7 @@
-import { Card, CardContent } from "@/components/ui/card"
+"use client"
+
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -12,29 +14,37 @@ import {
   Instagram,
   ExternalLink,
 } from "lucide-react"
-import type { DuplicatePerson } from "@/app/admin/actions/people"
+import type { DuplicatePerson } from "./types"
 
 interface PersonCardProps {
   person: DuplicatePerson
   isSelected: boolean
   processing: boolean
-  onSelect: (id: string) => void
-  onDelete: (id: string) => void
+  onSelect: () => void
+  onDelete: () => void
 }
 
-export function PersonCard({ person, isSelected, processing, onSelect, onDelete }: PersonCardProps) {
+export function PersonCard({
+  person,
+  isSelected,
+  processing,
+  onSelect,
+  onDelete,
+}: PersonCardProps) {
   return (
     <Card
       className={`cursor-pointer transition-all ${
         isSelected ? "ring-2 ring-primary bg-primary/5" : "hover:bg-muted/50"
       }`}
-      onClick={() => onSelect(person.id)}
+      onClick={onSelect}
     >
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
           <Avatar className="h-12 w-12">
             <AvatarImage src={person.avatar_url || undefined} />
-            <AvatarFallback>{person.real_name.slice(0, 2).toUpperCase()}</AvatarFallback>
+            <AvatarFallback>
+              {person.real_name.slice(0, 2).toUpperCase()}
+            </AvatarFallback>
           </Avatar>
 
           <div className="flex-1 min-w-0">
@@ -117,7 +127,7 @@ export function PersonCard({ person, isSelected, processing, onSelect, onDelete 
             className="text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={(e) => {
               e.stopPropagation()
-              onDelete(person.id)
+              onDelete()
             }}
             disabled={processing}
           >
