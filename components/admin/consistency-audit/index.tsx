@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -10,16 +10,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { AlertTriangle, Loader2, Users, Wrench } from "lucide-react"
-import {
-  runConsistencyAuditAction,
-  clearPersonOutliersAction,
-  auditAllEmbeddingsAction,
-} from "@/app/admin/actions/people"
 import { EmbeddingConsistencyDialog } from "@/components/admin/embedding-consistency-dialog"
-import type { ConsistencyAuditResult, AuditSummary } from "./types"
+import type { ConsistencyAuditResult } from "./types"
 import { AuditResultRow } from "./AuditResultRow"
 import { ConfirmFixDialog } from "./ConfirmFixDialog"
 import { ConfirmFixAllDialog } from "./ConfirmFixAllDialog"
+import { useConsistencyAudit } from "./useConsistencyAudit"
 
 interface ConsistencyAuditDialogProps {
   open: boolean
@@ -27,17 +23,23 @@ interface ConsistencyAuditDialogProps {
 }
 
 export function ConsistencyAuditDialog({ open, onOpenChange }: ConsistencyAuditDialogProps) {
-  const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<ConsistencyAuditResult[]>([])
-  const [displayedResults, setDisplayedResults] = useState<ConsistencyAuditResult[]>([])
-  const [summary, setSummary] = useState<AuditSummary | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  
+  const {
+    loading,
+    results,
+    displayedResults,
+    summary,
+    error,
+    currentIndex,
+    scrollRef,
+    fixingPersonId,
+    fixingAll,
+    totalFixableOutliers,
+    runAudit,
+    handleFixOutliers,
+    handleFixAll,
+  } = useConsistencyAudit(open)
+
   const [detailPerson, setDetailPerson] = useState<{ id: string; name: string } | null>(null)
-  const [fixingPersonId, setFixingPersonId] = useState<string | null>(null)
-  const [fixingAll, setFixingAll] = useState(false)
   const [confirmFix, setConfirmFix] = useState<{
     open: boolean
     personId: string | null
@@ -46,120 +48,17 @@ export function ConsistencyAuditDialog({ open, onOpenChange }: ConsistencyAuditD
   }>({ open: false, personId: null, personName: "", outlierCount: 0 })
   const [confirmFixAll, setConfirmFixAll] = useState(false)
 
-  useEffect(() => {
-    if (open) {
-      runAudit()
-    } else {
-      setResults([])
-      setDisplayedResults([])
-      setSummary(null)
-      setCurrentIndex(0)
+  async function onConfirmFix() {
+    if (confirmFix.personId) {
+      await handleFixOutliers(confirmFix.personId)
     }
-  }, [open])
-
-  useEffect(() => {
-    if (results.length === 0 || currentIndex >= results.length) return
-
-    const timer = setTimeout(() => {
-      setDisplayedResults((prev) => [...prev, results[currentIndex]])
-      setCurrentIndex((prev) => prev + 1)
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-      }
-    }, 50)
-
-    return () => clearTimeout(timer)
-  }, [results, currentIndex])
-
-  async function runAudit() {
-    setLoading(true)
-    setError(null)
-    setResults([])
-    setDisplayedResults([])
-    setCurrentIndex(0)
-    
-    try {
-      const result = await runConsistencyAuditAction(0.5, 2)
-      
-      if (result.success && result.data) {
-        setResults(result.data.results)
-        setSummary({
-          total_people: result.data.total_people,
-          people_with_problems: result.data.people_with_problems,
-          total_outliers: result.data.total_outliers,
-          total_excluded: result.data.total_excluded || 0,
-        })
-      } else {
-        setError(result.error || "Ошибка аудита")
-      }
-    } catch (e: any) {
-      setError(e.message || "Ошибка соединения с сервером")
-    } finally {
-      setLoading(false)
-    }
+    setConfirmFix({ open: false, personId: null, personName: "", outlierCount: 0 })
   }
 
-  async function handleFixOutliers(personId: string) {
-    setFixingPersonId(personId)
-    try {
-      const result = await clearPersonOutliersAction(personId, 0.5)
-      
-      if (result.success && result.data) {
-        const clearedCount = result.data.cleared_count || 0
-        setDisplayedResults((prev) =>
-          prev.map((r) => r.person_id !== personId ? r : {
-            ...r,
-            outlier_count: 0,
-            excluded_count: (r.excluded_count || 0) + clearedCount,
-            has_problems: false,
-          })
-        )
-        setResults((prev) =>
-          prev.map((r) => r.person_id !== personId ? r : {
-            ...r,
-            outlier_count: 0,
-            excluded_count: (r.excluded_count || 0) + clearedCount,
-            has_problems: false,
-          })
-        )
-        
-        if (summary && clearedCount > 0) {
-          setSummary((prev) => prev ? {
-            ...prev,
-            total_outliers: Math.max(0, prev.total_outliers - clearedCount),
-            total_excluded: prev.total_excluded + clearedCount,
-            people_with_problems: Math.max(0, prev.people_with_problems - 1),
-          } : prev)
-        }
-      } else {
-        alert(`Ошибка: ${result.error}`)
-      }
-    } catch (e: any) {
-      alert(`Ошибка: ${e.message}`)
-    } finally {
-      setFixingPersonId(null)
-      setConfirmFix({ open: false, personId: null, personName: "", outlierCount: 0 })
-    }
-  }
-
-  async function handleFixAll() {
-    setFixingAll(true)
+  async function onConfirmFixAll() {
     setConfirmFixAll(false)
-    try {
-      const result = await auditAllEmbeddingsAction(0.5, 3)
-      if (result.success) {
-        await runAudit()
-      } else {
-        alert(`Ошибка: ${result.error}`)
-      }
-    } catch (e: any) {
-      alert(`Ошибка: ${e.message}`)
-    } finally {
-      setFixingAll(false)
-    }
+    await handleFixAll()
   }
-
-  const totalFixableOutliers = displayedResults.reduce((sum, r) => sum + r.outlier_count, 0)
 
   return (
     <>
@@ -192,7 +91,7 @@ export function ConsistencyAuditDialog({ open, onOpenChange }: ConsistencyAuditD
                   <span className="font-bold">{summary.total_outliers}</span>
                 </div>
               </div>
-              
+
               {totalFixableOutliers > 0 && (
                 <Button
                   variant="outline"
@@ -235,7 +134,7 @@ export function ConsistencyAuditDialog({ open, onOpenChange }: ConsistencyAuditD
                 <div className="text-center">Консист.</div>
                 <div>Действия</div>
               </div>
-              
+
               <div className="divide-y">
                 {displayedResults.map((result) => (
                   <AuditResultRow
@@ -243,7 +142,9 @@ export function ConsistencyAuditDialog({ open, onOpenChange }: ConsistencyAuditD
                     result={result}
                     fixingPersonId={fixingPersonId}
                     onViewDetails={(id, name) => setDetailPerson({ id, name })}
-                    onFixOutliers={(id, name, count) => setConfirmFix({ open: true, personId: id, personName: name, outlierCount: count })}
+                    onFixOutliers={(id, name, count) =>
+                      setConfirmFix({ open: true, personId: id, personName: name, outlierCount: count })
+                    }
                   />
                 ))}
               </div>
@@ -262,7 +163,9 @@ export function ConsistencyAuditDialog({ open, onOpenChange }: ConsistencyAuditD
             </div>
             <div className="flex gap-2">
               {!loading && results.length > 0 && (
-                <Button variant="outline" onClick={runAudit}>Обновить</Button>
+                <Button variant="outline" onClick={runAudit}>
+                  Обновить
+                </Button>
               )}
               <Button onClick={() => onOpenChange(false)}>Закрыть</Button>
             </div>
@@ -275,7 +178,9 @@ export function ConsistencyAuditDialog({ open, onOpenChange }: ConsistencyAuditD
           personId={detailPerson.id}
           personName={detailPerson.name}
           open={!!detailPerson}
-          onOpenChange={(open) => { if (!open) setDetailPerson(null) }}
+          onOpenChange={(open) => {
+            if (!open) setDetailPerson(null)
+          }}
           onDescriptorCleared={() => runAudit()}
         />
       )}
@@ -285,14 +190,14 @@ export function ConsistencyAuditDialog({ open, onOpenChange }: ConsistencyAuditD
         onOpenChange={(open) => setConfirmFix((s) => ({ ...s, open }))}
         personName={confirmFix.personName}
         outlierCount={confirmFix.outlierCount}
-        onConfirm={() => confirmFix.personId && handleFixOutliers(confirmFix.personId)}
+        onConfirm={onConfirmFix}
       />
 
       <ConfirmFixAllDialog
         open={confirmFixAll}
         onOpenChange={setConfirmFixAll}
         totalOutliers={totalFixableOutliers}
-        onConfirm={handleFixAll}
+        onConfirm={onConfirmFixAll}
       />
     </>
   )
