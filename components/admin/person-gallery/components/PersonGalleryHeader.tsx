@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Check, Trash2, ArrowUpDown, ArrowUp } from "lucide-react"
+import { Check, X, ArrowUpDown, ArrowUp } from "lucide-react"
 import type { VerifyButtonState } from "../types"
 
 interface PersonGalleryHeaderProps {
@@ -73,10 +73,10 @@ export function PersonGalleryHeader({
                 onClick={onBatchDelete}
                 className="min-w-[200px] justify-start"
               >
-                <Trash2 className="h-4 w-4 mr-2" />
+                <X className="h-4 w-4 mr-2" />
                 {selectedCount > 0
-                  ? `Удалить игрока с ${selectedCount} фото`
-                  : "Удалить игрока с фото"}
+                  ? `Убрать игрока с ${selectedCount} фото`
+                  : "Убрать игрока с фото"}
               </Button>
             </div>
           )}
