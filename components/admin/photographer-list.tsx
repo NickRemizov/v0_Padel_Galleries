@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Trash2, Pencil } from "lucide-react"
 import { deletePhotographerAction } from "@/app/admin/actions"
 import { EditPhotographerDialog } from "./edit-photographer-dialog"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import type { Photographer } from "@/lib/types"
 
 interface PhotographerListProps {
@@ -18,6 +19,10 @@ export function PhotographerList({ photographers: initialPhotographers, onUpdate
   const [localPhotographers, setLocalPhotographers] = useState<Photographer[]>(initialPhotographers)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingPhotographer, setEditingPhotographer] = useState<Photographer | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; photographer: Photographer | null }>({
+    open: false,
+    photographer: null,
+  })
 
   // Sync with props when they change
   if (initialPhotographers.length !== localPhotographers.length) {
@@ -30,9 +35,15 @@ export function PhotographerList({ photographers: initialPhotographers, onUpdate
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Вы уверены, что хотите удалить этого фотографа?")) return
+  function handleDeleteClick(photographer: Photographer) {
+    setDeleteConfirm({ open: true, photographer })
+  }
 
+  async function handleDeleteConfirm() {
+    if (!deleteConfirm.photographer) return
+    const id = deleteConfirm.photographer.id
+
+    setDeleteConfirm({ open: false, photographer: null })
     setDeletingId(id)
     
     // Optimistic update
@@ -73,7 +84,7 @@ export function PhotographerList({ photographers: initialPhotographers, onUpdate
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => handleDelete(photographer.id)}
+                  onClick={() => handleDeleteClick(photographer)}
                   disabled={deletingId === photographer.id}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -92,6 +103,13 @@ export function PhotographerList({ photographers: initialPhotographers, onUpdate
           onSuccess={onUpdate}
         />
       )}
+
+      <DeleteConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, photographer: open ? deleteConfirm.photographer : null })}
+        onConfirm={handleDeleteConfirm}
+        description={`Вы уверены, что хотите удалить фотографа "${deleteConfirm.photographer?.name}"? Это действие невозможно отменить.`}
+      />
     </>
   )
 }
