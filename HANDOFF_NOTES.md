@@ -1,7 +1,7 @@
 # ТЗ для продолжения работы
 
-**Дата:** 2025-12-31  
-**Версия:** v1.1.17  
+**Дата:** 2025-01-01  
+**Версия:** v1.1.18  
 **Репозиторий:** NickRemizov/v0_Padel_Galleries
 
 ---
@@ -13,50 +13,40 @@
 - Верифицирован против GitHub
 
 ### 2. P0 баги исправлены
-- **P0-1:** `confidence` → `recognition_confidence` в `app/admin/actions/debug.ts` (коммит `97205d7`)
-- **P0-2:** ApiResponse parsing в `global-unknown-faces-dialog.tsx` (коммит `2b9b5e2`)
+- **P0-1:** `confidence` → `recognition_confidence` в `app/admin/actions/debug.ts`
+- **P0-2:** ApiResponse parsing в `global-unknown-faces-dialog.tsx`
 
 ### 3. Документация обновлена
-- `KNOWN_ISSUES.md` — финализирован (коммит `8b5154a`)
+- `KNOWN_ISSUES.md` — финализирован
 - Admin actions на frontend оставлены сознательно (owner decision)
 
-### 4. Рефакторинг больших файлов (ЧАСТИЧНО)
-Разбиты на модули:
-- `training-stats-card.tsx` → папка `training-stats/` (10 файлов, все <6KB) ✅
-- `batch-recognition-dialog.tsx` → папка `batch-recognition/` (4 файла, все <9KB) ✅
-- `consistency-audit-dialog.tsx` → папка `consistency-audit/` (7 файлов, но index.tsx = 11KB) ⚠️
+### 4. Рефакторинг больших файлов ✅ ЗАВЕРШЕН
+
+| Файл | Было | Стало | Статус |
+|------|------|--------|--------|
+| `training-stats-card.tsx` | 1 файл | 10 файлов | ✅ |
+| `batch-recognition-dialog.tsx` | 1 файл | 4 файла | ✅ |
+| `consistency-audit-dialog.tsx` | 11KB | 7.5KB + hook | ✅ |
+| `service-manager/` | папка | 5 файлов | ✅ |
+| `global-unknown-faces-dialog.tsx` | 16KB | 5 модулей | ✅ |
+| `duplicate-people-dialog.tsx` | 17KB | 6 модулей | ✅ |
 
 ---
 
-## ❌ НЕ ЗАВЕРШЕНО
+## ❗ ТРЕБУЕТ РУЧНОГО УДАЛЕНИЯ
 
-### 1. Дробление consistency-audit/index.tsx
-**Файл:** `components/admin/consistency-audit/index.tsx`  
-**Размер:** 11KB (норма <10KB)  
-**Действие:** Выделить логику в отдельные файлы (например, хуки или дополнительные компоненты)
+### Dead code cleanup (одобрено owner)
+Файлы с 0 импортов - удалить вручную через GitHub UI или git:
 
-### 2. Рефакторинг файлов (осталось 3 файла)
-
-| Файл | Размер | Статус |
-|------|--------|--------|
-| `service-manager.tsx` | 16KB | Папка создана, файл не разбит |
-| `global-unknown-faces-dialog.tsx` | 16KB | Не разбит |
-| `duplicate-people-dialog.tsx` | 17KB | Не разбит |
-
-**Действие:** Разбить каждый файл на модули <10KB, создать re-export.
-
-### 3. Dead code cleanup (owner approved list)
-Файлы с 0 импортов (кандидаты на удаление):
-- `lib/debounce.ts`
-- `lib/supabase/client.ts`
-- `lib/supabase/safe-call.ts`
-- `lib/supabase/with-supabase.ts`
-- `python/routers/config.py`
-
-**Действие:** Проверить что не используются и удалить.
-
-### 4. Версия
-После завершения работы — bump version в `lib/version.ts`
+```bash
+git rm lib/debounce.ts
+git rm lib/supabase/client.ts
+git rm lib/supabase/safe-call.ts  
+git rm lib/supabase/with-supabase.ts
+git rm python/routers/config.py
+git commit -m "chore: remove dead code files"
+git push
+```
 
 ---
 
