@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Trash2, Pencil, MapPin, Globe, Link2, ExternalLink } from "lucide-react"
 import { deleteLocationAction } from "@/app/admin/actions/entities"
 import { EditLocationDialog } from "./edit-location-dialog"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import type { Location } from "@/lib/types"
 
 interface LocationListProps {
@@ -18,6 +19,10 @@ export function LocationList({ locations: initialLocations, onUpdate }: Location
   const [localLocations, setLocalLocations] = useState<Location[]>(initialLocations)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingLocation, setEditingLocation] = useState<Location | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; location: Location | null }>({
+    open: false,
+    location: null,
+  })
 
   // Sync with props when they change
   if (initialLocations.length !== localLocations.length) {
@@ -30,9 +35,15 @@ export function LocationList({ locations: initialLocations, onUpdate }: Location
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Вы уверены, что хотите удалить эту площадку?")) return
+  function handleDeleteClick(location: Location) {
+    setDeleteConfirm({ open: true, location })
+  }
 
+  async function handleDeleteConfirm() {
+    if (!deleteConfirm.location) return
+    const id = deleteConfirm.location.id
+
+    setDeleteConfirm({ open: false, location: null })
     setDeletingId(id)
     
     // Optimistic update
@@ -112,7 +123,7 @@ export function LocationList({ locations: initialLocations, onUpdate }: Location
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => handleDelete(location.id)}
+                    onClick={() => handleDeleteClick(location)}
                     disabled={deletingId === location.id}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -132,6 +143,13 @@ export function LocationList({ locations: initialLocations, onUpdate }: Location
           onSuccess={onUpdate}
         />
       )}
+
+      <DeleteConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, location: open ? deleteConfirm.location : null })}
+        onConfirm={handleDeleteConfirm}
+        description={`Вы уверены, что хотите удалить площадку "${deleteConfirm.location?.name}"? Это действие невозможно отменить.`}
+      />
     </>
   )
 }
