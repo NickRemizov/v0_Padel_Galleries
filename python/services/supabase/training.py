@@ -103,26 +103,43 @@ class TrainingRepository:
     ) -> List[Dict]:
         """
         Get verified faces with filters.
-        
+
         Returns:
             List of face data dicts
         """
         try:
-            query = self._client.table("photo_faces").select(
-                "id, person_id, insightface_bbox, photo_id, "
-                "people(id, real_name), "
-                "gallery_images(id, image_url, gallery_id, galleries(id, title, shoot_date))"
-            ).eq("verified", True).not_.is_("person_id", "null")
-            
-            if person_ids:
-                query = query.in_("person_id", person_ids)
-            
-            response = query.execute()
-            faces_data = response.data or []
-            
+            # Paginate to get ALL verified faces (Supabase limit = 1000)
+            all_faces = []
+            page_size = 1000
+            offset = 0
+
+            while True:
+                query = self._client.table("photo_faces").select(
+                    "id, person_id, insightface_bbox, photo_id, "
+                    "people(id, real_name), "
+                    "gallery_images(id, image_url, gallery_id, galleries(id, title, shoot_date))"
+                ).eq("verified", True).not_.is_("person_id", "null")
+
+                if person_ids:
+                    query = query.in_("person_id", person_ids)
+
+                response = query.range(offset, offset + page_size - 1).execute()
+
+                if not response.data:
+                    break
+
+                all_faces.extend(response.data)
+
+                if len(response.data) < page_size:
+                    break
+
+                offset += page_size
+
+            logger.info(f"Loaded {len(all_faces)} verified faces (paginated)")
+
             # Filter and transform
-            filtered = self._filter_faces(faces_data, event_ids, date_from, date_to)
-            
+            filtered = self._filter_faces(all_faces, event_ids, date_from, date_to)
+
             # Group by person and filter by min count
             return self._filter_by_min_faces(filtered, min_faces_per_person)
             
@@ -140,26 +157,43 @@ class TrainingRepository:
     ) -> List[Dict]:
         """
         Get verified faces with descriptors.
-        
+
         Returns:
             List of face data dicts including insightface_descriptor
         """
         try:
-            query = self._client.table("photo_faces").select(
-                "id, person_id, insightface_bbox, photo_id, insightface_descriptor, "
-                "people(id, real_name), "
-                "gallery_images(id, image_url, gallery_id, galleries(id, title, shoot_date))"
-            ).eq("verified", True).not_.is_("person_id", "null")
-            
-            if person_ids:
-                query = query.in_("person_id", person_ids)
-            
-            response = query.execute()
-            faces_data = response.data or []
-            
+            # Paginate to get ALL verified faces (Supabase limit = 1000)
+            all_faces = []
+            page_size = 1000
+            offset = 0
+
+            while True:
+                query = self._client.table("photo_faces").select(
+                    "id, person_id, insightface_bbox, photo_id, insightface_descriptor, "
+                    "people(id, real_name), "
+                    "gallery_images(id, image_url, gallery_id, galleries(id, title, shoot_date))"
+                ).eq("verified", True).not_.is_("person_id", "null")
+
+                if person_ids:
+                    query = query.in_("person_id", person_ids)
+
+                response = query.range(offset, offset + page_size - 1).execute()
+
+                if not response.data:
+                    break
+
+                all_faces.extend(response.data)
+
+                if len(response.data) < page_size:
+                    break
+
+                offset += page_size
+
+            logger.info(f"Loaded {len(all_faces)} verified faces with descriptors (paginated)")
+
             # Filter and transform (include descriptor)
-            filtered = self._filter_faces(faces_data, event_ids, date_from, date_to, include_descriptor=True)
-            
+            filtered = self._filter_faces(all_faces, event_ids, date_from, date_to, include_descriptor=True)
+
             # Group by person and filter by min count
             return self._filter_by_min_faces(filtered, min_faces_per_person)
             
