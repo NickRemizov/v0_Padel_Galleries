@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Trash2, Pencil } from "lucide-react"
 import { deleteOrganizerAction } from "@/app/admin/actions"
 import { EditOrganizerDialog } from "./edit-organizer-dialog"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import type { Organizer } from "@/lib/types"
 
 interface OrganizerListProps {
@@ -18,6 +19,10 @@ export function OrganizerList({ organizers: initialOrganizers, onUpdate }: Organ
   const [localOrganizers, setLocalOrganizers] = useState<Organizer[]>(initialOrganizers)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingOrganizer, setEditingOrganizer] = useState<Organizer | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; organizer: Organizer | null }>({
+    open: false,
+    organizer: null,
+  })
 
   // Sync with props when they change
   if (initialOrganizers.length !== localOrganizers.length) {
@@ -30,9 +35,15 @@ export function OrganizerList({ organizers: initialOrganizers, onUpdate }: Organ
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Вы уверены, что хотите удалить этого организатора?")) return
+  function handleDeleteClick(organizer: Organizer) {
+    setDeleteConfirm({ open: true, organizer })
+  }
 
+  async function handleDeleteConfirm() {
+    if (!deleteConfirm.organizer) return
+    const id = deleteConfirm.organizer.id
+
+    setDeleteConfirm({ open: false, organizer: null })
     setDeletingId(id)
     
     // Optimistic update
@@ -73,7 +84,7 @@ export function OrganizerList({ organizers: initialOrganizers, onUpdate }: Organ
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => handleDelete(organizer.id)}
+                  onClick={() => handleDeleteClick(organizer)}
                   disabled={deletingId === organizer.id}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -92,6 +103,13 @@ export function OrganizerList({ organizers: initialOrganizers, onUpdate }: Organ
           onSuccess={onUpdate}
         />
       )}
+
+      <DeleteConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, organizer: open ? deleteConfirm.organizer : null })}
+        onConfirm={handleDeleteConfirm}
+        description={`Вы уверены, что хотите удалить организатора "${deleteConfirm.organizer?.name}"? Это действие невозможно отменить.`}
+      />
     </>
   )
 }
