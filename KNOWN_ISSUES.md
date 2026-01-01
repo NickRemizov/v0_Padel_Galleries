@@ -32,21 +32,23 @@ Social features (comments, likes, favorites) use direct Supabase access from Nex
 ## Technical Debt
 
 ### 1. Unused API Routes
-**Status:** Documented  
-**Priority:** Low  
+**Status:** Documented
+**Priority:** Low
 
 Several Next.js API routes exist but have no frontend calls:
 - `app/api/admin/check-gallery/`
 - `app/api/admin/debug-gallery/`
-- `app/api/face-detection/detect/`
-- `app/api/face-detection/recognize/`
 - `app/api/favorites/` (list endpoint)
 - `app/api/galleries/` and `[id]/`
 - `app/api/images/[imageId]/auto-recognize/`
-- `app/api/recognition/rebuild-index/`
 - `app/api/revalidate/`
 
 **Decision:** Keep for now. Review when doing major cleanup.
+
+**Removed 2026-01-01:**
+- `app/api/face-detection/detect/` - unused proxy
+- `app/api/face-detection/recognize/` - unused proxy
+- `app/api/recognition/rebuild-index/` - unused proxy
 
 ### 2. Dead Code Candidates
 **Status:** Pending review
