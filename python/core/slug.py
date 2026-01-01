@@ -128,9 +128,35 @@ def make_unique_slug(
 
 # === Entity-specific slug generators ===
 
-def generate_gallery_slug(title: str) -> str:
-    """Generate slug for gallery from its title."""
-    return to_slug(title)
+def generate_gallery_slug(title: str, shoot_date: str = None) -> str:
+    """
+    Generate slug for gallery from title and date.
+
+    Format: title_DD-MM-YY
+    Example: "Bullpadel League" + "2025-11-08" → "Bullpadel_League_08-11-25"
+
+    Args:
+        title: Gallery title
+        shoot_date: Date in ISO format (YYYY-MM-DD) or datetime string
+
+    Returns:
+        Slug in format title_DD-MM-YY
+    """
+    title_slug = to_slug(title)
+
+    if shoot_date:
+        try:
+            # Parse date - handle both "2025-11-08" and "2025-11-08T00:00:00"
+            date_str = shoot_date[:10] if len(shoot_date) >= 10 else shoot_date
+            parts = date_str.split("-")
+            if len(parts) == 3:
+                year, month, day = parts
+                date_suffix = f"{day}-{month}-{year[2:]}"
+                return f"{title_slug}_{date_suffix}"
+        except Exception:
+            pass
+
+    return title_slug
 
 
 def generate_photo_slug(original_filename: str) -> str:

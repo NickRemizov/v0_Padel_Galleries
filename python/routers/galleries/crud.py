@@ -24,8 +24,12 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def _generate_unique_gallery_slug(title: str, exclude_id: str = None) -> str:
-    """Generate unique slug for a gallery."""
+def _generate_unique_gallery_slug(title: str, shoot_date: str = None, exclude_id: str = None) -> str:
+    """Generate unique slug for a gallery.
+
+    Format: title_DD-MM-YY (e.g. Bullpadel_League_08-11-25)
+    Index suffix added only if title+date combination already exists.
+    """
     supabase_db = get_supabase_db()
 
     result = supabase_db.client.table("galleries").select("id, slug").execute()
@@ -34,7 +38,7 @@ def _generate_unique_gallery_slug(title: str, exclude_id: str = None) -> str:
         if g.get("slug") and g["id"] != exclude_id
     }
 
-    base_slug = generate_gallery_slug(title or "")
+    base_slug = generate_gallery_slug(title or "", shoot_date)
     if not base_slug:
         base_slug = "gallery"
 
@@ -154,8 +158,8 @@ async def create_gallery(data: GalleryCreate):
     try:
         insert_data = data.model_dump(exclude_none=True)
 
-        # Auto-generate slug
-        insert_data["slug"] = _generate_unique_gallery_slug(data.title or "")
+        # Auto-generate slug with date
+        insert_data["slug"] = _generate_unique_gallery_slug(data.title or "", data.shoot_date)
 
         result = supabase_db.client.table("galleries").insert(insert_data).execute()
         if result.data:
@@ -179,10 +183,18 @@ async def update_gallery(identifier: str, data: GalleryUpdate):
         if not update_data:
             raise ValidationError("No fields to update")
 
-        # Regenerate slug if title changed
-        if "title" in update_data:
+        # Regenerate slug if title or shoot_date changed
+        if "title" in update_data or "shoot_date" in update_data:
+            # Get current gallery data for fields not being updated
+            current = supabase_db.client.table("galleries").select("title, shoot_date").eq("id", gallery_id).execute()
+            current_data = current.data[0] if current.data else {}
+
+            new_title = update_data.get("title", current_data.get("title", ""))
+            new_date = update_data.get("shoot_date", current_data.get("shoot_date"))
+
             update_data["slug"] = _generate_unique_gallery_slug(
-                update_data["title"],
+                new_title,
+                new_date,
                 exclude_id=gallery_id
             )
             logger.info(f"Regenerated slug for gallery {gallery_id}: {update_data['slug']}")
