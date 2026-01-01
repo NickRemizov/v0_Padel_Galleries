@@ -97,7 +97,7 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
           <Button
             variant="destructive"
             size="icon"
-            className="absolute right-2 top-2 pointer-events-auto rounded-full"
+            className="absolute right-2 top-2 pointer-events-auto"
             onClick={(e) => {
               e.stopPropagation()
               onDelete(photo.id)
