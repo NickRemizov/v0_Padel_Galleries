@@ -28,6 +28,7 @@ export function PeopleLinks({ verifiedPeople, currentPlayerId, hideUI }: PeopleL
     >
       {verifiedPeople.map((person) => {
         const isCurrentPlayer = person.id === currentPlayerId
+        const personSlug = person.slug || person.id
         return isCurrentPlayer ? (
           <div
             key={person.id}
@@ -38,7 +39,7 @@ export function PeopleLinks({ verifiedPeople, currentPlayerId, hideUI }: PeopleL
         ) : (
           <Link
             key={person.id}
-            href={`/players/${person.id}`}
+            href={`/players/${personSlug}`}
             className="bg-black/70 hover:bg-black/80 text-white px-3 py-1.5 rounded-full text-sm transition-colors"
             onClick={(e) => e.stopPropagation()}
           >

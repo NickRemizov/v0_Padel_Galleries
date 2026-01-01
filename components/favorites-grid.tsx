@@ -8,7 +8,9 @@ interface FavoritesGridProps {
   favorites: (Favorite & {
     gallery_images?: {
       id: string
+      slug?: string
       gallery_id: string
+      gallery_slug?: string
       image_url: string
       original_url: string
       original_filename: string
@@ -34,10 +36,13 @@ export function FavoritesGrid({ favorites }: FavoritesGridProps) {
         const image = favorite.gallery_images
         if (!image) return null
 
+        const gallerySlug = image.gallery_slug || image.gallery_id
+        const photoSlug = image.slug || image.id
+
         return (
           <Link
             key={favorite.id}
-            href={`/gallery/${image.gallery_id}?photo=${image.id}`}
+            href={`/gallery/${gallerySlug}?photo=${photoSlug}`}
             className="block mb-4 group relative overflow-hidden rounded-lg"
           >
             <img

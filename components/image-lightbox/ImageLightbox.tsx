@@ -29,7 +29,9 @@ export function ImageLightbox({
   onClose,
   onNavigate,
   galleryId,
+  gallerySlug,
   currentPlayerId,
+  currentPlayerSlug,
 }: ImageLightboxProps) {
   const currentImage = images[currentIndex]
 
@@ -97,18 +99,21 @@ export function ImageLightbox({
 
   // Share handler
   const handleShare = async () => {
-    if (!currentImage?.id) {
+    const photoSlug = currentImage?.slug || currentImage?.id
+    if (!photoSlug) {
       alert("Невозможно создать ссылку на это фото")
       return
     }
 
     let url: string
-    if (galleryId) {
-      url = `${window.location.origin}/gallery/${galleryId}?photo=${currentImage.id}`
-    } else if (currentPlayerId) {
-      url = `${window.location.origin}/players/${currentPlayerId}?photo=${currentImage.id}`
+    if (galleryId || gallerySlug) {
+      const gSlug = gallerySlug || galleryId
+      url = `${window.location.origin}/gallery/${gSlug}?photo=${photoSlug}`
+    } else if (currentPlayerId || currentPlayerSlug) {
+      const pSlug = currentPlayerSlug || currentPlayerId
+      url = `${window.location.origin}/players/${pSlug}?photo=${photoSlug}`
     } else {
-      url = `${window.location.origin}${window.location.pathname}?photo=${currentImage.id}`
+      url = `${window.location.origin}${window.location.pathname}?photo=${photoSlug}`
     }
 
     try {

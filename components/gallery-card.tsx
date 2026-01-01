@@ -54,7 +54,8 @@ export function GalleryCard({ gallery, onOrganizerClick, onLocationClick }: Gall
   const hasImages = imageCount > 0
   const hasExternalUrl = !!gallery.external_gallery_url
   const isLinkActive = hasImages || hasExternalUrl
-  const linkHref = hasImages ? `/gallery/${gallery.id}` : gallery.external_gallery_url || "#"
+  const gallerySlug = gallery.slug || gallery.id
+  const linkHref = hasImages ? `/gallery/${gallerySlug}` : gallery.external_gallery_url || "#"
   const linkTarget = hasImages ? undefined : "_blank"
   const linkRel = hasImages ? undefined : "noopener noreferrer"
 

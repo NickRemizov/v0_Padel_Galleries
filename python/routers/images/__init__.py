@@ -30,9 +30,11 @@ from .gallery import router as gallery_router
 from .processing import router as processing_router
 from .faces import router as faces_router
 from .crud import router as crud_router
+from .upload import router as upload_router
 
 # Include all sub-routers
 # ORDER MATTERS! Specific routes (/gallery/*, /batch-*) BEFORE parametric (/{id})
+router.include_router(upload_router)      # /upload
 router.include_router(gallery_router)     # /gallery/{id}, /gallery/{id}/*
 router.include_router(crud_router)        # /batch-add, /{id} delete
 router.include_router(processing_router)  # /{id}/mark-processed, /{id}/auto-recognize

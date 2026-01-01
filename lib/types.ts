@@ -33,6 +33,7 @@ export interface ImagePerson {
 export interface GalleryImage {
   id: string
   gallery_id: string
+  slug?: string
   image_url: string
   original_url: string
   original_filename: string
@@ -51,6 +52,7 @@ export interface GalleryImage {
 
 export interface Gallery {
   id: string
+  slug?: string
   title: string
   shoot_date: string
   gallery_url: string
@@ -120,6 +122,7 @@ export interface Favorite {
 
 export interface Person {
   id: string
+  slug?: string
   real_name: string
   telegram_name: string | null
   telegram_nickname: string | null

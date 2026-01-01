@@ -15,7 +15,7 @@ from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
 
-from .helpers import get_supabase_db, convert_bbox_to_array, get_face_service
+from .helpers import get_supabase_db, convert_bbox_to_array, get_face_service, get_person_id
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -34,17 +34,25 @@ def _get_person_id_from_uuid(supabase_db, person_uuid: UUID) -> str:
     raise NotFoundError("Person", str(person_uuid))
 
 
-@router.get("/{identifier:uuid}/photos")
-async def get_person_photos(identifier: UUID):
-    """Get all photos containing this person with gallery info for sorting."""
+def _get_person_id_from_identifier(identifier: str) -> str:
+    """Get person ID from UUID or slug. Raises NotFoundError if not found."""
+    return get_person_id(identifier)
+
+
+@router.get("/{identifier}/photos")
+async def get_person_photos(identifier: str):
+    """Get all photos containing this person with gallery info for sorting.
+
+    Accepts UUID or slug as identifier.
+    """
     supabase_db = get_supabase_db()
-    
+
     try:
-        person_id = _get_person_id_from_uuid(supabase_db, identifier)
-        
+        person_id = _get_person_id_from_identifier(identifier)
+
         config = supabase_db.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
-        
+
         # Include galleries join for title, shoot_date, sort_order
         # Added: original_url, file_size, width, height for lightbox display
         result = supabase_db.client.table("photo_faces").select(

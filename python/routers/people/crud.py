@@ -193,11 +193,11 @@ async def create_person(data: PersonCreate):
         raise DatabaseError(str(e), operation="create_person")
 
 
-# ============ SLUG-BASED ROUTES ============
+# ============ GET BY SLUG OR UUID ============
 
 @router.get("/slug/{slug}")
 async def get_person_by_slug(slug: str):
-    """Get a person by slug."""
+    """Get a person by slug (legacy route, use /{identifier} instead)."""
     try:
         person = resolve_person(slug)
         if person:
@@ -210,18 +210,14 @@ async def get_person_by_slug(slug: str):
         raise DatabaseError(str(e), operation="get_person_by_slug")
 
 
-# ============ UUID-BASED ROUTES ============
-
-@router.get("/{identifier:uuid}")
-async def get_person(identifier: UUID):
-    """Get a person by UUID."""
-    supabase_db = get_supabase_db()
-    
+@router.get("/{identifier}")
+async def get_person(identifier: str):
+    """Get a person by UUID or slug."""
     try:
-        result = supabase_db.client.table("people").select("*").eq("id", str(identifier)).execute()
-        if result.data and len(result.data) > 0:
-            return ApiResponse.ok(result.data[0])
-        raise NotFoundError("Person", str(identifier))
+        person = resolve_person(identifier)
+        if person:
+            return ApiResponse.ok(person)
+        raise NotFoundError("Person", identifier)
     except NotFoundError:
         raise
     except Exception as e:

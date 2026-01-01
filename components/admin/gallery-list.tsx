@@ -79,25 +79,25 @@ export function GalleryList({ galleries: initialGalleries, photographers, locati
 
     setDeleteConfirm({ open: false, gallery: null })
     setDeletingId(id)
-    
+
     // Optimistic update - remove from local state immediately
     setLocalGalleries(prev => prev.filter(g => g.id !== id))
-    
+
     // Also clean up stats
     setGalleryStats(prev => {
       const next = new Map(prev)
       next.delete(id)
       return next
     })
-    
+
     const result = await deleteGalleryAction(id)
-    
+
     if (!result.success) {
       // Rollback on error
       setLocalGalleries(initialGalleries)
       alert("Ошибка при удалении галереи")
     }
-    
+
     setDeletingId(null)
   }
 
@@ -196,7 +196,7 @@ export function GalleryList({ galleries: initialGalleries, photographers, locati
                     onSuccess={onUpdate}
                   />
                   <Button variant="outline" size="sm" asChild>
-                    <a href={`/gallery/${gallery.id}`} target="_blank" rel="noopener noreferrer">
+                    <a href={`/gallery/${gallery.slug || gallery.id}`} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-4 w-4" />
                     </a>
                   </Button>

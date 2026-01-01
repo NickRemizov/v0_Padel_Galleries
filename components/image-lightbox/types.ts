@@ -7,6 +7,7 @@
 
 export interface LightboxImage {
   id?: string
+  slug?: string
   url: string
   originalUrl: string
   alt: string
@@ -25,10 +26,13 @@ export interface ImageLightboxProps {
   onClose: () => void
   onNavigate: (index: number) => void
   galleryId?: string
+  gallerySlug?: string
   currentPlayerId?: string
+  currentPlayerSlug?: string
 }
 
 export interface VerifiedPerson {
   id: string
+  slug?: string
   name: string
 }

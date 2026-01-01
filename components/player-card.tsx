@@ -27,7 +27,8 @@ export function PlayerCard({ player }: PlayerCardProps) {
   const router = useRouter()
 
   const handleCardClick = () => {
-    router.push(`/players/${player.id}`)
+    const playerSlug = player.slug || player.id
+    router.push(`/players/${playerSlug}`)
   }
 
   const nameParts = player.real_name.trim().split(/\s+/)
