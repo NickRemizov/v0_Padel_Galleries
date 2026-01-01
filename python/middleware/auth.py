@@ -35,6 +35,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/docs",
         "/api/redoc",
         "/api/openapi.json",
+        "/api/images/upload",  # Upload via Next.js proxy (doesn't forward auth headers)
     }
     
     async def dispatch(self, request: Request, call_next):
