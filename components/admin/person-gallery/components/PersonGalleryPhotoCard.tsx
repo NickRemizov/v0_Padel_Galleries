@@ -4,7 +4,7 @@ import React, { useMemo } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Check, Trash2, User } from "lucide-react"
+import { Check, X, User } from "lucide-react"
 import type { PersonPhoto } from "../types"
 import { calculateFaceStyles, formatShortDate } from "../utils"
 
@@ -97,13 +97,13 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
           <Button
             variant="destructive"
             size="icon"
-            className="absolute right-2 top-2 pointer-events-auto"
+            className="absolute right-2 top-2 pointer-events-auto rounded-full"
             onClick={(e) => {
               e.stopPropagation()
               onDelete(photo.id)
             }}
           >
-            <Trash2 className="h-4 w-4" />
+            <X className="h-4 w-4" />
           </Button>
 
           {canVerify && (

@@ -24,55 +24,55 @@ export function ConfigurationCard({
   onReset,
 }: ConfigurationCardProps) {
   return (
-    &lt;Card&gt;
-      &lt;CardHeader&gt;
-        &lt;CardTitle&gt;Параметры распознавания&lt;/CardTitle&gt;
-        &lt;CardDescription&gt;Настройте пороги confidence и вес контекста для распознавания лиц&lt;/CardDescription&gt;
-      &lt;/CardHeader&gt;
-      &lt;CardContent className="space-y-6"&gt;
+    <Card>
+      <CardHeader>
+        <CardTitle>Параметры распознавания</CardTitle>
+        <CardDescription>Настройте пороги confidence и вес контекста для распознавания лиц</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
         {/* Auto Avatar Section */}
-        &lt;div className="space-y-4"&gt;
-          &lt;h4 className="text-sm font-medium flex items-center gap-2"&gt;
-            &lt;UserCircle className="h-4 w-4" /&gt;
+        <div className="space-y-4">
+          <h4 className="text-sm font-medium flex items-center gap-2">
+            <UserCircle className="h-4 w-4" />
             Автоматические аватары
-          &lt;/h4&gt;
-          &lt;div className="flex items-center justify-between rounded-lg border p-4"&gt;
-            &lt;div className="space-y-0.5"&gt;
-              &lt;Label className="text-base"&gt;Автоматически присваивать аватар при создании игрока&lt;/Label&gt;
-              &lt;p className="text-sm text-muted-foreground"&gt;
+          </h4>
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label className="text-base">Автоматически присваивать аватар при создании игрока</Label>
+              <p className="text-sm text-muted-foreground">
                 При создании нового игрока аватар будет сгенерирован автоматически из фото с лицом
-              &lt;/p&gt;
-            &lt;/div&gt;
-            &lt;Switch
+              </p>
+            </div>
+            <Switch
               checked={localConfig.auto_avatar_on_create === true}
-              onCheckedChange={(checked) =&gt;
+              onCheckedChange={(checked) =>
                 setLocalConfig({
                   ...localConfig,
                   auto_avatar_on_create: checked,
                 })
               }
-            /&gt;
-          &lt;/div&gt;
-        &lt;/div&gt;
+            />
+          </div>
+        </div>
 
         {/* Quality Filtering section */}
-        &lt;div className="space-y-4 pt-4 border-t"&gt;
-          &lt;h4 className="text-sm font-medium"&gt;Фильтрация качества&lt;/h4&gt;
-          &lt;p className="text-xs text-muted-foreground"&gt;
+        <div className="space-y-4 pt-4 border-t">
+          <h4 className="text-sm font-medium">Фильтрация качества</h4>
+          <p className="text-xs text-muted-foreground">
             Отсеивайте лица низкого качества при детекции и распознавании
-          &lt;/p&gt;
+          </p>
 
-          &lt;div className="space-y-3"&gt;
-            &lt;div className="space-y-2"&gt;
-              &lt;div className="flex items-center justify-between"&gt;
-                &lt;Label className="text-sm"&gt;Минимальный det_score&lt;/Label&gt;
-                &lt;span className="text-sm font-medium"&gt;
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Минимальный det_score</Label>
+                <span className="text-sm font-medium">
                   {(localConfig.quality_filters?.min_detection_score || 0.7).toFixed(2)}
-                &lt;/span&gt;
-              &lt;/div&gt;
-              &lt;Slider
+                </span>
+              </div>
+              <Slider
                 value={[localConfig.quality_filters?.min_detection_score || 0.7]}
-                onValueChange={([value]) =&gt;
+                onValueChange={([value]) =>
                   setLocalConfig({
                     ...localConfig,
                     quality_filters: {
@@ -84,22 +84,22 @@ export function ConfigurationCard({
                 min={0.5}
                 max={0.9}
                 step={0.05}
-              /&gt;
-              &lt;p className="text-xs text-muted-foreground"&gt;
+              />
+              <p className="text-xs text-muted-foreground">
                 0.50 - очень мягкий | 0.70 - рекомендуемый | 0.90 - строгий
-              &lt;/p&gt;
-            &lt;/div&gt;
+              </p>
+            </div>
 
-            &lt;div className="space-y-2"&gt;
-              &lt;div className="flex items-center justify-between"&gt;
-                &lt;Label className="text-sm"&gt;Минимальный размер лица (px)&lt;/Label&gt;
-                &lt;span className="text-sm font-medium"&gt;
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Минимальный размер лица (px)</Label>
+                <span className="text-sm font-medium">
                   {Math.round(localConfig.quality_filters?.min_face_size || 80)}
-                &lt;/span&gt;
-              &lt;/div&gt;
-              &lt;Slider
+                </span>
+              </div>
+              <Slider
                 value={[localConfig.quality_filters?.min_face_size || 80]}
-                onValueChange={([value]) =&gt;
+                onValueChange={([value]) =>
                   setLocalConfig({
                     ...localConfig,
                     quality_filters: {
@@ -111,22 +111,22 @@ export function ConfigurationCard({
                 min={30}
                 max={200}
                 step={5}
-              /&gt;
-              &lt;p className="text-xs text-muted-foreground"&gt;
+              />
+              <p className="text-xs text-muted-foreground">
                 30px - очень мелкие лица | 80px - рекомендуемый | 200px - только крупные
-              &lt;/p&gt;
-            &lt;/div&gt;
+              </p>
+            </div>
 
-            &lt;div className="space-y-2"&gt;
-              &lt;div className="flex items-center justify-between"&gt;
-                &lt;Label className="text-sm"&gt;Минимальная резкость (blur score)&lt;/Label&gt;
-                &lt;span className="text-sm font-medium"&gt;
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Минимальная резкость (blur score)</Label>
+                <span className="text-sm font-medium">
                   {Math.round(localConfig.quality_filters?.min_blur_score || 80)}
-                &lt;/span&gt;
-              &lt;/div&gt;
-              &lt;Slider
+                </span>
+              </div>
+              <Slider
                 value={[localConfig.quality_filters?.min_blur_score || 80]}
-                onValueChange={([value]) =&gt;
+                onValueChange={([value]) =>
                   setLocalConfig({
                     ...localConfig,
                     quality_filters: {
@@ -138,29 +138,29 @@ export function ConfigurationCard({
                 min={10}
                 max={150}
                 step={5}
-              /&gt;
-              &lt;p className="text-xs text-muted-foreground"&gt;
+              />
+              <p className="text-xs text-muted-foreground">
                 10 - размытые лица | 60-80 - рекомендуемый | 150 - только четкие
-              &lt;/p&gt;
-            &lt;/div&gt;
-          &lt;/div&gt;
-        &lt;/div&gt;
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Confidence Thresholds */}
-        &lt;div className="space-y-4 pt-4 border-t"&gt;
-          &lt;h4 className="text-sm font-medium"&gt;Пороги уверенности распознавания&lt;/h4&gt;
+        <div className="space-y-4 pt-4 border-t">
+          <h4 className="text-sm font-medium">Пороги уверенности распознавания</h4>
 
-          &lt;div className="space-y-3"&gt;
-            &lt;div className="space-y-2"&gt;
-              &lt;div className="flex items-center justify-between"&gt;
-                &lt;Label className="text-sm"&gt;Минимальная уверенность для сохранения person_id&lt;/Label&gt;
-                &lt;span className="text-sm font-medium"&gt;
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Минимальная уверенность для сохранения person_id</Label>
+                <span className="text-sm font-medium">
                   {(localConfig.confidence_thresholds.high_data * 100).toFixed(0)}%
-                &lt;/span&gt;
-              &lt;/div&gt;
-              &lt;Slider
+                </span>
+              </div>
+              <Slider
                 value={[localConfig.confidence_thresholds.high_data]}
-                onValueChange={([value]) =&gt;
+                onValueChange={([value]) =>
                   setLocalConfig({
                     ...localConfig,
                     confidence_thresholds: { ...localConfig.confidence_thresholds, high_data: value },
@@ -169,74 +169,74 @@ export function ConfigurationCard({
                 min={0.3}
                 max={0.9}
                 step={0.05}
-              /&gt;
-              &lt;p className="text-xs text-muted-foreground"&gt;
+              />
+              <p className="text-xs text-muted-foreground">
                 30% - очень мягкий | 60% - рекомендуемый | 80% - строгий
-              &lt;/p&gt;
-            &lt;/div&gt;
+              </p>
+            </div>
 
-            &lt;div className="space-y-2 opacity-50"&gt;
-              &lt;div className="flex items-center justify-between"&gt;
-                &lt;Label className="text-sm"&gt;Средняя уверенность (не используется)&lt;/Label&gt;
-                &lt;span className="text-sm font-medium"&gt;
+            <div className="space-y-2 opacity-50">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Средняя уверенность (не используется)</Label>
+                <span className="text-sm font-medium">
                   {(localConfig.confidence_thresholds.medium_data * 100).toFixed(0)}%
-                &lt;/span&gt;
-              &lt;/div&gt;
-              &lt;Slider
+                </span>
+              </div>
+              <Slider
                 disabled
                 value={[localConfig.confidence_thresholds.medium_data]}
                 min={0.3}
                 max={0.9}
                 step={0.05}
-              /&gt;
-              &lt;p className="text-xs text-muted-foreground"&gt;Будет использоваться с HDBSCAN clustering&lt;/p&gt;
-            &lt;/div&gt;
+              />
+              <p className="text-xs text-muted-foreground">Будет использоваться с HDBSCAN clustering</p>
+            </div>
 
-            &lt;div className="space-y-2 opacity-50"&gt;
-              &lt;div className="flex items-center justify-between"&gt;
-                &lt;Label className="text-sm"&gt;Низкая уверенность (не используется)&lt;/Label&gt;
-                &lt;span className="text-sm font-medium"&gt;
+            <div className="space-y-2 opacity-50">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Низкая уверенность (не используется)</Label>
+                <span className="text-sm font-medium">
                   {(localConfig.confidence_thresholds.low_data * 100).toFixed(0)}%
-                &lt;/span&gt;
-              &lt;/div&gt;
-              &lt;Slider disabled value={[localConfig.confidence_thresholds.low_data]} min={0.3} max={0.9} step={0.05} /&gt;
-              &lt;p className="text-xs text-muted-foreground"&gt;Будет использоваться с HDBSCAN clustering&lt;/p&gt;
-            &lt;/div&gt;
-          &lt;/div&gt;
-        &lt;/div&gt;
+                </span>
+              </div>
+              <Slider disabled value={[localConfig.confidence_thresholds.low_data]} min={0.3} max={0.9} step={0.05} />
+              <p className="text-xs text-muted-foreground">Будет использоваться с HDBSCAN clustering</p>
+            </div>
+          </div>
+        </div>
 
         {/* Context Weight */}
-        &lt;div className="space-y-4 pt-4 border-t opacity-50"&gt;
-          &lt;h4 className="text-sm font-medium"&gt;Контекстное распознавание (не используется)&lt;/h4&gt;
-          &lt;p className="text-xs text-muted-foreground"&gt;
+        <div className="space-y-4 pt-4 border-t opacity-50">
+          <h4 className="text-sm font-medium">Контекстное распознавание (не используется)</h4>
+          <p className="text-xs text-muted-foreground">
             Вес контекстной информации (галерея, дата) при распознавании
-          &lt;/p&gt;
+          </p>
 
-          &lt;div className="space-y-2"&gt;
-            &lt;div className="flex items-center justify-between"&gt;
-              &lt;Label className="text-sm"&gt;Context Weight&lt;/Label&gt;
-              &lt;span className="text-sm font-medium"&gt;{localConfig.context_weight.toFixed(2)}&lt;/span&gt;
-            &lt;/div&gt;
-            &lt;Slider disabled value={[localConfig.context_weight]} min={0.0} max={0.5} step={0.05} /&gt;
-            &lt;p className="text-xs text-muted-foreground"&gt;
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Context Weight</Label>
+              <span className="text-sm font-medium">{localConfig.context_weight.toFixed(2)}</span>
+            </div>
+            <Slider disabled value={[localConfig.context_weight]} min={0.0} max={0.5} step={0.05} />
+            <p className="text-xs text-muted-foreground">
               0.00 - контекст не учитывается | 0.10 - минимальное влияние | 0.50 - максимальное влияние
-            &lt;/p&gt;
-            &lt;p className="text-xs text-muted-foreground"&gt;
+            </p>
+            <p className="text-xs text-muted-foreground">
               Будет использоваться с HDBSCAN для учёта совместных появлений людей
-            &lt;/p&gt;
-          &lt;/div&gt;
-        &lt;/div&gt;
+            </p>
+          </div>
+        </div>
 
         {/* Кнопки */}
-        &lt;div className="flex gap-2"&gt;
-          &lt;Button onClick={onSave} disabled={fastapiError}&gt;
+        <div className="flex gap-2">
+          <Button onClick={onSave} disabled={fastapiError}>
             Сохранить настройки
-          &lt;/Button&gt;
-          &lt;Button onClick={onReset} variant="outline"&gt;
+          </Button>
+          <Button onClick={onReset} variant="outline">
             Сбросить
-          &lt;/Button&gt;
-        &lt;/div&gt;
-      &lt;/CardContent&gt;
-    &lt;/Card&gt;
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
