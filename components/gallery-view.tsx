@@ -45,6 +45,7 @@ export function GalleryView({ gallery }: GalleryViewProps) {
 
   const lightboxImages = sortedImages.map((img, index) => ({
     id: img.id,
+    slug: img.slug,
     url: img.image_url,
     originalUrl: img.original_url,
     alt: `${gallery.title} - изображение ${index + 1}`,
@@ -116,11 +117,15 @@ export function GalleryView({ gallery }: GalleryViewProps) {
   useEffect(() => {
     const photoParam = searchParams.get("photo")
     if (photoParam) {
-      // Try to find photo by ID first
-      const photoIndex = sortedImages.findIndex((img) => img.id === photoParam)
+      // Try to find photo by slug first, then by ID
+      let photoIndex = sortedImages.findIndex((img) => img.slug === photoParam)
+
+      if (photoIndex === -1) {
+        // Fallback: try by ID
+        photoIndex = sortedImages.findIndex((img) => img.id === photoParam)
+      }
 
       if (photoIndex !== -1) {
-        // Found by ID
         setCurrentIndex(photoIndex)
         setLightboxOpen(true)
       } else {
@@ -195,6 +200,7 @@ export function GalleryView({ gallery }: GalleryViewProps) {
         onClose={() => setLightboxOpen(false)}
         onNavigate={setCurrentIndex}
         galleryId={gallery.id}
+        gallerySlug={gallery.slug}
       />
     </div>
   )

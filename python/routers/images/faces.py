@@ -25,14 +25,15 @@ async def get_image_verified_people(image_id: str):
     try:
         logger.info(f"Getting verified people for image: {image_id}")
         
-        result = supabase_db.client.table("photo_faces").select("person_id, people!inner(id, real_name, telegram_name)").eq("photo_id", image_id).eq("verified", True).execute()
-        
+        result = supabase_db.client.table("photo_faces").select("person_id, people!inner(id, slug, real_name, telegram_name)").eq("photo_id", image_id).eq("verified", True).execute()
+
         people = []
         for item in (result.data or []):
             person_data = item.get("people", {})
             name = person_data.get("real_name") or person_data.get("telegram_name") or "Unknown"
             people.append({
                 "id": person_data.get("id"),
+                "slug": person_data.get("slug"),
                 "name": name
             })
         

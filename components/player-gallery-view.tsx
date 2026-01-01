@@ -38,6 +38,7 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
 
   const lightboxImages = images.map((img, index) => ({
     id: img.id,
+    slug: img.slug,
     url: img.image_url,
     originalUrl: img.original_url,
     alt: `${player.real_name} - изображение ${index + 1}`,
@@ -130,7 +131,13 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
   useEffect(() => {
     const photoParam = searchParams.get("photo")
     if (photoParam) {
-      const photoIndex = images.findIndex((img) => img.id === photoParam)
+      // Try to find photo by slug first, then by ID
+      let photoIndex = images.findIndex((img) => img.slug === photoParam)
+
+      if (photoIndex === -1) {
+        // Fallback: try by ID
+        photoIndex = images.findIndex((img) => img.id === photoParam)
+      }
 
       if (photoIndex !== -1) {
         setCurrentIndex(photoIndex)
@@ -212,6 +219,7 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
         onClose={() => setLightboxOpen(false)}
         onNavigate={setCurrentIndex}
         currentPlayerId={player.id}
+        currentPlayerSlug={player.slug}
       />
     </div>
   )

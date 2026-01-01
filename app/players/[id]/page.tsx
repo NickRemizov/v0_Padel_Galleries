@@ -48,12 +48,13 @@ export default async function PlayerGalleryPage({ params }: PlayerGalleryPagePro
   const rawPhotos = photosResponse.success ? (photosResponse.data || []) : []
 
   // Transform photos to expected format
-  // API format: { id, photo_id, gallery_images: { id, image_url, gallery_id, original_filename, galleries: { title, shoot_date, sort_order } } }
+  // API format: { id, photo_id, gallery_images: { id, slug, image_url, gallery_id, original_filename, galleries: { id, slug, title, shoot_date, sort_order } } }
   const images: any[] = rawPhotos.map((face: any) => {
     const gi = face.gallery_images || {}
     const gallery = gi.galleries || {}
     return {
       id: gi.id || face.photo_id,
+      slug: gi.slug,
       image_url: gi.image_url,
       original_url: gi.original_url || gi.image_url,
       original_filename: gi.original_filename,
@@ -64,6 +65,7 @@ export default async function PlayerGalleryPage({ params }: PlayerGalleryPagePro
       created_at: gi.created_at,
       gallery: {
         id: gi.gallery_id || gallery.id,
+        slug: gallery.slug,
         title: gallery.title,
         shoot_date: gallery.shoot_date,
         sort_order: gallery.sort_order || "filename",
