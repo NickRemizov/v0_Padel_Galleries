@@ -14,13 +14,13 @@
 - Удаление площадки, организатора, фотографа
 
 **Пример:**
-```tsx
+\`\`\`tsx
 import { Trash2 } from "lucide-react"
 
 <Button variant="destructive" size="icon">
   <Trash2 className="h-4 w-4" />
 </Button>
-```
+\`\`\`
 
 ---
 
@@ -34,13 +34,13 @@ import { Trash2 } from "lucide-react"
 - Закрытие диалогов
 
 **Пример:**
-```tsx
+\`\`\`tsx
 import { X } from "lucide-react"
 
 <Button variant="destructive" size="icon">
   <X className="h-4 w-4" />
 </Button>
-```
+\`\`\`
 
 ---
 
@@ -56,11 +56,11 @@ import { X } from "lucide-react"
 - НЕ кликабельно
 
 **Пример:**
-```tsx
+\`\`\`tsx
 <div className="bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center">
   ✓
 </div>
-```
+\`\`\`
 
 ---
 
@@ -73,7 +73,7 @@ import { X } from "lucide-react"
 - Кликабельно
 
 **Пример:**
-```tsx
+\`\`\`tsx
 import { Check } from "lucide-react"
 
 <Button
@@ -83,7 +83,7 @@ import { Check } from "lucide-react"
 >
   <Check className="h-4 w-4" />
 </Button>
-```
+\`\`\`
 
 ---
 
@@ -96,12 +96,12 @@ import { Check } from "lucide-react"
 Все диалоги подтверждения используют компонент `DeleteConfirmDialog` или `AlertDialog`.
 
 **Расположение компонента:**
-```
+\`\`\`
 components/ui/delete-confirm-dialog.tsx
-```
+\`\`\`
 
 **Пример использования:**
-```tsx
+\`\`\`tsx
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 
 const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; item: Item | null }>({
@@ -128,7 +128,7 @@ async function handleDeleteConfirm() {
   onConfirm={handleDeleteConfirm}
   description={`Удалить "${deleteConfirm.item?.name}"?`}
 />
-```
+\`\`\`
 
 ---
 
