@@ -4,7 +4,7 @@
 
 import type { Config } from "./types"
 
-export const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "http://23.88.61.20:8001"
+export const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "https://api.vlcpadel.com"
 
 export const DEFAULT_CONFIG: Config = {
   confidence_thresholds: {
