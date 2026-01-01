@@ -13,6 +13,8 @@ import os
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, DatabaseError
 from core.logging import get_logger
+from core.slug import generate_photo_slug, make_unique_slug
+from infrastructure.minio_storage import get_minio_storage
 
 from .models import BatchAddImagesRequest
 from .helpers import get_supabase_db, get_face_service
@@ -25,17 +27,29 @@ router = APIRouter()
 async def batch_add_images(request: BatchAddImagesRequest):
     """Добавляет несколько фото в галерею."""
     supabase_db = get_supabase_db()
-    
+
     try:
         logger.info(f"Adding {len(request.images)} images to gallery {request.galleryId}")
-        
+
         # Get max display_order
         max_order_result = supabase_db.client.table("gallery_images").select("display_order").eq("gallery_id", request.galleryId).order("display_order", desc=True).limit(1).execute()
-        
+
         start_order = max_order_result.data[0]["display_order"] + 1 if max_order_result.data else 0
-        
-        images_to_insert = [
-            {
+
+        # Get existing slugs in this gallery for uniqueness
+        existing_result = supabase_db.client.table("gallery_images").select("slug").eq("gallery_id", request.galleryId).execute()
+        existing_slugs = {img["slug"] for img in (existing_result.data or []) if img.get("slug")}
+
+        images_to_insert = []
+        for idx, img in enumerate(request.images):
+            # Generate unique slug within gallery
+            base_slug = generate_photo_slug(img.originalFilename or "")
+            if not base_slug:
+                base_slug = "photo"
+            slug = make_unique_slug(base_slug, existing_slugs)
+            existing_slugs.add(slug)
+
+            images_to_insert.append({
                 "gallery_id": request.galleryId,
                 "image_url": img.imageUrl,
                 "original_url": img.originalUrl,
@@ -43,21 +57,20 @@ async def batch_add_images(request: BatchAddImagesRequest):
                 "width": img.width,
                 "height": img.height,
                 "file_size": img.fileSize,
-                "display_order": start_order + idx
-            }
-            for idx, img in enumerate(request.images)
-        ]
-        
+                "display_order": start_order + idx,
+                "slug": slug
+            })
+
         result = supabase_db.client.table("gallery_images").insert(images_to_insert).execute()
-        
+
         inserted_count = len(result.data) if result.data else 0
-        logger.info(f"Successfully inserted {inserted_count} images")
-        
+        logger.info(f"Successfully inserted {inserted_count} images with slugs")
+
         return ApiResponse.ok({
             "inserted_count": inserted_count,
             "message": f"Successfully added {inserted_count} images"
         })
-        
+
     except Exception as e:
         logger.error(f"Error in batch add: {e}")
         raise DatabaseError(str(e), operation="batch_add_images")
@@ -93,20 +106,28 @@ async def delete_image(image_id: str):
         
         logger.info("Image deleted from DB")
         
-        # Delete blob file
+        # Delete storage file (MinIO or Vercel Blob)
         if image_url:
             try:
-                blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
-                if blob_token and image_url.startswith("https://"):
-                    async with httpx.AsyncClient() as client:
-                        delete_response = await client.delete(
-                            image_url,
-                            headers={"Authorization": f"Bearer {blob_token}"}
-                        )
-                        if delete_response.status_code in [200, 204]:
-                            logger.info("Blob file deleted")
+                minio_public_url = os.getenv("MINIO_PUBLIC_URL", "")
+                if minio_public_url and minio_public_url in image_url:
+                    # Delete from MinIO
+                    minio = get_minio_storage()
+                    minio.delete_file(image_url)
+                    logger.info("MinIO file deleted")
+                else:
+                    # Delete from Vercel Blob (legacy)
+                    blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
+                    if blob_token and image_url.startswith("https://"):
+                        async with httpx.AsyncClient() as client:
+                            delete_response = await client.delete(
+                                image_url,
+                                headers={"Authorization": f"Bearer {blob_token}"}
+                            )
+                            if delete_response.status_code in [200, 204]:
+                                logger.info("Vercel Blob file deleted")
             except Exception as e:
-                logger.warning(f"Failed to delete blob: {e}")
+                logger.warning(f"Failed to delete storage file: {e}")
         
         # Rebuild index if had descriptors
         index_rebuilt = False

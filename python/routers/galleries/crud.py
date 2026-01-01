@@ -15,12 +15,30 @@ from fastapi import APIRouter, Query
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
+from core.slug import generate_gallery_slug, make_unique_slug
 
 from .models import GalleryCreate, GalleryUpdate
 from .helpers import get_supabase_db, get_face_service, _resolve_gallery, _get_gallery_id
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _generate_unique_gallery_slug(title: str, exclude_id: str = None) -> str:
+    """Generate unique slug for a gallery."""
+    supabase_db = get_supabase_db()
+
+    result = supabase_db.client.table("galleries").select("id, slug").execute()
+    existing_slugs = {
+        g["slug"] for g in (result.data or [])
+        if g.get("slug") and g["id"] != exclude_id
+    }
+
+    base_slug = generate_gallery_slug(title or "")
+    if not base_slug:
+        base_slug = "gallery"
+
+    return make_unique_slug(base_slug, existing_slugs)
 
 
 @router.get("/")
@@ -132,12 +150,16 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
 async def create_gallery(data: GalleryCreate):
     """Create a new gallery."""
     supabase_db = get_supabase_db()
-    
+
     try:
         insert_data = data.model_dump(exclude_none=True)
+
+        # Auto-generate slug
+        insert_data["slug"] = _generate_unique_gallery_slug(data.title or "")
+
         result = supabase_db.client.table("galleries").insert(insert_data).execute()
         if result.data:
-            logger.info(f"Created gallery: {data.title}")
+            logger.info(f"Created gallery: {data.title} (slug: {insert_data['slug']})")
             return ApiResponse.ok(result.data[0])
         raise DatabaseError("Insert failed", operation="create_gallery")
     except Exception as e:
@@ -149,14 +171,22 @@ async def create_gallery(data: GalleryCreate):
 async def update_gallery(identifier: str, data: GalleryUpdate):
     """Update a gallery by ID or slug."""
     supabase_db = get_supabase_db()
-    
+
     try:
         gallery_id = _get_gallery_id(identifier)
-        
+
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
             raise ValidationError("No fields to update")
-        
+
+        # Regenerate slug if title changed
+        if "title" in update_data:
+            update_data["slug"] = _generate_unique_gallery_slug(
+                update_data["title"],
+                exclude_id=gallery_id
+            )
+            logger.info(f"Regenerated slug for gallery {gallery_id}: {update_data['slug']}")
+
         result = supabase_db.client.table("galleries").update(update_data).eq("id", gallery_id).execute()
         if result.data:
             logger.info(f"Updated gallery {gallery_id}")

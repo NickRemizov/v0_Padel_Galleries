@@ -1,11 +1,18 @@
 """
-Slug utilities for human-readable URLs
-Supports both UUID and slug identifiers
+Slug utilities for human-readable URLs.
+
+Slug format rules:
+- Latin letters (upper/lower case preserved)
+- Digits, hyphens, underscores allowed
+- Spaces → underscores
+- Cyrillic → transliterated to Latin (case preserved)
+- Duplicates get suffix _02, _03, etc.
 """
 
 import re
+import os
 from uuid import UUID
-from typing import Optional, Tuple
+from typing import Optional
 
 # UUID regex pattern
 UUID_PATTERN = re.compile(
@@ -13,6 +20,154 @@ UUID_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+# Cyrillic to Latin transliteration map (lowercase)
+TRANSLIT_MAP = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+    # Ukrainian specific
+    'і': 'i', 'ї': 'yi', 'є': 'ye', 'ґ': 'g',
+}
+
+
+def transliterate(text: str) -> str:
+    """
+    Transliterate Cyrillic to Latin, preserving case.
+    Non-cyrillic characters pass through unchanged.
+    """
+    result = []
+    for char in text:
+        lower_char = char.lower()
+        if lower_char in TRANSLIT_MAP:
+            translit = TRANSLIT_MAP[lower_char]
+            # Preserve case: if original was uppercase, capitalize first letter
+            if char.isupper() and translit:
+                translit = translit[0].upper() + translit[1:]
+            result.append(translit)
+        else:
+            result.append(char)
+    return ''.join(result)
+
+
+def to_slug(text: str, max_length: int = 200) -> str:
+    """
+    Convert text to URL-friendly slug.
+
+    Rules:
+    - Transliterate Cyrillic → Latin
+    - Preserve case
+    - Spaces → underscores
+    - Keep only: letters, digits, hyphens, underscores
+    - Remove file extensions (.jpg, .png, etc.)
+
+    Args:
+        text: Source text (name, title, filename)
+        max_length: Maximum slug length
+
+    Returns:
+        URL-safe slug
+    """
+    if not text:
+        return ""
+
+    # Remove common file extensions
+    text = re.sub(r'\.(jpg|jpeg|png|gif|webp|heic|heif)$', '', text, flags=re.IGNORECASE)
+
+    # Transliterate Cyrillic
+    text = transliterate(text)
+
+    # Replace spaces with underscores
+    text = text.replace(' ', '_')
+
+    # Keep only allowed characters: letters, digits, hyphens, underscores
+    text = re.sub(r'[^a-zA-Z0-9_-]', '', text)
+
+    # Remove consecutive underscores/hyphens
+    text = re.sub(r'[_-]+', lambda m: m.group()[0], text)
+
+    # Remove leading/trailing underscores/hyphens
+    text = text.strip('_-')
+
+    return text[:max_length]
+
+
+def make_unique_slug(
+    base_slug: str,
+    existing_slugs: set,
+    exclude_id: Optional[str] = None
+) -> str:
+    """
+    Make slug unique by adding _02, _03 suffix if needed.
+
+    Args:
+        base_slug: The generated slug
+        existing_slugs: Set of slugs already in use
+        exclude_id: ID to exclude from uniqueness check (for updates)
+
+    Returns:
+        Unique slug
+    """
+    if base_slug not in existing_slugs:
+        return base_slug
+
+    # Find next available index
+    index = 2
+    while True:
+        candidate = f"{base_slug}_{index:02d}"
+        if candidate not in existing_slugs:
+            return candidate
+        index += 1
+        if index > 99:
+            # Fallback: add more digits
+            candidate = f"{base_slug}_{index}"
+            if candidate not in existing_slugs:
+                return candidate
+
+
+# === Entity-specific slug generators ===
+
+def generate_gallery_slug(title: str) -> str:
+    """Generate slug for gallery from its title."""
+    return to_slug(title)
+
+
+def generate_photo_slug(original_filename: str) -> str:
+    """Generate slug for photo from original filename."""
+    return to_slug(original_filename)
+
+
+def generate_player_slug(
+    name: str,
+    telegram_username: Optional[str] = None
+) -> str:
+    """
+    Generate slug for player.
+
+    Priority:
+    1. Telegram username (without @)
+    2. Transliterated name
+
+    Args:
+        name: Player's display name
+        telegram_username: Telegram username (with or without @)
+
+    Returns:
+        Slug for player URL
+    """
+    if telegram_username:
+        # Remove @ if present, keep as-is (TG usernames are already Latin)
+        username = telegram_username.lstrip('@').strip()
+        if username:
+            # TG usernames can have underscores, just sanitize
+            return re.sub(r'[^a-zA-Z0-9_]', '', username)
+
+    # Fallback to transliterated name
+    return to_slug(name)
+
+
+# === Resolver (unchanged) ===
 
 def is_uuid(value: str) -> bool:
     """Check if a string is a valid UUID."""
@@ -31,14 +186,14 @@ def resolve_identifier(
     """
     Resolve an identifier to a record.
     Tries slug first (if not UUID), then falls back to ID.
-    
+
     Args:
         client: Supabase client
         table: Table name
         identifier: Either UUID or slug
         slug_column: Name of the slug column (default: "slug")
         select: Fields to select
-    
+
     Returns:
         Record dict or None if not found
     """
@@ -52,43 +207,21 @@ def resolve_identifier(
         if result.data and len(result.data) > 0:
             return result.data[0]
         return None
-    
+
     # Not a UUID - try slug first
     result = client.table(table).select(select).eq(slug_column, identifier).execute()
     if result.data and len(result.data) > 0:
         return result.data[0]
-    
+
     # Fallback: try as ID anyway (for backward compatibility during migration)
     result = client.table(table).select(select).eq("id", identifier).execute()
     if result.data and len(result.data) > 0:
         return result.data[0]
-    
+
     return None
 
 
+# Keep old function name for compatibility
 def generate_slug(text: str, max_length: int = 200) -> str:
-    """
-    Generate a URL-friendly slug from text.
-    Supports Cyrillic and Latin characters.
-    
-    Args:
-        text: Source text
-        max_length: Maximum slug length
-    
-    Returns:
-        URL-safe slug
-    """
-    if not text:
-        return ""
-    
-    # Lowercase and replace non-alphanumeric with hyphens
-    slug = re.sub(r'[^a-zA-Z0-9а-яёА-ЯЁ]+', '-', text.lower())
-    
-    # Remove leading/trailing hyphens
-    slug = slug.strip('-')
-    
-    # Remove consecutive hyphens
-    slug = re.sub(r'-+', '-', slug)
-    
-    # Truncate to max length
-    return slug[:max_length]
+    """Deprecated: use to_slug() instead."""
+    return to_slug(text, max_length)

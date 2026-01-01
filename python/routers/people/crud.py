@@ -13,6 +13,7 @@ from uuid import UUID
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
+from core.slug import generate_player_slug, make_unique_slug
 
 from .models import PersonCreate, PersonUpdate
 from .helpers import (
@@ -25,6 +26,30 @@ from .helpers import (
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _generate_unique_player_slug(
+    name: str,
+    telegram_nickname: str = None,
+    exclude_id: str = None
+) -> str:
+    """Generate unique slug for a player."""
+    supabase_db = get_supabase_db()
+
+    # Get all existing slugs (excluding the current person if updating)
+    query = supabase_db.client.table("people").select("id, slug")
+    result = query.execute()
+
+    existing_slugs = {
+        p["slug"] for p in (result.data or [])
+        if p.get("slug") and p["id"] != exclude_id
+    }
+
+    base_slug = generate_player_slug(name, telegram_nickname)
+    if not base_slug:
+        base_slug = "player"
+
+    return make_unique_slug(base_slug, existing_slugs)
 
 
 @router.get("/")
@@ -148,12 +173,19 @@ async def _add_gallery_data(people: list) -> list:
 async def create_person(data: PersonCreate):
     """Create a new person."""
     supabase_db = get_supabase_db()
-    
+
     try:
         insert_data = data.model_dump(exclude_none=True)
+
+        # Auto-generate slug
+        insert_data["slug"] = _generate_unique_player_slug(
+            name=data.real_name or "",
+            telegram_nickname=data.telegram_nickname
+        )
+
         result = supabase_db.client.table("people").insert(insert_data).execute()
         if result.data:
-            logger.info(f"Created person: {data.real_name}")
+            logger.info(f"Created person: {data.real_name} (slug: {insert_data['slug']})")
             return ApiResponse.ok(result.data[0])
         raise DatabaseError("Insert failed", operation="create_person")
     except Exception as e:
@@ -201,17 +233,34 @@ async def get_person(identifier: UUID):
 async def update_person(identifier: UUID, data: PersonUpdate):
     """Update a person by UUID."""
     supabase_db = get_supabase_db()
-    
+
     try:
-        # Verify person exists
-        result = supabase_db.client.table("people").select("id").eq("id", str(identifier)).execute()
+        # Get current person data
+        result = supabase_db.client.table("people").select(
+            "id, real_name, telegram_nickname"
+        ).eq("id", str(identifier)).execute()
         if not result.data:
             raise NotFoundError("Person", str(identifier))
+
         person_id = str(identifier)
-        
+        current = result.data[0]
+
         update_data = data.model_dump(exclude_none=True)
         if not update_data:
             raise ValidationError("No fields to update")
+
+        # Regenerate slug if name or TG changed
+        new_name = update_data.get("real_name", current.get("real_name"))
+        new_tg = update_data.get("telegram_nickname", current.get("telegram_nickname"))
+
+        if "real_name" in update_data or "telegram_nickname" in update_data:
+            update_data["slug"] = _generate_unique_player_slug(
+                name=new_name or "",
+                telegram_nickname=new_tg,
+                exclude_id=person_id
+            )
+            logger.info(f"Regenerated slug for person {person_id}: {update_data['slug']}")
+
         result = supabase_db.client.table("people").update(update_data).eq("id", person_id).execute()
         if result.data:
             logger.info(f"Updated person {person_id}")
