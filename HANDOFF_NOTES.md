@@ -38,7 +38,7 @@
 ### Dead code cleanup (одобрено owner)
 Файлы с 0 импортов - удалить вручную через GitHub UI или git:
 
-```bash
+\`\`\`bash
 git rm lib/debounce.ts
 git rm lib/supabase/client.ts
 git rm lib/supabase/safe-call.ts  
@@ -46,7 +46,7 @@ git rm lib/supabase/with-supabase.ts
 git rm python/routers/config.py
 git commit -m "chore: remove dead code files"
 git push
-```
+\`\`\`
 
 ---
 
@@ -60,9 +60,9 @@ git push
 
 ## ПРОВЕРКА ПОСЛЕ РЕФАКТОРИНГА
 
-```bash
+\`\`\`bash
 npm run build
-```
+\`\`\`
 
 Если сборка прошла — импорты работают.
 

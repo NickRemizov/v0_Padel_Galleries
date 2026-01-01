@@ -4,7 +4,7 @@
 
 Clean Architecture с разделением ответственности:
 
-```
+\`\`\`
 python/
 ├── main.py                      # Entry point, DI, exception handlers
 ├── core/                        # Foundation (no dependencies)
@@ -20,13 +20,13 @@ python/
 ├── repositories/                # Data access layer
 ├── services/                    # Business logic (see below)
 └── routers/                     # HTTP endpoints (see below)
-```
+\`\`\`
 
 ## Modular Router Structure (v5.2)
 
 Большие роутеры разбиты на модульные пакеты:
 
-```
+\`\`\`
 routers/
 ├── people/                      # People CRUD, photos, embeddings
 │   ├── __init__.py             # Router aggregation, DI
@@ -76,11 +76,11 @@ routers/
     │   ├── faces.py            # /debug-photo, /debug-person
     │   └── recognition.py      # /debug-recognition
     └── helpers.py
-```
+\`\`\`
 
 ## Modular Services Structure (v5.2)
 
-```
+\`\`\`
 services/
 ├── supabase/                    # Database layer (facade pattern)
 │   ├── __init__.py             # SupabaseService facade
@@ -106,13 +106,13 @@ services/
 ├── hnsw_index.py                # HNSW operations
 ├── quality_filters.py           # Face quality checks
 └── grouping.py                  # Face clustering
-```
+\`\`\`
 
 ## Key Patterns
 
 ### 1. Dependency Injection for Modular Routers
 
-```python
+\`\`\`python
 # routers/galleries/__init__.py
 supabase_db_instance: SupabaseService = None
 face_service_instance: FaceRecognitionService = None
@@ -126,23 +126,23 @@ def set_services(supabase_db, face_service=None):
 def get_supabase_db():
     from . import supabase_db_instance  # Import INSIDE function
     return supabase_db_instance
-```
+\`\`\`
 
 **⚠️ Critical:** Import globals inside getter functions, not at module level!
 
 ### 2. Router Order for Parametric Routes
 
-```python
+\`\`\`python
 # Specific routes BEFORE parametric routes
 router.include_router(filters_router)   # /with-unprocessed-photos
 router.include_router(photos_router)    # /{id}/unprocessed-photos
 router.include_router(stats_router)     # /{id}/stats
 router.include_router(crud_router)      # /{identifier} - LAST!
-```
+\`\`\`
 
 ### 3. Sub-router Root Path
 
-```python
+\`\`\`python
 # Use "/" not "" for root path in sub-routers
 router = APIRouter()
 
@@ -151,7 +151,7 @@ async def list_items(): ...
 
 @router.get("")   # WRONG - causes routing issues
 async def list_items(): ...
-```
+\`\`\`
 
 ## Security
 
@@ -159,7 +159,7 @@ async def list_items(): ...
 
 Централизованная защита всех write-операций:
 
-```python
+\`\`\`python
 # middleware/auth.py
 class AuthMiddleware(BaseHTTPMiddleware):
     """
@@ -170,13 +170,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
     - GET/HEAD: всегда разрешены (публичное чтение)
     - POST/PUT/PATCH/DELETE на /api/*: требуют admin token
     """
-```
+\`\`\`
 
 ## Unified API Response
 
 Все endpoints возвращают `ApiResponse`:
 
-```python
+\`\`\`python
 from core.responses import ApiResponse
 
 @router.get("/items/{id}")
@@ -186,11 +186,11 @@ async def get_item(id: str):
 
 # Returns:
 # {"success": true, "data": {...}, "error": null, "meta": null}
-```
+\`\`\`
 
 ## Exception Hierarchy
 
-```
+\`\`\`
 AppException (base, 500)
 ├── NotFoundError (404)
 ├── ValidationError (422)
@@ -198,13 +198,13 @@ AppException (base, 500)
 ├── RecognitionError (500)
 ├── AuthenticationError (401)
 └── TrainingError (500)
-```
+\`\`\`
 
 ## Configuration
 
 All settings via environment variables:
 
-```bash
+\`\`\`bash
 # Server
 SERVER_HOST=0.0.0.0
 SERVER_PORT=8001
@@ -220,7 +220,7 @@ DEFAULT_MIN_FACE_SIZE=80
 
 # Admin (for AuthMiddleware)
 ADMIN_EMAILS=admin@example.com
-```
+\`\`\`
 
 ## Version History
 
