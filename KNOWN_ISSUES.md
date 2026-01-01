@@ -1,6 +1,6 @@
 # Known Issues & Technical Debt
 
-Last updated: 2025-12-31
+Last updated: 2026-01-01
 
 ## Critical Issues
 
@@ -49,7 +49,7 @@ Several Next.js API routes exist but have no frontend calls:
 **Decision:** Keep for now. Review when doing major cleanup.
 
 ### 2. Dead Code Candidates
-**Status:** Pending review  
+**Status:** Pending review
 **Priority:** Low
 
 Files with 0 imports (candidates for deletion):
@@ -57,7 +57,6 @@ Files with 0 imports (candidates for deletion):
 - `lib/supabase/client.ts`
 - `lib/supabase/safe-call.ts`
 - `lib/supabase/with-supabase.ts`
-- `python/routers/config.py` (not connected in main.py)
 
 **Decision:** Owner to review and delete manually if confirmed unused.
 
