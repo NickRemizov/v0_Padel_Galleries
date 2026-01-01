@@ -6,7 +6,7 @@
 
 ---
 
-## ✅ ВЫПОЛНЕНО В ЭТОМ ЧАТЕ
+## ✅ ВЫПОЛНЕНО
 
 ### 1. Аудит кодовой базы
 - Полный аудит v0 export завершён
@@ -22,15 +22,20 @@
 
 ### 4. Рефакторинг больших файлов (ЧАСТИЧНО)
 Разбиты на модули:
-- `training-stats-card.tsx` → папка `training-stats/`
-- `batch-recognition-dialog.tsx` → папка `batch-recognition/`
-- `consistency-audit-dialog.tsx` → папка `consistency-audit/`
+- `training-stats-card.tsx` → папка `training-stats/` (10 файлов, все <6KB) ✅
+- `batch-recognition-dialog.tsx` → папка `batch-recognition/` (4 файла, все <9KB) ✅
+- `consistency-audit-dialog.tsx` → папка `consistency-audit/` (7 файлов, но index.tsx = 11KB) ⚠️
 
 ---
 
 ## ❌ НЕ ЗАВЕРШЕНО
 
-### 1. Рефакторинг файлов (осталось 3 файла)
+### 1. Дробление consistency-audit/index.tsx
+**Файл:** `components/admin/consistency-audit/index.tsx`  
+**Размер:** 11KB (норма <10KB)  
+**Действие:** Выделить логику в отдельные файлы (например, хуки или дополнительные компоненты)
+
+### 2. Рефакторинг файлов (осталось 3 файла)
 
 | Файл | Размер | Статус |
 |------|--------|--------|
@@ -40,7 +45,7 @@
 
 **Действие:** Разбить каждый файл на модули <10KB, создать re-export.
 
-### 2. Dead code cleanup (owner approved list)
+### 3. Dead code cleanup (owner approved list)
 Файлы с 0 импортов (кандидаты на удаление):
 - `lib/debounce.ts`
 - `lib/supabase/client.ts`
@@ -50,7 +55,7 @@
 
 **Действие:** Проверить что не используются и удалить.
 
-### 3. Версия
+### 4. Версия
 После завершения работы — bump version в `lib/version.ts`
 
 ---
@@ -63,8 +68,17 @@
 
 ---
 
+## ПРОВЕРКА ПОСЛЕ РЕФАКТОРИНГА
+
+```bash
+npm run build
+```
+
+Если сборка прошла — импорты работают.
+
+---
+
 ## ССЫЛКИ
 
 - **KNOWN_ISSUES.md** — текущее состояние тех. долга
 - **AI_HANDOFF_RECOMMENDATIONS.md** — результаты аудита
-- **Транскрипт:** `/mnt/transcripts/2025-12-31-18-12-38-phase0-p0-bugs-fixed-phase1-explained.txt`
