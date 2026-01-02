@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { env } from "@/lib/env"
+import { createClient } from "@/lib/supabase/server"
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,30 +18,62 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    // Forward to Python API
-    const pythonFormData = new FormData()
-    pythonFormData.append("file", file)
+    // Get auth token for presign request
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
 
-    const response = await fetch(`${env.FASTAPI_URL}/api/images/upload`, {
-      method: "POST",
-      body: pythonFormData,
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      const errorMessage = data.error || data.detail || "Upload failed"
-      return NextResponse.json({ error: errorMessage }, { status: response.status })
+    if (!session?.access_token) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Extract data from Python API response format {success: true, data: {...}}
-    const uploadData = data.data || data
+    // 1. Get presigned URL from Python API
+    const presignResponse = await fetch(`${env.FASTAPI_URL}/api/images/presign`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ filenames: [file.name] }),
+    })
 
+    if (!presignResponse.ok) {
+      const err = await presignResponse.json()
+      return NextResponse.json(
+        { error: err.detail || "Failed to get upload URL" },
+        { status: presignResponse.status }
+      )
+    }
+
+    const presignData = await presignResponse.json()
+    const uploadInfo = presignData.data?.[0]
+
+    if (!uploadInfo?.upload_url) {
+      return NextResponse.json({ error: "Invalid presign response" }, { status: 500 })
+    }
+
+    // 2. Upload directly to MinIO
+    const fileBuffer = await file.arrayBuffer()
+    const uploadResponse = await fetch(uploadInfo.upload_url, {
+      method: "PUT",
+      body: fileBuffer,
+      headers: {
+        "Content-Type": file.type || "image/jpeg",
+      },
+    })
+
+    if (!uploadResponse.ok) {
+      return NextResponse.json(
+        { error: "Upload to storage failed" },
+        { status: uploadResponse.status }
+      )
+    }
+
+    // 3. Return public URL
     return NextResponse.json({
-      url: uploadData.url,
-      filename: uploadData.original_filename || file.name,
-      size: uploadData.size || file.size,
-      type: uploadData.content_type || file.type,
+      url: uploadInfo.public_url,
+      filename: file.name,
+      size: file.size,
+      type: file.type,
     })
   } catch (error) {
     console.error("Upload error:", error)
