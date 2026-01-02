@@ -2,6 +2,9 @@ import { type NextRequest, NextResponse } from "next/server"
 import { env } from "@/lib/env"
 import { createClient } from "@/lib/supabase/server"
 
+// Max file size: 12MB
+const MAX_FILE_SIZE = 12 * 1024 * 1024
+
 export async function POST(request: NextRequest) {
   try {
     if (!env.FASTAPI_URL) {
@@ -17,6 +20,14 @@ export async function POST(request: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
+    }
+
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `Файл слишком большой. Максимум: ${MAX_FILE_SIZE / 1024 / 1024}MB` },
+        { status: 413 }
+      )
     }
 
     // Get auth token for presign request
