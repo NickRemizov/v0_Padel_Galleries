@@ -96,21 +96,36 @@ class PeopleRepository:
             except Exception:
                 pass  # RPC may not exist, fall back to manual aggregation
             
-            # Fallback: manual aggregation
-            faces_response = self.client.table("photo_faces").select(
-                "person_id, excluded_from_index"
-            ).not_.is_(
-                "person_id", "null"
-            ).not_.is_(
-                "insightface_descriptor", "null"
-            ).execute()
-            
-            if not faces_response.data:
+            # Fallback: manual aggregation with pagination
+            all_faces = []
+            page_size = 1000
+            offset = 0
+
+            while True:
+                faces_response = self.client.table("photo_faces").select(
+                    "person_id, excluded_from_index"
+                ).not_.is_(
+                    "person_id", "null"
+                ).not_.is_(
+                    "insightface_descriptor", "null"
+                ).range(offset, offset + page_size - 1).execute()
+
+                if not faces_response.data:
+                    break
+
+                all_faces.extend(faces_response.data)
+
+                if len(faces_response.data) < page_size:
+                    break
+
+                offset += page_size
+
+            if not all_faces:
                 return []
-            
+
             # Aggregate
             stats = {}
-            for face in faces_response.data:
+            for face in all_faces:
                 pid = face["person_id"]
                 if pid not in stats:
                     stats[pid] = {"total": 0, "excluded": 0}

@@ -279,16 +279,34 @@ class TrainingRepository:
     async def get_co_occurring_people(self, event_ids: List[str]) -> Dict[str, List[str]]:
         """
         Get people who often appear together in events.
-        
+
         Returns:
             Dict mapping person_id to list of co-occurring person_ids
         """
         try:
-            response = self._client.table("photo_faces").select(
-                "person_id, photo_id, gallery_images(gallery_id)"
-            ).eq("verified", True).not_.is_("person_id", "null").execute()
-            
-            faces_data = response.data or []
+            # Paginate to get all verified faces
+            all_faces = []
+            page_size = 1000
+            offset = 0
+
+            while True:
+                response = self._client.table("photo_faces").select(
+                    "person_id, photo_id, gallery_images(gallery_id)"
+                ).eq("verified", True).not_.is_("person_id", "null").range(
+                    offset, offset + page_size - 1
+                ).execute()
+
+                if not response.data:
+                    break
+
+                all_faces.extend(response.data)
+
+                if len(response.data) < page_size:
+                    break
+
+                offset += page_size
+
+            faces_data = all_faces
             
             # Filter by event_ids
             filtered = [
