@@ -148,7 +148,8 @@ export async function uploadAvatarBlob(
   const formData = new FormData()
   const filename = `avatar-${personId}-${Date.now()}.jpg`
   formData.append("file", blob, filename)
-  
+  formData.append("folder", "avatars")
+
   const response = await fetch("/api/upload", {
     method: "POST",
     body: formData

@@ -8,14 +8,21 @@ Endpoints:
 - POST /regenerate-unknown-descriptors
 """
 
+from typing import List, Dict, Any
+from pydantic import BaseModel
 from fastapi import APIRouter, Query, Depends
 
 from core.config import VERSION
 from core.responses import ApiResponse
 from core.exceptions import DescriptorError, FaceNotFoundError
 from core.logging import get_logger
-from models.recognition_schemas import GenerateDescriptorsRequest
 from utils.geometry import calculate_iou
+
+
+class GenerateDescriptorsRequest(BaseModel):
+    """Request schema for generating descriptors for manually tagged faces."""
+    image_url: str
+    faces: List[Dict[str, Any]]  # Each face has person_id, bbox, and optionally photo_id
 
 from ..dependencies import get_face_service, get_supabase_client
 

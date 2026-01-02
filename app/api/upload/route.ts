@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData()
     const file = formData.get("file") as File
+    const folder = (formData.get("folder") as string) || "photos"
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ filenames: [file.name] }),
+      body: JSON.stringify({ filenames: [file.name], folder }),
     })
 
     if (!presignResponse.ok) {

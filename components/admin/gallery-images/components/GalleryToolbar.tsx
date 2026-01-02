@@ -12,7 +12,6 @@ interface GalleryToolbarProps {
   hideFullyVerified: boolean
   onToggleHideVerified: () => void
   uploading: boolean
-  uploadProgress: string
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   onAutoRecognition: () => void
   onShowUnknownFaces: () => void
@@ -30,7 +29,6 @@ export function GalleryToolbar({
   hideFullyVerified,
   onToggleHideVerified,
   uploading,
-  uploadProgress,
   onUpload,
   onAutoRecognition,
   onShowUnknownFaces,
@@ -128,8 +126,6 @@ export function GalleryToolbar({
           Снять выделение
         </Button>
       )}
-
-      {uploading && <span className="text-sm text-muted-foreground">{uploadProgress}</span>}
     </div>
   )
 }

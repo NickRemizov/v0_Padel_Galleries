@@ -302,7 +302,6 @@ export function GalleryImagesManager({
               hideFullyVerified={hideFullyVerified}
               onToggleHideVerified={() => setHideFullyVerified(!hideFullyVerified)}
               uploading={uploading}
-              uploadProgress={uploadProgress}
               onUpload={handleFileInputChange}
               onAutoRecognition={() => setAutoRecognitionMode("remaining")}
               onShowUnknownFaces={() => setShowUnknownFaces(true)}
@@ -362,6 +361,13 @@ export function GalleryImagesManager({
               {hideFullyVerified && photoFacesLoaded && hiddenCount > 0 && ` (показано: ${sortedImages.length})`}
             </p>
           </div>
+
+          {/* Fixed upload progress indicator */}
+          {uploading && uploadProgress && (
+            <span className="absolute bottom-4 left-4 text-sm text-muted-foreground">
+              {uploadProgress}
+            </span>
+          )}
         </DialogContent>
       </Dialog>
 

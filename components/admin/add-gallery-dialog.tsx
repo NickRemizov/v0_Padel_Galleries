@@ -70,6 +70,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
     try {
       const formData = new FormData()
       formData.append("file", croppedBlob, "cropped-image.jpg")
+      formData.append("folder", "covers")
 
       const response = await fetch("/api/upload", {
         method: "POST",
@@ -96,6 +97,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
     try {
       const formData = new FormData()
       formData.append("file", croppedBlob, "cropped-square-image.jpg")
+      formData.append("folder", "covers")
 
       const response = await fetch("/api/upload", {
         method: "POST",
