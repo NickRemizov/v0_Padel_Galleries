@@ -192,28 +192,33 @@ async def update_face(
         if not response.data:
             raise NotFoundError("Face", request.face_id)
         
-        index_rebuilt = False
-        if person_id_changed and has_descriptor:
+        index_updated = False
+        effective_person_id = request.person_id if request.person_id is not None else current_person_id
+        confidence_changed = "recognition_confidence" in update_data or "verified" in update_data
+
+        # Update index if: person_id changed OR confidence/verified changed (and face is in index)
+        needs_reindex = person_id_changed or (confidence_changed and effective_person_id and has_descriptor)
+
+        if needs_reindex and has_descriptor:
             try:
                 # Remove old entry if was in index
                 if current_person_id:
                     await face_service.remove_face_from_index(request.face_id)
-                    logger.info(f"[update_face] Removed face from index (old person_id)")
+                    logger.info(f"[update_face] Removed face from index")
 
-                # Add new entry if has new person_id
-                new_person_id = request.person_id
-                if new_person_id:
-                    result = await face_service.add_face_to_index(request.face_id, new_person_id)
+                # Add new/updated entry if has person_id
+                if effective_person_id:
+                    result = await face_service.add_face_to_index(request.face_id, effective_person_id)
                     if result.get("success"):
-                        index_rebuilt = True
+                        index_updated = True
                         logger.info(f"[update_face] Face added to index (rebuild_triggered: {result.get('rebuild_triggered')})")
             except Exception as index_error:
                 logger.error(f"[update_face] Error updating index: {index_error}")
         
-        logger.info(f"Face updated: {request.face_id}, index_rebuilt={index_rebuilt}")
-        
+        logger.info(f"Face updated: {request.face_id}, index_updated={index_updated}")
+
         result = response.data[0]
-        result["index_rebuilt"] = index_rebuilt
+        result["index_updated"] = index_updated
         return ApiResponse.ok(result)
         
     except NotFoundError:
