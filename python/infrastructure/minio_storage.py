@@ -6,6 +6,7 @@ Handles file uploads and deletions in MinIO S3-compatible storage.
 import os
 import uuid
 import io
+from datetime import timedelta
 from typing import Optional
 from urllib.parse import unquote, quote
 
@@ -132,6 +133,46 @@ class MinioStorage:
             return True
         except S3Error:
             return False
+
+    def generate_presigned_upload_url(
+        self,
+        filename: str,
+        expires_seconds: int = 60
+    ) -> dict:
+        """
+        Generate presigned URL for direct upload to MinIO.
+
+        Args:
+            filename: Original filename (for extension)
+            expires_seconds: URL validity in seconds (default 60)
+
+        Returns:
+            Dict with upload_url, object_name, public_url
+        """
+        ext = os.path.splitext(filename)[1].lower() or ".jpg"
+        unique_id = uuid.uuid4().hex[:12]
+        object_name = f"{unique_id}{ext}"
+
+        try:
+            upload_url = self.client.presigned_put_object(
+                bucket_name=self.bucket,
+                object_name=object_name,
+                expires=timedelta(seconds=expires_seconds)
+            )
+
+            public_url = f"{self.public_url}/{self.bucket}/{object_name}"
+
+            logger.info(f"Generated presigned URL for {object_name} (expires {expires_seconds}s)")
+
+            return {
+                "upload_url": upload_url,
+                "object_name": object_name,
+                "public_url": public_url
+            }
+
+        except S3Error as e:
+            logger.error(f"MinIO presign error: {e}")
+            raise
 
 
 # Singleton instance

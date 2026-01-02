@@ -2,10 +2,13 @@
 Image Upload Router
 
 Handles file uploads to MinIO storage.
+- POST /upload - Direct upload (legacy, requires auth)
+- GET /presign - Get presigned URL for direct MinIO upload (requires auth)
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from typing import Optional
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from typing import Optional, List
+from pydantic import BaseModel
 
 from core.responses import ApiResponse
 from core.logging import get_logger
@@ -13,6 +16,45 @@ from infrastructure.minio_storage import get_minio_storage
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+class PresignRequest(BaseModel):
+    """Request for batch presigned URLs."""
+    filenames: List[str]
+
+
+@router.post("/presign")
+async def get_presigned_urls(request: PresignRequest):
+    """
+    Get presigned URLs for direct upload to MinIO.
+
+    Returns list of {upload_url, object_name, public_url} for each filename.
+    URLs expire in 60 seconds.
+    """
+    if not request.filenames:
+        raise HTTPException(400, "No filenames provided")
+
+    if len(request.filenames) > 100:
+        raise HTTPException(400, "Max 100 files per request")
+
+    minio = get_minio_storage()
+    results = []
+
+    for filename in request.filenames:
+        try:
+            result = minio.generate_presigned_upload_url(filename, expires_seconds=60)
+            results.append({
+                "filename": filename,
+                **result
+            })
+        except Exception as e:
+            logger.error(f"Presign error for {filename}: {e}")
+            results.append({
+                "filename": filename,
+                "error": str(e)
+            })
+
+    return ApiResponse.ok(results)
 
 
 @router.post("/upload")
