@@ -4,7 +4,7 @@ import { memo } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Trash2, UserPlus, Download } from "lucide-react"
+import { Trash2, Star, Download } from "lucide-react"
 
 import type { GalleryImage } from "@/lib/types"
 import type { FaceData, PhotoRecognitionStats } from "../types"
@@ -17,6 +17,7 @@ interface GalleryImageCardProps {
   recognitionStats: Record<string, PhotoRecognitionStats>
   onTag: (id: string, url: string) => void
   onDelete: (id: string) => void
+  onToggleFeatured: (id: string, isFeatured: boolean) => void
   isSelected: boolean
   onToggleSelect: (id: string) => void
 }
@@ -28,6 +29,7 @@ export const GalleryImageCard = memo(function GalleryImageCard({
   recognitionStats,
   onTag,
   onDelete,
+  onToggleFeatured,
   isSelected,
   onToggleSelect,
 }: GalleryImageCardProps) {
@@ -92,18 +94,8 @@ export const GalleryImageCard = memo(function GalleryImageCard({
             className="bg-white border-2 border-gray-400 data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
           />
         </div>
+        {/* Hover overlay with delete button */}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-          <Button
-            variant="secondary"
-            size="icon"
-            className="absolute right-2 bottom-2 pointer-events-auto"
-            onClick={(e) => {
-              e.stopPropagation()
-              onTag(image.id, image.image_url)
-            }}
-          >
-            <UserPlus className="h-4 w-4" />
-          </Button>
           <Button
             variant="destructive"
             size="icon"
@@ -116,6 +108,28 @@ export const GalleryImageCard = memo(function GalleryImageCard({
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
+        {/* Star button - always visible when featured, otherwise on hover */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`absolute right-2 bottom-2 pointer-events-auto transition-opacity ${
+            image.is_featured
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100"
+          }`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFeatured(image.id, !image.is_featured)
+          }}
+        >
+          <Star
+            className={`h-5 w-5 ${
+              image.is_featured
+                ? "fill-yellow-400 text-yellow-400"
+                : "text-white"
+            }`}
+          />
+        </Button>
         {image.download_count > 0 && (
           <div className="absolute left-2 top-10 bg-black/70 text-white rounded px-2 py-1 text-xs flex items-center gap-1 shadow-lg z-10">
             <Download className="h-3 w-3" />

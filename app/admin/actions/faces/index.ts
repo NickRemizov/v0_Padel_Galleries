@@ -38,6 +38,7 @@ export {
   batchDeleteGalleryImagesAction,
   deleteAllGalleryImagesAction,
   addGalleryImagesAction,
+  toggleImageFeaturedAction,
 } from "./gallery-images"
 
 // Recognition

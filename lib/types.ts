@@ -42,6 +42,8 @@ export interface GalleryImage {
   height: number | null
   display_order: number
   download_count: number
+  is_featured: boolean
+  has_been_processed: boolean
   created_at: string
   /**
    * Verified people on this image (populated when full=true)

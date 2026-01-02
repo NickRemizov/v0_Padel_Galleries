@@ -20,6 +20,7 @@ import {
   batchDeleteGalleryImagesAction,
   updateGallerySortOrderAction,
 } from "@/app/admin/actions"
+import { toggleImageFeaturedAction } from "@/app/admin/actions/faces/gallery-images"
 
 import { FaceTaggingDialog } from "../face-tagging-dialog"
 import { AutoRecognitionDialog } from "../auto-recognition-dialog"
@@ -73,6 +74,7 @@ export function GalleryImagesManager({
   // Custom hooks
   const {
     images,
+    setImages,
     photoFacesMap,
     photoFacesLoaded,
     recognitionStats,
@@ -194,6 +196,22 @@ export function GalleryImagesManager({
       filename: image.original_filename,
     })
   }
+
+  const handleToggleFeatured = useCallback(async (imageId: string, isFeatured: boolean) => {
+    // Optimistic update
+    setImages((prev) =>
+      prev.map((img) => (img.id === imageId ? { ...img, is_featured: isFeatured } : img))
+    )
+
+    const result = await toggleImageFeaturedAction(imageId, isFeatured)
+    if (!result.success) {
+      // Revert on error
+      setImages((prev) =>
+        prev.map((img) => (img.id === imageId ? { ...img, is_featured: !isFeatured } : img))
+      )
+      console.error("Failed to toggle featured:", result.error)
+    }
+  }, [setImages])
 
   const confirmSingleDelete = async () => {
     if (!singleDeleteDialog.imageId) return
@@ -343,6 +361,7 @@ export function GalleryImagesManager({
                       recognitionStats={recognitionStats}
                       onTag={handleTagImage}
                       onDelete={handleDelete}
+                      onToggleFeatured={handleToggleFeatured}
                       isSelected={selectedPhotos.has(image.id)}
                       onToggleSelect={togglePhotoSelection}
                     />

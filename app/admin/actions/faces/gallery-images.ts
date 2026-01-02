@@ -178,3 +178,32 @@ export async function addGalleryImagesAction(
     }
   }
 }
+
+/**
+ * Toggle is_featured flag for a gallery image
+ */
+export async function toggleImageFeaturedAction(imageId: string, isFeatured: boolean) {
+  try {
+    const headers = await getAuthHeaders()
+    const result = await apiFetch(`/api/images/${imageId}/featured`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ is_featured: isFeatured }),
+    })
+
+    if (result.success) {
+      return { success: true, is_featured: result.data?.is_featured ?? isFeatured }
+    } else {
+      return {
+        success: false,
+        error: result.error || "Failed to update featured status",
+      }
+    }
+  } catch (error) {
+    console.error("[toggleImageFeaturedAction] Error:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
