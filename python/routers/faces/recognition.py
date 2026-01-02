@@ -116,17 +116,7 @@ async def recognize_unknown_faces(
     """
     try:
         logger.info(f"[recognize-unknown] START gallery_id={request.gallery_id}, threshold={request.confidence_threshold}")
-        
-        logger.info("[recognize-unknown] Rebuilding index before recognition to ensure fresh data...")
-        try:
-            rebuild_result = await face_service.rebuild_players_index()
-            if rebuild_result.get("success"):
-                logger.info(f"[recognize-unknown] Pre-recognition index rebuild: {rebuild_result.get('new_descriptor_count')} descriptors")
-            else:
-                logger.warning(f"[recognize-unknown] Pre-recognition index rebuild failed: {rebuild_result}")
-        except Exception as e:
-            logger.warning(f"[recognize-unknown] Pre-recognition index rebuild error: {e}")
-        
+
         unknown_faces = await get_all_unknown_faces_paginated(supabase_db, request.gallery_id)
         
         logger.info(f"[recognize-unknown] Total unknown faces with descriptors: {len(unknown_faces)}")
