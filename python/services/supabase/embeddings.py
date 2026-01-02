@@ -160,7 +160,7 @@ class EmbeddingsRepository:
             for i in range(0, len(face_ids), batch_size):
                 batch = face_ids[i:i + batch_size]
                 response = self._client.table("photo_faces").select(
-                    "id, person_id, insightface_descriptor, verified, recognition_confidence"
+                    "id, person_id, insightface_descriptor, verified, recognition_confidence, excluded_from_index"
                 ).in_("id", batch).execute()
 
                 if response.data:

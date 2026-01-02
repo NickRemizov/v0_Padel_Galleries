@@ -224,6 +224,9 @@ class FaceRecognitionService:
                 if not faces:
                     return {"success": False, "error": "Face not found"}
                 face = faces[0]
+                # Skip excluded faces
+                if face.get("excluded_from_index"):
+                    return {"success": False, "error": "Face is excluded from index"}
                 descriptor = face.get("insightface_descriptor")
                 if not descriptor:
                     return {"success": False, "error": "No descriptor"}
@@ -272,7 +275,12 @@ class FaceRecognitionService:
                 return {"added": 0, "error": "No faces found"}
 
             added = 0
+            skipped_excluded = 0
             for face in faces:
+                # Skip excluded faces
+                if face.get("excluded_from_index"):
+                    skipped_excluded += 1
+                    continue
                 descriptor = face.get("insightface_descriptor")
                 person_id = face.get("person_id")
                 if not descriptor or not person_id:
@@ -297,8 +305,11 @@ class FaceRecognitionService:
                 await self.rebuild_players_index()
                 rebuild_triggered = True
 
-            logger.info(f"[FaceRecognition] Added {added}/{len(face_ids)} faces to index")
-            return {"added": added, "rebuild_triggered": rebuild_triggered}
+            if skipped_excluded > 0:
+                logger.info(f"[FaceRecognition] Added {added}/{len(face_ids)} faces to index (skipped {skipped_excluded} excluded)")
+            else:
+                logger.info(f"[FaceRecognition] Added {added}/{len(face_ids)} faces to index")
+            return {"added": added, "skipped_excluded": skipped_excluded, "rebuild_triggered": rebuild_triggered}
 
         except Exception as e:
             logger.error(f"[FaceRecognition] Error adding faces to index: {e}")
