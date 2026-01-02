@@ -108,11 +108,9 @@ export const GalleryImageCard = memo(function GalleryImageCard({
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
-        {/* Star button - always visible when featured, otherwise on hover */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`absolute right-2 bottom-2 pointer-events-auto transition-opacity ${
+        {/* Star - always visible when featured, otherwise on hover */}
+        <div
+          className={`absolute right-2 bottom-2 cursor-pointer transition-opacity ${
             image.is_featured
               ? "opacity-100"
               : "opacity-0 group-hover:opacity-100"
@@ -123,13 +121,13 @@ export const GalleryImageCard = memo(function GalleryImageCard({
           }}
         >
           <Star
-            className={`h-5 w-5 ${
+            className={`h-6 w-6 drop-shadow-md ${
               image.is_featured
                 ? "fill-yellow-400 text-yellow-400"
-                : "text-white"
+                : "text-yellow-400/70"
             }`}
           />
-        </Button>
+        </div>
         {image.download_count > 0 && (
           <div className="absolute left-2 top-10 bg-black/70 text-white rounded px-2 py-1 text-xs flex items-center gap-1 shadow-lg z-10">
             <Download className="h-3 w-3" />
