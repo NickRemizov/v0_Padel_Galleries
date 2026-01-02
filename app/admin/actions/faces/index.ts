@@ -45,3 +45,10 @@ export {
   clusterUnknownFacesAction,
   recognizeUnknownFacesAction,
 } from "./recognition"
+
+// Index operations
+export {
+  getIndexStatusAction,
+  rebuildIndexAction,
+  type IndexStatus,
+} from "./index-operations"

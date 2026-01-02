@@ -11,6 +11,7 @@ import { RegenerateDescriptorsDialog } from "@/components/admin/regenerate-descr
 import { BatchRecognitionDialog } from "@/components/admin/batch-recognition-dialog"
 import { GlobalUnknownFacesDialog } from "@/components/admin/global-unknown-faces-dialog"
 import { ConsistencyAuditDialog } from "@/components/admin/consistency-audit-dialog"
+import { IndexStatusCard } from "@/components/admin/index-status-card"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -138,6 +139,9 @@ export function ServiceManager() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Индекс распознавания */}
+      <IndexStatusCard />
 
       <Card>
         <CardHeader>

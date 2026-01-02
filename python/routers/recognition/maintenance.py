@@ -66,32 +66,40 @@ async def get_index_status(
     """
     try:
         index = face_service._players_index
-        
+
         if not index.is_loaded():
             return ApiResponse.ok({
                 "loaded": False,
                 "message": "Index not loaded"
             }).model_dump()
-        
-        # Analyze confidence distribution in memory
-        conf_100 = sum(1 for c in index.confidence_map if c >= 0.9999)
-        conf_80_99 = sum(1 for c in index.confidence_map if 0.80 <= c < 0.9999)
-        conf_60_79 = sum(1 for c in index.confidence_map if 0.60 <= c < 0.80)
-        conf_below_60 = sum(1 for c in index.confidence_map if c < 0.60)
-        
+
+        # Get excluded count from database
+        excluded_count = 0
+        try:
+            db = face_service.supabase_db
+            result = db.client.table("photo_faces").select(
+                "id", count="exact"
+            ).eq("excluded_from_index", True).execute()
+            excluded_count = result.count or 0
+        except Exception as e:
+            logger.warning(f"Could not get excluded count: {e}")
+
+        # Format last rebuild time
+        last_rebuild = None
+        if index.last_rebuild_time:
+            last_rebuild = index.last_rebuild_time.isoformat()
+
         return ApiResponse.ok({
             "loaded": True,
             "total_embeddings": index.get_count(),
             "unique_people": index.get_unique_people_count(),
             "verified_count": index.get_verified_count(),
-            "confidence_distribution_in_memory": {
-                "100%": conf_100,
-                "80-99%": conf_80_99,
-                "60-79%": conf_60_79,
-                "<60%": conf_below_60
-            }
+            "excluded_count": excluded_count,
+            "deleted_in_index": index.deleted_count,
+            "capacity": index.max_elements,
+            "last_rebuild_time": last_rebuild
         }).model_dump()
-        
+
     except Exception as e:
         logger.error(f"Error getting index status: {e}")
         return ApiResponse.fail(str(e), code="INDEX_ERROR").model_dump()

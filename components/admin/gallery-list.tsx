@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -42,32 +42,33 @@ export function GalleryList({ galleries: initialGalleries, photographers, locati
     open: false,
     gallery: null,
   })
+  const [statsVersion, setStatsVersion] = useState(0)
 
   // Sync with props when they change (e.g., after server revalidation)
   useEffect(() => {
     setLocalGalleries(initialGalleries)
   }, [initialGalleries])
 
-  useEffect(() => {
-    async function loadStats() {
-      if (localGalleries.length === 0) return
+  const refreshStats = useCallback(async () => {
+    if (localGalleries.length === 0) return
 
-      const galleryIds = localGalleries.map((g) => g.id)
-      const result = await getGalleriesFaceRecognitionStatsAction(galleryIds)
+    const galleryIds = localGalleries.map((g) => g.id)
+    const result = await getGalleriesFaceRecognitionStatsAction(galleryIds)
 
-      if (result.success && result.data) {
-        const statsMap = new Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>()
+    if (result.success && result.data) {
+      const statsMap = new Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>()
 
-        for (const [galleryId, stats] of Object.entries(result.data)) {
-          statsMap.set(galleryId, stats)
-        }
-
-        setGalleryStats(statsMap)
+      for (const [galleryId, stats] of Object.entries(result.data)) {
+        statsMap.set(galleryId, stats)
       }
-    }
 
-    loadStats()
+      setGalleryStats(statsMap)
+    }
   }, [localGalleries])
+
+  useEffect(() => {
+    refreshStats()
+  }, [refreshStats, statsVersion])
 
   function handleDeleteClick(gallery: Gallery) {
     setDeleteConfirm({ open: true, gallery })
@@ -185,7 +186,10 @@ export function GalleryList({ galleries: initialGalleries, photographers, locati
                     shootDate={gallery.shoot_date}
                     initialSortOrder={gallery.sort_order || undefined}
                     isFullyVerified={isFullyVerified}
-                    onImagesChange={onUpdate}
+                    onImagesChange={() => {
+                      onUpdate?.()
+                      setStatsVersion((v) => v + 1)
+                    }}
                     data-gallery-id={gallery.id}
                   />
                   <EditGalleryDialog

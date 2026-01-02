@@ -26,4 +26,8 @@ export {
   // Recognition
   clusterUnknownFacesAction,
   recognizeUnknownFacesAction,
+  // Index operations
+  getIndexStatusAction,
+  rebuildIndexAction,
+  type IndexStatus,
 } from "./faces/index"

@@ -35,11 +35,14 @@ from .consistency import router as consistency_router
 from .outliers import router as outliers_router
 
 # Include all sub-routers
-router.include_router(crud_router)
-router.include_router(photos_router)
-router.include_router(avatar_router)
+# IMPORTANT: Include specific routes BEFORE catch-all routes!
+# consistency_router and outliers_router have specific paths like /consistency-audit
+# crud_router has /{identifier} which catches everything, so must be LAST
 router.include_router(consistency_router)
 router.include_router(outliers_router)
+router.include_router(photos_router)
+router.include_router(avatar_router)
+router.include_router(crud_router)  # LAST - has /{identifier} catch-all
 
 # Export for main.py
 __all__ = ["router", "set_services"]

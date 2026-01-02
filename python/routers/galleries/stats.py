@@ -20,10 +20,10 @@ router = APIRouter()
 @router.get("/{identifier}/stats")
 async def get_gallery_stats(identifier: str):
     """Get face recognition stats for a gallery.
-    
-    v1.4: Fixed logic - requires has_been_processed=true for verified status.
-    Photo is verified only if:
-    - has_been_processed=true AND no faces detected, OR
+
+    v1.5: NFD photos (no faces detected) count as verified.
+    Photo is verified if:
+    - No faces in photo_faces table (NFD - no faces detected), OR
     - has_been_processed=true AND all faces have verified=true
     """
     supabase_db = get_supabase_db()
@@ -62,16 +62,16 @@ async def get_gallery_stats(identifier: str):
         
         verified_count = 0
         for photo_id in image_ids:
-            # Photo must be processed first
-            if not processed_status.get(photo_id):
-                continue  # Not processed = not verified
-            
             faces = faces_by_photo.get(photo_id, [])
+
             if len(faces) == 0:
-                # Processed, no faces = verified (OK state)
+                # No faces in DB = verified (NFD or never had faces)
+                # This handles both:
+                # - Processed photos with no faces detected (NFD)
+                # - Historical photos that were processed before has_been_processed existed
                 verified_count += 1
-            elif all(f.get("verified", False) for f in faces):
-                # Processed, all faces verified = verified
+            elif processed_status.get(photo_id) and all(f.get("verified", False) for f in faces):
+                # Has faces, processed, and all verified = verified
                 verified_count += 1
         
         total_count = len(image_ids)

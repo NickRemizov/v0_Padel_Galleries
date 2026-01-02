@@ -4,8 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
-import { UserCircle } from "lucide-react"
 import type { Config } from "../types"
 
 interface ConfigurationCardProps {
@@ -30,33 +28,8 @@ export function ConfigurationCard({
         <CardDescription>Настройте пороги confidence и вес контекста для распознавания лиц</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Auto Avatar Section */}
-        <div className="space-y-4">
-          <h4 className="text-sm font-medium flex items-center gap-2">
-            <UserCircle className="h-4 w-4" />
-            Автоматические аватары
-          </h4>
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label className="text-base">Автоматически присваивать аватар при создании игрока</Label>
-              <p className="text-sm text-muted-foreground">
-                При создании нового игрока аватар будет сгенерирован автоматически из фото с лицом
-              </p>
-            </div>
-            <Switch
-              checked={localConfig.auto_avatar_on_create === true}
-              onCheckedChange={(checked) =>
-                setLocalConfig({
-                  ...localConfig,
-                  auto_avatar_on_create: checked,
-                })
-              }
-            />
-          </div>
-        </div>
-
         {/* Quality Filtering section */}
-        <div className="space-y-4 pt-4 border-t">
+        <div className="space-y-4">
           <h4 className="text-sm font-medium">Фильтрация качества</h4>
           <p className="text-xs text-muted-foreground">
             Отсеивайте лица низкого качества при детекции и распознавании
@@ -146,9 +119,9 @@ export function ConfigurationCard({
           </div>
         </div>
 
-        {/* Confidence Thresholds */}
+        {/* Confidence Threshold and Context */}
         <div className="space-y-4 pt-4 border-t">
-          <h4 className="text-sm font-medium">Пороги уверенности распознавания</h4>
+          <h4 className="text-sm font-medium">Порог уверенности и контекст</h4>
 
           <div className="space-y-3">
             <div className="space-y-2">
@@ -177,53 +150,14 @@ export function ConfigurationCard({
 
             <div className="space-y-2 opacity-50">
               <div className="flex items-center justify-between">
-                <Label className="text-sm">Средняя уверенность (не используется)</Label>
-                <span className="text-sm font-medium">
-                  {(localConfig.confidence_thresholds.medium_data * 100).toFixed(0)}%
-                </span>
+                <Label className="text-sm">Context Weight (в разработке)</Label>
+                <span className="text-sm font-medium">{localConfig.context_weight.toFixed(2)}</span>
               </div>
-              <Slider
-                disabled
-                value={[localConfig.confidence_thresholds.medium_data]}
-                min={0.3}
-                max={0.9}
-                step={0.05}
-              />
-              <p className="text-xs text-muted-foreground">Будет использоваться с HDBSCAN clustering</p>
+              <Slider disabled value={[localConfig.context_weight]} min={0.0} max={0.5} step={0.05} />
+              <p className="text-xs text-muted-foreground">
+                Вес контекста (галерея, дата) при распознавании. Будет использоваться с HDBSCAN.
+              </p>
             </div>
-
-            <div className="space-y-2 opacity-50">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Низкая уверенность (не используется)</Label>
-                <span className="text-sm font-medium">
-                  {(localConfig.confidence_thresholds.low_data * 100).toFixed(0)}%
-                </span>
-              </div>
-              <Slider disabled value={[localConfig.confidence_thresholds.low_data]} min={0.3} max={0.9} step={0.05} />
-              <p className="text-xs text-muted-foreground">Будет использоваться с HDBSCAN clustering</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Context Weight */}
-        <div className="space-y-4 pt-4 border-t opacity-50">
-          <h4 className="text-sm font-medium">Контекстное распознавание (не используется)</h4>
-          <p className="text-xs text-muted-foreground">
-            Вес контекстной информации (галерея, дата) при распознавании
-          </p>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">Context Weight</Label>
-              <span className="text-sm font-medium">{localConfig.context_weight.toFixed(2)}</span>
-            </div>
-            <Slider disabled value={[localConfig.context_weight]} min={0.0} max={0.5} step={0.05} />
-            <p className="text-xs text-muted-foreground">
-              0.00 - контекст не учитывается | 0.10 - минимальное влияние | 0.50 - максимальное влияние
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Будет использоваться с HDBSCAN для учёта совместных появлений людей
-            </p>
           </div>
         </div>
 

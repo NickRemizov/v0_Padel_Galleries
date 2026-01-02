@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -13,11 +14,20 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { updatePersonAction } from "@/app/admin/actions"
+import { updatePersonAction, deletePersonAvatarAction, updatePersonAvatarAction, getBestFaceForAvatarAction } from "@/app/admin/actions"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
+import { Trash2, User, Plus } from "lucide-react"
+import { generateAvatarBlob, uploadAvatarBlob, type BoundingBox } from "@/lib/avatar-utils"
 import type { Person } from "@/lib/types"
 
+type PersonWithStats = Person & {
+  verified_photos_count?: number
+  high_confidence_photos_count?: number
+  descriptor_count?: number
+}
+
 interface EditPersonDialogProps {
-  person: Person
+  person: PersonWithStats
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: (updatedPerson: Partial<Person>) => void
@@ -25,6 +35,18 @@ interface EditPersonDialogProps {
 
 export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: EditPersonDialogProps) {
   const [loading, setLoading] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(person.avatar_url)
+  const [deleteAvatarDialog, setDeleteAvatarDialog] = useState(false)
+  const [createAvatarDialog, setCreateAvatarDialog] = useState(false)
+  const [creatingAvatar, setCreatingAvatar] = useState(false)
+
+  const photoCount = (person.verified_photos_count ?? 0) + (person.high_confidence_photos_count ?? 0)
+  const hasPhotos = photoCount > 0
+
+  // Sync avatar when person changes
+  useEffect(() => {
+    setAvatarUrl(person.avatar_url)
+  }, [person.avatar_url])
 
   async function handleSubmit(formData: FormData) {
     setLoading(true)
@@ -47,9 +69,56 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
     setLoading(false)
 
     if (result.success) {
-      // Передаём обновлённые данные родителю
       onSuccess?.({ id: person.id, ...data })
       onOpenChange(false)
+    }
+  }
+
+  async function handleDeleteAvatar() {
+    const result = await deletePersonAvatarAction(person.id)
+
+    if (result.success) {
+      setAvatarUrl(null)
+      setDeleteAvatarDialog(false)
+      // Don't call onSuccess here - it would close the parent dialog
+    }
+  }
+
+  async function handleCreateAvatar() {
+    setCreatingAvatar(true)
+    try {
+      // Fetch best face for this person (closest to centroid)
+      const result = await getBestFaceForAvatarAction(person.id)
+
+      if (!result.success || !result.data) {
+        alert("Не удалось найти подходящее лицо для аватара")
+        return
+      }
+
+      const { image_url, bbox } = result.data
+      const bboxData: BoundingBox = {
+        x: bbox.x,
+        y: bbox.y,
+        width: bbox.width,
+        height: bbox.height,
+      }
+
+      // Generate and upload avatar
+      const avatarBlob = await generateAvatarBlob(image_url, bboxData)
+      const newAvatarUrl = await uploadAvatarBlob(avatarBlob, person.id)
+
+      // Update person's avatar in DB
+      const updateResult = await updatePersonAvatarAction(person.id, newAvatarUrl)
+
+      if (updateResult.success) {
+        setAvatarUrl(newAvatarUrl)
+        setCreateAvatarDialog(false)
+      }
+    } catch (error) {
+      console.error("Error creating avatar:", error)
+      alert("Ошибка при создании аватара")
+    } finally {
+      setCreatingAvatar(false)
     }
   }
 
@@ -63,24 +132,66 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="real_name">Реальное имя *</Label>
-              <Input id="real_name" name="real_name" defaultValue={person.real_name} required />
-            </div>
+            {/* First 3 fields with avatar on the right */}
+            <div className="flex gap-4 items-start">
+              <div className="flex-1 space-y-4 min-w-0">
+                <div className="grid gap-2">
+                  <Label htmlFor="real_name">Реальное имя *</Label>
+                  <Input id="real_name" name="real_name" defaultValue={person.real_name} required />
+                </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="telegram_name">Имя в Telegram</Label>
-              <Input id="telegram_name" name="telegram_name" defaultValue={person.telegram_name || ""} />
-            </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="telegram_name">Имя в Telegram</Label>
+                  <Input id="telegram_name" name="telegram_name" defaultValue={person.telegram_name || ""} />
+                </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="telegram_nickname">Ник в Telegram</Label>
-              <Input
-                id="telegram_nickname"
-                name="telegram_nickname"
-                defaultValue={person.telegram_nickname || ""}
-                placeholder="@username"
-              />
+                <div className="grid gap-2">
+                  <Label htmlFor="telegram_nickname">Ник в Telegram</Label>
+                  <Input
+                    id="telegram_nickname"
+                    name="telegram_nickname"
+                    defaultValue={person.telegram_nickname || ""}
+                    placeholder="@username"
+                  />
+                </div>
+              </div>
+
+              {/* Avatar section - 3:4 aspect ratio, 144x192px, aligned with first input */}
+              <div className="relative w-36 h-48 flex-shrink-0 mt-6">
+                {avatarUrl ? (
+                  <>
+                    <Image
+                      src={avatarUrl}
+                      alt={person.real_name}
+                      fill
+                      className="object-cover rounded-lg"
+                      sizes="144px"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDeleteAvatarDialog(true)}
+                      className="absolute -top-2 -right-2 p-2 bg-red-600 hover:bg-red-700 text-white rounded-md shadow-lg transition-colors"
+                      title="Удалить аватар"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="relative w-full h-full bg-muted rounded-lg flex items-center justify-center">
+                    <User className="h-12 w-12 text-muted-foreground" />
+                    {hasPhotos && (
+                      <button
+                        type="button"
+                        onClick={() => setCreateAvatarDialog(true)}
+                        className="absolute -top-2 -right-2 p-2 bg-green-600 hover:bg-green-700 text-white rounded-md shadow-md transition-colors"
+                        title="Создать аватар автоматически"
+                      >
+                        <Plus className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-2">
@@ -152,6 +263,24 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
           </DialogFooter>
         </form>
       </DialogContent>
+
+      <DeleteConfirmDialog
+        open={deleteAvatarDialog}
+        onOpenChange={setDeleteAvatarDialog}
+        onConfirm={handleDeleteAvatar}
+        title="Удалить аватар"
+        description="Вы уверены, что хотите удалить аватар? Это действие невозможно отменить."
+      />
+
+      <DeleteConfirmDialog
+        open={createAvatarDialog}
+        onOpenChange={setCreateAvatarDialog}
+        onConfirm={handleCreateAvatar}
+        title="Создать аватар"
+        description={`Создать для игрока ${person.real_name} аватар автоматически из наиболее подходящего фото?`}
+        confirmText={creatingAvatar ? "Создание..." : "Создать"}
+        isDestructive={false}
+      />
     </Dialog>
   )
 }

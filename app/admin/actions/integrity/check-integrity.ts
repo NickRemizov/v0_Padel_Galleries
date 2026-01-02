@@ -176,10 +176,10 @@ export async function checkDatabaseIntegrityFullAction(): Promise<IntegrityActio
     if (allPhotoFacesWithPerson.length > 0) {
       const personIds = [...new Set(allPhotoFacesWithPerson.map((pf) => pf.person_id))]
 
-      // Проверяем существующих людей батчами
+      // Проверяем существующих людей батчами (batch size 100 to avoid URL limits)
       const existingIds = new Set<string>()
-      for (let i = 0; i < personIds.length; i += 500) {
-        const batch = personIds.slice(i, i + 500)
+      for (let i = 0; i < personIds.length; i += 100) {
+        const batch = personIds.slice(i, i + 100)
         const { data: existingPeople } = await supabase.from("people").select("id").in("id", batch)
         existingPeople?.forEach((p: any) => existingIds.add(p.id))
       }
@@ -204,14 +204,22 @@ export async function checkDatabaseIntegrityFullAction(): Promise<IntegrityActio
     console.log(`[v2.1] Total photo_faces loaded for nonExistentPhoto check: ${allPhotoFacesWithPhotos.length}`)
 
     if (allPhotoFacesWithPhotos.length > 0) {
-      const photoIds = [...new Set(allPhotoFacesWithPhotos.map((pf) => pf.photo_id))]
+      const photoIds = [...new Set(allPhotoFacesWithPhotos.map((pf) => pf.photo_id).filter(Boolean))]
+      console.log(`[v2.1] Unique photo_ids to check: ${photoIds.length}`)
 
       const existingPhotoIds = new Set<string>()
-      for (let i = 0; i < photoIds.length; i += 500) {
-        const batch = photoIds.slice(i, i + 500)
-        const { data: existingPhotos } = await supabase.from("gallery_images").select("id").in("id", batch)
+      // Use smaller batch size to avoid URL length limits with UUIDs
+      const batchSize = 100
+      for (let i = 0; i < photoIds.length; i += batchSize) {
+        const batch = photoIds.slice(i, i + batchSize)
+        const { data: existingPhotos, error } = await supabase.from("gallery_images").select("id").in("id", batch)
+        if (error) {
+          console.error(`[v2.1] Error checking gallery_images batch ${i}: ${error.message}`)
+        }
+        console.log(`[v2.1] Batch ${i}: checked ${batch.length}, found ${existingPhotos?.length || 0}`)
         existingPhotos?.forEach((p: any) => existingPhotoIds.add(p.id))
       }
+      console.log(`[v2.1] Total existing photo_ids found: ${existingPhotoIds.size}`)
 
       const nonExistentPhotoFaces = allPhotoFacesWithPhotos.filter((pf) => !existingPhotoIds.has(pf.photo_id))
 

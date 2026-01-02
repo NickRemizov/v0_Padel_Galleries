@@ -11,6 +11,7 @@ v5.0: Incremental operations support
 import numpy as np
 import hnswlib
 from typing import List, Tuple, Optional, Dict, Any
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ class HNSWIndex:
         self.next_label: int = 0  # Next label to assign
         self.deleted_count: int = 0  # Count of deleted items
         self.max_elements: int = 0  # Current capacity
+        self.last_rebuild_time: Optional[datetime] = None  # When index was last rebuilt
     
     def is_loaded(self) -> bool:
         """Check if index is loaded and has items"""
@@ -136,6 +138,7 @@ class HNSWIndex:
             self.face_id_to_label = {fid: i for i, fid in enumerate(face_ids)}
             self.next_label = num_elements
             self.deleted_count = 0
+            self.last_rebuild_time = datetime.now()
 
             unique_people = len(set(person_ids))
             verified_count = sum(1 for v in verified_flags if v)

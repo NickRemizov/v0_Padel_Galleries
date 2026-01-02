@@ -2,35 +2,26 @@
 
 /**
  * Face Training Manager Component
- * 
- * Рефакторинг: 750 строк → 9 модулей
- * @refactored 2025-12-29
+ *
+ * Simplified: Only recognition parameters (no training)
+ * @updated 2025-01-02
  */
 
 import { Loader2 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { TrainingHistoryList } from "../training-history-list"
 
+import { Card, CardContent } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { useFaceTraining } from "./hooks"
-import { ErrorBanners, TrainingControlCard, ConfigurationCard } from "./components"
+import { ErrorBanners, ConfigurationCard } from "./components"
 
 export function FaceTrainingManager() {
   const {
     localConfig,
     setLocalConfig,
-    sessions,
-    datasetStats,
     loading,
-    preparing,
-    training,
-    trainingProgress,
     fastapiError,
     httpsRequired,
-    lastSession,
-    needsRetraining,
-    loadData,
-    prepareDataset,
-    startTraining,
     saveConfig,
     resetConfig,
   } = useFaceTraining()
@@ -48,26 +39,12 @@ export function FaceTrainingManager() {
       <div>
         <h2 className="text-2xl font-bold">Настройки распознавания</h2>
         <p className="text-sm text-muted-foreground">
-          Управление обучением InsightFace модели и параметрами распознавания
+          Параметры качества и порогов распознавания лиц
         </p>
       </div>
 
       {/* Предупреждения об ошибках */}
       <ErrorBanners httpsRequired={httpsRequired} fastapiError={fastapiError} />
-
-      {/* Управление обучением */}
-      <TrainingControlCard
-        lastSession={lastSession}
-        needsRetraining={needsRetraining}
-        datasetStats={datasetStats}
-        training={training}
-        trainingProgress={trainingProgress}
-        preparing={preparing}
-        fastapiError={fastapiError}
-        onPrepare={prepareDataset}
-        onStartTraining={startTraining}
-        onRefresh={loadData}
-      />
 
       {/* Настройки */}
       <ConfigurationCard
@@ -78,14 +55,24 @@ export function FaceTrainingManager() {
         onReset={resetConfig}
       />
 
-      {/* История обучений */}
+      {/* Автоматические аватары */}
       <Card>
-        <CardHeader>
-          <CardTitle>История обучений</CardTitle>
-          <CardDescription>Последние 10 сессий обучения модели</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TrainingHistoryList sessions={sessions} />
+        <CardContent className="flex items-center justify-between py-4">
+          <div className="space-y-0.5">
+            <Label className="text-base">Автоматически присваивать аватар при создании игрока</Label>
+            <p className="text-sm text-muted-foreground">
+              При создании нового игрока аватар будет сгенерирован автоматически из фото с лицом
+            </p>
+          </div>
+          <Switch
+            checked={localConfig.auto_avatar_on_create === true}
+            onCheckedChange={(checked) =>
+              setLocalConfig({
+                ...localConfig,
+                auto_avatar_on_create: checked,
+              })
+            }
+          />
         </CardContent>
       </Card>
     </div>

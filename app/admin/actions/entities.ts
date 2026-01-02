@@ -79,6 +79,24 @@ export async function updatePersonAvatarAction(personId: string, avatarUrl: stri
   return result
 }
 
+export async function deletePersonAvatarAction(personId: string) {
+  const headers = await getAuthHeaders()
+  const result = await apiFetch(`/api/people/${personId}/avatar`, {
+    method: "DELETE",
+    headers,
+  })
+  if (result.success) revalidatePeoplePaths()
+  return result
+}
+
+export async function getBestFaceForAvatarAction(personId: string) {
+  const headers = await getAuthHeaders()
+  return apiFetch(`/api/people/${personId}/best-face`, {
+    method: "GET",
+    headers,
+  })
+}
+
 export async function updatePersonVisibilityAction(
   personId: string,
   field: "show_in_players_gallery" | "show_photos_in_galleries",

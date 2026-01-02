@@ -389,7 +389,10 @@ export function GalleryImagesManager({
           hasBeenProcessed={taggingImage.hasBeenProcessed}
           open={!!taggingImage}
           onOpenChange={handleTaggingDialogClose}
-          onSave={updatePhotoFacesCache}
+          onSave={(imageId, faces, indexRebuilt) => {
+            updatePhotoFacesCache(imageId, faces)
+            onImagesChange?.()
+          }}
           onPrevious={handlePreviousImage}
           onNext={handleNextImage}
           hasPrevious={!!taggingImage.prevId}
@@ -407,6 +410,7 @@ export function GalleryImagesManager({
               setAutoRecognitionMode(null)
               loadRecognitionStats()
               loadPhotoFaces()
+              onImagesChange?.()
             }
           }}
         />
@@ -420,6 +424,7 @@ export function GalleryImagesManager({
             if (!open) {
               loadRecognitionStats()
               loadPhotoFaces()
+              onImagesChange?.()
             }
           }}
           galleryId={galleryId}
