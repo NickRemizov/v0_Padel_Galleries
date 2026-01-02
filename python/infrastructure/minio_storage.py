@@ -42,7 +42,7 @@ class MinioStorage:
         file_data: bytes,
         filename: str,
         content_type: str = "image/jpeg",
-        folder: str = ""
+        folder: str = "photos"
     ) -> dict:
         """
         Upload file to MinIO.
@@ -51,15 +51,15 @@ class MinioStorage:
             file_data: File bytes
             filename: Original filename (stored in DB, not in MinIO filename)
             content_type: MIME type
-            folder: Optional subfolder (not used - flat structure)
+            folder: Subfolder - "photos", "covers", or "avatars"
 
         Returns:
             Dict with url and object_name
         """
-        # Generate clean UUID-based filename
+        # Generate clean UUID-based filename with folder prefix
         ext = os.path.splitext(filename)[1].lower() or ".jpg"
         unique_id = uuid.uuid4().hex[:12]
-        object_name = f"{unique_id}{ext}"
+        object_name = f"{folder}/{unique_id}{ext}"
 
         try:
             self.client.put_object(
@@ -70,8 +70,7 @@ class MinioStorage:
                 content_type=content_type
             )
 
-            # Clean UUID filenames don't need URL encoding
-            url = f"{self.public_url}/{self.bucket}/{object_name}"
+            url = f"{self.public_url}/{object_name}"
 
             logger.info(f"Uploaded: {object_name} ({len(file_data)} bytes)")
 
@@ -137,6 +136,7 @@ class MinioStorage:
     def generate_presigned_upload_url(
         self,
         filename: str,
+        folder: str = "photos",
         expires_seconds: int = 60
     ) -> dict:
         """
@@ -144,6 +144,7 @@ class MinioStorage:
 
         Args:
             filename: Original filename (for extension)
+            folder: Subfolder - "photos", "covers", or "avatars"
             expires_seconds: URL validity in seconds (default 60)
 
         Returns:
@@ -151,7 +152,7 @@ class MinioStorage:
         """
         ext = os.path.splitext(filename)[1].lower() or ".jpg"
         unique_id = uuid.uuid4().hex[:12]
-        object_name = f"{unique_id}{ext}"
+        object_name = f"{folder}/{unique_id}{ext}"
 
         try:
             upload_url = self.client.presigned_put_object(
@@ -160,7 +161,7 @@ class MinioStorage:
                 expires=timedelta(seconds=expires_seconds)
             )
 
-            public_url = f"{self.public_url}/{self.bucket}/{object_name}"
+            public_url = f"{self.public_url}/{object_name}"
 
             logger.info(f"Generated presigned URL for {object_name} (expires {expires_seconds}s)")
 

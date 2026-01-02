@@ -21,12 +21,17 @@ router = APIRouter()
 class PresignRequest(BaseModel):
     """Request for batch presigned URLs."""
     filenames: List[str]
+    folder: str = "photos"  # "photos", "covers", or "avatars"
 
 
 @router.post("/presign")
 async def get_presigned_urls(request: PresignRequest):
     """
     Get presigned URLs for direct upload to MinIO.
+
+    Args:
+        filenames: List of filenames
+        folder: Target folder - "photos" (default), "covers", or "avatars"
 
     Returns list of {upload_url, object_name, public_url} for each filename.
     URLs expire in 60 seconds.
@@ -37,12 +42,16 @@ async def get_presigned_urls(request: PresignRequest):
     if len(request.filenames) > 100:
         raise HTTPException(400, "Max 100 files per request")
 
+    # Validate folder
+    allowed_folders = ["photos", "covers", "avatars"]
+    folder = request.folder if request.folder in allowed_folders else "photos"
+
     minio = get_minio_storage()
     results = []
 
     for filename in request.filenames:
         try:
-            result = minio.generate_presigned_upload_url(filename, expires_seconds=60)
+            result = minio.generate_presigned_upload_url(filename, folder=folder, expires_seconds=60)
             results.append({
                 "filename": filename,
                 **result
