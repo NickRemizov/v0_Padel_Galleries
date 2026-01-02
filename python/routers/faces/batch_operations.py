@@ -223,13 +223,17 @@ async def batch_verify_faces(
             current_person_id = current_face.get("person_id") if current_face else None
             has_descriptor = current_face.get("insightface_descriptor") is not None if current_face else False
 
-            if face.person_id != current_person_id and has_descriptor:
-                # Track index changes
+            person_id_changed = face.person_id != current_person_id
+
+            # Always reindex if has person_id + descriptor (to update confidence to 1.0)
+            if has_descriptor and face.person_id:
                 if current_person_id:
                     faces_removed_from_index.append(face.id)
-                if face.person_id:
-                    faces_added_to_index.append(face.id)
-                logger.info(f"[batch-verify] Face {face.id} person_id changed: {current_person_id} -> {face.person_id}")
+                faces_added_to_index.append(face.id)
+                if person_id_changed:
+                    logger.info(f"[batch-verify] Face {face.id} person_id changed: {current_person_id} -> {face.person_id}")
+                else:
+                    logger.info(f"[batch-verify] Face {face.id} reindexing for confidence update")
 
             update_data = {
                 "person_id": face.person_id,
@@ -237,7 +241,7 @@ async def batch_verify_faces(
                 "verified": bool(face.person_id),
             }
 
-            if face.person_id != current_person_id:
+            if person_id_changed:
                 update_data["excluded_from_index"] = False
 
             logger.info(f"[batch-verify] Updating face {face.id} with: {update_data}")
