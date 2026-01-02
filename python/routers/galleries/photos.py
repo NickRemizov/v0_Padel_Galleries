@@ -116,34 +116,38 @@ async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
             })
         
         logger.info(f"Batch deleting {len(image_ids)} images from gallery {gallery_id}")
-        
-        verified_check = supabase_db.client.table("photo_faces").select(
-            "id", count="exact"
-        ).in_("photo_id", image_ids).eq("verified", True).execute()
-        
-        had_verified_faces = (verified_check.count or 0) > 0
-        
+
+        # Get face_ids with descriptors and person_id before deletion (for index removal)
+        faces_result = supabase_db.client.table("photo_faces").select(
+            "id, insightface_descriptor, person_id"
+        ).in_("photo_id", image_ids).execute()
+
+        face_ids_in_index = [
+            f["id"] for f in (faces_result.data or [])
+            if f.get("insightface_descriptor") and f.get("person_id")
+        ]
+
         supabase_db.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
-        
+
         delete_result = supabase_db.client.table("gallery_images").delete().in_(
             "id", image_ids
         ).eq("gallery_id", gallery_id).execute()
-        
+
         deleted_count = len(delete_result.data) if delete_result.data else 0
         logger.info(f"Deleted {deleted_count} images from gallery {gallery_id}")
-        
+
         index_rebuilt = False
-        if had_verified_faces and face_service:
+        if face_ids_in_index and face_service:
             try:
-                await face_service.rebuild_players_index()
-                index_rebuilt = True
-                logger.info("Rebuilt players index after batch delete")
+                result = await face_service.remove_faces_from_index(face_ids_in_index)
+                index_rebuilt = result.get("deleted", 0) > 0
+                logger.info(f"Removed {result.get('deleted', 0)} faces from index")
             except Exception as e:
-                logger.error(f"Failed to rebuild index after batch delete: {e}")
+                logger.error(f"Failed to update index: {e}")
         
         return ApiResponse.ok({
             "deleted_count": deleted_count,
-            "had_verified_faces": had_verified_faces,
+            "had_faces_in_index": len(face_ids_in_index) > 0,
             "index_rebuilt": index_rebuilt
         })
     except Exception as e:

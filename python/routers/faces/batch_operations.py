@@ -53,45 +53,44 @@ async def batch_assign_faces(
             })
         
         updated_count = 0
-        has_descriptors = False
-        
+        faces_with_descriptors = []  # Track face_ids with descriptors for index
+
         for face_id in request.face_ids:
             try:
                 check_response = supabase_db.client.table("photo_faces").select(
                     "id, insightface_descriptor"
                 ).eq("id", face_id).execute()
-                
+
                 if check_response.data:
-                    if check_response.data[0].get("insightface_descriptor"):
-                        has_descriptors = True
-                    
+                    has_descriptor = check_response.data[0].get("insightface_descriptor") is not None
+
                     update_response = supabase_db.client.table("photo_faces").update({
                         "person_id": request.person_id,
                         "verified": True,
                         "recognition_confidence": 1.0,
                         "excluded_from_index": False
                     }).eq("id", face_id).execute()
-                    
+
                     if update_response.data:
                         updated_count += 1
-                        
+                        if has_descriptor:
+                            faces_with_descriptors.append(face_id)
+
             except Exception as e:
                 logger.warning(f"[batch-assign] Failed to update face {face_id}: {e}")
-        
+
         logger.info(f"[batch-assign] Updated {updated_count}/{len(request.face_ids)} faces")
-        
+
         index_rebuilt = False
-        if has_descriptors and updated_count > 0:
+        if faces_with_descriptors:
             try:
-                logger.info("[batch-assign] Rebuilding index after batch assignment...")
-                rebuild_result = await face_service.rebuild_players_index()
-                if rebuild_result.get("success"):
+                logger.info(f"[batch-assign] Adding {len(faces_with_descriptors)} faces to index...")
+                result = await face_service.add_faces_to_index(faces_with_descriptors)
+                if result.get("added", 0) > 0:
                     index_rebuilt = True
-                    logger.info(f"[batch-assign] Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
-                else:
-                    logger.error(f"[batch-assign] Index rebuild failed: {rebuild_result}")
+                    logger.info(f"[batch-assign] Added {result.get('added')} faces (rebuild_triggered: {result.get('rebuild_triggered')})")
             except Exception as index_error:
-                logger.error(f"[batch-assign] Error rebuilding index: {index_error}")
+                logger.error(f"[batch-assign] Error adding to index: {index_error}")
         
         return ApiResponse.ok({
             "updated_count": updated_count,
@@ -198,73 +197,82 @@ async def batch_verify_faces(
         logger.info(f"[batch-verify] Existing IDs in DB: {existing_ids}")
         logger.info(f"[batch-verify] Kept IDs from request: {kept_ids}")
         
-        deleted_faces_had_descriptors = False
+        deleted_face_ids_in_index = []
         to_delete = [fid for fid in existing_ids if fid not in kept_ids]
-        
+
         for face_id in to_delete:
             face_data = next((f for f in existing_faces if f["id"] == face_id), None)
-            if face_data and face_data.get("insightface_descriptor"):
-                deleted_faces_had_descriptors = True
-                logger.info(f"[batch-verify] Deleting face {face_id} (had descriptor)")
+            if face_data and face_data.get("insightface_descriptor") and face_data.get("person_id"):
+                deleted_face_ids_in_index.append(face_id)
+                logger.info(f"[batch-verify] Deleting face {face_id} (was in index)")
             supabase_db.client.table("photo_faces").delete().eq("id", face_id).execute()
-        
+
         if to_delete:
-            logger.info(f"[batch-verify] Deleted {len(to_delete)} faces, had_descriptors={deleted_faces_had_descriptors}")
+            logger.info(f"[batch-verify] Deleted {len(to_delete)} faces, {len(deleted_face_ids_in_index)} were in index")
         
         updated_count = 0
         failed_count = 0
-        person_id_changed_with_descriptor = False
-        
+        faces_removed_from_index = []  # old person_id was set
+        faces_added_to_index = []  # new person_id is set
+
         for face in request.kept_faces:
             if not face.id:
                 continue
-            
+
             current_face = next((f for f in existing_faces if f["id"] == face.id), None)
             current_person_id = current_face.get("person_id") if current_face else None
             has_descriptor = current_face.get("insightface_descriptor") is not None if current_face else False
-            
+
             if face.person_id != current_person_id and has_descriptor:
-                person_id_changed_with_descriptor = True
-                logger.info(f"[batch-verify] Face {face.id} person_id changed: {current_person_id} -> {face.person_id} (has descriptor)")
-            
+                # Track index changes
+                if current_person_id:
+                    faces_removed_from_index.append(face.id)
+                if face.person_id:
+                    faces_added_to_index.append(face.id)
+                logger.info(f"[batch-verify] Face {face.id} person_id changed: {current_person_id} -> {face.person_id}")
+
             update_data = {
                 "person_id": face.person_id,
                 "recognition_confidence": 1.0 if face.person_id else None,
                 "verified": bool(face.person_id),
             }
-            
+
             if face.person_id != current_person_id:
                 update_data["excluded_from_index"] = False
-            
+
             logger.info(f"[batch-verify] Updating face {face.id} with: {update_data}")
-            
+
             response = supabase_db.client.table("photo_faces").update(update_data).eq("id", face.id).execute()
-            
+
             if response.data:
                 updated_count += 1
-                logger.info(f"[batch-verify] Face {face.id} updated: verified={update_data['verified']}, confidence={update_data['recognition_confidence']}, person_id={face.person_id}")
             else:
                 failed_count += 1
                 logger.error(f"[batch-verify] Face {face.id} update FAILED - no data returned")
-        
+
         logger.info(f"[batch-verify] Update summary: {updated_count} succeeded, {failed_count} failed")
-        
-        need_rebuild = deleted_faces_had_descriptors or person_id_changed_with_descriptor
-        
+
+        # Update index incrementally
+        all_removed = deleted_face_ids_in_index + faces_removed_from_index
         index_rebuilt = False
-        if need_rebuild:
-            logger.info(f"[batch-verify] Rebuilding index: deleted_had_descriptors={deleted_faces_had_descriptors}, person_id_changed={person_id_changed_with_descriptor}")
+
+        if all_removed or faces_added_to_index:
             try:
-                rebuild_result = await face_service.rebuild_players_index()
-                if rebuild_result.get("success"):
-                    index_rebuilt = True
-                    logger.info(f"[batch-verify] Index rebuilt: {rebuild_result}")
-                else:
-                    logger.error(f"[batch-verify] Index rebuild failed: {rebuild_result}")
+                if all_removed:
+                    result = await face_service.remove_faces_from_index(all_removed)
+                    logger.info(f"[batch-verify] Removed {result.get('deleted', 0)} faces from index")
+
+                if faces_added_to_index:
+                    result = await face_service.add_faces_to_index(faces_added_to_index)
+                    logger.info(f"[batch-verify] Added {result.get('added', 0)} faces to index")
+                    if result.get("rebuild_triggered"):
+                        index_rebuilt = True
+
+                index_rebuilt = True
             except Exception as index_error:
-                logger.error(f"[batch-verify] Index rebuild exception: {index_error}")
+                logger.error(f"[batch-verify] Index update exception: {index_error}")
         else:
-            logger.info("[batch-verify] No index rebuild needed (no person_id changes with descriptors)")
+            logger.info("[batch-verify] No index update needed")
         
         result = {
             "verified": all(f.person_id for f in request.kept_faces) if request.kept_faces else False,

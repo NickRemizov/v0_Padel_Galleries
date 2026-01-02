@@ -116,14 +116,20 @@ async def save_face(
         logger.info(f"Face saved with ID: {saved_face.get('id')}")
         
         index_updated = False
-        if request.verified and request.person_id and request.embedding and len(request.embedding) > 0:
+        if request.person_id and request.embedding and len(request.embedding) > 0:
             try:
-                rebuild_result = await face_service.rebuild_players_index()
-                if rebuild_result.get("success"):
+                import numpy as np
+                embedding = np.array(request.embedding, dtype=np.float32)
+                verified = request.verified or False
+                confidence = request.recognition_confidence or (1.0 if verified else 0.0)
+                result = await face_service.add_face_to_index(
+                    saved_face["id"], request.person_id, embedding, verified, confidence
+                )
+                if result.get("success"):
                     index_updated = True
-                    logger.info("Index rebuilt successfully")
+                    logger.info(f"Face added to index (rebuild_triggered: {result.get('rebuild_triggered')})")
             except Exception as index_error:
-                logger.error(f"Error rebuilding index: {index_error}")
+                logger.error(f"Error adding to index: {index_error}")
         
         return ApiResponse.ok({
             "face": saved_face,
@@ -189,13 +195,20 @@ async def update_face(
         index_rebuilt = False
         if person_id_changed and has_descriptor:
             try:
-                logger.info(f"[update_face] Rebuilding index after person_id change")
-                rebuild_result = await face_service.rebuild_players_index()
-                if rebuild_result.get("success"):
-                    index_rebuilt = True
-                    logger.info(f"[update_face] Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                # Remove old entry if was in index
+                if current_person_id:
+                    await face_service.remove_face_from_index(request.face_id)
+                    logger.info(f"[update_face] Removed face from index (old person_id)")
+
+                # Add new entry if has new person_id
+                new_person_id = request.person_id
+                if new_person_id:
+                    result = await face_service.add_face_to_index(request.face_id, new_person_id)
+                    if result.get("success"):
+                        index_rebuilt = True
+                        logger.info(f"[update_face] Face added to index (rebuild_triggered: {result.get('rebuild_triggered')})")
             except Exception as index_error:
-                logger.error(f"[update_face] Error rebuilding index: {index_error}")
+                logger.error(f"[update_face] Error updating index: {index_error}")
         
         logger.info(f"Face updated: {request.face_id}, index_rebuilt={index_rebuilt}")
         
@@ -237,17 +250,17 @@ async def delete_face(
         logger.info(f"Face deleted from DB: {request.face_id}")
         
         index_updated = False
-        if had_descriptor:
+        if had_descriptor and had_person_id:
             try:
-                logger.info("Rebuilding index after face deletion...")
-                rebuild_result = await face_service.rebuild_players_index()
-                if rebuild_result.get("success"):
+                logger.info("Removing face from index...")
+                result = await face_service.remove_face_from_index(request.face_id)
+                if result.get("success"):
                     index_updated = True
-                    logger.info(f"Index rebuilt: {rebuild_result.get('new_descriptor_count')} descriptors")
+                    logger.info(f"Face removed from index (rebuild_triggered: {result.get('rebuild_triggered')})")
                 else:
-                    logger.error(f"Index rebuild failed: {rebuild_result}")
+                    logger.error(f"Failed to remove from index: {result}")
             except Exception as index_error:
-                logger.error(f"Error rebuilding index: {index_error}")
+                logger.error(f"Error removing from index: {index_error}")
         
         return ApiResponse.ok({"deleted": True, "index_updated": index_updated})
         

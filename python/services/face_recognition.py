@@ -9,15 +9,15 @@ This is a facade that delegates to specialized modules:
 - grouping.py - Face clustering
 
 v4.0: New recognition algorithm with adaptive early exit
-- Formula: final_confidence = source_confidence × similarity
-- Early exit when similarity < best_final_confidence
-- No separate penalty for non-verified faces
-
 v4.1: Migrated to SupabaseService (modular architecture)
 v4.2: Face size filter uses max(width, height)
+v5.0: Incremental index operations (add_item, mark_deleted)
+      - Reduces full rebuilds by using incremental updates
+      - Auto-rebuild when deleted >= 5% or capacity >= 95%
 """
 
 import os
+import json
 import numpy as np
 from typing import List, Tuple, Optional, Dict, Any, Union
 from datetime import datetime
@@ -135,27 +135,28 @@ class FaceRecognitionService:
     # ==================== Index Operations ====================
     
     def _load_players_index(self):
-        """Load players index from Supabase"""
+        """Load players index from Supabase (full rebuild)"""
         logger.info("[FaceRecognition] Loading players index...")
-        
+
         try:
             # Get ALL embeddings (verified and non-verified) with metadata
-            # v4.1: Use embeddings repository
-            person_ids, embeddings, verified_flags, confidences = self._embeddings.get_all_player_embeddings()
-            
+            # v5.0: Now includes face_ids for incremental operations
+            face_ids, person_ids, embeddings, verified_flags, confidences = self._embeddings.get_all_player_embeddings()
+
             if len(embeddings) > 0:
                 success = self._players_index.load_from_embeddings(
-                    person_ids, 
+                    person_ids,
                     embeddings,
                     verified_flags,
-                    confidences
+                    confidences,
+                    face_ids
                 )
-                
+
                 if success:
                     # Legacy compatibility
                     self.players_index = self._players_index.index
                     self.player_ids_map = self._players_index.ids_map
-                    
+
                     unique_count = self._players_index.get_unique_people_count()
                     verified_count = self._players_index.get_verified_count()
                     total_count = len(embeddings)
@@ -165,26 +166,26 @@ class FaceRecognitionService:
             else:
                 logger.warning("[FaceRecognition] No embeddings found in Supabase")
                 raise ValueError("No embeddings found in Supabase")
-                
+
         except Exception as e:
             logger.error(f"[FaceRecognition] ERROR loading index: {e}")
             raise
     
     async def rebuild_players_index(self) -> Dict:
-        """Rebuild the HNSWLIB index from database"""
+        """Rebuild the HNSWLIB index from database (full rebuild)"""
         logger.info("[FaceRecognition] Rebuilding players index...")
-        
+
         try:
             old_count = len(self.player_ids_map) if self.player_ids_map else 0
-            
+
             self._load_players_index()
-            
+
             new_count = len(self.player_ids_map) if self.player_ids_map else 0
             unique_people = self._players_index.get_unique_people_count()
             verified_count = self._players_index.get_verified_count()
-            
+
             logger.info(f"[FaceRecognition] Index rebuilt: {old_count} -> {new_count} descriptors ({verified_count} verified)")
-            
+
             return {
                 "success": True,
                 "old_descriptor_count": old_count,
@@ -192,11 +193,182 @@ class FaceRecognitionService:
                 "verified_count": verified_count,
                 "unique_people_count": unique_people
             }
-            
+
         except Exception as e:
             logger.error(f"[FaceRecognition] ERROR rebuilding index: {e}")
             return {"success": False, "error": str(e)}
-    
+
+    # ==================== Incremental Index Operations (v5.0) ====================
+
+    async def add_face_to_index(
+        self,
+        face_id: str,
+        person_id: str,
+        embedding: np.ndarray = None,
+        verified: bool = False,
+        confidence: float = 1.0
+    ) -> Dict:
+        """
+        Add a single face to the index (incremental).
+        If embedding not provided, fetches from database.
+
+        Returns:
+            Dict with success status and rebuild_triggered flag
+        """
+        self._ensure_initialized()
+
+        try:
+            # Fetch embedding from DB if not provided
+            if embedding is None:
+                faces = self._embeddings.get_face_embeddings_by_ids([face_id])
+                if not faces:
+                    return {"success": False, "error": "Face not found"}
+                face = faces[0]
+                descriptor = face.get("insightface_descriptor")
+                if not descriptor:
+                    return {"success": False, "error": "No descriptor"}
+                if isinstance(descriptor, list):
+                    embedding = np.array(descriptor, dtype=np.float32)
+                else:
+                    embedding = np.array(json.loads(descriptor), dtype=np.float32)
+                verified = face.get("verified", False) or False
+                confidence = face.get("recognition_confidence") or (1.0 if verified else 0.0)
+
+            # Try to add to index
+            success = self._players_index.add_item(face_id, person_id, embedding, verified, confidence)
+
+            # Check if rebuild needed
+            rebuild_triggered = False
+            if success:
+                needs, reason = self._players_index.needs_rebuild()
+                if needs:
+                    logger.info(f"[FaceRecognition] Rebuild triggered: {reason}")
+                    await self.rebuild_players_index()
+                    rebuild_triggered = True
+
+            return {"success": success, "rebuild_triggered": rebuild_triggered}
+
+        except Exception as e:
+            logger.error(f"[FaceRecognition] Error adding face to index: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def add_faces_to_index(self, face_ids: List[str]) -> Dict:
+        """
+        Add multiple faces to the index (incremental).
+        Fetches embeddings from database.
+
+        Returns:
+            Dict with added count and rebuild_triggered flag
+        """
+        self._ensure_initialized()
+
+        if not face_ids:
+            return {"added": 0, "rebuild_triggered": False}
+
+        try:
+            # Fetch embeddings from DB
+            faces = self._embeddings.get_face_embeddings_by_ids(face_ids)
+            if not faces:
+                return {"added": 0, "error": "No faces found"}
+
+            added = 0
+            for face in faces:
+                descriptor = face.get("insightface_descriptor")
+                person_id = face.get("person_id")
+                if not descriptor or not person_id:
+                    continue
+
+                if isinstance(descriptor, list):
+                    embedding = np.array(descriptor, dtype=np.float32)
+                else:
+                    embedding = np.array(json.loads(descriptor), dtype=np.float32)
+
+                verified = face.get("verified", False) or False
+                confidence = face.get("recognition_confidence") or (1.0 if verified else 0.0)
+
+                if self._players_index.add_item(face["id"], person_id, embedding, verified, confidence):
+                    added += 1
+
+            # Check if rebuild needed
+            rebuild_triggered = False
+            needs, reason = self._players_index.needs_rebuild()
+            if needs:
+                logger.info(f"[FaceRecognition] Rebuild triggered: {reason}")
+                await self.rebuild_players_index()
+                rebuild_triggered = True
+
+            logger.info(f"[FaceRecognition] Added {added}/{len(face_ids)} faces to index")
+            return {"added": added, "rebuild_triggered": rebuild_triggered}
+
+        except Exception as e:
+            logger.error(f"[FaceRecognition] Error adding faces to index: {e}")
+            return {"added": 0, "error": str(e)}
+
+    async def remove_face_from_index(self, face_id: str) -> Dict:
+        """
+        Remove a face from the index (mark as deleted).
+
+        Returns:
+            Dict with success status and rebuild_triggered flag
+        """
+        self._ensure_initialized()
+
+        try:
+            success = self._players_index.mark_deleted(face_id)
+
+            # Check if rebuild needed
+            rebuild_triggered = False
+            if success:
+                needs, reason = self._players_index.needs_rebuild()
+                if needs:
+                    logger.info(f"[FaceRecognition] Rebuild triggered: {reason}")
+                    await self.rebuild_players_index()
+                    rebuild_triggered = True
+
+            return {"success": success, "rebuild_triggered": rebuild_triggered}
+
+        except Exception as e:
+            logger.error(f"[FaceRecognition] Error removing face from index: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def remove_faces_from_index(self, face_ids: List[str]) -> Dict:
+        """
+        Remove multiple faces from the index (mark as deleted).
+
+        Returns:
+            Dict with deleted count and rebuild_triggered flag
+        """
+        self._ensure_initialized()
+
+        if not face_ids:
+            return {"deleted": 0, "rebuild_triggered": False}
+
+        try:
+            deleted = self._players_index.mark_deleted_batch(face_ids)
+
+            # Check if rebuild needed
+            rebuild_triggered = False
+            needs, reason = self._players_index.needs_rebuild()
+            if needs:
+                logger.info(f"[FaceRecognition] Rebuild triggered: {reason}")
+                await self.rebuild_players_index()
+                rebuild_triggered = True
+
+            logger.info(f"[FaceRecognition] Removed {deleted}/{len(face_ids)} faces from index")
+            return {"deleted": deleted, "rebuild_triggered": rebuild_triggered}
+
+        except Exception as e:
+            logger.error(f"[FaceRecognition] Error removing faces from index: {e}")
+            return {"deleted": 0, "error": str(e)}
+
+    def get_index_stats(self) -> Dict:
+        """Get current index statistics."""
+        return self._players_index.get_stats()
+
+    def check_rebuild_needed(self) -> Tuple[bool, str]:
+        """Check if index needs rebuilding."""
+        return self._players_index.needs_rebuild()
+
     async def _build_hnsw_index(self, tournament_id: str):
         """Build temporary HNSW index for tournament"""
         embeddings = self.embeddings_store.get(tournament_id, [])

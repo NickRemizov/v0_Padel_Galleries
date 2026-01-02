@@ -23,13 +23,13 @@ class EmbeddingsRepository:
     def __init__(self):
         self._client = get_supabase_client()
     
-    def get_all_player_embeddings(self) -> Tuple[List[str], List[np.ndarray], List[bool], List[float]]:
+    def get_all_player_embeddings(self) -> Tuple[List[str], List[str], List[np.ndarray], List[bool], List[float]]:
         """
         Load InsightFace embeddings from photo_faces table for HNSW index.
         Only loads embeddings where excluded_from_index = FALSE.
-        
+
         Returns:
-            Tuple of (person_ids, embeddings, verified_flags, confidences)
+            Tuple of (face_ids, person_ids, embeddings, verified_flags, confidences)
         """
         logger.info("Loading embeddings from Supabase (excluded_from_index=FALSE)...")
         
@@ -62,20 +62,21 @@ class EmbeddingsRepository:
             
             if not all_data:
                 logger.warning("No embeddings found in database")
-                return [], [], [], []
-            
+                return [], [], [], [], []
+
             # Process results
+            face_ids = []
             person_ids = []
             embeddings = []
             verified_flags = []
             confidences = []
             skipped = 0
-            
+
             for row in all_data:
                 descriptor = row["insightface_descriptor"]
                 verified = row.get("verified", False) or False
                 confidence = row.get("recognition_confidence") or (1.0 if verified else 0.0)
-                
+
                 # Convert descriptor
                 if isinstance(descriptor, list):
                     embedding = np.array(descriptor, dtype=np.float32)
@@ -84,29 +85,30 @@ class EmbeddingsRepository:
                 else:
                     skipped += 1
                     continue
-                
+
                 # Validate dimension
                 if len(embedding) != 512:
                     skipped += 1
                     continue
-                
+
+                face_ids.append(str(row["id"]))
                 person_ids.append(str(row["person_id"]))
                 embeddings.append(embedding)
                 verified_flags.append(verified)
                 confidences.append(float(confidence))
-            
+
             verified_count = sum(verified_flags)
             unique_people = len(set(person_ids))
             logger.info(f"Loaded {len(embeddings)} embeddings ({verified_count} verified) for {unique_people} people")
-            
+
             if skipped > 0:
                 logger.warning(f"Skipped {skipped} invalid embeddings")
-            
-            return person_ids, embeddings, verified_flags, confidences
-            
+
+            return face_ids, person_ids, embeddings, verified_flags, confidences
+
         except Exception as e:
             logger.error(f"Error loading embeddings: {e}", exc_info=True)
-            return [], [], [], []
+            return [], [], [], [], []
     
     def get_person_embeddings_for_audit(self, person_id: str) -> List[Dict]:
         """
@@ -135,20 +137,56 @@ class EmbeddingsRepository:
             logger.error(f"Error getting person embeddings: {e}")
             return []
     
+    def get_face_embeddings_by_ids(self, face_ids: List[str]) -> List[Dict]:
+        """
+        Get face embeddings by face IDs for incremental index operations.
+
+        Args:
+            face_ids: List of photo_faces IDs
+
+        Returns:
+            List of dicts with id, person_id, insightface_descriptor, verified, recognition_confidence
+        """
+        if not face_ids:
+            return []
+
+        logger.info(f"Getting embeddings for {len(face_ids)} faces...")
+
+        try:
+            # Batch fetch in chunks of 100
+            all_results = []
+            batch_size = 100
+
+            for i in range(0, len(face_ids), batch_size):
+                batch = face_ids[i:i + batch_size]
+                response = self._client.table("photo_faces").select(
+                    "id, person_id, insightface_descriptor, verified, recognition_confidence"
+                ).in_("id", batch).execute()
+
+                if response.data:
+                    all_results.extend(response.data)
+
+            logger.info(f"Found {len(all_results)} embeddings")
+            return all_results
+
+        except Exception as e:
+            logger.error(f"Error getting face embeddings: {e}")
+            return []
+
     def set_excluded_from_index(self, face_ids: List[str], excluded: bool = True) -> int:
         """
         Set excluded_from_index flag for multiple faces.
-        
+
         Args:
             face_ids: List of photo_faces IDs to update
             excluded: True to exclude, False to include
-            
+
         Returns:
             Number of faces updated
         """
         if not face_ids:
             return 0
-        
+
         logger.info(f"Setting excluded_from_index={excluded} for {len(face_ids)} faces...")
         
         try:

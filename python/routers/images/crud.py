@@ -93,19 +93,22 @@ async def delete_image(image_id: str):
         
         image_url = result.data[0].get("image_url")
         
-        # Check for descriptors
-        descriptors_result = supabase_db.client.table("photo_faces").select("id, insightface_descriptor").eq("photo_id", image_id).execute()
-        
-        has_descriptors = any(
-            face.get("insightface_descriptor") is not None and face.get("insightface_descriptor") != ""
-            for face in (descriptors_result.data or [])
-        )
-        
+        # Get faces with descriptors and person_id (those are in index)
+        faces_result = supabase_db.client.table("photo_faces").select(
+            "id, insightface_descriptor, person_id"
+        ).eq("photo_id", image_id).execute()
+
+        face_ids_in_index = [
+            f["id"] for f in (faces_result.data or [])
+            if f.get("insightface_descriptor") and f.get("person_id")
+        ]
+        has_descriptors = len(face_ids_in_index) > 0
+
         # Delete from DB (CASCADE deletes photo_faces)
         supabase_db.client.table("gallery_images").delete().eq("id", image_id).execute()
-        
+
         logger.info("Image deleted from DB")
-        
+
         # Delete storage file (MinIO or Vercel Blob)
         if image_url:
             try:
@@ -128,17 +131,16 @@ async def delete_image(image_id: str):
                                 logger.info("Vercel Blob file deleted")
             except Exception as e:
                 logger.warning(f"Failed to delete storage file: {e}")
-        
-        # Rebuild index if had descriptors
+
+        # Remove faces from index
         index_rebuilt = False
-        if has_descriptors:
+        if face_ids_in_index:
             try:
-                rebuild_result = await face_service.rebuild_players_index()
-                if rebuild_result.get("success"):
-                    index_rebuilt = True
-                    logger.info("Index rebuilt successfully")
+                result = await face_service.remove_faces_from_index(face_ids_in_index)
+                index_rebuilt = result.get("deleted", 0) > 0
+                logger.info(f"Removed {result.get('deleted', 0)} faces from index")
             except Exception as e:
-                logger.error(f"Failed to rebuild index: {e}")
+                logger.error(f"Failed to update index: {e}")
         
         return ApiResponse.ok({
             "deleted": True,

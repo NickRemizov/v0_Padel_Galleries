@@ -94,15 +94,16 @@ async def audit_all_embeddings(
         # Process each person
         audit_results = []
         total_newly_excluded = 0
-        
+        all_outlier_face_ids = []  # Track all outlier face_ids for index removal
+
         for person in people:
             person_id = person["id"]
             person_name = person.get("real_name") or person.get("telegram_name") or "Unknown"
             person_faces = faces_by_person.get(person_id, [])
-            
+
             if len(person_faces) < min_descriptors:
                 continue
-            
+
             # Parse embeddings
             embeddings_data = []  # [(embedding, face, is_excluded)]
             for face in person_faces:
@@ -114,46 +115,47 @@ async def audit_all_embeddings(
                         emb = np.array(json.loads(descriptor), dtype=np.float32)
                     else:
                         continue
-                    
+
                     if len(emb) == 512:
                         embeddings_data.append((emb, face, face.get("excluded_from_index", False)))
                 except Exception:
                     continue
-            
+
             # Get non-excluded embeddings for centroid
             non_excluded = [(e, f) for e, f, ex in embeddings_data if not ex]
-            
+
             if len(non_excluded) < 2:
                 continue  # Can't calculate centroid
-            
+
             # Calculate centroid
             embeddings_array = np.array([e for e, f in non_excluded])
             centroid = np.mean(embeddings_array, axis=0)
             centroid = centroid / np.linalg.norm(centroid)
-            
+
             # Find new outliers (not already excluded)
             new_outlier_ids = []
             for emb, face, is_excluded in embeddings_data:
                 if is_excluded:
                     continue  # Already excluded
-                
+
                 emb_norm = emb / np.linalg.norm(emb)
                 similarity = float(np.dot(emb_norm, centroid))
-                
+
                 if similarity < outlier_threshold:
                     new_outlier_ids.append(face["id"])
-            
+
             # Mark new outliers as excluded (unless dry_run)
             if new_outlier_ids:
                 if not dry_run:
                     updated = supabase_db.set_excluded_from_index(new_outlier_ids, excluded=True)
                     total_newly_excluded += updated
+                    all_outlier_face_ids.extend(new_outlier_ids)
                 else:
                     total_newly_excluded += len(new_outlier_ids)
-                
+
                 # Count total excluded for this person
                 total_excluded = sum(1 for _, _, ex in embeddings_data if ex) + len(new_outlier_ids)
-                
+
                 audit_results.append({
                     "person_id": person_id,
                     "person_name": person_name,
@@ -161,12 +163,13 @@ async def audit_all_embeddings(
                     "total_excluded": total_excluded,
                     "total_descriptors": len(embeddings_data)
                 })
-        
-        # Rebuild index (unless dry_run)
+
+        # Remove excluded faces from index (unless dry_run)
         index_rebuilt = False
-        if not dry_run and total_newly_excluded > 0 and face_service:
-            await face_service.rebuild_players_index()
-            index_rebuilt = True
+        if not dry_run and all_outlier_face_ids and face_service:
+            result = await face_service.remove_faces_from_index(all_outlier_face_ids)
+            index_rebuilt = result.get("deleted", 0) > 0
+            logger.info(f"[audit-all] Removed {result.get('deleted', 0)} outliers from index")
         
         logger.info(f"[audit-all] Done. {len(audit_results)} people affected, {total_newly_excluded} newly excluded, dry_run={dry_run}")
         
@@ -269,13 +272,14 @@ async def clear_person_outliers(
         
         # Mark as excluded (not delete!)
         updated = supabase_db.set_excluded_from_index(outlier_face_ids, excluded=True)
-        
-        # Rebuild index
+
+        # Remove from index
         index_rebuilt = False
-        if face_service:
-            await face_service.rebuild_players_index()
-            index_rebuilt = True
-        
+        if face_service and outlier_face_ids:
+            result = await face_service.remove_faces_from_index(outlier_face_ids)
+            index_rebuilt = result.get("deleted", 0) > 0
+            logger.info(f"[clear-outliers] Removed {result.get('deleted', 0)} outliers from index")
+
         logger.info(f"[clear-outliers] Excluded {updated} outliers for person {person_id}")
         
         return ApiResponse.ok({

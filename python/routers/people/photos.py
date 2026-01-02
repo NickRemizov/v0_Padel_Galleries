@@ -259,18 +259,20 @@ async def unlink_person_from_photo(identifier: UUID, photo_id: str = Query(...))
         person_id = _get_person_id_from_uuid(supabase_db, identifier)
         
         logger.info(f"Unlinking person {person_id} from photo {photo_id}")
-        
-        # First, count how many faces will be affected
-        count_result = supabase_db.client.table("photo_faces")\
-            .select("id", count="exact")\
+
+        # Get face_ids with descriptors before unlinking (for index removal)
+        faces_result = supabase_db.client.table("photo_faces")\
+            .select("id, insightface_descriptor")\
             .eq("photo_id", photo_id)\
             .eq("person_id", person_id)\
             .execute()
-        
-        faces_count = count_result.count if hasattr(count_result, 'count') else len(count_result.data or [])
-        logger.info(f"Found {faces_count} faces to unlink")
-        
-        # Then update (without .select() which doesn't work in sync client)
+
+        faces_data = faces_result.data or []
+        face_ids_in_index = [f["id"] for f in faces_data if f.get("insightface_descriptor")]
+        faces_count = len(faces_data)
+        logger.info(f"Found {faces_count} faces to unlink, {len(face_ids_in_index)} in index")
+
+        # Then update
         supabase_db.client.table("photo_faces")\
             .update({
                 "person_id": None,
@@ -282,17 +284,14 @@ async def unlink_person_from_photo(identifier: UUID, photo_id: str = Query(...))
             .eq("photo_id", photo_id)\
             .eq("person_id", person_id)\
             .execute()
-        
+
         logger.info(f"Unlinked {faces_count} faces")
-        
-        # Rebuild HNSW index to remove unlinked descriptor from memory
-        if faces_count > 0:
+
+        # Remove from index
+        if face_ids_in_index:
             face_service = get_face_service()
-            rebuild_result = await face_service.rebuild_players_index()
-            if rebuild_result.get("success"):
-                logger.info(f"Index rebuilt after unlink: {rebuild_result.get('new_descriptor_count')} descriptors")
-            else:
-                logger.warning(f"Index rebuild failed: {rebuild_result.get('error')}")
+            result = await face_service.remove_faces_from_index(face_ids_in_index)
+            logger.info(f"Removed {result.get('deleted', 0)} faces from index")
         
         return ApiResponse.ok({"unlinked_count": faces_count})
     except NotFoundError:

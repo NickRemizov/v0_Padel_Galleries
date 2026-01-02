@@ -79,24 +79,27 @@ async def delete_all_gallery_images(gallery_id: str):
         
         images = result.data
         image_ids = [img["id"] for img in images]
-        
-        # Check for descriptors
-        descriptors_result = supabase_db.client.table("photo_faces").select("id, insightface_descriptor").in_("photo_id", image_ids).execute()
-        
-        has_descriptors = any(
-            face.get("insightface_descriptor") is not None and face.get("insightface_descriptor") != ""
-            for face in (descriptors_result.data or [])
-        )
-        
+
+        # Get faces with descriptors and person_id before deletion (for index removal)
+        faces_result = supabase_db.client.table("photo_faces").select(
+            "id, insightface_descriptor, person_id"
+        ).in_("photo_id", image_ids).execute()
+
+        face_ids_in_index = [
+            f["id"] for f in (faces_result.data or [])
+            if f.get("insightface_descriptor") and f.get("person_id")
+        ]
+        has_descriptors = len(face_ids_in_index) > 0
+
         # Delete all images
         deleted_count = 0
         failed_count = 0
-        
+
         for image in images:
             try:
                 supabase_db.client.table("gallery_images").delete().eq("id", image["id"]).execute()
                 deleted_count += 1
-                
+
                 # Delete blob
                 image_url = image.get("image_url")
                 if image_url:
@@ -110,23 +113,22 @@ async def delete_all_gallery_images(gallery_id: str):
                                 )
                     except Exception:
                         pass
-                        
+
             except Exception as e:
                 logger.error(f"Failed to delete image {image['id']}: {e}")
                 failed_count += 1
-        
+
         logger.info(f"Deleted {deleted_count} images, {failed_count} failed")
-        
-        # Rebuild index if had descriptors
+
+        # Remove faces from index
         index_rebuilt = False
-        if has_descriptors and deleted_count > 0:
+        if face_ids_in_index and deleted_count > 0:
             try:
-                rebuild_result = await face_service.rebuild_players_index()
-                if rebuild_result.get("success"):
-                    index_rebuilt = True
-                    logger.info("Index rebuilt successfully")
+                result = await face_service.remove_faces_from_index(face_ids_in_index)
+                index_rebuilt = result.get("deleted", 0) > 0
+                logger.info(f"Removed {result.get('deleted', 0)} faces from index")
             except Exception as e:
-                logger.error(f"Failed to rebuild index: {e}")
+                logger.error(f"Failed to update index: {e}")
         
         failed_msg = f", {failed_count} failed" if failed_count > 0 else ""
         return ApiResponse.ok({

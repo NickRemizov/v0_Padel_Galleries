@@ -282,6 +282,12 @@ async def delete_person(identifier: UUID):
             raise NotFoundError("Person", str(identifier))
         person_id = str(identifier)
         
+        # Get face_ids with descriptors before unlinking (for index removal)
+        faces_result = supabase_db.client.table("photo_faces").select(
+            "id, insightface_descriptor"
+        ).eq("person_id", person_id).execute()
+        face_ids_in_index = [f["id"] for f in (faces_result.data or []) if f.get("insightface_descriptor")]
+
         # Cleanup deprecated face_descriptors table (if exists)
         for table_name in ["face_descriptors_DEPRECATED", "face_descriptors"]:
             try:
@@ -290,20 +296,21 @@ async def delete_person(identifier: UUID):
                 break
             except Exception:
                 continue
-        
+
         # Unlink photo_faces (clear person_id, keep embeddings)
         supabase_db.client.table("photo_faces").update(
             {"person_id": None, "verified": False}
         ).eq("person_id", person_id).execute()
-        
+
         # Delete person
         supabase_db.client.table("people").delete().eq("id", person_id).execute()
-        
-        # Rebuild index to remove stale references
+
+        # Remove faces from index
         index_rebuilt = False
-        if face_service:
-            await face_service.rebuild_players_index()
-            index_rebuilt = True
+        if face_service and face_ids_in_index:
+            result = await face_service.remove_faces_from_index(face_ids_in_index)
+            index_rebuilt = result.get("deleted", 0) > 0
+            logger.info(f"Removed {result.get('deleted', 0)} faces from index")
         
         logger.info(f"Deleted person {person_id}")
         return ApiResponse.ok({"deleted": True, "index_rebuilt": index_rebuilt})

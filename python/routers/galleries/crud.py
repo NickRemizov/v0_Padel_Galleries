@@ -237,27 +237,38 @@ async def delete_gallery(identifier: str, delete_images: bool = Query(True)):
     
     try:
         gallery_id = _get_gallery_id(identifier)
-        
+        face_ids_in_index = []
+
         if delete_images:
             images = supabase_db.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
             image_ids = [img["id"] for img in (images.data or [])]
-            
+
             if image_ids:
+                # Get face_ids with descriptors and person_id before deletion
+                faces_result = supabase_db.client.table("photo_faces").select(
+                    "id, insightface_descriptor, person_id"
+                ).in_("photo_id", image_ids).execute()
+
+                face_ids_in_index = [
+                    f["id"] for f in (faces_result.data or [])
+                    if f.get("insightface_descriptor") and f.get("person_id")
+                ]
+
                 supabase_db.client.table("photo_faces").delete().in_("photo_id", image_ids).execute()
                 supabase_db.client.table("gallery_images").delete().eq("gallery_id", gallery_id).execute()
                 logger.info(f"Deleted {len(image_ids)} images from gallery {gallery_id}")
-        
+
         supabase_db.client.table("galleries").delete().eq("id", gallery_id).execute()
         logger.info(f"Deleted gallery {gallery_id}")
-        
+
         index_rebuilt = False
-        if face_service:
+        if face_ids_in_index and face_service:
             try:
-                await face_service.rebuild_players_index()
-                index_rebuilt = True
-                logger.info(f"Rebuilt players index after deleting gallery {gallery_id}")
+                result = await face_service.remove_faces_from_index(face_ids_in_index)
+                index_rebuilt = result.get("deleted", 0) > 0
+                logger.info(f"Removed {result.get('deleted', 0)} faces from index")
             except Exception as e:
-                logger.error(f"Failed to rebuild index after gallery deletion: {e}")
+                logger.error(f"Failed to update index: {e}")
         
         return ApiResponse.ok({"deleted": True, "index_rebuilt": index_rebuilt})
     except NotFoundError:
