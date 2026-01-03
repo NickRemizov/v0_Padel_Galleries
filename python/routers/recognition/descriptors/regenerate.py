@@ -374,7 +374,7 @@ async def regenerate_unknown_descriptors(
                     descriptor_str = f"[{','.join(map(str, descriptor))}]"
                     supabase_client.client.table("photo_faces").update({
                         "insightface_descriptor": descriptor_str,
-                        "insightface_confidence": float(best_match["det_score"])
+                        "insightface_det_score": float(best_match["det_score"])
                     }).eq("id", face_id).execute()
                     
                     regenerated += 1

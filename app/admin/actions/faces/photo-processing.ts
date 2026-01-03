@@ -26,7 +26,6 @@ export async function processPhotoAction(
   forceRedetect = false,
   applyQualityFilters = true,
   qualityParams?: {
-    confidenceThreshold?: number
     minDetectionScore?: number
     minFaceSize?: number
     minBlurScore?: number
@@ -34,6 +33,7 @@ export async function processPhotoAction(
 ) {
   try {
     const headers = await getAuthHeaders()
+    // Note: confidence_threshold removed - backend always uses DB config for this
     const result = await apiFetch("/api/recognition/process-photo", {
       method: "POST",
       headers,
@@ -41,7 +41,6 @@ export async function processPhotoAction(
         photo_id: photoId,
         force_redetect: forceRedetect,
         apply_quality_filters: applyQualityFilters,
-        confidence_threshold: applyQualityFilters ? (qualityParams?.confidenceThreshold ?? 0.6) : null,
         min_detection_score: applyQualityFilters ? (qualityParams?.minDetectionScore ?? 0.7) : null,
         min_face_size: applyQualityFilters ? (qualityParams?.minFaceSize ?? 80) : null,
         min_blur_score: applyQualityFilters ? (qualityParams?.minBlurScore ?? 80) : null,
