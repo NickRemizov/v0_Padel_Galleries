@@ -78,13 +78,17 @@ def to_slug(text: str, max_length: int = 200) -> str:
     # Transliterate Cyrillic
     text = transliterate(text)
 
+    # Handle dots: ". " → " ", "." → "_"
+    text = text.replace('. ', ' ')
+    text = text.replace('.', '_')
+
     # Replace spaces with underscores
     text = text.replace(' ', '_')
 
     # Keep only allowed characters: letters, digits, hyphens, underscores
     text = re.sub(r'[^a-zA-Z0-9_-]', '', text)
 
-    # Remove consecutive underscores/hyphens
+    # Collapse consecutive underscores/hyphens into single one
     text = re.sub(r'[_-]+', lambda m: m.group()[0], text)
 
     # Remove leading/trailing underscores/hyphens
