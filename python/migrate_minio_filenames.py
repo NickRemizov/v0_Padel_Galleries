@@ -33,8 +33,8 @@ MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9200")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "2o5CBBoM/ynAEcrcxViXmvcqDs4UAFXj")
 MINIO_BUCKET = "storage"
-# URL includes /storage (nginx path) + /storage (bucket name)
-PUBLIC_URL_BASE = "https://api.vlcpadel.com/storage/storage"
+# Buckets: photos, covers, avatars (each is a separate bucket)
+PUBLIC_URL_BASE = "https://api.vlcpadel.com/storage"
 
 # Slug length limit
 MAX_SLUG_LENGTH = 80

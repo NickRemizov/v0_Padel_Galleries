@@ -28,9 +28,8 @@ class MinioStorage:
         self.endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9200")
         self.access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
         self.secret_key = os.getenv("MINIO_SECRET_KEY", "2o5CBBoM/ynAEcrcxViXmvcqDs4UAFXj")
-        self.bucket = os.getenv("MINIO_BUCKET", "storage")
-        # URL includes /storage (nginx path) + /storage (bucket name)
-        self.public_url = os.getenv("MINIO_PUBLIC_URL", "https://api.vlcpadel.com/storage/storage")
+        # Buckets: photos, covers, avatars (each folder is a separate bucket)
+        self.public_url = os.getenv("MINIO_PUBLIC_URL", "https://api.vlcpadel.com/storage")
 
         self.client = Minio(
             endpoint=self.endpoint,
@@ -39,7 +38,7 @@ class MinioStorage:
             secure=False
         )
 
-        logger.info(f"MinIO storage initialized: {self.endpoint}/{self.bucket}")
+        logger.info(f"MinIO storage initialized: {self.endpoint}")
 
     def upload_file(
         self,
@@ -55,7 +54,7 @@ class MinioStorage:
             file_data: File bytes
             filename: Original filename (used for slug generation)
             content_type: MIME type
-            folder: Subfolder - "photos", "covers", or "avatars"
+            folder: Bucket name - "photos", "covers", or "avatars"
 
         Returns:
             Dict with url and object_name
@@ -65,24 +64,25 @@ class MinioStorage:
         name_without_ext = os.path.splitext(filename)[0]
         slug = to_slug(name_without_ext, max_length=MAX_SLUG_LENGTH) or "image"
         unique_id = uuid.uuid4().hex[:12]
-        object_name = f"{folder}/{slug}_{unique_id}{ext}"
+        object_name = f"{slug}_{unique_id}{ext}"
 
         try:
             self.client.put_object(
-                bucket_name=self.bucket,
+                bucket_name=folder,  # folder IS the bucket
                 object_name=object_name,
                 data=io.BytesIO(file_data),
                 length=len(file_data),
                 content_type=content_type
             )
 
-            url = f"{self.public_url}/{object_name}"
+            url = f"{self.public_url}/{folder}/{object_name}"
 
-            logger.info(f"Uploaded: {object_name} ({len(file_data)} bytes)")
+            logger.info(f"Uploaded to {folder}: {object_name} ({len(file_data)} bytes)")
 
             return {
                 "url": url,
                 "object_name": object_name,
+                "bucket": folder,
                 "size": len(file_data)
             }
 
@@ -101,38 +101,39 @@ class MinioStorage:
             True if deleted, False otherwise
         """
         try:
-            # Extract object name from URL
-            # URL format: https://api.vlcpadel.com/storage/galleries/filename.jpg
+            # Extract bucket and object name from URL
+            # URL format: https://api.vlcpadel.com/storage/photos/filename.jpg
             if self.public_url in url:
                 path = url.replace(f"{self.public_url}/", "")
-                # Remove bucket prefix if present
-                if path.startswith(f"{self.bucket}/"):
-                    object_name = path[len(self.bucket) + 1:]
+                # path is now "photos/filename.jpg" or "covers/filename.jpg"
+                parts = path.split("/", 1)
+                if len(parts) == 2:
+                    bucket_name = parts[0]  # photos, covers, or avatars
+                    object_name = unquote(parts[1])
                 else:
-                    object_name = path
+                    logger.warning(f"Invalid URL path: {path}")
+                    return False
             else:
                 logger.warning(f"URL not from MinIO: {url}")
                 return False
 
-            object_name = unquote(object_name)
-
             self.client.remove_object(
-                bucket_name=self.bucket,
+                bucket_name=bucket_name,
                 object_name=object_name
             )
 
-            logger.info(f"Deleted: {object_name}")
+            logger.info(f"Deleted from {bucket_name}: {object_name}")
             return True
 
         except S3Error as e:
             logger.error(f"MinIO delete error: {e}")
             return False
 
-    def file_exists(self, object_name: str) -> bool:
+    def file_exists(self, bucket: str, object_name: str) -> bool:
         """Check if file exists in MinIO."""
         try:
             self.client.stat_object(
-                bucket_name=self.bucket,
+                bucket_name=bucket,
                 object_name=object_name
             )
             return True
@@ -150,7 +151,7 @@ class MinioStorage:
 
         Args:
             filename: Original filename (used for slug generation)
-            folder: Subfolder - "photos", "covers", or "avatars"
+            folder: Bucket name - "photos", "covers", or "avatars"
             expires_seconds: URL validity in seconds (default 60)
 
         Returns:
@@ -161,22 +162,23 @@ class MinioStorage:
         name_without_ext = os.path.splitext(filename)[0]
         slug = to_slug(name_without_ext, max_length=MAX_SLUG_LENGTH) or "image"
         unique_id = uuid.uuid4().hex[:12]
-        object_name = f"{folder}/{slug}_{unique_id}{ext}"
+        object_name = f"{slug}_{unique_id}{ext}"
 
         try:
             upload_url = self.client.presigned_put_object(
-                bucket_name=self.bucket,
+                bucket_name=folder,  # folder IS the bucket
                 object_name=object_name,
                 expires=timedelta(seconds=expires_seconds)
             )
 
-            public_url = f"{self.public_url}/{object_name}"
+            public_url = f"{self.public_url}/{folder}/{object_name}"
 
-            logger.info(f"Generated presigned URL for {object_name} (expires {expires_seconds}s)")
+            logger.info(f"Generated presigned URL for {folder}/{object_name} (expires {expires_seconds}s)")
 
             return {
                 "upload_url": upload_url,
                 "object_name": object_name,
+                "bucket": folder,
                 "public_url": public_url
             }
 
