@@ -147,7 +147,7 @@ async def batch_delete_gallery_images(data: BatchDeleteImagesRequest):
         
         return ApiResponse.ok({
             "deleted_count": deleted_count,
-            "had_faces_in_index": len(face_ids_in_index) > 0,
+            "had_verified_faces": len(face_ids_in_index) > 0,
             "index_rebuilt": index_rebuilt
         })
     except Exception as e:

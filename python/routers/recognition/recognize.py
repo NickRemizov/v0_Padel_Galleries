@@ -28,7 +28,7 @@ async def recognize_face(
     try:
         # get_recognition_config is sync method - no await
         config = supabase_client.get_recognition_config()
-        threshold = request.get("confidence_threshold") or config.get('recognition_threshold', 0.60)
+        threshold = request.get("confidence_threshold") or config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
         logger.info(f"[v{VERSION}] Recognizing face, threshold: {threshold}")
         

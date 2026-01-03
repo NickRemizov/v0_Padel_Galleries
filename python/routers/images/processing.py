@@ -65,7 +65,7 @@ async def auto_recognize_faces(image_id: str):
         
         # Load recognition config
         config = supabase_db.get_recognition_config()
-        threshold = config.get('recognition_threshold', 0.60)
+        threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         logger.info(f"Using recognition threshold: {threshold}")
         
         # Check if index is available

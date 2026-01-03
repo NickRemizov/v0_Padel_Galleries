@@ -166,7 +166,12 @@ async def process_photo(
         photo_id = request.get("photo_id")
         force_redetect = request.get("force_redetect", False)
         apply_quality_filters = request.get("apply_quality_filters", True)
-        
+
+        # Quality params from request (override DB config if provided)
+        req_min_detection_score = request.get("min_detection_score")
+        req_min_face_size = request.get("min_face_size")
+        req_min_blur_score = request.get("min_blur_score")
+
         # Load config from DB (sync method - no await)
         config = supabase_client.get_recognition_config()
         quality_filters_config = config.get('quality_filters', {})
@@ -186,12 +191,13 @@ async def process_photo(
         logger.info(f"[v{VERSION}] Search threshold: {search_threshold}, Save threshold: {save_threshold}")
         
         if apply_quality_filters:
+            # Use request params if provided, otherwise fall back to DB config
             face_service.quality_filters = {
-                "min_detection_score": quality_filters_config.get('min_detection_score', 0.7),
-                "min_face_size": quality_filters_config.get('min_face_size', 80),
-                "min_blur_score": quality_filters_config.get('min_blur_score', 80)
+                "min_detection_score": req_min_detection_score if req_min_detection_score is not None else quality_filters_config.get('min_detection_score', 0.7),
+                "min_face_size": req_min_face_size if req_min_face_size is not None else quality_filters_config.get('min_face_size', 80),
+                "min_blur_score": req_min_blur_score if req_min_blur_score is not None else quality_filters_config.get('min_blur_score', 80)
             }
-            logger.info(f"[v{VERSION}] Quality filters from DB: {face_service.quality_filters}")
+            logger.info(f"[v{VERSION}] Quality filters (request+DB): {face_service.quality_filters}")
         
         if force_redetect:
             logger.info(f"[v{VERSION}] Force redetect - deleting existing faces")
@@ -216,7 +222,13 @@ async def process_photo(
             
             image_url = photo_response.data[0]["image_url"]
             
-            detected_faces = await face_service.detect_faces(image_url, apply_quality_filters=apply_quality_filters)
+            detected_faces = await face_service.detect_faces(
+                image_url,
+                apply_quality_filters=apply_quality_filters,
+                min_detection_score=req_min_detection_score,
+                min_face_size=req_min_face_size,
+                min_blur_score=req_min_blur_score
+            )
             logger.info(f"[v{VERSION}] Detected {len(detected_faces)} faces")
             
             saved_faces = []

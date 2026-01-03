@@ -16,7 +16,7 @@ from core.logging import get_logger
 from core.slug import generate_photo_slug, make_unique_slug
 from infrastructure.minio_storage import get_minio_storage
 
-from .models import BatchAddImagesRequest
+from .models import BatchAddImagesRequest, UpdateFeaturedRequest
 from .helpers import get_supabase_db, get_face_service
 
 logger = get_logger(__name__)
@@ -153,3 +153,26 @@ async def delete_image(image_id: str):
     except Exception as e:
         logger.error(f"Error deleting image: {e}")
         raise DatabaseError(str(e), operation="delete_image")
+
+
+@router.patch("/{image_id}/featured")
+async def update_image_featured(image_id: str, request: UpdateFeaturedRequest):
+    """Update is_featured flag for an image."""
+    supabase_db = get_supabase_db()
+
+    try:
+        result = supabase_db.client.table("gallery_images").update({
+            "is_featured": request.is_featured
+        }).eq("id", image_id).execute()
+
+        if not result.data:
+            raise NotFoundError("Image", image_id)
+
+        logger.info(f"Updated featured status for image {image_id}: {request.is_featured}")
+        return ApiResponse.ok(result.data[0])
+
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating featured status: {e}")
+        raise DatabaseError(str(e), operation="update_featured")

@@ -182,7 +182,7 @@ async def batch_recognize_photos(
         else:
             # Sync method - no await
             config = training_service.supabase.get_recognition_config()
-            threshold = config.get('confidence_threshold', 0.60)
+            threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
         result = await training_service.batch_recognize(
             gallery_ids=request.gallery_ids,

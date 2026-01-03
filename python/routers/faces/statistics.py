@@ -33,7 +33,7 @@ async def get_face_statistics(
         logger.info(f"Getting face statistics")
         
         config = supabase_db.get_recognition_config()
-        threshold = confidence_threshold or config.get('recognition_threshold', 0.60)
+        threshold = confidence_threshold or config.get('confidence_thresholds', {}).get('high_data', 0.60)
         
         people_response = supabase_db.client.table("people").select("id", count="exact").execute()
         people_data = people_response.data or []

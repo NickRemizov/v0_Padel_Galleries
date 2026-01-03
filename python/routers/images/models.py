@@ -27,3 +27,7 @@ class BatchSortOrderItem(BaseModel):
 
 class BatchSortOrderRequest(BaseModel):
     image_orders: List[BatchSortOrderItem]
+
+
+class UpdateFeaturedRequest(BaseModel):
+    is_featured: bool
