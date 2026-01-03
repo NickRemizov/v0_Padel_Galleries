@@ -10,7 +10,7 @@ import {
   getGalleryUnverifiedPhotosAction,
   getRecognitionConfigAction,
 } from "@/app/admin/actions/recognition"
-import { processPhotoAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
+import { processPhotoAction, markPhotoAsProcessedAction, rebuildIndexAction } from "@/app/admin/actions/faces"
 import type { GalleryInfo, ProcessingResult, ProcessingMode } from "./types"
 import { GallerySelector } from "./GallerySelector"
 import { ProcessingView } from "./ProcessingView"
@@ -158,6 +158,17 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
       status: "pending",
     }))
     setResults(initialResults)
+
+    // v5.1: Rebuild index before batch processing for consistency
+    if (allImages.length >= 10) {
+      console.log(`[BatchRecognition] Rebuilding index before processing ${allImages.length} photos...`)
+      try {
+        await rebuildIndexAction()
+        console.log("[BatchRecognition] Index rebuilt successfully")
+      } catch (error) {
+        console.warn("[BatchRecognition] Index rebuild failed, continuing anyway:", error)
+      }
+    }
 
     for (let i = 0; i < allImages.length; i++) {
       const item = allImages[i]

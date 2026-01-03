@@ -113,14 +113,15 @@ async def recognize_unknown_faces(
 ):
     """
     Recognize all unknown faces by running them through the recognition algorithm.
+    Performs full index rebuild before recognition for consistency and speed.
     """
     try:
         logger.info(f"[recognize-unknown] START gallery_id={request.gallery_id}, threshold={request.confidence_threshold}")
 
         unknown_faces = await get_all_unknown_faces_paginated(supabase_db, request.gallery_id)
-        
+
         logger.info(f"[recognize-unknown] Total unknown faces with descriptors: {len(unknown_faces)}")
-        
+
         if not unknown_faces:
             return ApiResponse.ok({
                 "total_unknown": 0,
@@ -128,12 +129,17 @@ async def recognize_unknown_faces(
                 "by_person": [],
                 "index_rebuilt": True
             })
-        
+
+        # v5.1: Rebuild index before batch recognition for consistency
+        logger.info(f"[recognize-unknown] Rebuilding index before processing {len(unknown_faces)} faces...")
+        await face_service.rebuild_players_index()
+        logger.info(f"[recognize-unknown] Index rebuilt, starting recognition")
+
         threshold = request.confidence_threshold
         if threshold is None:
             config = supabase_db.get_recognition_config()
             threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
-        
+
         logger.info(f"[recognize-unknown] Using threshold: {threshold}")
         
         recognized_count = 0

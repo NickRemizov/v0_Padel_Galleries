@@ -4,7 +4,7 @@ import { useState, useCallback } from "react"
 import type { GalleryImage } from "@/lib/types"
 import type { ProcessingResult, QualityParams, ProcessingStats } from "../types"
 import { getBatchPhotoFacesAction, markPhotoAsProcessedAction } from "@/app/admin/actions"
-import { processPhotoAction } from "@/app/admin/actions/faces"
+import { processPhotoAction, rebuildIndexAction } from "@/app/admin/actions/faces"
 import { getRecognitionConfigAction } from "@/app/admin/actions/recognition"
 
 const VERSION = "v5.1-Refactored"
@@ -129,6 +129,17 @@ export function useAutoRecognition({ images, mode }: UseAutoRecognitionProps) {
       status: "pending",
     }))
     setResults(initialResults)
+
+    // v5.1: Rebuild index before batch processing for consistency
+    if (imagesToProcess.length >= 10) {
+      console.log(`[${VERSION}] Rebuilding index before processing ${imagesToProcess.length} photos...`)
+      try {
+        await rebuildIndexAction()
+        console.log(`[${VERSION}] Index rebuilt successfully`)
+      } catch (error) {
+        console.warn(`[${VERSION}] Index rebuild failed, continuing anyway:`, error)
+      }
+    }
 
     // Process each image
     for (let i = 0; i < imagesToProcess.length; i++) {
