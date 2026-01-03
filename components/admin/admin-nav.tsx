@@ -2,24 +2,26 @@
 
 /**
  * Admin Navigation Component
- * 
+ *
  * @migrated 2025-12-27 - Removed direct Supabase browser client
- * Now uses getCitiesAction (FastAPI) instead of browser Supabase
+ * @updated 2026-01-03 - Switched to Google OAuth admin auth
  */
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
+import Image from "next/image"
 import { cn } from "@/lib/utils"
 import { APP_VERSION } from "@/lib/version"
-import { 
-  Images, 
-  Users, 
-  BookOpen, 
-  BarChart3, 
-  Settings, 
+import {
+  Images,
+  Users,
+  BookOpen,
+  BarChart3,
+  Settings,
   Wrench,
   LogOut,
-  Globe
+  Globe,
+  Shield,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -29,8 +31,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useEffect, useState } from "react"
 import { getCitiesAction } from "@/app/admin/actions/entities"
+import { useAdminAuth } from "./admin-auth-provider"
+import { logout } from "@/lib/admin-auth"
 
 interface City {
   id: string
@@ -47,32 +60,44 @@ const navItems = [
   { href: "/admin/service", label: "Сервис", icon: Wrench },
 ]
 
+const ROLE_LABELS: Record<string, string> = {
+  owner: "Владелец",
+  global_admin: "Глобальный админ",
+  local_admin: "Локальный админ",
+  moderator: "Модератор",
+}
+
 export function AdminNav() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { admin } = useAdminAuth()
   const [cities, setCities] = useState<City[]>([])
   const [selectedCity, setSelectedCity] = useState<string>("all")
 
   useEffect(() => {
     const loadCities = async () => {
-      // Use server action instead of browser Supabase client
-      const result = await getCitiesAction(true) // activeOnly = true
+      const result = await getCitiesAction(true)
       if (result.success && result.data) {
         setCities(result.data)
       }
     }
 
-    // Загрузить сохранённый город из cookie
     const savedCity = document.cookie
       .split("; ")
       .find((row) => row.startsWith("admin_city_filter="))
       ?.split("=")[1]
-    
+
     if (savedCity) {
       setSelectedCity(savedCity)
     }
 
     loadCities()
   }, [])
+
+  const handleLogout = () => {
+    logout()
+    router.push("/admin/login")
+  }
 
   const handleCityChange = (value: string) => {
     setSelectedCity(value)
@@ -134,13 +159,38 @@ export function AdminNav() {
             </SelectContent>
           </Select>
 
-          {/* Кнопка выхода */}
-          <form action="/admin/auth/signout" method="POST">
-            <Button variant="outline" size="sm" type="submit">
-              <LogOut className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Выйти</span>
-            </Button>
-          </form>
+          {/* Меню пользователя */}
+          {admin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src={admin.avatar_url || undefined} alt={admin.name || admin.email} />
+                    <AvatarFallback>
+                      {(admin.name || admin.email).charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium">{admin.name || admin.email}</p>
+                    <p className="text-xs text-muted-foreground">{admin.email}</p>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Shield className="h-3 w-3" />
+                      {ROLE_LABELS[admin.role] || admin.role}
+                    </div>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Выйти
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
     </header>
