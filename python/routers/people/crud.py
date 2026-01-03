@@ -298,9 +298,13 @@ async def delete_person(identifier: UUID):
                 continue
 
         # Unlink photo_faces (clear person_id, keep embeddings)
-        supabase_db.client.table("photo_faces").update(
-            {"person_id": None, "verified": False, "recognition_confidence": None}
-        ).eq("person_id", person_id).execute()
+        supabase_db.client.table("photo_faces").update({
+            "person_id": None,
+            "verified": False,
+            "recognition_confidence": None,
+            "verified_at": None,
+            "verified_by": None,
+        }).eq("person_id", person_id).execute()
 
         # Delete person
         supabase_db.client.table("people").delete().eq("id", person_id).execute()

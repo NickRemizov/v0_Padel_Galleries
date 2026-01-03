@@ -156,10 +156,12 @@ export async function deletePersonWithUnlinkAction(personId: string): Promise<{
     // 1. Обнуляем person_id на всех фото
     const { data: updatedFaces, error: updateError } = await supabase
       .from("photo_faces")
-      .update({ 
-        person_id: null, 
-        verified: false, 
-        recognition_confidence: null 
+      .update({
+        person_id: null,
+        verified: false,
+        recognition_confidence: null,
+        verified_at: null,
+        verified_by: null,
       })
       .eq("person_id", personId)
       .select("id")
