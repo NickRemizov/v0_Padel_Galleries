@@ -15,7 +15,7 @@ from fastapi import APIRouter, Query
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
 from core.logging import get_logger
-from core.slug import generate_gallery_slug, make_unique_slug
+from core.slug import generate_gallery_slug, generate_photo_slug, make_unique_slug
 
 from .models import GalleryCreate, GalleryUpdate
 from .helpers import get_supabase_db, get_face_service, _resolve_gallery, _get_gallery_id
@@ -276,3 +276,100 @@ async def delete_gallery(identifier: str, delete_images: bool = Query(True)):
     except Exception as e:
         logger.error(f"Error deleting gallery {identifier}: {e}")
         raise DatabaseError(str(e), operation="delete_gallery")
+
+
+@router.post("/{identifier}/rename-files")
+async def rename_gallery_files(identifier: str):
+    """Rename all files in gallery to standardized format.
+
+    Format: "{gallery_title} {DD.MM}-{XXX}.{ext}"
+    Example: "IVIN Padel Tournament 26.11-001.jpg"
+
+    Files are numbered according to gallery sort_order.
+    """
+    supabase_db = get_supabase_db()
+
+    try:
+        # Get gallery info
+        gallery = _resolve_gallery(identifier, select="id, title, shoot_date, sort_order")
+        if not gallery:
+            raise NotFoundError("Gallery", identifier)
+
+        gallery_id = gallery["id"]
+        title = gallery["title"]
+        shoot_date = gallery.get("shoot_date", "")
+        sort_order = gallery.get("sort_order", "filename")
+
+        # Format date as DD.MM
+        date_str = ""
+        if shoot_date:
+            from datetime import datetime
+            try:
+                dt = datetime.fromisoformat(shoot_date.replace("Z", "+00:00"))
+                date_str = dt.strftime("%d.%m")
+            except:
+                date_str = shoot_date[:5].replace("-", ".") if len(shoot_date) >= 5 else ""
+
+        # Determine sort field
+        sort_field = "original_filename"
+        if sort_order == "created":
+            sort_field = "created_at"
+        elif sort_order == "added":
+            sort_field = "created_at"  # Same as created for now
+
+        # Get all images in sort order
+        result = supabase_db.client.table("gallery_images").select(
+            "id, original_filename"
+        ).eq("gallery_id", gallery_id).order(sort_field).execute()
+
+        images = result.data or []
+        if not images:
+            return ApiResponse.ok({
+                "renamed": 0,
+                "message": "No images to rename"
+            })
+
+        # Build base name: "Title DD.MM"
+        base_name = f"{title} {date_str}" if date_str else title
+
+        # Get all existing slugs in gallery for uniqueness check
+        slugs_result = supabase_db.client.table("gallery_images").select(
+            "id, slug"
+        ).eq("gallery_id", gallery_id).execute()
+
+        # Rename each image
+        renamed_count = 0
+        for idx, image in enumerate(images, start=1):
+            old_filename = image.get("original_filename", "")
+
+            # Get extension from original filename
+            ext = ""
+            if "." in old_filename:
+                ext = "." + old_filename.rsplit(".", 1)[-1].lower()
+
+            # Generate new filename: "Title DD.MM-001.jpg"
+            new_filename = f"{base_name}-{idx:03d}{ext}"
+
+            # Generate new slug
+            new_slug = generate_photo_slug(f"{base_name}-{idx:03d}")
+
+            # Update image
+            supabase_db.client.table("gallery_images").update({
+                "original_filename": new_filename,
+                "slug": new_slug
+            }).eq("id", image["id"]).execute()
+
+            renamed_count += 1
+
+        logger.info(f"Renamed {renamed_count} files in gallery {gallery_id}")
+        return ApiResponse.ok({
+            "renamed": renamed_count,
+            "format": f"{base_name}-XXX",
+            "message": f"Renamed {renamed_count} files"
+        })
+
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error renaming gallery files {identifier}: {e}")
+        raise DatabaseError(str(e), operation="rename_gallery_files")
