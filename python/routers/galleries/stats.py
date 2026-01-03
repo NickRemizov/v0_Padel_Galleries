@@ -62,16 +62,19 @@ async def get_gallery_stats(identifier: str):
         
         verified_count = 0
         for photo_id in image_ids:
+            is_processed = processed_status.get(photo_id, False)
+
+            # Unprocessed photos are never verified
+            if not is_processed:
+                continue
+
             faces = faces_by_photo.get(photo_id, [])
 
             if len(faces) == 0:
-                # No faces in DB = verified (NFD or never had faces)
-                # This handles both:
-                # - Processed photos with no faces detected (NFD)
-                # - Historical photos that were processed before has_been_processed existed
+                # Processed + no faces = NFD (verified)
                 verified_count += 1
-            elif processed_status.get(photo_id) and all(f.get("verified", False) for f in faces):
-                # Has faces, processed, and all verified = verified
+            elif all(f.get("verified", False) for f in faces):
+                # Processed + all faces verified = verified
                 verified_count += 1
         
         total_count = len(image_ids)
