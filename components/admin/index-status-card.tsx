@@ -69,10 +69,19 @@ export function IndexStatusCard() {
     const diffHours = Math.floor(diffMins / 60)
     const diffDays = Math.floor(diffHours / 24)
 
-    if (diffMins < 1) return "только что"
-    if (diffMins < 60) return `${diffMins} мин. назад`
-    if (diffHours < 24) return `${diffHours} ч. назад`
-    return `${diffDays} дн. назад`
+    // Also show actual time in HH:MM format
+    const timeStr = date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+
+    if (diffMins < 1) return `только что (${timeStr})`
+    if (diffMins < 60) return `${diffMins} мин. назад (${timeStr})`
+    if (diffHours < 24) {
+      const remainingMins = diffMins % 60
+      if (remainingMins > 0) {
+        return `${diffHours} ч. ${remainingMins} мин. назад (${timeStr})`
+      }
+      return `${diffHours} ч. назад (${timeStr})`
+    }
+    return `${diffDays} дн. назад (${timeStr})`
   }
 
   if (loading) {

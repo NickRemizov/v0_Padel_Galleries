@@ -84,10 +84,10 @@ async def get_index_status(
         except Exception as e:
             logger.warning(f"Could not get excluded count: {e}")
 
-        # Format last rebuild time
+        # Format last rebuild time with UTC indicator
         last_rebuild = None
         if index.last_rebuild_time:
-            last_rebuild = index.last_rebuild_time.isoformat()
+            last_rebuild = index.last_rebuild_time.isoformat() + "Z"  # Server is in UTC
 
         return ApiResponse.ok({
             "loaded": True,
