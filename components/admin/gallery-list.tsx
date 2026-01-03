@@ -4,11 +4,12 @@ import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Trash2, ExternalLink } from "lucide-react"
+import { Trash2, ExternalLink, FileSignature } from "lucide-react"
 import { deleteGalleryAction } from "@/app/admin/actions"
 import { EditGalleryDialog } from "./edit-gallery-dialog"
 import { GalleryImagesManager } from "./gallery-images-manager"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
+import { RenameFilesDialog } from "./rename-files-dialog"
 import type { Gallery, Photographer, Location, Organizer } from "@/lib/types"
 import { getGalleriesFaceRecognitionStatsAction } from "@/app/admin/actions/galleries"
 
@@ -39,6 +40,10 @@ export function GalleryList({ galleries: initialGalleries, photographers, locati
     Map<string, { isFullyVerified: boolean; verifiedCount: number; totalCount: number }>
   >(new Map())
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; gallery: Gallery | null }>({
+    open: false,
+    gallery: null,
+  })
+  const [renameDialog, setRenameDialog] = useState<{ open: boolean; gallery: Gallery | null }>({
     open: false,
     gallery: null,
   })
@@ -199,6 +204,14 @@ export function GalleryList({ galleries: initialGalleries, photographers, locati
                     organizers={organizers}
                     onSuccess={onUpdate}
                   />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRenameDialog({ open: true, gallery })}
+                    title="Переименовать файлы"
+                  >
+                    <FileSignature className="h-4 w-4" />
+                  </Button>
                   <Button variant="outline" size="sm" asChild>
                     <a href={`/gallery/${gallery.slug || gallery.id}`} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-4 w-4" />
@@ -225,6 +238,15 @@ export function GalleryList({ galleries: initialGalleries, photographers, locati
         onConfirm={handleDeleteConfirm}
         description={`Вы уверены, что хотите удалить галерею "${deleteConfirm.gallery?.title}"? Все фотографии в галерее будут удалены. Это действие невозможно отменить.`}
       />
+
+      {renameDialog.gallery && (
+        <RenameFilesDialog
+          open={renameDialog.open}
+          onOpenChange={(open) => setRenameDialog({ open, gallery: open ? renameDialog.gallery : null })}
+          gallery={renameDialog.gallery}
+          onSuccess={onUpdate}
+        />
+      )}
     </>
   )
 }

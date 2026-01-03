@@ -199,3 +199,21 @@ export async function deleteGalleryAction(galleryId: string) {
     return { success: false, error: "Ошибка удаления галереи" }
   }
 }
+
+export async function renameGalleryFilesAction(galleryId: string) {
+  try {
+    const headers = await getAuthHeaders()
+    const result = await apiFetch(`/api/galleries/${galleryId}/rename-files`, {
+      method: "POST",
+      headers,
+    })
+    if (result.success) revalidatePath("/admin")
+    return result
+  } catch (error) {
+    console.error("[renameGalleryFilesAction] Error:", error)
+    if (error instanceof ApiError) {
+      return { success: false, error: error.message, code: error.code }
+    }
+    return { success: false, error: "Ошибка переименования файлов" }
+  }
+}
