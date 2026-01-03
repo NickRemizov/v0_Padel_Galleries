@@ -200,6 +200,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange, 
         <FaceTaggingDialog
           imageId={taggingImage.id}
           imageUrl={taggingImage.url}
+          originalFilename={taggingImage.originalFilename}
           open={!!taggingImage}
           onOpenChange={(open) => !open && closeTaggingDialog()}
           onSave={handleTaggingSave}

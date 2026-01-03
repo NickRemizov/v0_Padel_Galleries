@@ -25,14 +25,16 @@ export function usePhotoNavigation({ sortedPhotos, photos }: UsePhotoNavigationP
 
   // Open tagging dialog
   const openTaggingDialog = useCallback((photoId: string, imageUrl: string) => {
+    const photo = photos.find((p) => p.id === photoId)
     const neighbors = findNeighbors(photoId)
     setTaggingImage({
       id: photoId,
       url: imageUrl,
+      originalFilename: photo?.filename || "",
       prevId: neighbors.prevId,
       nextId: neighbors.nextId,
     })
-  }, [findNeighbors])
+  }, [photos, findNeighbors])
 
   // Close tagging dialog
   const closeTaggingDialog = useCallback(() => {
@@ -42,14 +44,15 @@ export function usePhotoNavigation({ sortedPhotos, photos }: UsePhotoNavigationP
   // Navigate to previous
   const goToPrevious = useCallback(() => {
     if (!taggingImage?.prevId) return
-    
+
     const prevPhoto = photos.find((p) => p.id === taggingImage.prevId)
     if (!prevPhoto) return
-    
+
     const neighbors = findNeighbors(prevPhoto.id)
     setTaggingImage({
       id: prevPhoto.id,
       url: prevPhoto.image_url,
+      originalFilename: prevPhoto.filename || "",
       prevId: neighbors.prevId,
       nextId: neighbors.nextId,
     })
@@ -58,14 +61,15 @@ export function usePhotoNavigation({ sortedPhotos, photos }: UsePhotoNavigationP
   // Navigate to next
   const goToNext = useCallback(() => {
     if (!taggingImage?.nextId) return
-    
+
     const nextPhoto = photos.find((p) => p.id === taggingImage.nextId)
     if (!nextPhoto) return
-    
+
     const neighbors = findNeighbors(nextPhoto.id)
     setTaggingImage({
       id: nextPhoto.id,
       url: nextPhoto.image_url,
+      originalFilename: nextPhoto.filename || "",
       prevId: neighbors.prevId,
       nextId: neighbors.nextId,
     })

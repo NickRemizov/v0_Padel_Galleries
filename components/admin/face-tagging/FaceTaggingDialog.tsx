@@ -25,6 +25,7 @@ import {
 export function FaceTaggingDialog({
   imageId,
   imageUrl,
+  originalFilename,
   open,
   onOpenChange,
   onSave,
@@ -100,9 +101,14 @@ export function FaceTaggingDialog({
     if (open) loadConfig()
   }, [open])
 
-  // Computed values
-  const displayFileName = useMemo(() => getDisplayFileName(imageUrl), [imageUrl])
-  const fullFileName = useMemo(() => getFullFileName(imageUrl), [imageUrl])
+  // Computed values - prefer originalFilename if provided, fallback to URL parsing
+  const displayFileName = useMemo(() => {
+    if (originalFilename) {
+      return originalFilename.length > 50 ? originalFilename.substring(0, 50) + "..." : originalFilename
+    }
+    return getDisplayFileName(imageUrl)
+  }, [originalFilename, imageUrl])
+  const fullFileName = useMemo(() => originalFilename || getFullFileName(imageUrl), [originalFilename, imageUrl])
   const isLoading = loadingFaces || !imageLoaded
   const canSave = !saving
   const selectedFace = selectedFaceIndex !== null ? taggedFaces[selectedFaceIndex] : null

@@ -103,6 +103,7 @@ export function useImageNavigation({
       return {
         id: imageId,
         url: imageUrl,
+        originalFilename: image.original_filename || "",
         hasBeenProcessed: image.has_been_processed || false,
         prevId: neighbors.prevId,
         nextId: neighbors.nextId,
@@ -123,6 +124,7 @@ export function useImageNavigation({
       return {
         id: prevImage.id,
         url: prevImage.image_url,
+        originalFilename: prevImage.original_filename || "",
         hasBeenProcessed: prevImage.has_been_processed || false,
         prevId: neighbors.prevId,
         nextId: neighbors.nextId,
@@ -143,6 +145,7 @@ export function useImageNavigation({
       return {
         id: nextImage.id,
         url: nextImage.image_url,
+        originalFilename: nextImage.original_filename || "",
         hasBeenProcessed: nextImage.has_been_processed || false,
         prevId: neighbors.prevId,
         nextId: neighbors.nextId,

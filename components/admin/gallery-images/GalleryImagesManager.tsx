@@ -411,6 +411,7 @@ export function GalleryImagesManager({
         <FaceTaggingDialog
           imageId={taggingImage.id}
           imageUrl={taggingImage.url}
+          originalFilename={taggingImage.originalFilename}
           hasBeenProcessed={taggingImage.hasBeenProcessed}
           open={!!taggingImage}
           onOpenChange={handleTaggingDialogClose}

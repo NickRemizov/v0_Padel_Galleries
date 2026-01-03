@@ -47,6 +47,7 @@ export interface PersonPhoto {
 export interface TaggingImageState {
   id: string
   url: string
+  originalFilename: string
   prevId: string | null
   nextId: string | null
 }

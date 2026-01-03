@@ -7,6 +7,7 @@ import type { BoundingBox } from "@/lib/avatar-utils"
 export interface FaceTaggingDialogProps {
   imageId: string
   imageUrl: string
+  originalFilename?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave?: (imageId: string, faces: TaggedFace[], indexRebuilt?: boolean) => void

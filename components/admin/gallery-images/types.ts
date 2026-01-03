@@ -16,6 +16,7 @@ export interface FaceData {
 export interface TaggingImageState {
   id: string
   url: string
+  originalFilename: string
   hasBeenProcessed: boolean
   prevId: string | null
   nextId: string | null
