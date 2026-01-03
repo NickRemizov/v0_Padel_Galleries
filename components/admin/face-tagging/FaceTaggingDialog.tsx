@@ -108,10 +108,24 @@ export function FaceTaggingDialog({
   const selectedFace = selectedFaceIndex !== null ? taggedFaces[selectedFaceIndex] : null
 
   const getSelectedFaceBbox = useCallback((): BoundingBox | undefined => {
-    if (selectedFaceIndex === null) return undefined
-    const face = taggedFaces[selectedFaceIndex]
-    if (!face?.face?.boundingBox) return undefined
-    return face.face.boundingBox as BoundingBox
+    // If face is explicitly selected, use it
+    if (selectedFaceIndex !== null) {
+      const face = taggedFaces[selectedFaceIndex]
+      if (face?.face?.boundingBox) {
+        return face.face.boundingBox as BoundingBox
+      }
+    }
+    // Fallback: if no face selected, use first unassigned face (for avatar generation)
+    const unassignedFace = taggedFaces.find(f => !f.personId)
+    if (unassignedFace?.face?.boundingBox) {
+      return unassignedFace.face.boundingBox as BoundingBox
+    }
+    // Last fallback: use first face if exists
+    const firstFace = taggedFaces[0]
+    if (firstFace?.face?.boundingBox) {
+      return firstFace.face.boundingBox as BoundingBox
+    }
+    return undefined
   }, [selectedFaceIndex, taggedFaces])
 
   // Handlers
