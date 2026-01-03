@@ -14,7 +14,6 @@ export function useClusterNavigation(open: boolean, onComplete?: () => void, onC
   const [people, setPeople] = useState<Person[]>([])
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
-  const autoAvatarEnabled = true // Always enabled
   const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
 
   useEffect(() => {
@@ -150,7 +149,6 @@ export function useClusterNavigation(open: boolean, onComplete?: () => void, onC
     visibleFaces,
     people,
     processing,
-    autoAvatarEnabled,
     minGridHeight,
     bestFaceForAvatar,
     hasPreviousCluster,

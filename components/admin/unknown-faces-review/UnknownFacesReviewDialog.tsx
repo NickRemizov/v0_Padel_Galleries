@@ -30,7 +30,6 @@ export function UnknownFacesReviewDialog({
     minGridHeight,
     hasPreviousCluster,
     hasNextCluster,
-    autoAvatarEnabled,
     bestFaceForAvatar,
     loadPeople,
     assignClusterToPerson,
@@ -120,7 +119,6 @@ export function UnknownFacesReviewDialog({
         onPersonCreated={handlePersonCreated}
         faceImageUrl={bestFaceForAvatar?.image_url}
         faceBbox={bestFaceForAvatar?.bbox as BoundingBox | undefined}
-        autoAvatarEnabled={autoAvatarEnabled}
       />
     </>
   )

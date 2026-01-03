@@ -24,10 +24,9 @@ interface AddPersonDialogProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   onPersonCreated?: (personId: string, personName: string) => void
-  // Data for auto-avatar generation
+  // Data for avatar generation
   faceImageUrl?: string
   faceBbox?: BoundingBox
-  autoAvatarEnabled?: boolean
 }
 
 export function AddPersonDialog({
@@ -36,7 +35,6 @@ export function AddPersonDialog({
   onPersonCreated,
   faceImageUrl,
   faceBbox,
-  autoAvatarEnabled = true,
 }: AddPersonDialogProps = {}) {
   const [internalOpen, setInternalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -50,7 +48,7 @@ export function AddPersonDialog({
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setOpen = controlledOnOpenChange || setInternalOpen
 
-  const canGenerateAvatar = autoAvatarEnabled && faceImageUrl && faceBbox
+  const canGenerateAvatar = faceImageUrl && faceBbox
 
   // Generate avatar preview
   const generateAvatarPreview = useCallback(async () => {

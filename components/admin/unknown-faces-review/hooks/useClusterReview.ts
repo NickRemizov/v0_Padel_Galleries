@@ -22,7 +22,6 @@ export function useClusterReview({ galleryId, open, onOpenChange, onComplete }: 
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
   const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
-  const autoAvatarEnabled = true // Always enabled
 
   // Load clusters on open
   const loadClusters = useCallback(async () => {
@@ -183,7 +182,6 @@ export function useClusterReview({ galleryId, open, onOpenChange, onComplete }: 
     minGridHeight,
     hasPreviousCluster,
     hasNextCluster,
-    autoAvatarEnabled,
     bestFaceForAvatar,
     loadPeople,
     assignClusterToPerson,

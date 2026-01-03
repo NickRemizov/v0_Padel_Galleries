@@ -22,7 +22,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
     visibleFaces,
     people,
     processing,
-    autoAvatarEnabled,
     minGridHeight,
     bestFaceForAvatar,
     hasPreviousCluster,
@@ -115,7 +114,6 @@ export function GlobalUnknownFacesDialog({ open, onOpenChange, onComplete }: Glo
         onPersonCreated={handlePersonCreated}
         faceImageUrl={bestFaceForAvatar?.image_url}
         faceBbox={bestFaceForAvatar?.bbox as BoundingBox | undefined}
-        autoAvatarEnabled={autoAvatarEnabled}
       />
     </>
   )

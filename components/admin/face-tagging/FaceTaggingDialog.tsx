@@ -46,7 +46,6 @@ export function FaceTaggingDialog({
   const [detailedFaces, setDetailedFaces] = useState<DetailedFace[]>([])
   const [hasRedetectedData, setHasRedetectedData] = useState(false)
   const [personSelectOpen, setPersonSelectOpen] = useState(false)
-  const autoAvatarEnabled = true // Always enabled
   const [isLandscape, setIsLandscape] = useState(false)
 
   // Refs
@@ -164,16 +163,14 @@ export function FaceTaggingDialog({
     drawFaces(updated, selectedFaceIndex)
     setPersonSelectOpen(false)
 
-    // v1.1.13: Auto-generate avatar for new person without avatar and without linked faces
+    // Auto-generate avatar for person without avatar and without linked faces
     // descriptor_count comes from backend with_stats=true (see useFaceAPI.loadPeople)
     const personWithStats = person as Person & { descriptor_count?: number }
-    const shouldGenerateAvatar = 
-      autoAvatarEnabled && 
-      !person.avatar_url && 
+    const shouldGenerateAvatar =
+      !person.avatar_url &&
       (personWithStats.descriptor_count === 0 || personWithStats.descriptor_count === undefined)
-    
+
     console.log("[FaceTaggingDialog] Avatar generation check:", {
-      autoAvatarEnabled,
       hasAvatarUrl: !!person.avatar_url,
       descriptorCount: personWithStats.descriptor_count,
       shouldGenerateAvatar
@@ -196,7 +193,7 @@ export function FaceTaggingDialog({
         }
       }
     }
-  }, [selectedFaceIndex, people, taggedFaces, drawFaces, autoAvatarEnabled, imageUrl, loadPeople])
+  }, [selectedFaceIndex, people, taggedFaces, drawFaces, imageUrl, loadPeople])
 
   const handleRemoveFace = useCallback((index: number) => {
     const updated = taggedFaces.filter((_, i) => i !== index)
@@ -411,7 +408,6 @@ export function FaceTaggingDialog({
         onPersonCreated={handlePersonCreated}
         faceImageUrl={imageUrl}
         faceBbox={getSelectedFaceBbox()}
-        autoAvatarEnabled={autoAvatarEnabled}
       />
 
       <FaceRecognitionDetailsDialog
