@@ -14,6 +14,9 @@ from minio import Minio
 from minio.error import S3Error
 
 from core.logging import get_logger
+from core.slug import to_slug
+
+MAX_SLUG_LENGTH = 80
 
 logger = get_logger(__name__)
 
@@ -25,7 +28,7 @@ class MinioStorage:
         self.endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9200")
         self.access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
         self.secret_key = os.getenv("MINIO_SECRET_KEY", "2o5CBBoM/ynAEcrcxViXmvcqDs4UAFXj")
-        self.bucket = os.getenv("MINIO_BUCKET", "galleries")
+        self.bucket = os.getenv("MINIO_BUCKET", "storage")
         self.public_url = os.getenv("MINIO_PUBLIC_URL", "https://api.vlcpadel.com/storage")
 
         self.client = Minio(
@@ -49,17 +52,19 @@ class MinioStorage:
 
         Args:
             file_data: File bytes
-            filename: Original filename (stored in DB, not in MinIO filename)
+            filename: Original filename (used for slug generation)
             content_type: MIME type
             folder: Subfolder - "photos", "covers", or "avatars"
 
         Returns:
             Dict with url and object_name
         """
-        # Generate clean UUID-based filename with folder prefix
+        # Generate slug+UUID filename: {slug}_{uuid}.ext
         ext = os.path.splitext(filename)[1].lower() or ".jpg"
+        name_without_ext = os.path.splitext(filename)[0]
+        slug = to_slug(name_without_ext, max_length=MAX_SLUG_LENGTH) or "image"
         unique_id = uuid.uuid4().hex[:12]
-        object_name = f"{folder}/{unique_id}{ext}"
+        object_name = f"{folder}/{slug}_{unique_id}{ext}"
 
         try:
             self.client.put_object(
@@ -143,16 +148,19 @@ class MinioStorage:
         Generate presigned URL for direct upload to MinIO.
 
         Args:
-            filename: Original filename (for extension)
+            filename: Original filename (used for slug generation)
             folder: Subfolder - "photos", "covers", or "avatars"
             expires_seconds: URL validity in seconds (default 60)
 
         Returns:
             Dict with upload_url, object_name, public_url
         """
+        # Generate slug+UUID filename: {slug}_{uuid}.ext
         ext = os.path.splitext(filename)[1].lower() or ".jpg"
+        name_without_ext = os.path.splitext(filename)[0]
+        slug = to_slug(name_without_ext, max_length=MAX_SLUG_LENGTH) or "image"
         unique_id = uuid.uuid4().hex[:12]
-        object_name = f"{folder}/{unique_id}{ext}"
+        object_name = f"{folder}/{slug}_{unique_id}{ext}"
 
         try:
             upload_url = self.client.presigned_put_object(
