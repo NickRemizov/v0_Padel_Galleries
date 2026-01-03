@@ -42,8 +42,10 @@ export interface GalleryImage {
   height: number | null
   display_order: number
   download_count: number
-  is_featured: boolean
-  has_been_processed: boolean
+  /** Admin-only field, not returned in public gallery responses */
+  is_featured?: boolean
+  /** Admin-only field, not returned in public gallery responses */
+  has_been_processed?: boolean
   created_at: string
   /**
    * Verified people on this image (populated when full=true)
@@ -164,7 +166,8 @@ export interface PhotoFace {
   photo_id: string
   person_id: string | null
   insightface_bbox: BoundingBox
-  confidence: number | null
+  /** Recognition confidence from HNSWLIB index (0-1) */
+  recognition_confidence: number | null
   verified: boolean
   created_at: string
   updated_at: string
