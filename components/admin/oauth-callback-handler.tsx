@@ -15,6 +15,8 @@ export function OAuthCallbackHandler() {
     if (token) {
       // Save token to localStorage
       setToken(token)
+      // Also save to cookie for middleware (7 days, same as JWT expiry)
+      document.cookie = `admin_token=${token}; path=/; max-age=${7 * 24 * 60 * 60}; secure; samesite=lax`
       // Redirect to admin dashboard (remove token from URL)
       router.replace("/admin")
     }

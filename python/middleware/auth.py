@@ -66,52 +66,47 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not path.startswith("/api"):
             return await call_next(request)
 
-        # 5. GET/HEAD on /api/* — public read
-        if method in ["GET", "HEAD"]:
-            return await call_next(request)
-
-        # 6. Write operations (POST/PUT/PATCH/DELETE) — require admin token
-        # Try cookie first, then Authorization header
+        # 5. Try to get token (for both read and write operations)
         token = request.cookies.get("admin_token")
-
         if not token:
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header.replace("Bearer ", "")
 
-        if not token:
+        # 6. If token exists, validate and set request.state.admin
+        if token:
+            try:
+                payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+                admin_email = payload.get("email", "")
+                admin_role = payload.get("role", "")
+
+                if admin_role:
+                    request.state.admin = {
+                        "id": payload.get("sub"),
+                        "email": admin_email,
+                        "name": payload.get("name"),
+                        "role": admin_role,
+                    }
+                    logger.debug(f"Auth middleware: Admin {admin_email} ({admin_role}) for {method} {path}")
+            except Exception as e:
+                # Invalid token - for GET we continue without admin, for write we reject
+                if method not in ["GET", "HEAD"]:
+                    logger.warning(f"Auth middleware: Token verification failed: {e}")
+                    return JSONResponse(
+                        {"detail": "Invalid or expired token"},
+                        status_code=401
+                    )
+
+        # 7. GET/HEAD — allow even without token (public read, but admin may be set)
+        if method in ["GET", "HEAD"]:
+            return await call_next(request)
+
+        # 8. Write operations require authenticated admin
+        if not hasattr(request.state, "admin") or not request.state.admin:
             logger.warning(f"Auth middleware: No token for {method} {path}")
             return JSONResponse(
                 {"detail": "Not authenticated"},
                 status_code=401
             )
-
-        try:
-            payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
-        except Exception as e:
-            logger.warning(f"Auth middleware: Token verification failed: {e}")
-            return JSONResponse(
-                {"detail": "Invalid or expired token"},
-                status_code=401
-            )
-
-        admin_email = payload.get("email", "")
-        admin_role = payload.get("role", "")
-
-        if not admin_role:
-            logger.warning(f"Auth middleware: No role in token for {admin_email}")
-            return JSONResponse(
-                {"detail": "Invalid token"},
-                status_code=401
-            )
-
-        # 7. Admin verified — add to request state and proceed
-        request.state.admin = {
-            "id": payload.get("sub"),
-            "email": admin_email,
-            "name": payload.get("name"),
-            "role": admin_role,
-        }
-        logger.debug(f"Auth middleware: Admin {admin_email} ({admin_role}) authorized for {method} {path}")
 
         return await call_next(request)

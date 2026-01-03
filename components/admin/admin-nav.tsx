@@ -22,6 +22,7 @@ import {
   LogOut,
   Globe,
   Shield,
+  UserCog,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -43,7 +44,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useEffect, useState } from "react"
 import { getCitiesAction } from "@/app/admin/actions/entities"
 import { useAdminAuth } from "./admin-auth-provider"
-import { logout } from "@/lib/admin-auth"
+import { logout, hasMinRole } from "@/lib/admin-auth"
 
 interface City {
   id: string
@@ -58,6 +59,7 @@ const navItems = [
   { href: "/admin/statistics", label: "Статистика", icon: BarChart3 },
   { href: "/admin/settings", label: "Настройки", icon: Settings },
   { href: "/admin/service", label: "Сервис", icon: Wrench },
+  { href: "/admin/admins", label: "Админы", icon: UserCog, minRole: "global_admin" as const },
 ]
 
 const ROLE_LABELS: Record<string, string> = {
@@ -96,7 +98,8 @@ export function AdminNav() {
 
   const handleLogout = () => {
     logout()
-    router.push("/admin/login")
+    // Use window.location for full page reload (triggers middleware)
+    window.location.href = "/admin/login"
   }
 
   const handleCityChange = (value: string) => {
@@ -121,9 +124,14 @@ export function AdminNav() {
 
         <nav className="flex items-center gap-1">
           {navItems.map((item) => {
+            // Check role requirement
+            if (item.minRole && !hasMinRole(admin, item.minRole)) {
+              return null
+            }
+
             const Icon = item.icon
             const isActive = pathname.startsWith(item.href)
-            
+
             return (
               <Link
                 key={item.href}

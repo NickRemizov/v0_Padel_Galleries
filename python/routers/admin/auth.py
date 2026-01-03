@@ -21,7 +21,7 @@ from services.supabase.base import get_supabase_client
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/admin/auth", tags=["Admin Auth"])
+router = APIRouter(prefix="/auth", tags=["Admin Auth"])
 
 # Config
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")

@@ -1,62 +1,76 @@
-import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
+/**
+ * Admin Auth Middleware
+ *
+ * Checks for admin_token cookie (JWT from Google OAuth).
+ * Redirects to login if not authenticated.
+ *
+ * v1.0: Initial Supabase auth
+ * v2.0: Migrated to admin_token JWT (Google OAuth)
+ */
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+  const response = NextResponse.next({ request })
 
-  const isAdminRoute = request.nextUrl.pathname.startsWith("/admin")
+  const path = request.nextUrl.pathname
+
+  // Only protect /admin/* routes
+  if (!path.startsWith("/admin")) {
+    return response
+  }
+
+  // Auth routes are always public
   const isAuthRoute =
-    request.nextUrl.pathname.startsWith("/admin/login") || request.nextUrl.pathname.startsWith("/admin/auth/callback")
+    path === "/admin/login" ||
+    path.startsWith("/admin/callback") ||
+    path.startsWith("/admin/auth")
 
-  // Skip Supabase client creation for non-admin routes
-  if (!isAdminRoute) {
-    return supabaseResponse
+  if (isAuthRoute) {
+    return response
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  // Check for admin_token cookie
+  const adminToken = request.cookies.get("admin_token")?.value
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error("[v0] Supabase environment variables not found in middleware")
-    console.error("[v0] NEXT_PUBLIC_SUPABASE_URL:", supabaseUrl)
-    console.error("[v0] NEXT_PUBLIC_SUPABASE_ANON_KEY:", supabaseAnonKey ? "present" : "missing")
-    // Allow access to login page even if env vars are missing
-    if (isAuthRoute) {
-      return supabaseResponse
+  if (!adminToken) {
+    // Not authenticated - redirect to login
+    const url = request.nextUrl.clone()
+    url.pathname = "/admin/login"
+    return NextResponse.redirect(url)
+  }
+
+  // Token exists - basic validation (full validation happens in backend)
+  // JWT format: header.payload.signature
+  const parts = adminToken.split(".")
+  if (parts.length !== 3) {
+    // Invalid token format - redirect to login
+    const url = request.nextUrl.clone()
+    url.pathname = "/admin/login"
+    const response = NextResponse.redirect(url)
+    // Clear invalid cookie
+    response.cookies.delete("admin_token")
+    return response
+  }
+
+  // Check if token is expired (decode payload without verification)
+  try {
+    const payload = JSON.parse(atob(parts[1]))
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      // Token expired - redirect to login
+      const url = request.nextUrl.clone()
+      url.pathname = "/admin/login"
+      const response = NextResponse.redirect(url)
+      response.cookies.delete("admin_token")
+      return response
     }
-    // Redirect to login for other admin routes
+  } catch {
+    // Invalid payload - redirect to login
     const url = request.nextUrl.clone()
     url.pathname = "/admin/login"
-    return NextResponse.redirect(url)
+    const response = NextResponse.redirect(url)
+    response.cookies.delete("admin_token")
+    return response
   }
 
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll()
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-        supabaseResponse = NextResponse.next({
-          request,
-        })
-        cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
-      },
-    },
-  })
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // Redirect to login if accessing admin routes without authentication
-  if (!user && !isAuthRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/admin/login"
-    return NextResponse.redirect(url)
-  }
-
-  return supabaseResponse
+  return response
 }

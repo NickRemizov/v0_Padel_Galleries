@@ -78,10 +78,21 @@ export function getLoginUrl(): string {
 }
 
 /**
- * Logout
+ * Logout - clear token from localStorage, cookie, and Supabase session
  */
 export function logout(): void {
   removeToken()
+  if (typeof document !== "undefined") {
+    // Clear admin_token cookie (used by middleware)
+    document.cookie = "admin_token=; path=/; max-age=0"
+    // Clear all Supabase cookies (legacy auth cleanup)
+    document.cookie.split(";").forEach((cookie) => {
+      const name = cookie.split("=")[0].trim()
+      if (name.startsWith("sb-")) {
+        document.cookie = `${name}=; path=/; max-age=0`
+      }
+    })
+  }
 }
 
 /**
