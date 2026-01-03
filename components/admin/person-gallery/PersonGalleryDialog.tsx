@@ -213,6 +213,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange, 
       {avatarSelectorOpen && selectedPhotoForAvatar && (
         <AvatarSelector
           personId={personId}
+          personName={personName}
           open={avatarSelectorOpen}
           onOpenChange={(open) => {
             setAvatarSelectorOpen(open)
