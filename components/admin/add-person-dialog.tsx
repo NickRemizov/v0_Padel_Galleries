@@ -45,6 +45,7 @@ export function AddPersonDialog({
   // Avatar preview state
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
   const [avatarBlob, setAvatarBlob] = useState<Blob | null>(null)
+  const [userDeletedAvatar, setUserDeletedAvatar] = useState(false)
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setOpen = controlledOnOpenChange || setInternalOpen
@@ -71,12 +72,12 @@ export function AddPersonDialog({
     }
   }, [faceImageUrl, faceBbox])
 
-  // Generate avatar when dialog opens
+  // Generate avatar when dialog opens (but not if user deleted it)
   useEffect(() => {
-    if (open && canGenerateAvatar && !avatarPreviewUrl && !generatingAvatar) {
+    if (open && canGenerateAvatar && !avatarPreviewUrl && !generatingAvatar && !userDeletedAvatar) {
       generateAvatarPreview()
     }
-  }, [open, canGenerateAvatar, avatarPreviewUrl, generatingAvatar, generateAvatarPreview])
+  }, [open, canGenerateAvatar, avatarPreviewUrl, generatingAvatar, userDeletedAvatar, generateAvatarPreview])
 
   // Cleanup on close
   useEffect(() => {
@@ -86,6 +87,7 @@ export function AddPersonDialog({
       }
       setAvatarPreviewUrl(null)
       setAvatarBlob(null)
+      setUserDeletedAvatar(false)
     }
   }, [open, avatarPreviewUrl])
 
@@ -95,12 +97,13 @@ export function AddPersonDialog({
     }
     setAvatarPreviewUrl(null)
     setAvatarBlob(null)
+    setUserDeletedAvatar(true)
   }, [avatarPreviewUrl])
 
   const handleRegenerateAvatar = useCallback(() => {
-    handleDeleteAvatar()
+    setUserDeletedAvatar(false)
     generateAvatarPreview()
-  }, [handleDeleteAvatar, generateAvatarPreview])
+  }, [generateAvatarPreview])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
