@@ -254,15 +254,17 @@ class FacesRepository:
             True if successful
         """
         try:
+            from datetime import datetime, timezone
             update_data = {
                 "person_id": person_id,
                 "recognition_confidence": float(recognition_confidence),
-                "verified": verified
+                "verified": verified,
+                "verified_at": datetime.now(timezone.utc).isoformat() if verified else None,
             }
-            
+
             if verified and verified_by:
                 update_data["verified_by"] = verified_by
-            
+
             self.client.table("photo_faces").update(update_data).eq("id", face_id).execute()
             return True
             

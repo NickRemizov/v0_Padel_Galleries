@@ -183,8 +183,13 @@ async def verify_person_on_photo(identifier: UUID, photo_id: str = Query(...)):
         
         logger.info(f"Verifying person {person_id} on photo {photo_id}")
         
+        from datetime import datetime, timezone
         result = supabase_db.client.table("photo_faces")\
-            .update({"verified": True, "recognition_confidence": 1.0})\
+            .update({
+                "verified": True,
+                "recognition_confidence": 1.0,
+                "verified_at": datetime.now(timezone.utc).isoformat(),
+            })\
             .eq("photo_id", photo_id)\
             .eq("person_id", person_id)\
             .execute()
@@ -227,8 +232,13 @@ async def batch_verify_person_on_photos(identifier: UUID, request: BatchVerifyRe
         logger.info(f"Batch verifying person {person_id} on {len(photo_ids)} photos")
         
         # Single UPDATE with IN clause - O(1) instead of O(n)
+        from datetime import datetime, timezone
         result = supabase_db.client.table("photo_faces")\
-            .update({"verified": True, "recognition_confidence": 1.0})\
+            .update({
+                "verified": True,
+                "recognition_confidence": 1.0,
+                "verified_at": datetime.now(timezone.utc).isoformat(),
+            })\
             .in_("photo_id", photo_ids)\
             .eq("person_id", person_id)\
             .execute()

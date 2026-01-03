@@ -62,10 +62,12 @@ async def batch_assign_faces(
                 if check_response.data:
                     has_descriptor = check_response.data[0].get("insightface_descriptor") is not None
 
+                    from datetime import datetime, timezone
                     update_response = supabase_db.client.table("photo_faces").update({
                         "person_id": request.person_id,
                         "verified": True,
                         "recognition_confidence": 1.0,
+                        "verified_at": datetime.now(timezone.utc).isoformat(),
                         "excluded_from_index": False
                     }).eq("id", face_id).execute()
 
@@ -168,10 +170,12 @@ async def batch_verify_faces(
                 else:
                     logger.info(f"[batch-verify] Face {face.id} reindexing for confidence update")
 
+            from datetime import datetime, timezone
             update_data = {
                 "person_id": face.person_id,
                 "recognition_confidence": 1.0 if face.person_id else None,
                 "verified": bool(face.person_id),
+                "verified_at": datetime.now(timezone.utc).isoformat() if face.person_id else None,
             }
 
             if person_id_changed:
