@@ -29,7 +29,8 @@ class MinioStorage:
         self.access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
         self.secret_key = os.getenv("MINIO_SECRET_KEY", "2o5CBBoM/ynAEcrcxViXmvcqDs4UAFXj")
         self.bucket = os.getenv("MINIO_BUCKET", "storage")
-        self.public_url = os.getenv("MINIO_PUBLIC_URL", "https://api.vlcpadel.com/storage")
+        # URL includes /storage (nginx path) + /storage (bucket name)
+        self.public_url = os.getenv("MINIO_PUBLIC_URL", "https://api.vlcpadel.com/storage/storage")
 
         self.client = Minio(
             endpoint=self.endpoint,
