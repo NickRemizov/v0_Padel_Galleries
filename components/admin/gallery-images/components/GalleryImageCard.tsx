@@ -129,7 +129,7 @@ export const GalleryImageCard = memo(function GalleryImageCard({
           />
         </div>
         {image.download_count > 0 && (
-          <div className="absolute left-2 top-10 bg-black/70 text-white rounded px-2 py-1 text-xs flex items-center gap-1 shadow-lg z-10">
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/70 text-white rounded px-2 py-1 text-xs flex items-center gap-1 shadow-lg z-10">
             <Download className="h-3 w-3" />
             {image.download_count}
           </div>
