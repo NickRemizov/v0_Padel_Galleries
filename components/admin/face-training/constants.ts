@@ -21,5 +21,4 @@ export const DEFAULT_CONFIG: Config = {
     min_face_size: 80,
     min_blur_score: 80.0,
   },
-  auto_avatar_on_create: false,  // v1.1.14: Default to false for safety
 }

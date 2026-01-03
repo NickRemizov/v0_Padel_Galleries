@@ -62,7 +62,6 @@ class ConfigUpdate(BaseModel):
     auto_retrain_threshold: Optional[int] = None
     auto_retrain_percentage: Optional[float] = None
     quality_filters: Optional[Dict[str, float]] = None
-    auto_avatar_on_create: Optional[bool] = None  # v1.1.0: Auto-generate avatar on person creation
 
 
 class BatchRecognitionRequest(BaseModel):

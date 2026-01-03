@@ -46,7 +46,6 @@ export function useFaceTraining() {
               ...DEFAULT_CONFIG.quality_filters,
               ...(configData.quality_filters || {}),
             },
-            auto_avatar_on_create: configData.auto_avatar_on_create ?? DEFAULT_CONFIG.auto_avatar_on_create,
           }
           setFastapiError(false)
           setConfig(validConfig)

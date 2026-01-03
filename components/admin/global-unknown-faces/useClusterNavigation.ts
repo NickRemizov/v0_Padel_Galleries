@@ -14,14 +14,13 @@ export function useClusterNavigation(open: boolean, onComplete?: () => void, onC
   const [people, setPeople] = useState<Person[]>([])
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
-  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
+  const autoAvatarEnabled = true // Always enabled
   const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
 
   useEffect(() => {
     if (open) {
       loadClusters()
       loadPeople()
-      loadConfig()
       setRemovedFaces(new Set())
       setCurrentClusterIndex(0)
       setMinGridHeight(null)
@@ -31,20 +30,6 @@ export function useClusterNavigation(open: boolean, onComplete?: () => void, onC
   useEffect(() => {
     setRemovedFaces(new Set())
   }, [currentClusterIndex])
-
-  async function loadConfig() {
-    try {
-      const response = await fetch("/api/admin/training/config")
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success && result.data) {
-          setAutoAvatarEnabled(result.data.auto_avatar_on_create ?? true)
-        }
-      }
-    } catch (error) {
-      console.error("[GlobalUnknownFaces] Error loading config:", error)
-    }
-  }
 
   async function loadClusters() {
     setLoading(true)

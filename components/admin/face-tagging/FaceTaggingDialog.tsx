@@ -46,7 +46,7 @@ export function FaceTaggingDialog({
   const [detailedFaces, setDetailedFaces] = useState<DetailedFace[]>([])
   const [hasRedetectedData, setHasRedetectedData] = useState(false)
   const [personSelectOpen, setPersonSelectOpen] = useState(false)
-  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(false)
+  const autoAvatarEnabled = true // Always enabled
   const [isLandscape, setIsLandscape] = useState(false)
 
   // Refs
@@ -80,26 +80,6 @@ export function FaceTaggingDialog({
     taggedFacesRef.current = taggedFaces
   }, [taggedFaces])
 
-  // Load config on open
-  useEffect(() => {
-    async function loadConfig() {
-      try {
-        const response = await fetch("/api/admin/training/config")
-        if (response.ok) {
-          const result = await response.json()
-          console.log("[FaceTaggingDialog] Config response:", result)
-          if (result.success && result.data) {
-            const value = result.data.auto_avatar_on_create === true
-            console.log("[FaceTaggingDialog] auto_avatar_on_create:", result.data.auto_avatar_on_create, "-> setting:", value)
-            setAutoAvatarEnabled(value)
-          }
-        }
-      } catch (error) {
-        console.error("[FaceTaggingDialog] Error loading config:", error)
-      }
-    }
-    if (open) loadConfig()
-  }, [open])
 
   // Computed values - prefer originalFilename if provided, fallback to URL parsing
   const displayFileName = useMemo(() => {

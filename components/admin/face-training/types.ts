@@ -31,7 +31,6 @@ export interface Config {
     min_face_size: number
     min_blur_score: number
   }
-  auto_avatar_on_create?: boolean
 }
 
 export interface DatasetStats {

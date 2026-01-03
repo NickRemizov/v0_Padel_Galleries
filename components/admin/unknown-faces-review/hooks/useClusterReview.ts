@@ -22,7 +22,7 @@ export function useClusterReview({ galleryId, open, onOpenChange, onComplete }: 
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
   const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
-  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
+  const autoAvatarEnabled = true // Always enabled
 
   // Load clusters on open
   const loadClusters = useCallback(async () => {
@@ -56,31 +56,16 @@ export function useClusterReview({ galleryId, open, onOpenChange, onComplete }: 
     }
   }, [])
 
-  // Load config for auto-avatar setting
-  const loadConfig = useCallback(async () => {
-    try {
-      const response = await fetch("/api/admin/training/config")
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success && result.data) {
-          setAutoAvatarEnabled(result.data.auto_avatar_on_create ?? true)
-        }
-      }
-    } catch (error) {
-      console.error("[UnknownFacesReview] Error loading config:", error)
-    }
-  }, [])
 
   // Initialize on open
   useEffect(() => {
     if (open) {
       loadClusters()
       loadPeople()
-      loadConfig()
       setRemovedFaces(new Set())
       setMinGridHeight(null)
     }
-  }, [open, galleryId, loadClusters, loadPeople, loadConfig])
+  }, [open, galleryId, loadClusters, loadPeople])
 
   // Reset removed faces on cluster change
   useEffect(() => {
