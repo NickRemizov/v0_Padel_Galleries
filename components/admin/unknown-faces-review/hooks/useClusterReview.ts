@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import type { Person } from "@/lib/types"
-import type { Cluster, ClusterFace } from "../types"
+import type { Cluster, ClusterFace, BestFaceForAvatar } from "../types"
 import { clusterUnknownFacesAction, assignFacesToPersonAction, markPhotoAsProcessedAction } from "@/app/admin/actions/faces"
 import { getPeopleAction } from "@/app/admin/actions/entities"
 import { rejectFaceClusterAction } from "@/app/admin/actions/recognition"
@@ -22,6 +22,7 @@ export function useClusterReview({ galleryId, open, onOpenChange, onComplete }: 
   const [processing, setProcessing] = useState(false)
   const [removedFaces, setRemovedFaces] = useState<Set<string>>(new Set())
   const [minGridHeight, setMinGridHeight] = useState<number | null>(null)
+  const [autoAvatarEnabled, setAutoAvatarEnabled] = useState(true)
 
   // Load clusters on open
   const loadClusters = useCallback(async () => {
@@ -55,15 +56,31 @@ export function useClusterReview({ galleryId, open, onOpenChange, onComplete }: 
     }
   }, [])
 
+  // Load config for auto-avatar setting
+  const loadConfig = useCallback(async () => {
+    try {
+      const response = await fetch("/api/admin/training/config")
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success && result.data) {
+          setAutoAvatarEnabled(result.data.auto_avatar_on_create ?? true)
+        }
+      }
+    } catch (error) {
+      console.error("[UnknownFacesReview] Error loading config:", error)
+    }
+  }, [])
+
   // Initialize on open
   useEffect(() => {
     if (open) {
       loadClusters()
       loadPeople()
+      loadConfig()
       setRemovedFaces(new Set())
       setMinGridHeight(null)
     }
-  }, [open, galleryId, loadClusters, loadPeople])
+  }, [open, galleryId, loadClusters, loadPeople, loadConfig])
 
   // Reset removed faces on cluster change
   useEffect(() => {
@@ -163,6 +180,13 @@ export function useClusterReview({ galleryId, open, onOpenChange, onComplete }: 
   const hasPreviousCluster = currentClusterIndex > 0
   const hasNextCluster = currentClusterIndex + 1 < clusters.length
 
+  // Best face for avatar generation (first visible face)
+  const bestFaceForAvatar = useMemo((): BestFaceForAvatar | null => {
+    if (!visibleFaces.length) return null
+    const face = visibleFaces[0]
+    return { image_url: face.image_url, bbox: face.bbox }
+  }, [visibleFaces])
+
   return {
     loading,
     processing,
@@ -174,6 +198,8 @@ export function useClusterReview({ galleryId, open, onOpenChange, onComplete }: 
     minGridHeight,
     hasPreviousCluster,
     hasNextCluster,
+    autoAvatarEnabled,
+    bestFaceForAvatar,
     loadPeople,
     assignClusterToPerson,
     rejectCluster,

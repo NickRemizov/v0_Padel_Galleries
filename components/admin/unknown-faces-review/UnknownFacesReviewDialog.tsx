@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Loader2 } from "lucide-react"
 import { AddPersonDialog } from "../add-person-dialog"
+import type { BoundingBox } from "@/lib/avatar-utils"
 
 import type { UnknownFacesReviewDialogProps } from "./types"
 import { useClusterReview } from "./hooks"
@@ -29,6 +30,8 @@ export function UnknownFacesReviewDialog({
     minGridHeight,
     hasPreviousCluster,
     hasNextCluster,
+    autoAvatarEnabled,
+    bestFaceForAvatar,
     loadPeople,
     assignClusterToPerson,
     rejectCluster,
@@ -115,6 +118,9 @@ export function UnknownFacesReviewDialog({
         open={showAddPerson}
         onOpenChange={setShowAddPerson}
         onPersonCreated={handlePersonCreated}
+        faceImageUrl={bestFaceForAvatar?.image_url}
+        faceBbox={bestFaceForAvatar?.bbox as BoundingBox | undefined}
+        autoAvatarEnabled={autoAvatarEnabled}
       />
     </>
   )

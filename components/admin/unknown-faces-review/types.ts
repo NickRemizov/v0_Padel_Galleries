@@ -41,3 +41,11 @@ export interface Cluster {
   size: number
   faces: ClusterFace[]
 }
+
+/**
+ * Best face for avatar generation
+ */
+export interface BestFaceForAvatar {
+  image_url: string
+  bbox: FaceBbox
+}
