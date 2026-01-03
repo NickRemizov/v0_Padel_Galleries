@@ -24,15 +24,38 @@ router = APIRouter()
 
 @router.get("/gallery/{gallery_id}")
 async def get_gallery_images(gallery_id: str):
-    """Получает все изображения галереи."""
+    """Получает все изображения галереи с счётчиками лайков и избранного."""
     supabase_db = get_supabase_db()
-    
+
     try:
         logger.info(f"Getting images for gallery: {gallery_id}")
-        
+
         result = supabase_db.client.table("gallery_images").select("*").eq("gallery_id", gallery_id).order("display_order").execute()
-        
+
         images = result.data or []
+
+        if images:
+            image_ids = [img["id"] for img in images]
+
+            # Get likes counts
+            likes_result = supabase_db.client.table("likes").select("image_id").in_("image_id", image_ids).execute()
+            likes_by_image = {}
+            for like in (likes_result.data or []):
+                img_id = like["image_id"]
+                likes_by_image[img_id] = likes_by_image.get(img_id, 0) + 1
+
+            # Get favorites counts
+            favorites_result = supabase_db.client.table("favorites").select("gallery_image_id").in_("gallery_image_id", image_ids).execute()
+            favorites_by_image = {}
+            for fav in (favorites_result.data or []):
+                img_id = fav["gallery_image_id"]
+                favorites_by_image[img_id] = favorites_by_image.get(img_id, 0) + 1
+
+            # Add counts to images
+            for img in images:
+                img["likes_count"] = likes_by_image.get(img["id"], 0)
+                img["favorites_count"] = favorites_by_image.get(img["id"], 0)
+
         logger.info(f"Found {len(images)} images")
         return ApiResponse.ok(images)
         

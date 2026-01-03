@@ -4,7 +4,7 @@ import { memo } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Trash2, Star, Download } from "lucide-react"
+import { Trash2, Star, Download, Heart, Bookmark } from "lucide-react"
 
 import type { GalleryImage } from "@/lib/types"
 import type { FaceData, PhotoRecognitionStats } from "../types"
@@ -128,10 +128,27 @@ export const GalleryImageCard = memo(function GalleryImageCard({
             }`}
           />
         </div>
-        {image.download_count > 0 && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/70 text-white rounded px-2 py-1 text-xs flex items-center gap-1 shadow-lg z-10">
-            <Download className="h-3 w-3" />
-            {image.download_count}
+        {/* Stats row at top: downloads (1/4), likes (1/2), favorites (3/4) */}
+        {(image.download_count > 0 || (image.likes_count ?? 0) > 0 || (image.favorites_count ?? 0) > 0) && (
+          <div className="absolute top-2 left-0 right-0 flex justify-center gap-3 z-10">
+            {image.download_count > 0 && (
+              <div className="bg-black/70 text-white rounded px-2 py-1 text-xs flex items-center gap-1 shadow-lg">
+                <Download className="h-3 w-3" />
+                {image.download_count}
+              </div>
+            )}
+            {(image.likes_count ?? 0) > 0 && (
+              <div className="bg-black/70 text-white rounded px-2 py-1 text-xs flex items-center gap-1 shadow-lg">
+                <Heart className="h-3 w-3" />
+                {image.likes_count}
+              </div>
+            )}
+            {(image.favorites_count ?? 0) > 0 && (
+              <div className="bg-black/70 text-white rounded px-2 py-1 text-xs flex items-center gap-1 shadow-lg">
+                <Bookmark className="h-3 w-3" />
+                {image.favorites_count}
+              </div>
+            )}
           </div>
         )}
         {photoFacesLoaded && hasBeenProcessed && !hasDetected && (

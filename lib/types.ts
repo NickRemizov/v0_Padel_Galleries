@@ -42,6 +42,10 @@ export interface GalleryImage {
   height: number | null
   display_order: number
   download_count: number
+  /** Admin-only field */
+  likes_count?: number
+  /** Admin-only field */
+  favorites_count?: number
   /** Admin-only field, not returned in public gallery responses */
   is_featured?: boolean
   /** Admin-only field, not returned in public gallery responses */
