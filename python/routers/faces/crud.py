@@ -96,7 +96,7 @@ async def save_face(
             insert_data["insightface_bbox"] = request.bounding_box
         
         if request.confidence is not None:
-            insert_data["confidence"] = request.confidence
+            insert_data["insightface_det_score"] = request.confidence
         
         if request.verified and request.person_id:
             insert_data["recognition_confidence"] = 1.0

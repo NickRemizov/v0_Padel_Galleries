@@ -45,7 +45,7 @@ async def get_face_statistics(
         
         while True:
             faces_response = supabase_db.client.table("photo_faces").select(
-                "id, photo_id, person_id, verified, confidence"
+                "id, photo_id, person_id, verified, recognition_confidence"
             ).range(offset, offset + page_size - 1).execute()
             
             batch = faces_response.data or []
@@ -62,8 +62,8 @@ async def get_face_statistics(
         
         verified_count = len([f for f in faces if f.get("verified")])
         high_conf_count = len([
-            f for f in faces 
-            if f.get("confidence", 0) >= threshold and not f.get("verified")
+            f for f in faces
+            if (f.get("recognition_confidence") or 0) >= threshold and not f.get("verified")
         ])
         
         faces_by_person = {}
@@ -83,8 +83,8 @@ async def get_face_statistics(
                 f["photo_id"] for f in person_faces if f.get("verified")
             )
             high_conf_photo_ids = set(
-                f["photo_id"] for f in person_faces 
-                if f.get("confidence", 0) >= threshold and not f.get("verified")
+                f["photo_id"] for f in person_faces
+                if (f.get("recognition_confidence") or 0) >= threshold and not f.get("verified")
             )
             
             total_confirmed = len(verified_photo_ids) + len(high_conf_photo_ids)

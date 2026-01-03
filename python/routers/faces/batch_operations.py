@@ -130,7 +130,7 @@ async def batch_save_faces(
                 insert_data["insightface_bbox"] = face.bounding_box
             
             if face.confidence is not None:
-                insert_data["confidence"] = face.confidence
+                insert_data["insightface_det_score"] = face.confidence
             
             if face.verified and face.person_id:
                 insert_data["recognition_confidence"] = 1.0
