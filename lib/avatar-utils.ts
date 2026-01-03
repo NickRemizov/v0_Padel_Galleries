@@ -140,6 +140,7 @@ export async function generateAvatarBlob(
 
 /**
  * Create a URL-safe slug from a name.
+ * Handles Cyrillic transliteration and Latin diacritics (á → a, ñ → n, etc.)
  */
 function toSlug(name: string): string {
   // Cyrillic to Latin transliteration
@@ -153,6 +154,8 @@ function toSlug(name: string): string {
 
   return name
     .toLowerCase()
+    .normalize('NFD')  // Decompose: á → a + combining accent
+    .replace(/[\u0300-\u036f]/g, '')  // Remove combining diacritical marks
     .split('')
     .map(char => cyrillicMap[char] || char)
     .join('')

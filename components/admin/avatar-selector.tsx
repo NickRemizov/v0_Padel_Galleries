@@ -26,7 +26,7 @@ function getImageUrl(photo: any): string {
   return photo?.gallery_images?.image_url || photo?.image_url || "/placeholder.svg"
 }
 
-// Create URL-safe slug from name
+// Create URL-safe slug from name (handles Cyrillic and Latin diacritics)
 function toSlug(name: string): string {
   const cyrillicMap: Record<string, string> = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
@@ -35,7 +35,8 @@ function toSlug(name: string): string {
     'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
     'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
   }
-  return name.toLowerCase().split('').map(c => cyrillicMap[c] || c).join('')
+  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .split('').map(c => cyrillicMap[c] || c).join('')
     .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').substring(0, 50) || 'avatar'
 }
 
