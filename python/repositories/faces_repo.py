@@ -230,17 +230,19 @@ class FacesRepository(BaseRepository):
         Assign a person to a face.
         """
         try:
+            from datetime import datetime, timezone
             data = {
                 "person_id": person_id,
                 "verified": verified,
+                "verified_at": datetime.now(timezone.utc).isoformat() if verified else None,
             }
-            
+
             if confidence is not None:
                 data["recognition_confidence"] = float(confidence)
-            
+
             if verified and verified_by:
                 data["verified_by"] = verified_by
-            
+
             return await self.update(face_id, data)
             
         except Exception as e:
@@ -257,18 +259,21 @@ class FacesRepository(BaseRepository):
         Returns number of updated faces.
         """
         try:
+            from datetime import datetime, timezone
             data = {
                 "person_id": person_id,
                 "verified": verified,
+                "verified_at": datetime.now(timezone.utc).isoformat() if verified else None,
+                "recognition_confidence": 1.0 if verified else None,
             }
-            
+
             response = (
                 self.table
                 .update(data)
                 .in_("id", face_ids)
                 .execute()
             )
-            
+
             return len(response.data)
             
         except Exception as e:
