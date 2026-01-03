@@ -17,14 +17,6 @@ export {
   markPhotoAsProcessedAction,
 } from "./photo-processing"
 
-// Face CRUD
-export {
-  getPhotoFacesAction,
-  savePhotoFaceAction,
-  updatePhotoFaceAction,
-  deletePhotoFaceAction,
-} from "./face-crud"
-
 // Face batch operations
 export {
   getBatchPhotoFacesAction,

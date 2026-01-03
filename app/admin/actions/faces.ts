@@ -9,11 +9,6 @@ export {
   // Photo processing
   processPhotoAction,
   markPhotoAsProcessedAction,
-  // Face CRUD
-  getPhotoFacesAction,
-  savePhotoFaceAction,
-  updatePhotoFaceAction,
-  deletePhotoFaceAction,
   // Face batch operations
   getBatchPhotoFacesAction,
   batchVerifyFacesAction,

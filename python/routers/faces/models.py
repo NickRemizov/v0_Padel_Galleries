@@ -1,36 +1,12 @@
 """
 Faces API - Pydantic Models
 Request/Response models for faces endpoints
+
+v5.0: Cleaned up - removed unused models (SaveFaceRequest, UpdateFaceRequest, DeleteFaceRequest, BatchSaveFaceRequest)
 """
 
 from pydantic import BaseModel
 from typing import List, Optional
-
-
-class SaveFaceRequest(BaseModel):
-    photo_id: str
-    person_id: Optional[str]
-    bounding_box: Optional[dict]
-    embedding: List[float]
-    confidence: Optional[float]
-    recognition_confidence: Optional[float]
-    verified: bool
-
-
-class UpdateFaceRequest(BaseModel):
-    face_id: str
-    person_id: Optional[str]
-    verified: Optional[bool]
-    recognition_confidence: Optional[float]
-
-
-class DeleteFaceRequest(BaseModel):
-    face_id: str
-
-
-class BatchSaveFaceRequest(BaseModel):
-    photo_id: str
-    faces: List[SaveFaceRequest]
 
 
 class BatchPhotoIdsRequest(BaseModel):
