@@ -160,7 +160,7 @@ export function BatchRecognitionDialog({ open, onOpenChange, onComplete }: Batch
     setResults(initialResults)
 
     // v5.1: Rebuild index before batch processing for consistency
-    if (allImages.length >= 10) {
+    if (allImages.length >= 25) {
       console.log(`[BatchRecognition] Rebuilding index before processing ${allImages.length} photos...`)
       try {
         await rebuildIndexAction()

@@ -131,7 +131,7 @@ export function useAutoRecognition({ images, mode }: UseAutoRecognitionProps) {
     setResults(initialResults)
 
     // v5.1: Rebuild index before batch processing for consistency
-    if (imagesToProcess.length >= 10) {
+    if (imagesToProcess.length >= 25) {
       console.log(`[${VERSION}] Rebuilding index before processing ${imagesToProcess.length} photos...`)
       try {
         await rebuildIndexAction()
