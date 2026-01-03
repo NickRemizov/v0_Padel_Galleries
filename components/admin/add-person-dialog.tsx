@@ -85,7 +85,7 @@ export function AddPersonDialog({
           const avatarBlob = await generateAvatarBlob(faceImageUrl, faceBbox)
           setAvatarStatus("Загрузка аватара...")
           
-          const avatarUrl = await uploadAvatarBlob(avatarBlob, personId)
+          const avatarUrl = await uploadAvatarBlob(avatarBlob, personId, personName)
           console.log("[AddPersonDialog] Avatar uploaded:", avatarUrl)
           
           await updatePersonAvatarAction(personId, avatarUrl)

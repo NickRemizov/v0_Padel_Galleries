@@ -26,6 +26,19 @@ function getImageUrl(photo: any): string {
   return photo?.gallery_images?.image_url || photo?.image_url || "/placeholder.svg"
 }
 
+// Create URL-safe slug from name
+function toSlug(name: string): string {
+  const cyrillicMap: Record<string, string> = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+  }
+  return name.toLowerCase().split('').map(c => cyrillicMap[c] || c).join('')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').substring(0, 50) || 'avatar'
+}
+
 export function AvatarSelector({
   personId,
   personName,
@@ -152,7 +165,8 @@ export function AvatarSelector({
       console.log("[AvatarSelector] Blob created, uploading...")
 
       const formData = new FormData()
-      const filename = `avatar-${personId}-${Date.now()}.jpg`
+      const slug = personName ? toSlug(personName) : 'avatar'
+      const filename = `${slug}_avatar.jpg`
       formData.append("file", blob, filename)
       formData.append("folder", "avatars")
 

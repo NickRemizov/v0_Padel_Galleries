@@ -105,7 +105,7 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
 
       // Generate and upload avatar
       const avatarBlob = await generateAvatarBlob(image_url, bboxData)
-      const newAvatarUrl = await uploadAvatarBlob(avatarBlob, person.id)
+      const newAvatarUrl = await uploadAvatarBlob(avatarBlob, person.id, person.real_name)
 
       // Update person's avatar in DB
       const updateResult = await updatePersonAvatarAction(person.id, newAvatarUrl)

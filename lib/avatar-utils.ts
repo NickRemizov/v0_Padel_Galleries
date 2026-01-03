@@ -139,14 +139,39 @@ export async function generateAvatarBlob(
 }
 
 /**
+ * Create a URL-safe slug from a name.
+ */
+function toSlug(name: string): string {
+  // Cyrillic to Latin transliteration
+  const cyrillicMap: Record<string, string> = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+  }
+
+  return name
+    .toLowerCase()
+    .split('')
+    .map(char => cyrillicMap[char] || char)
+    .join('')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .substring(0, 50) || 'avatar'
+}
+
+/**
  * Upload avatar blob to server and return URL.
  */
 export async function uploadAvatarBlob(
   blob: Blob,
-  personId: string
+  personId: string,
+  personName?: string
 ): Promise<string> {
   const formData = new FormData()
-  const filename = `avatar-${personId}-${Date.now()}.jpg`
+  const slug = personName ? toSlug(personName) : 'avatar'
+  const filename = `${slug}_avatar.jpg`
   formData.append("file", blob, filename)
   formData.append("folder", "avatars")
 

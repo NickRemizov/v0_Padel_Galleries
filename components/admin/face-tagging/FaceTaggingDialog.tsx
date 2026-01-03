@@ -199,7 +199,7 @@ export function FaceTaggingDialog({
         try {
           console.log("[FaceTaggingDialog] Auto-generating avatar for existing person:", person.real_name)
           const avatarBlob = await generateAvatarBlob(imageUrl, bbox)
-          const avatarUrl = await uploadAvatarBlob(avatarBlob, person.id)
+          const avatarUrl = await uploadAvatarBlob(avatarBlob, person.id, person.real_name)
           await updatePersonAvatarAction(person.id, avatarUrl)
           console.log("[FaceTaggingDialog] Avatar generated and assigned:", avatarUrl)
           // Reload people to update avatar_url in UI
