@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import Masonry from "react-masonry-css"
-import { Check, X, EyeOff } from "lucide-react"
+import { Check, X, EyeOff, Eye } from "lucide-react"
 
 interface PhotoFace {
   id: string
@@ -13,6 +13,7 @@ interface PhotoFace {
   verified: boolean
   hidden_by_user: boolean
   insightface_bbox: any
+  faces_count: number  // Total faces on this photo (all people)
   gallery_images?: {
     id: string
     slug?: string
@@ -42,12 +43,6 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
     1024: 2,
     640: 1,
   }
-
-  // Count faces on each photo
-  const photoFaceCounts = photoFaces.reduce((acc, pf) => {
-    acc[pf.photo_id] = (acc[pf.photo_id] || 0) + 1
-    return acc
-  }, {} as Record<string, number>)
 
   async function handleVerify(photoFaceId: string) {
     setLoading(photoFaceId)
@@ -101,6 +96,22 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
     }
   }
 
+  async function handleUnhide(photoFaceId: string) {
+    setLoading(photoFaceId)
+    try {
+      const res = await fetch(`/api/my-photos/${photoFaceId}/unhide`, { method: "POST" })
+      if (res.ok) {
+        setPhotoFaces(prev => prev.map(pf =>
+          pf.id === photoFaceId ? { ...pf, hidden_by_user: false } : pf
+        ))
+      }
+    } catch (error) {
+      console.error("Error unhiding:", error)
+    } finally {
+      setLoading(null)
+    }
+  }
+
   return (
     <Masonry
       breakpointCols={breakpointColumns}
@@ -114,7 +125,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         const gallerySlug = image.galleries?.slug || image.gallery_id
         const photoSlug = image.slug || image.id
         const confidence = photoFace.recognition_confidence
-        const isOnlyPersonOnPhoto = photoFaceCounts[photoFace.photo_id] === 1
+        const isOnlyPersonOnPhoto = photoFace.faces_count === 1
         const isLoading = loading === photoFace.id
 
         return (
@@ -184,16 +195,39 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
               <X className="w-4 h-4" />
             </button>
 
-            {/* Hide button (bottom-right) - only if single person on photo and not hidden */}
-            {isOnlyPersonOnPhoto && !photoFace.hidden_by_user && (
-              <button
-                onClick={(e) => { e.preventDefault(); handleHide(photoFace.id) }}
-                disabled={isLoading}
-                className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-600 hover:bg-gray-700 text-white p-1.5 rounded-md disabled:opacity-50"
-                title="Скрыть из общего просмотра"
+            {/* Hide/Unhide button (bottom-right) */}
+            {isOnlyPersonOnPhoto && (
+              photoFace.hidden_by_user ? (
+                // Unhide button
+                <button
+                  onClick={(e) => { e.preventDefault(); handleUnhide(photoFace.id) }}
+                  disabled={isLoading}
+                  className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-700 text-white p-1.5 rounded-md disabled:opacity-50"
+                  title="Показать в общем просмотре"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+              ) : (
+                // Hide button
+                <button
+                  onClick={(e) => { e.preventDefault(); handleHide(photoFace.id) }}
+                  disabled={isLoading}
+                  className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-600 hover:bg-gray-700 text-white p-1.5 rounded-md disabled:opacity-50"
+                  title="Скрыть из общего просмотра"
+                >
+                  <EyeOff className="w-4 h-4" />
+                </button>
+              )
+            )}
+
+            {/* Info for multi-person photos */}
+            {!isOnlyPersonOnPhoto && (
+              <div
+                className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800/80 text-white text-xs px-2 py-1 rounded-md"
+                title="На этом фото не только вы"
               >
-                <EyeOff className="w-4 h-4" />
-              </button>
+                +{photoFace.faces_count - 1}
+              </div>
             )}
 
             {/* Loading overlay */}

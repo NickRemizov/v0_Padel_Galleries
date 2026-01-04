@@ -87,10 +87,36 @@ export default async function MyPhotosPage() {
     console.error("[v0] Error fetching my photos:", error)
   }
 
+  // Get faces count for each photo (all people, not just current user)
+  let facesCountByPhoto: Record<string, number> = {}
+  if (photoFaces && photoFaces.length > 0) {
+    const photoIds = [...new Set(photoFaces.map(pf => pf.photo_id))]
+
+    // Count all faces on these photos (with person_id, not null)
+    const { data: allFaces } = await supabase
+      .from("photo_faces")
+      .select("photo_id")
+      .in("photo_id", photoIds)
+      .not("person_id", "is", null)
+
+    if (allFaces) {
+      facesCountByPhoto = allFaces.reduce((acc, face) => {
+        acc[face.photo_id] = (acc[face.photo_id] || 0) + 1
+        return acc
+      }, {} as Record<string, number>)
+    }
+  }
+
+  // Add faces_count to each photo face
+  const photoFacesWithCount = photoFaces?.map(pf => ({
+    ...pf,
+    faces_count: facesCountByPhoto[pf.photo_id] || 1
+  })) || []
+
   // Count stats
-  const totalPhotos = photoFaces?.length || 0
-  const verifiedPhotos = photoFaces?.filter(pf => pf.verified).length || 0
-  const hiddenPhotos = photoFaces?.filter(pf => pf.hidden_by_user).length || 0
+  const totalPhotos = photoFacesWithCount.length
+  const verifiedPhotos = photoFacesWithCount.filter(pf => pf.verified).length
+  const hiddenPhotos = photoFacesWithCount.filter(pf => pf.hidden_by_user).length
 
   return (
     <main className="min-h-screen bg-background">
@@ -114,7 +140,7 @@ export default async function MyPhotosPage() {
           </p>
         </div>
 
-        {!photoFaces || photoFaces.length === 0 ? (
+        {photoFacesWithCount.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg mb-4">
               Пока нет фотографий с вами
@@ -124,7 +150,7 @@ export default async function MyPhotosPage() {
             </Link>
           </div>
         ) : (
-          <MyPhotosGrid photoFaces={photoFaces} personId={user.person_id} />
+          <MyPhotosGrid photoFaces={photoFacesWithCount} personId={user.person_id} />
         )}
       </div>
     </main>
