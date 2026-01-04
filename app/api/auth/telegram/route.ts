@@ -3,48 +3,114 @@ import { createServiceClient } from "@/lib/supabase/service"
 import { verifyTelegramAuth, isTelegramAuthDataValid } from "@/lib/telegram-auth"
 
 /**
- * Find existing person by Telegram ID or nickname
- * Priority: telegram_id (never changes) > telegram_username (@username)
+ * Telegram Login Logic:
+ *
+ * 1. Search by telegram_id (unique, never changes)
+ *    - Found → update telegram_username (could have changed) and telegram_full_name
+ *    - Not found → step 2
+ *
+ * 2. Search by telegram_username (case-insensitive, with @)
+ *    - Found → link: set telegram_id, update telegram_full_name
+ *    - Not found → step 3
+ *
+ * 3. Create new person with all Telegram data
  */
-async function findExistingPerson(
+
+/**
+ * Find person by telegram_id
+ */
+async function findPersonByTelegramId(
   supabase: any,
-  telegramId: number,
-  username: string | null
+  telegramId: number
 ): Promise<{ id: string } | null> {
-  // First, try to find by telegram_id (most reliable, never changes)
-  const { data: byTelegramId } = await supabase
+  const { data } = await supabase
     .from("people")
     .select("id")
     .eq("telegram_id", telegramId)
     .single()
 
-  if (byTelegramId) {
-    return byTelegramId
-  }
-
-  // Then try by telegram_username (@username)
-  if (username) {
-    const nicknameVariants = [username.toLowerCase(), `@${username.toLowerCase()}`]
-
-    const { data: byNickname } = await supabase
-      .from("people")
-      .select("id, telegram_username")
-      .or(`telegram_username.ilike.${username},telegram_username.ilike.@${username}`)
-      .limit(1)
-      .single()
-
-    if (byNickname) {
-      return byNickname
-    }
-  }
-
-  return null
+  return data
 }
 
 /**
- * Create a new person record for auto-registered user
+ * Find person by telegram_username (case-insensitive)
+ * Telegram gives username without @, database stores with @
  */
-async function createPersonForUser(
+async function findPersonByUsername(
+  supabase: any,
+  username: string
+): Promise<{ id: string } | null> {
+  // Add @ prefix and search case-insensitive
+  const usernameWithAt = `@${username}`
+
+  const { data } = await supabase
+    .from("people")
+    .select("id")
+    .ilike("telegram_username", usernameWithAt)
+    .single()
+
+  return data
+}
+
+/**
+ * Update person found by telegram_id
+ * Username and name could have changed
+ */
+async function updatePersonFoundById(
+  supabase: any,
+  personId: string,
+  firstName: string,
+  lastName: string | null,
+  username: string | null
+): Promise<void> {
+  const fullName = lastName ? `${firstName} ${lastName}` : firstName
+  const telegramUsername = username ? `@${username}` : null
+
+  const { error } = await supabase
+    .from("people")
+    .update({
+      telegram_username: telegramUsername,  // Could have changed
+      telegram_full_name: fullName,  // Could have changed
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", personId)
+
+  if (error) {
+    console.error("[telegram-auth] Error updating person by id:", error)
+  }
+}
+
+/**
+ * Link person found by username to Telegram account
+ * Set telegram_id and update telegram_full_name
+ */
+async function linkPersonByUsername(
+  supabase: any,
+  personId: string,
+  telegramId: number,
+  firstName: string,
+  lastName: string | null
+): Promise<void> {
+  const fullName = lastName ? `${firstName} ${lastName}` : firstName
+
+  const { error } = await supabase
+    .from("people")
+    .update({
+      telegram_id: telegramId,  // Link to Telegram account
+      telegram_full_name: fullName,  // Update from Telegram
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", personId)
+
+  if (error) {
+    console.error("[telegram-auth] Error linking person by username:", error)
+  }
+}
+
+/**
+ * Create new person for first-time Telegram user
+ */
+async function createNewPerson(
   supabase: any,
   telegramId: number,
   firstName: string,
@@ -52,59 +118,28 @@ async function createPersonForUser(
   username: string | null
 ): Promise<string> {
   const fullName = lastName ? `${firstName} ${lastName}` : firstName
-  const telegramNickname = username ? `@${username}` : null
+  const telegramUsername = username ? `@${username}` : null
 
   const { data: newPerson, error } = await supabase
     .from("people")
     .insert({
-      real_name: fullName,
       telegram_id: telegramId,
-      telegram_username: telegramNickname,
+      telegram_username: telegramUsername,
       telegram_full_name: fullName,
+      real_name: fullName,
       created_by: "auto_login",
-      show_in_players_gallery: false,  // Don't show auto-created users in players gallery
-      show_photos_in_galleries: true,
+      show_in_players_gallery: false,  // Don't show auto-created users in players list
     })
     .select("id")
     .single()
 
   if (error) {
-    console.error("[v0] Error creating person:", error)
+    console.error("[telegram-auth] Error creating person:", error)
     throw error
   }
 
-  console.log(`[v0] Created new person for Telegram user ${telegramId}: ${newPerson.id}`)
+  console.log(`[telegram-auth] Created new person ${newPerson.id} for Telegram user ${telegramId}`)
   return newPerson.id
-}
-
-/**
- * Update person's Telegram data (name can change)
- */
-async function updatePersonTelegramData(
-  supabase: any,
-  personId: string,
-  telegramId: number,
-  firstName: string,
-  lastName: string | null,
-  username: string | null
-): Promise<void> {
-  const fullName = lastName ? `${firstName} ${lastName}` : firstName
-  const telegramNickname = username ? `@${username}` : null
-
-  const { error } = await supabase
-    .from("people")
-    .update({
-      telegram_id: telegramId,  // Set if not already set
-      telegram_full_name: fullName,  // Always update (can change)
-      telegram_username: telegramNickname,  // Update if changed
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", personId)
-
-  if (error) {
-    console.error("[v0] Error updating person telegram data:", error)
-    // Don't throw - this is not critical
-  }
 }
 
 export async function POST(request: NextRequest) {
@@ -135,21 +170,36 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // 1. Find or create person
+    // === FIND OR CREATE PERSON ===
     let personId: string
-    const existingPerson = await findExistingPerson(supabase, id, username)
 
-    if (existingPerson) {
-      personId = existingPerson.id
-      // Update telegram data (name can change)
-      await updatePersonTelegramData(supabase, personId, id, first_name, last_name, username)
-      console.log(`[v0] Found existing person ${personId} for Telegram user ${id}`)
+    // Step 1: Search by telegram_id
+    const personById = await findPersonByTelegramId(supabase, id)
+
+    if (personById) {
+      // Found by telegram_id → update username and name (could have changed)
+      personId = personById.id
+      await updatePersonFoundById(supabase, personId, first_name, last_name, username)
+      console.log(`[telegram-auth] Found person ${personId} by telegram_id ${id}`)
+    } else if (username) {
+      // Step 2: Search by telegram_username
+      const personByUsername = await findPersonByUsername(supabase, username)
+
+      if (personByUsername) {
+        // Found by username → link to Telegram account
+        personId = personByUsername.id
+        await linkPersonByUsername(supabase, personId, id, first_name, last_name)
+        console.log(`[telegram-auth] Linked person ${personId} by username @${username}`)
+      } else {
+        // Step 3: Create new person
+        personId = await createNewPerson(supabase, id, first_name, last_name, username)
+      }
     } else {
-      // Create new person
-      personId = await createPersonForUser(supabase, id, first_name, last_name, username)
+      // No username provided, create new person
+      personId = await createNewPerson(supabase, id, first_name, last_name, username)
     }
 
-    // 2. Create or update user
+    // === CREATE OR UPDATE USER ===
     const { data: existingUser } = await supabase
       .from("users")
       .select("*")
@@ -166,7 +216,7 @@ export async function POST(request: NextRequest) {
           first_name,
           last_name,
           photo_url,
-          person_id: personId,  // Always link to person
+          person_id: personId,
           updated_at: new Date().toISOString(),
         })
         .eq("telegram_id", id)
@@ -206,7 +256,7 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error("[v0] Telegram auth error:", error)
+    console.error("[telegram-auth] Error:", error)
     return NextResponse.json({ error: "Authentication failed" }, { status: 500 })
   }
 }
