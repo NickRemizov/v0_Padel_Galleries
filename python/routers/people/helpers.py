@@ -16,6 +16,7 @@ PUBLIC_FIELDS = (
     "id, real_name, telegram_name, telegram_nickname, "
     "facebook_profile_url, instagram_profile_url, paddle_ranking, "
     "avatar_url, show_in_players_gallery, show_photos_in_galleries, "
+    "create_personal_gallery, show_name_on_photos, show_telegram_nickname, show_social_links, "
     "custom_confidence_threshold, use_custom_confidence, category, "
     "slug, created_by, created_at, updated_at, tournament_results"
 )

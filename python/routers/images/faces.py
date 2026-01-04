@@ -19,24 +19,37 @@ router = APIRouter()
 
 @router.get("/{image_id}/people")
 async def get_image_verified_people(image_id: str):
-    """Получает список верифицированных людей на фото."""
+    """Получает список верифицированных людей на фото.
+
+    Privacy settings:
+    - show_name_on_photos=false -> don't include person at all
+    - create_personal_gallery=false -> include but with hasGallery=false (link inactive)
+    """
     supabase_db = get_supabase_db()
-    
+
     try:
         logger.info(f"Getting verified people for image: {image_id}")
-        
-        result = supabase_db.client.table("photo_faces").select("person_id, people!inner(id, slug, real_name, telegram_name)").eq("photo_id", image_id).eq("verified", True).execute()
+
+        result = supabase_db.client.table("photo_faces").select(
+            "person_id, people!inner(id, slug, real_name, telegram_name, show_name_on_photos, create_personal_gallery)"
+        ).eq("photo_id", image_id).eq("verified", True).execute()
 
         people = []
         for item in (result.data or []):
             person_data = item.get("people", {})
+
+            # Skip if show_name_on_photos is false
+            if not person_data.get("show_name_on_photos", True):
+                continue
+
             name = person_data.get("real_name") or person_data.get("telegram_name") or "Unknown"
             people.append({
                 "id": person_data.get("id"),
                 "slug": person_data.get("slug"),
-                "name": name
+                "name": name,
+                "hasGallery": person_data.get("create_personal_gallery", True)
             })
-        
+
         logger.info(f"Found {len(people)} verified people on image")
         return ApiResponse.ok(people)
         

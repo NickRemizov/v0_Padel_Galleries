@@ -106,28 +106,37 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
             if images:
                 image_ids = [img["id"] for img in images]
 
-                # Get faces with person info, filter by show_photos_in_galleries and hidden_by_user
+                # Get faces with person info, filter by hidden_by_user
+                # Privacy fields: show_photos_in_galleries, show_name_on_photos
                 faces_result = supabase_db.client.table("photo_faces").select(
-                    "photo_id, person_id, hidden_by_user, people(id, real_name, show_photos_in_galleries)"
+                    "photo_id, person_id, hidden_by_user, people(id, real_name, show_photos_in_galleries, show_name_on_photos)"
                 ).in_("photo_id", image_ids).not_.is_("person_id", "null").eq("hidden_by_user", False).execute()
-                
+
                 faces = faces_result.data or []
-                
-                # Group people by photo, respecting show_photos_in_galleries
+
+                # Group people by photo, respecting privacy settings
+                # show_name_on_photos=false -> don't show name at all
+                # show_photos_in_galleries=false -> don't show in galleries
                 people_by_photo = {}
                 for face in faces:
                     photo_id = face["photo_id"]
                     person = face.get("people")
-                    if person and person.get("show_photos_in_galleries", True):
-                        if photo_id not in people_by_photo:
-                            people_by_photo[photo_id] = []
-                        # Avoid duplicates
-                        person_ids = [p["id"] for p in people_by_photo[photo_id]]
-                        if person["id"] not in person_ids:
-                            people_by_photo[photo_id].append({
-                                "id": person["id"],
-                                "name": person["real_name"]
-                            })
+                    if not person:
+                        continue
+                    # Both flags must be true to show name on photo
+                    if not person.get("show_photos_in_galleries", True):
+                        continue
+                    if not person.get("show_name_on_photos", True):
+                        continue
+                    if photo_id not in people_by_photo:
+                        people_by_photo[photo_id] = []
+                    # Avoid duplicates
+                    person_ids = [p["id"] for p in people_by_photo[photo_id]]
+                    if person["id"] not in person_ids:
+                        people_by_photo[photo_id].append({
+                            "id": person["id"],
+                            "name": person["real_name"]
+                        })
                 
                 # Add people to each image
                 for img in images:
