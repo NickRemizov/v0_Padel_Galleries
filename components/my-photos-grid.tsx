@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Masonry from "react-masonry-css"
-import { Check, X, EyeOff, Eye } from "lucide-react"
+import { Check, X, EyeOff, Eye, Camera } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { UserAvatarSelector } from "@/components/user-avatar-selector"
 
 interface PhotoFace {
   id: string
@@ -47,15 +49,21 @@ interface HideDialogData {
   galleryDate: string
 }
 
+interface AvatarDialogData {
+  imageUrl: string
+}
+
 interface MyPhotosGridProps {
   photoFaces: PhotoFace[]
   personId: string
 }
 
 export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhotosGridProps) {
+  const router = useRouter()
   const [photoFaces, setPhotoFaces] = useState(initialPhotoFaces)
   const [loading, setLoading] = useState<string | null>(null)
   const [hideDialog, setHideDialog] = useState<HideDialogData | null>(null)
+  const [avatarDialog, setAvatarDialog] = useState<AvatarDialogData | null>(null)
 
   const breakpointColumns = {
     default: 4,
@@ -221,6 +229,20 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
               </div>
             )}
 
+            {/* Avatar button (top-left, on hover, only for non-hidden photos) */}
+            {!photoFace.hidden_by_user && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  setAvatarDialog({ imageUrl: image.original_url || image.image_url })
+                }}
+                className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-md"
+                title="Сделать аватаром"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Reject button (top-right) - always available on hover */}
             <button
               onClick={(e) => { e.preventDefault(); handleReject(photoFace.id) }}
@@ -294,6 +316,16 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Avatar selector dialog */}
+      {avatarDialog && (
+        <UserAvatarSelector
+          imageUrl={avatarDialog.imageUrl}
+          open={!!avatarDialog}
+          onOpenChange={(open) => !open && setAvatarDialog(null)}
+          onAvatarUpdated={() => router.refresh()}
+        />
+      )}
     </Masonry>
   )
 }

@@ -45,7 +45,7 @@ from middleware.auth import AuthMiddleware
 from routers import (
     training, recognition, faces, images,
     photographers, people, galleries, locations, organizers, cities,
-    admin
+    admin, user
 )
 
 # ============================================================
@@ -243,6 +243,7 @@ app.include_router(locations.router, prefix="/api/locations", tags=["locations"]
 app.include_router(organizers.router, prefix="/api/organizers", tags=["organizers"])
 app.include_router(cities.router, prefix="/api/cities", tags=["cities"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(user.router, prefix="/api", tags=["user"])
 
 logger.info(f"Application startup complete. Running on {settings.server_host}:{settings.server_port}")
 
