@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { PlayerGalleryView } from "@/components/player-gallery-view"
 import type { Person } from "@/lib/types"
 import { apiFetch } from "@/lib/apiClient"
@@ -37,6 +37,12 @@ export default async function PlayerGalleryPage({ params }: PlayerGalleryPagePro
   }
 
   const player = playerResponse.data
+
+  // Privacy check: if personal gallery is disabled, redirect to players list
+  // Cascading logic: show_name_on_photos=false also disables gallery
+  if (!player.create_personal_gallery || !player.show_name_on_photos) {
+    redirect("/players")
+  }
 
   // Get player photos from FastAPI - unified format
   const photosResponse = await apiFetch<any>(`/api/people/${id}/photos`, {
