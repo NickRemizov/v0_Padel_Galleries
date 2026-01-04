@@ -1,0 +1,289 @@
+"use client"
+
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Loader2, Save, Check } from "lucide-react"
+
+interface Person {
+  id: string
+  real_name: string | null
+  gmail: string | null
+  facebook_profile_url: string | null
+  instagram_profile_url: string | null
+  paddle_ranking: number | null
+  show_in_players_gallery: boolean
+  create_personal_gallery: boolean
+  show_name_on_photos: boolean
+  show_telegram_nickname: boolean
+  show_social_links: boolean
+}
+
+interface SettingsFormProps {
+  person: Person
+  telegramName: string
+  telegramUsername?: string
+}
+
+export function SettingsForm({ person, telegramName, telegramUsername }: SettingsFormProps) {
+  const [loading, setLoading] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Form state
+  const [realName, setRealName] = useState(person.real_name || "")
+  const [gmail, setGmail] = useState(person.gmail || "")
+  const [facebook, setFacebook] = useState(person.facebook_profile_url || "")
+  const [instagram, setInstagram] = useState(person.instagram_profile_url || "")
+  const [paddleRanking, setPaddleRanking] = useState(person.paddle_ranking?.toString() || "")
+
+  // Toggles
+  const [showInPlayersGallery, setShowInPlayersGallery] = useState(person.show_in_players_gallery ?? true)
+  const [createPersonalGallery, setCreatePersonalGallery] = useState(person.create_personal_gallery ?? false)
+  const [showNameOnPhotos, setShowNameOnPhotos] = useState(person.show_name_on_photos ?? true)
+  const [showTelegramNickname, setShowTelegramNickname] = useState(person.show_telegram_nickname ?? true)
+  const [showSocialLinks, setShowSocialLinks] = useState(person.show_social_links ?? true)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setSaved(false)
+
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          real_name: realName || null,
+          gmail: gmail || null,
+          facebook_profile_url: facebook || null,
+          instagram_profile_url: instagram || null,
+          paddle_ranking: paddleRanking ? parseFloat(paddleRanking) : null,
+          show_in_players_gallery: showInPlayersGallery,
+          create_personal_gallery: createPersonalGallery,
+          show_name_on_photos: showNameOnPhotos,
+          show_telegram_nickname: showTelegramNickname,
+          show_social_links: showSocialLinks,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Failed to save")
+      }
+
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Generate paddle ranking options (0 to 10 with 0.25 step)
+  const paddleOptions: string[] = []
+  for (let i = 0; i <= 40; i++) {
+    paddleOptions.push((i * 0.25).toFixed(2).replace(/\.?0+$/, ""))
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-8">
+      {/* Telegram Info (read-only) */}
+      <div className="bg-card rounded-lg border p-6">
+        <h3 className="text-lg font-semibold mb-4">Telegram</h3>
+        <div className="space-y-4">
+          <div>
+            <Label className="text-muted-foreground">Имя в Telegram</Label>
+            <p className="font-medium">{telegramName}</p>
+          </div>
+          {telegramUsername && (
+            <div>
+              <Label className="text-muted-foreground">Username</Label>
+              <p className="font-medium">@{telegramUsername}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Profile Info */}
+      <div className="bg-card rounded-lg border p-6">
+        <h3 className="text-lg font-semibold mb-4">Профиль</h3>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="real_name">Имя на сайте</Label>
+            <Input
+              id="real_name"
+              value={realName}
+              onChange={(e) => setRealName(e.target.value)}
+              placeholder="Ваше имя"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="paddle_ranking">Уровень в падел</Label>
+            <select
+              id="paddle_ranking"
+              value={paddleRanking}
+              onChange={(e) => setPaddleRanking(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="">Не указан</option>
+              {paddleOptions.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Social Links */}
+      <div className="bg-card rounded-lg border p-6">
+        <h3 className="text-lg font-semibold mb-4">Социальные сети</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Эти данные позволят связать ваши аккаунты в разных сетях
+        </p>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="gmail">Gmail</Label>
+            <Input
+              id="gmail"
+              type="email"
+              value={gmail}
+              onChange={(e) => setGmail(e.target.value)}
+              placeholder="your@gmail.com"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="facebook">Facebook</Label>
+            <Input
+              id="facebook"
+              value={facebook}
+              onChange={(e) => setFacebook(e.target.value)}
+              placeholder="https://facebook.com/username"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="instagram">Instagram</Label>
+            <Input
+              id="instagram"
+              value={instagram}
+              onChange={(e) => setInstagram(e.target.value)}
+              placeholder="https://instagram.com/username"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Privacy Settings */}
+      <div className="bg-card rounded-lg border p-6">
+        <h3 className="text-lg font-semibold mb-4">Приватность</h3>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="show_in_players_gallery">Показывать в галерее игроков</Label>
+              <p className="text-sm text-muted-foreground">
+                Ваш профиль будет виден на странице /players
+              </p>
+            </div>
+            <Switch
+              id="show_in_players_gallery"
+              checked={showInPlayersGallery}
+              onCheckedChange={setShowInPlayersGallery}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="create_personal_gallery">Создавать галерею моих фото</Label>
+              <p className="text-sm text-muted-foreground">
+                Отдельная страница со всеми вашими фотографиями
+              </p>
+            </div>
+            <Switch
+              id="create_personal_gallery"
+              checked={createPersonalGallery}
+              onCheckedChange={setCreatePersonalGallery}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="show_name_on_photos">Подписывать меня на фото</Label>
+              <p className="text-sm text-muted-foreground">
+                Ваше имя будет отображаться на фотографиях
+              </p>
+            </div>
+            <Switch
+              id="show_name_on_photos"
+              checked={showNameOnPhotos}
+              onCheckedChange={setShowNameOnPhotos}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="show_telegram_nickname">Показывать мой Telegram</Label>
+              <p className="text-sm text-muted-foreground">
+                Ваш @username будет виден в профиле
+              </p>
+            </div>
+            <Switch
+              id="show_telegram_nickname"
+              checked={showTelegramNickname}
+              onCheckedChange={setShowTelegramNickname}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="show_social_links">Показывать мои соцсети</Label>
+              <p className="text-sm text-muted-foreground">
+                Ссылки на Facebook и Instagram будут видны
+              </p>
+            </div>
+            <Switch
+              id="show_social_links"
+              checked={showSocialLinks}
+              onCheckedChange={setShowSocialLinks}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Submit button */}
+      <div className="flex justify-end">
+        <Button type="submit" disabled={loading}>
+          {loading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Сохранение...
+            </>
+          ) : saved ? (
+            <>
+              <Check className="mr-2 h-4 w-4" />
+              Сохранено
+            </>
+          ) : (
+            <>
+              <Save className="mr-2 h-4 w-4" />
+              Сохранить
+            </>
+          )}
+        </Button>
+      </div>
+    </form>
+  )
+}
