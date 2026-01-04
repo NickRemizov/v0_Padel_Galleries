@@ -65,15 +65,28 @@ export async function requireAdmin() {
 
 /**
  * Get auth headers for protected API calls to FastAPI backend
- * Returns Authorization header with admin_token JWT (from Google OAuth)
+ *
+ * Supports both:
+ * - admin_token cookie (Google OAuth) - preferred
+ * - Supabase session (legacy) - fallback
  */
 export async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { cookies } = await import("next/headers")
   const cookieStore = await cookies()
-  const adminToken = cookieStore.get("admin_token")?.value
 
+  // 1. Try admin_token (Google OAuth)
+  const adminToken = cookieStore.get("admin_token")?.value
   if (adminToken) {
     return { "Authorization": `Bearer ${adminToken}` }
   }
+
+  // 2. Fallback: try Supabase session
+  const { createClient } = await import("@/lib/supabase/server")
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (session?.access_token) {
+    return { "Authorization": `Bearer ${session.access_token}` }
+  }
+
   return {}
 }
