@@ -8,7 +8,7 @@
  */
 export const DUPLICATE_CHECK_FIELDS = [
   "gmail",
-  "telegram_nickname",
+  "telegram_username",
   "telegram_profile_url",
   "facebook_profile_url",
   "instagram_profile_url",

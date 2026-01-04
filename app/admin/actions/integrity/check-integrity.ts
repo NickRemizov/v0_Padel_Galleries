@@ -282,7 +282,7 @@ export async function checkDatabaseIntegrityFullAction(): Promise<IntegrityActio
 
     const { data: allPeopleData } = await supabase
       .from("people")
-      .select("id, real_name, telegram_nickname, telegram_profile_url, facebook_profile_url, instagram_profile_url, gmail, avatar_url, created_at")
+      .select("id, real_name, telegram_username, telegram_profile_url, facebook_profile_url, instagram_profile_url, gmail, avatar_url, created_at")
       .order("real_name", { ascending: true })
 
     // 8. People без фото - выводим сразу список имён

@@ -62,7 +62,7 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
           embedding: null,
         },
         personId: f.person_id,
-        personName: f.people?.real_name || f.people?.telegram_name || null,
+        personName: f.people?.real_name || f.people?.telegram_full_name || null,
         recognitionConfidence: f.recognition_confidence,
         verified: f.verified,
       }))
@@ -97,7 +97,7 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
             id: f.id,
             face: { boundingBox: f.insightface_bbox, confidence: f.insightface_det_score, blur_score: 0, embedding: null },
             personId: f.person_id,
-            personName: f.people.real_name || f.people.telegram_name || null,
+            personName: f.people.real_name || f.people.telegram_full_name || null,
             recognitionConfidence: f.recognition_confidence,
             verified: f.verified,
           }
@@ -130,7 +130,7 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
       const detailed: DetailedFace[] = result.faces.map((f: any) => {
         const topMatch = f.top_matches?.[0]
         const similarity = topMatch?.similarity || 0
-        let personName = f.people?.real_name || f.people?.telegram_name || null
+        let personName = f.people?.real_name || f.people?.telegram_full_name || null
         if (!personName && similarity > 0.3 && topMatch) {
           personName = topMatch.name || null
         }

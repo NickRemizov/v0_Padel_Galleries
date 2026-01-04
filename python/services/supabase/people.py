@@ -136,12 +136,12 @@ class PeopleRepository:
             # Get person names
             person_ids = list(stats.keys())
             people_response = self.client.table("people").select(
-                "id, real_name, telegram_name"
+                "id, real_name, telegram_full_name"
             ).in_("id", person_ids).execute()
             
             names = {}
             for p in (people_response.data or []):
-                names[p["id"]] = p.get("real_name") or p.get("telegram_name") or "Unknown"
+                names[p["id"]] = p.get("real_name") or p.get("telegram_full_name") or "Unknown"
             
             # Build result
             result = []

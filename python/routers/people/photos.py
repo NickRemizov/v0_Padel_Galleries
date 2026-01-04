@@ -135,7 +135,7 @@ async def get_person_photos_with_details(identifier: UUID):
         
         # Получаем все лица для этих фото
         all_faces_result = supabase_db.client.table("photo_faces")\
-            .select("id, photo_id, person_id, verified, recognition_confidence, people(real_name, telegram_name)")\
+            .select("id, photo_id, person_id, verified, recognition_confidence, people(real_name, telegram_full_name)")\
             .in_("photo_id", photo_ids)\
             .or_(f"verified.eq.true,recognition_confidence.gte.{confidence_threshold}")\
             .execute()
@@ -154,7 +154,7 @@ async def get_person_photos_with_details(identifier: UUID):
             
             people_data = face.get("people") or {}
             other_faces_by_photo[photo_id].append({
-                "personName": people_data.get("real_name") or people_data.get("telegram_name") or "Unknown",
+                "personName": people_data.get("real_name") or people_data.get("telegram_full_name") or "Unknown",
                 "verified": face.get("verified"),
                 "confidence": face.get("recognition_confidence")
             })

@@ -146,7 +146,7 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
     }
   }, [searchParams, images])
 
-  const telegramLink = getTelegramLink(player.telegram_nickname)
+  const telegramLink = getTelegramLink(player.telegram_username)
 
   if (images.length === 0) {
     return (
@@ -180,7 +180,7 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
             rel="noopener noreferrer"
             className="text-muted-foreground hover:text-foreground transition-colors underline decoration-dotted"
           >
-            {player.telegram_nickname}
+            {player.telegram_username}
           </a>
         )}
       </div>

@@ -55,7 +55,7 @@ export async function findDuplicatePeopleAction(): Promise<{
     // Загружаем всех людей с нужными полями
     const { data: allPeople, error: peopleError } = await supabase
       .from("people")
-      .select("id, real_name, telegram_nickname, telegram_profile_url, facebook_profile_url, instagram_profile_url, gmail, avatar_url, created_at")
+      .select("id, real_name, telegram_username, telegram_profile_url, facebook_profile_url, instagram_profile_url, gmail, avatar_url, created_at")
       .order("created_at", { ascending: true })
 
     if (peopleError) throw peopleError
@@ -252,12 +252,12 @@ export async function mergePeopleAction(
 
     // 4. Переносим заполненные поля с дублей в пустые поля основного
     const fieldsToMerge = [
-      "telegram_nickname",
+      "telegram_username",
       "telegram_profile_url", 
       "facebook_profile_url",
       "instagram_profile_url",
       "gmail",
-      "telegram_name",
+      "telegram_full_name",
       "paddle_ranking",
       "avatar_url",
     ]

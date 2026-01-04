@@ -49,7 +49,7 @@ async def debug_photo(photo_id: str = Query(..., description="Photo ID to debug"
         # 2. Get all faces from DB for this photo
         faces_result = client.table("photo_faces").select(
             "id, person_id, verified, recognition_confidence, insightface_descriptor, insightface_bbox, excluded_from_index, "
-            "people(id, real_name, telegram_name)"
+            "people(id, real_name, telegram_full_name)"
         ).eq("photo_id", photo_id).execute()
         
         db_faces = faces_result.data or []
@@ -234,7 +234,7 @@ async def debug_person(person_id: str = Query(..., description="Person ID to deb
             "person": {
                 "id": person["id"],
                 "real_name": person.get("real_name"),
-                "telegram_name": person.get("telegram_name")
+                "telegram_full_name": person.get("telegram_full_name")
             },
             "summary": summary,
             "problem_faces": problem_faces[:20],

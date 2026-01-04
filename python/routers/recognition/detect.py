@@ -292,7 +292,7 @@ async def process_photo(
             response_faces = []
             for face in saved_faces:
                 if face["person_id"]:
-                    person_response = supabase_client.client.table("people").select("id, real_name, telegram_name").eq("id", face["person_id"]).execute()
+                    person_response = supabase_client.client.table("people").select("id, real_name, telegram_full_name").eq("id", face["person_id"]).execute()
                     person_data = person_response.data[0] if person_response.data else None
                 else:
                     person_data = None
@@ -374,7 +374,7 @@ async def process_photo(
         
         # Reload faces after potential updates
         final_result = supabase_client.client.table("photo_faces").select(
-            "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_det_score, blur_score, people(id, real_name, telegram_name)"
+            "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_det_score, blur_score, people(id, real_name, telegram_full_name)"
         ).eq("photo_id", photo_id).execute()
         
         response_faces = []

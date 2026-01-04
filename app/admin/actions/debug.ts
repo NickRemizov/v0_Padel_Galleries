@@ -35,7 +35,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
     for (const photoId of photoIds) {
       const { data: allFacesOnPhoto, error: allFacesError } = await supabase
         .from("photo_faces")
-        .select("id, person_id, recognition_confidence, verified, people(real_name, telegram_name)")
+        .select("id, person_id, recognition_confidence, verified, people(real_name, telegram_full_name)")
         .eq("photo_id", photoId)
 
       if (allFacesError) {
@@ -48,7 +48,7 @@ export async function debugPersonPhotosAction(personRealName: string) {
 
       const facesInfo =
         allFacesOnPhoto?.map((face) => ({
-          personName: face.people?.real_name || face.people?.telegram_name || "Unknown",
+          personName: face.people?.real_name || face.people?.telegram_full_name || "Unknown",
           personId: face.person_id,
           verified: face.verified,
           recognition_confidence: face.recognition_confidence,
@@ -111,7 +111,7 @@ export async function debugPhotoFacesAction(filename: string) {
 
     const { data: photoFaces, error: facesError } = await supabase
       .from("photo_faces")
-      .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, people(real_name, telegram_name)")
+      .select("id, photo_id, person_id, recognition_confidence, verified, insightface_bbox, people(real_name, telegram_full_name)")
       .eq("photo_id", photo.id)
 
     if (facesError) throw facesError
@@ -124,7 +124,7 @@ export async function debugPhotoFacesAction(filename: string) {
     logger.debug(`[v0] Total faces detected: ${photoFaces?.length || 0}`)
 
     photoFaces?.forEach((face, index) => {
-      const personName = face.people?.real_name || face.people?.telegram_name || "Unknown"
+      const personName = face.people?.real_name || face.people?.telegram_full_name || "Unknown"
       logger.debug(`\n[v0] Face ${index + 1}:`)
       logger.debug(`[v0]   Person: ${personName}`)
       logger.debug(`[v0]   Verified: ${face.verified}`)
@@ -142,7 +142,7 @@ export async function debugPhotoFacesAction(filename: string) {
         totalFaces: photoFaces?.length || 0,
         faces:
           photoFaces?.map((face) => ({
-            personName: face.people?.real_name || face.people?.telegram_name || "Unknown",
+            personName: face.people?.real_name || face.people?.telegram_full_name || "Unknown",
             personId: face.person_id,
             verified: face.verified,
             recognition_confidence: face.recognition_confidence,

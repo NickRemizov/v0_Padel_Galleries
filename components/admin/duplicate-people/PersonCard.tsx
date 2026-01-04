@@ -70,10 +70,10 @@ export function PersonCard({
                   <span className="truncate">{person.gmail}</span>
                 </div>
               )}
-              {person.telegram_nickname && (
+              {person.telegram_username && (
                 <div className="flex items-center gap-1 text-muted-foreground">
                   <MessageCircle className="h-3 w-3" />
-                  <span className="truncate">@{person.telegram_nickname}</span>
+                  <span className="truncate">@{person.telegram_username}</span>
                 </div>
               )}
               {person.telegram_profile_url && (

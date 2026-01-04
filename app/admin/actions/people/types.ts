@@ -76,7 +76,7 @@ export interface MassAuditData {
 
 export const DUPLICATE_CHECK_FIELDS = [
   "gmail",
-  "telegram_nickname", 
+  "telegram_username", 
   "telegram_profile_url",
   "facebook_profile_url",
   "instagram_profile_url",
@@ -93,7 +93,7 @@ export interface DuplicateGroup {
 export interface DuplicatePerson {
   id: string
   real_name: string
-  telegram_nickname: string | null
+  telegram_username: string | null
   telegram_profile_url: string | null
   facebook_profile_url: string | null
   instagram_profile_url: string | null

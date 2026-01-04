@@ -17,7 +17,7 @@ interface Person {
   show_in_players_gallery: boolean
   create_personal_gallery: boolean
   show_name_on_photos: boolean
-  show_telegram_nickname: boolean
+  show_telegram_username: boolean
   show_social_links: boolean
 }
 
@@ -43,7 +43,7 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
   const [showInPlayersGallery, setShowInPlayersGallery] = useState(person.show_in_players_gallery ?? true)
   const [createPersonalGallery, setCreatePersonalGallery] = useState(person.create_personal_gallery ?? false)
   const [showNameOnPhotos, setShowNameOnPhotos] = useState(person.show_name_on_photos ?? true)
-  const [showTelegramNickname, setShowTelegramNickname] = useState(person.show_telegram_nickname ?? true)
+  const [showTelegramUsername, setShowTelegramUsername] = useState(person.show_telegram_username ?? true)
   const [showSocialLinks, setShowSocialLinks] = useState(person.show_social_links ?? true)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -65,7 +65,7 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
           show_in_players_gallery: showInPlayersGallery,
           create_personal_gallery: createPersonalGallery,
           show_name_on_photos: showNameOnPhotos,
-          show_telegram_nickname: showTelegramNickname,
+          show_telegram_username: showTelegramUsername,
           show_social_links: showSocialLinks,
         }),
       })
@@ -251,15 +251,15 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
 
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="show_telegram_nickname">Показывать мой Telegram</Label>
+              <Label htmlFor="show_telegram_username">Показывать мой Telegram</Label>
               <p className="text-sm text-muted-foreground">
                 Ваш @username будет виден в профиле
               </p>
             </div>
             <Switch
-              id="show_telegram_nickname"
-              checked={showTelegramNickname}
-              onCheckedChange={setShowTelegramNickname}
+              id="show_telegram_username"
+              checked={showTelegramUsername}
+              onCheckedChange={setShowTelegramUsername}
             />
           </div>
 

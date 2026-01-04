@@ -11,7 +11,7 @@ const ALLOWED_FIELDS = [
   "show_in_players_gallery",
   "create_personal_gallery",
   "show_name_on_photos",
-  "show_telegram_nickname",
+  "show_telegram_username",
   "show_social_links",
 ]
 

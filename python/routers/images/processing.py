@@ -157,12 +157,12 @@ async def auto_recognize_faces(image_id: str):
                     
                     # Get person name for result
                     person_result = supabase_db.client.table("people").select(
-                        "real_name, telegram_name"
+                        "real_name, telegram_full_name"
                     ).eq("id", person_id).execute()
                     
                     person_name = "Unknown"
                     if person_result.data:
-                        person_name = person_result.data[0].get("real_name") or person_result.data[0].get("telegram_name") or "Unknown"
+                        person_name = person_result.data[0].get("real_name") or person_result.data[0].get("telegram_full_name") or "Unknown"
                     
                     recognized += 1
                     results.append({

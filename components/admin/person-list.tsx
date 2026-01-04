@@ -151,8 +151,8 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
         {localPeople.map((person) => {
           const socialLinks = []
           
-          // Telegram: используем telegram_nickname для создания ссылки
-          const telegramLink = getTelegramLink(person.telegram_nickname)
+          // Telegram: используем telegram_username для создания ссылки
+          const telegramLink = getTelegramLink(person.telegram_username)
           if (telegramLink) {
             socialLinks.push(
               <span key="telegram">
@@ -163,7 +163,7 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
-                  {person.telegram_nickname}
+                  {person.telegram_username}
                 </a>
               </span>,
             )
@@ -234,7 +234,7 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold">
                           {person.real_name}
-                          {person.telegram_name && ` (${person.telegram_name})`}
+                          {person.telegram_full_name && ` (${person.telegram_full_name})`}
                         </h3>
                         {person.paddle_ranking && <Badge variant="secondary">Уровень: {person.paddle_ranking}</Badge>}
                       </div>

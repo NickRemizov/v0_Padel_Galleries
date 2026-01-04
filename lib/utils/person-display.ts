@@ -2,14 +2,14 @@ import type { Person } from "@/lib/types"
 
 /**
  * Get secondary identifier for a person to display in parentheses.
- * Priority: telegram_name → @telegram_nickname → gmail
+ * Priority: telegram_full_name → @telegram_username → gmail
  */
 export function getPersonSecondaryInfo(person: Person): string {
-  if (person.telegram_name) {
-    return person.telegram_name
+  if (person.telegram_full_name) {
+    return person.telegram_full_name
   }
-  if (person.telegram_nickname) {
-    return person.telegram_nickname
+  if (person.telegram_username) {
+    return person.telegram_username
   }
   if (person.gmail) {
     return person.gmail
@@ -35,8 +35,8 @@ export function formatPersonDisplayName(person: Person): string {
  */
 export function getPersonSearchString(person: Person): string {
   const parts = [person.real_name]
-  if (person.telegram_name) parts.push(person.telegram_name)
-  if (person.telegram_nickname) parts.push(person.telegram_nickname)
+  if (person.telegram_full_name) parts.push(person.telegram_full_name)
+  if (person.telegram_username) parts.push(person.telegram_username)
   if (person.gmail) parts.push(person.gmail)
   return parts.join(" ")
 }

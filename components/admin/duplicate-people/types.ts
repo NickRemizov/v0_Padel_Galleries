@@ -4,7 +4,7 @@ export interface DuplicatePerson {
   avatar_url: string | null
   photo_count: number
   gmail: string | null
-  telegram_nickname: string | null
+  telegram_username: string | null
   telegram_profile_url: string | null
   facebook_profile_url: string | null
   instagram_profile_url: string | null

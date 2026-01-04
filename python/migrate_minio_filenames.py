@@ -302,7 +302,7 @@ def migrate_avatars(supabase, minio_client, dry_run=True):
     print("\n=== Migrating avatars ===")
 
     result = supabase.table("people").select(
-        "id, real_name, telegram_name, avatar_url"
+        "id, real_name, telegram_full_name, avatar_url"
     ).not_.is_("avatar_url", "null").execute()
 
     total_migrated = 0
@@ -311,7 +311,7 @@ def migrate_avatars(supabase, minio_client, dry_run=True):
     for person in result.data or []:
         try:
             avatar_url = person.get('avatar_url', '')
-            name = person.get('real_name') or person.get('telegram_name') or 'unknown'
+            name = person.get('real_name') or person.get('telegram_full_name') or 'unknown'
 
             if not avatar_url:
                 continue

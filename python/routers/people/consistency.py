@@ -47,7 +47,7 @@ async def consistency_audit(
         
         # Get all people
         people_result = supabase_db.client.table("people").select(
-            "id, real_name, telegram_name"
+            "id, real_name, telegram_full_name"
         ).order("real_name").execute()
         
         people = people_result.data or []
@@ -92,7 +92,7 @@ async def consistency_audit(
         
         for person in people:
             person_id = person["id"]
-            person_name = person.get("real_name") or person.get("telegram_name") or "Unknown"
+            person_name = person.get("real_name") or person.get("telegram_full_name") or "Unknown"
             person_faces = faces_by_person.get(person_id, [])
             
             # Count photos (verified OR high confidence)

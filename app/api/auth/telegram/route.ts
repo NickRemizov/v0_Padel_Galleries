@@ -4,7 +4,7 @@ import { verifyTelegramAuth, isTelegramAuthDataValid } from "@/lib/telegram-auth
 
 /**
  * Find existing person by Telegram ID or nickname
- * Priority: telegram_id (never changes) > telegram_nickname (@username)
+ * Priority: telegram_id (never changes) > telegram_username (@username)
  */
 async function findExistingPerson(
   supabase: any,
@@ -22,14 +22,14 @@ async function findExistingPerson(
     return byTelegramId
   }
 
-  // Then try by telegram_nickname (@username)
+  // Then try by telegram_username (@username)
   if (username) {
     const nicknameVariants = [username.toLowerCase(), `@${username.toLowerCase()}`]
 
     const { data: byNickname } = await supabase
       .from("people")
-      .select("id, telegram_nickname")
-      .or(`telegram_nickname.ilike.${username},telegram_nickname.ilike.@${username}`)
+      .select("id, telegram_username")
+      .or(`telegram_username.ilike.${username},telegram_username.ilike.@${username}`)
       .limit(1)
       .single()
 
@@ -59,8 +59,8 @@ async function createPersonForUser(
     .insert({
       real_name: fullName,
       telegram_id: telegramId,
-      telegram_nickname: telegramNickname,
-      telegram_name: fullName,
+      telegram_username: telegramNickname,
+      telegram_full_name: fullName,
       created_by: "auto_login",
       show_in_players_gallery: false,  // Don't show auto-created users in players gallery
       show_photos_in_galleries: true,
@@ -95,8 +95,8 @@ async function updatePersonTelegramData(
     .from("people")
     .update({
       telegram_id: telegramId,  // Set if not already set
-      telegram_name: fullName,  // Always update (can change)
-      telegram_nickname: telegramNickname,  // Update if changed
+      telegram_full_name: fullName,  // Always update (can change)
+      telegram_username: telegramNickname,  // Update if changed
       updated_at: new Date().toISOString(),
     })
     .eq("id", personId)

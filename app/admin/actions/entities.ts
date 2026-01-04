@@ -38,8 +38,8 @@ export async function getPersonPhotosAction(personId: string) {
 export async function addPersonAction(data: {
   real_name: string
   gmail?: string
-  telegram_name?: string
-  telegram_nickname?: string
+  telegram_full_name?: string
+  telegram_username?: string
   telegram_profile_url?: string
   facebook_profile_url?: string
   instagram_profile_url?: string

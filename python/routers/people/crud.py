@@ -31,7 +31,7 @@ router = APIRouter()
 
 def _generate_unique_player_slug(
     name: str,
-    telegram_nickname: str = None,
+    telegram_username: str = None,
     exclude_id: str = None
 ) -> str:
     """Generate unique slug for a player."""
@@ -46,7 +46,7 @@ def _generate_unique_player_slug(
         if p.get("slug") and p["id"] != exclude_id
     }
 
-    base_slug = generate_player_slug(name, telegram_nickname)
+    base_slug = generate_player_slug(name, telegram_username)
     if not base_slug:
         base_slug = "player"
 
@@ -181,7 +181,7 @@ async def create_person(data: PersonCreate):
         # Auto-generate slug
         insert_data["slug"] = _generate_unique_player_slug(
             name=data.real_name or "",
-            telegram_nickname=data.telegram_nickname
+            telegram_username=data.telegram_username
         )
 
         result = supabase_db.client.table("people").insert(insert_data).execute()
@@ -234,7 +234,7 @@ async def update_person(identifier: UUID, data: PersonUpdate):
     try:
         # Get current person data
         result = supabase_db.client.table("people").select(
-            "id, real_name, telegram_nickname"
+            "id, real_name, telegram_username"
         ).eq("id", str(identifier)).execute()
         if not result.data:
             raise NotFoundError("Person", str(identifier))
@@ -248,12 +248,12 @@ async def update_person(identifier: UUID, data: PersonUpdate):
 
         # Regenerate slug if name or TG changed
         new_name = update_data.get("real_name", current.get("real_name"))
-        new_tg = update_data.get("telegram_nickname", current.get("telegram_nickname"))
+        new_tg = update_data.get("telegram_username", current.get("telegram_username"))
 
-        if "real_name" in update_data or "telegram_nickname" in update_data:
+        if "real_name" in update_data or "telegram_username" in update_data:
             update_data["slug"] = _generate_unique_player_slug(
                 name=new_name or "",
-                telegram_nickname=new_tg,
+                telegram_username=new_tg,
                 exclude_id=person_id
             )
             logger.info(f"Regenerated slug for person {person_id}: {update_data['slug']}")

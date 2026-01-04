@@ -133,8 +133,8 @@ export interface Person {
   slug?: string
   real_name: string
   telegram_id: number | null
-  telegram_name: string | null
-  telegram_nickname: string | null
+  telegram_full_name: string | null
+  telegram_username: string | null
   telegram_profile_url: string | null
   facebook_profile_url: string | null
   instagram_profile_url: string | null

@@ -70,12 +70,12 @@ async def get_face_statistics(top: int = 15):
         people_without_verified_count = total_people_count - people_with_verified_count
         
         # Get all people for name lookups
-        all_people_result = client.table("people").select("id, real_name, telegram_name").order("real_name").execute()
+        all_people_result = client.table("people").select("id, real_name, telegram_full_name").order("real_name").execute()
         all_people = all_people_result.data or []
         
         # People without verified faces list
         people_without_verified_list = [
-            {"id": p["id"], "name": p.get("real_name") or p.get("telegram_name") or "Без имени"}
+            {"id": p["id"], "name": p.get("real_name") or p.get("telegram_full_name") or "Без имени"}
             for p in all_people if p["id"] not in unique_people_with_verified
         ][:50]
         
@@ -145,15 +145,15 @@ async def get_face_statistics(top: int = 15):
                 if person:
                     few_photos_list.append({
                         "id": person_id,
-                        "name": person.get("real_name") or person.get("telegram_name") or "Без имени",
+                        "name": person.get("real_name") or person.get("telegram_full_name") or "Без имени",
                         "count": count
                     })
         few_photos_list.sort(key=lambda x: x["count"])
         
         # No avatar list
-        no_avatar_result = client.table("people").select("id, real_name, telegram_name").is_("avatar_url", "null").limit(50).execute()
+        no_avatar_result = client.table("people").select("id, real_name, telegram_full_name").is_("avatar_url", "null").limit(50).execute()
         no_avatar_list = [
-            {"id": p["id"], "name": p.get("real_name") or p.get("telegram_name") or "Без имени"}
+            {"id": p["id"], "name": p.get("real_name") or p.get("telegram_full_name") or "Без имени"}
             for p in (no_avatar_result.data or [])
         ]
         
@@ -164,7 +164,7 @@ async def get_face_statistics(top: int = 15):
             if person:
                 top_players.append({
                     "id": person_id,
-                    "name": person.get("real_name") or person.get("telegram_name") or "Без имени",
+                    "name": person.get("real_name") or person.get("telegram_full_name") or "Без имени",
                     "count": count
                 })
         

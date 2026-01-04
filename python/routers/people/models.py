@@ -11,8 +11,8 @@ import re
 class PersonCreate(BaseModel):
     real_name: str
     gmail: Optional[str] = None
-    telegram_name: Optional[str] = None
-    telegram_nickname: Optional[str] = None
+    telegram_full_name: Optional[str] = None
+    telegram_username: Optional[str] = None
     telegram_profile_url: Optional[str] = None
     facebook_profile_url: Optional[str] = None
     instagram_profile_url: Optional[str] = None
@@ -33,8 +33,8 @@ class PersonCreate(BaseModel):
 class PersonUpdate(BaseModel):
     real_name: Optional[str] = None
     gmail: Optional[str] = None
-    telegram_name: Optional[str] = None
-    telegram_nickname: Optional[str] = None
+    telegram_full_name: Optional[str] = None
+    telegram_username: Optional[str] = None
     telegram_profile_url: Optional[str] = None
     facebook_profile_url: Optional[str] = None
     instagram_profile_url: Optional[str] = None

@@ -36,7 +36,7 @@ export function PlayerCard({ player }: PlayerCardProps) {
   const lastName = nameParts.slice(1).join(" ") || "\u00A0"
 
   const photoCount = player.verified_photos_count || player._count?.photo_faces || 0
-  const telegramLink = getTelegramLink(player.telegram_nickname)
+  const telegramLink = getTelegramLink(player.telegram_username)
 
   return (
     <div onClick={handleCardClick} className="group cursor-pointer">
@@ -71,7 +71,7 @@ export function PlayerCard({ player }: PlayerCardProps) {
               className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
               onClick={(e) => e.stopPropagation()}
             >
-              <span className="underline decoration-dotted">{player.telegram_nickname}</span>
+              <span className="underline decoration-dotted">{player.telegram_username}</span>
               <ExternalLink className="h-3 w-3" />
             </a>
           ) : (

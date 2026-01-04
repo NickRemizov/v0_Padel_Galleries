@@ -141,16 +141,16 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="telegram_name">Имя в Telegram</Label>
-                  <Input id="telegram_name" name="telegram_name" defaultValue={person.telegram_name || ""} />
+                  <Label htmlFor="telegram_full_name">Имя в Telegram</Label>
+                  <Input id="telegram_full_name" name="telegram_full_name" defaultValue={person.telegram_full_name || ""} />
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="telegram_nickname">Username в Telegram</Label>
+                  <Label htmlFor="telegram_username">Username в Telegram</Label>
                   <Input
-                    id="telegram_nickname"
-                    name="telegram_nickname"
-                    defaultValue={person.telegram_nickname || ""}
+                    id="telegram_username"
+                    name="telegram_username"
+                    defaultValue={person.telegram_username || ""}
                     placeholder="@username"
                   />
                 </div>

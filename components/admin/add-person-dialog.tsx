@@ -112,8 +112,8 @@ export function AddPersonDialog({
     const data = {
       real_name: formData.get("real_name") as string,
       gmail: formData.get("gmail") as string | undefined,
-      telegram_name: formData.get("telegram_name") as string | undefined,
-      telegram_nickname: formData.get("telegram_nickname") as string | undefined,
+      telegram_full_name: formData.get("telegram_full_name") as string | undefined,
+      telegram_username: formData.get("telegram_username") as string | undefined,
       facebook_profile_url: formData.get("facebook_profile_url") as string | undefined,
       instagram_profile_url: formData.get("instagram_profile_url") as string | undefined,
       paddle_ranking: formData.get("paddle_ranking") ? Number(formData.get("paddle_ranking")) : undefined,
@@ -164,13 +164,13 @@ export function AddPersonDialog({
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="telegram_name">Имя в Telegram</Label>
-                <Input id="telegram_name" name="telegram_name" />
+                <Label htmlFor="telegram_full_name">Имя в Telegram</Label>
+                <Input id="telegram_full_name" name="telegram_full_name" />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="telegram_nickname">Username в Telegram</Label>
-                <Input id="telegram_nickname" name="telegram_nickname" placeholder="@username" />
+                <Label htmlFor="telegram_username">Username в Telegram</Label>
+                <Input id="telegram_username" name="telegram_username" placeholder="@username" />
               </div>
             </div>
 

@@ -52,7 +52,7 @@ class PeopleRepository(BaseRepository):
             response = (
                 self.table
                 .select("*")
-                .or_(f"real_name.ilike.%{query}%,telegram_name.ilike.%{query}%")
+                .or_(f"real_name.ilike.%{query}%,telegram_full_name.ilike.%{query}%")
                 .limit(limit)
                 .execute()
             )
@@ -142,7 +142,7 @@ class PeopleRepository(BaseRepository):
             # Get person details
             people_response = (
                 self.table
-                .select("id, real_name, telegram_name, avatar_url")
+                .select("id, real_name, telegram_full_name, avatar_url")
                 .in_("id", top_ids)
                 .execute()
             )
@@ -150,7 +150,7 @@ class PeopleRepository(BaseRepository):
             return [
                 PersonSummary(
                     id=p["id"],
-                    name=p.get("real_name") or p.get("telegram_name") or "Unknown",
+                    name=p.get("real_name") or p.get("telegram_full_name") or "Unknown",
                     avatar_url=p.get("avatar_url")
                 )
                 for p in people_response.data
@@ -166,7 +166,7 @@ class PeopleRepository(BaseRepository):
         try:
             response = (
                 self.table
-                .select("id, real_name, telegram_name")
+                .select("id, real_name, telegram_full_name")
                 .is_("avatar_url", "null")
                 .limit(limit)
                 .execute()
@@ -175,7 +175,7 @@ class PeopleRepository(BaseRepository):
             return [
                 PersonSummary(
                     id=p["id"],
-                    name=p.get("real_name") or p.get("telegram_name") or "Unknown",
+                    name=p.get("real_name") or p.get("telegram_full_name") or "Unknown",
                     avatar_url=None
                 )
                 for p in response.data
@@ -195,7 +195,7 @@ class PeopleRepository(BaseRepository):
         return Person(
             id=data["id"],
             real_name=data.get("real_name"),
-            telegram_name=data.get("telegram_name"),
+            telegram_full_name=data.get("telegram_full_name"),
             telegram_id=data.get("telegram_id"),
             email=data.get("email"),
             avatar_url=data.get("avatar_url"),

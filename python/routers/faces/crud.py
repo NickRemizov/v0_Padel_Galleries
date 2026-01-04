@@ -35,7 +35,7 @@ async def get_batch_photo_faces(
         if not request.photo_ids:
             return ApiResponse.ok([])
 
-        result = supabase_db.client.table("photo_faces").select("*, people(id, real_name, telegram_name)").in_("photo_id", request.photo_ids).execute()
+        result = supabase_db.client.table("photo_faces").select("*, people(id, real_name, telegram_full_name)").in_("photo_id", request.photo_ids).execute()
 
         logger.info(f"Found {len(result.data or [])} faces")
         return ApiResponse.ok(result.data or [])
