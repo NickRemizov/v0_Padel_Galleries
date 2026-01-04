@@ -1,43 +1,66 @@
-import { createClient } from "@/lib/supabase/server"
+import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+import { jwtDecode } from "jwt-decode"
+
+interface AdminPayload {
+  sub: string
+  email: string
+  name?: string
+  role: string
+  exp: number
+}
 
 /**
  * Server-side guard для защиты admin API роутов
- * Проверяет наличие валидной Supabase сессии и роли admin
+ * Проверяет наличие валидного admin_token JWT (от Google OAuth)
  *
- * @returns { user, error } - объект с пользователем или ошибкой
+ * @returns { admin, error } - объект с админом или ошибкой
  */
 export async function requireAdmin() {
-  const supabase = await createClient()
+  const cookieStore = await cookies()
+  const adminToken = cookieStore.get("admin_token")?.value
 
-  // Получаем текущего пользователя
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  // Если нет пользователя или ошибка аутентификации
-  if (authError || !user) {
+  if (!adminToken) {
     return {
-      user: null,
+      admin: null,
       error: NextResponse.json({ error: "Unauthorized: Authentication required" }, { status: 401 }),
     }
   }
 
-  // TODO: Включить проверку роли после настройки ролей в Supabase
-  /*
-  const userRole = user.app_metadata?.role || user.user_metadata?.role
+  try {
+    const payload = jwtDecode<AdminPayload>(adminToken)
 
-  if (userRole !== "admin") {
+    // Check expiration
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      return {
+        admin: null,
+        error: NextResponse.json({ error: "Unauthorized: Token expired" }, { status: 401 }),
+      }
+    }
+
+    // Check role exists
+    if (!payload.role) {
+      return {
+        admin: null,
+        error: NextResponse.json({ error: "Forbidden: No admin role" }, { status: 403 }),
+      }
+    }
+
     return {
-      user: null,
-      error: NextResponse.json({ error: "Forbidden: Admin role required" }, { status: 403 }),
+      admin: {
+        id: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        role: payload.role,
+      },
+      error: null,
+    }
+  } catch {
+    return {
+      admin: null,
+      error: NextResponse.json({ error: "Unauthorized: Invalid token" }, { status: 401 }),
     }
   }
-  */
-
-  // Всё ок, возвращаем пользователя
-  return { user, error: null }
 }
 
 /**
