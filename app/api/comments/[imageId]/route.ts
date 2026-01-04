@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { cookies } from "next/headers"
 
 // GET /api/comments/[imageId] - Get all comments for an image
 export async function GET(request: NextRequest, { params }: { params: Promise<{ imageId: string }> }) {
@@ -42,12 +41,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ imageId: string }> }) {
   try {
     const { imageId } = await params
-    const cookieStore = await cookies()
-    const userId = cookieStore.get("user_id")?.value
 
-    if (!userId) {
+    // Get user from telegram_user cookie
+    const userCookie = request.cookies.get("telegram_user")
+    if (!userCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const user = JSON.parse(userCookie.value)
+    const userId = user.id
 
     const { content } = await request.json()
 

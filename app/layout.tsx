@@ -2,7 +2,6 @@ import type React from "react"
 import type { Metadata } from "next"
 import { AuthProvider } from "@/lib/auth-context"
 
-import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { Suspense } from "react"
 import { Playfair_Display, Oswald as V0_Font_Oswald } from "next/font/google"
@@ -37,7 +36,6 @@ export default function RootLayout({
         <AuthProvider>
           <Suspense fallback={null}>{children}</Suspense>
         </AuthProvider>
-        <Analytics />
       </body>
     </html>
   )
