@@ -100,48 +100,68 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
             images_result = supabase_db.client.table("gallery_images").select(
                 "id, gallery_id, image_url, original_url, original_filename, file_size, width, height, display_order, download_count, created_at, slug"
             ).eq("gallery_id", gallery_id).order("original_filename").execute()
-            
+
             images = images_result.data or []
-            
+
             if images:
                 image_ids = [img["id"] for img in images]
 
-                # Get faces with person info, filter by hidden_by_user
-                # Privacy fields: show_photos_in_galleries, show_name_on_photos
+                # Get ALL faces (including hidden) to determine which photos to exclude
+                # A photo is hidden if: single person on photo AND that person hid it
                 faces_result = supabase_db.client.table("photo_faces").select(
                     "photo_id, person_id, hidden_by_user, people(id, real_name, show_photos_in_galleries, show_name_on_photos)"
-                ).in_("photo_id", image_ids).not_.is_("person_id", "null").eq("hidden_by_user", False).execute()
+                ).in_("photo_id", image_ids).not_.is_("person_id", "null").execute()
 
-                faces = faces_result.data or []
+                all_faces = faces_result.data or []
 
-                # Group people by photo, respecting privacy settings
-                # show_name_on_photos=false -> don't show name at all
-                # show_photos_in_galleries=false -> don't show in galleries
-                people_by_photo = {}
-                for face in faces:
+                # Group faces by photo to check hidden logic
+                faces_by_photo = {}
+                for face in all_faces:
                     photo_id = face["photo_id"]
+                    if photo_id not in faces_by_photo:
+                        faces_by_photo[photo_id] = []
+                    faces_by_photo[photo_id].append(face)
+
+                # Determine which photos to exclude (hidden by sole person)
+                excluded_photo_ids = set()
+                for photo_id, photo_faces in faces_by_photo.items():
+                    if len(photo_faces) == 1 and photo_faces[0].get("hidden_by_user"):
+                        excluded_photo_ids.add(photo_id)
+
+                # Filter out excluded photos
+                images = [img for img in images if img["id"] not in excluded_photo_ids]
+
+                # Group visible people by photo
+                # Privacy: show_name_on_photos=false -> don't show name
+                # Privacy: show_photos_in_galleries=false -> don't show in galleries
+                # Privacy: hidden_by_user=true -> don't show name (but photo still visible if others on it)
+                people_by_photo = {}
+                for face in all_faces:
+                    photo_id = face["photo_id"]
+                    if photo_id in excluded_photo_ids:
+                        continue
+                    if face.get("hidden_by_user"):
+                        continue
                     person = face.get("people")
                     if not person:
                         continue
-                    # Both flags must be true to show name on photo
                     if not person.get("show_photos_in_galleries", True):
                         continue
                     if not person.get("show_name_on_photos", True):
                         continue
                     if photo_id not in people_by_photo:
                         people_by_photo[photo_id] = []
-                    # Avoid duplicates
                     person_ids = [p["id"] for p in people_by_photo[photo_id]]
                     if person["id"] not in person_ids:
                         people_by_photo[photo_id].append({
                             "id": person["id"],
                             "name": person["real_name"]
                         })
-                
+
                 # Add people to each image
                 for img in images:
                     img["people"] = people_by_photo.get(img["id"], [])
-            
+
             gallery["gallery_images"] = images
             gallery["photo_count"] = len(images)
         else:
