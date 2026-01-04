@@ -6,6 +6,7 @@ GET/HEAD/OPTIONS requests are public.
 v1.0: Initial implementation
 v1.1: Fixed HTTPException handling from verify_supabase_token
 v2.0: Switched to admins table + Google OAuth JWT
+v2.1: Added fallback to Supabase JWT for legacy sessions
 """
 
 from fastapi import Request, HTTPException
@@ -18,8 +19,42 @@ from core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Google OAuth JWT secret
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "change_this_secret_key")
+# Supabase JWT secret (for legacy sessions)
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 ALGORITHM = "HS256"
+
+
+def decode_token(token: str) -> dict | None:
+    """
+    Try to decode JWT token using available secrets.
+    Returns payload dict or None if all attempts fail.
+    """
+    # 1. Try Google OAuth JWT (admin_token)
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+        if payload.get("role"):  # Google OAuth tokens have role
+            return payload
+    except Exception:
+        pass
+
+    # 2. Try Supabase JWT (legacy)
+    if SUPABASE_JWT_SECRET:
+        try:
+            payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=[ALGORITHM])
+            # Supabase tokens have 'sub' with user_id
+            if payload.get("sub"):
+                # Map Supabase payload to admin format
+                return {
+                    "sub": payload.get("sub"),
+                    "email": payload.get("email", ""),
+                    "role": "admin",  # Assume admin for Supabase users
+                }
+        except Exception:
+            pass
+
+    return None
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -45,7 +80,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     # Auth paths - public for OAuth flow
     AUTH_PATHS_PREFIX = "/api/admin/auth"
-    
+
     async def dispatch(self, request: Request, call_next):
         path = request.url.path.rstrip("/") or "/"  # Normalize trailing slash
         method = request.method
@@ -75,8 +110,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # 6. If token exists, validate and set request.state.admin
         if token:
-            try:
-                payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+            payload = decode_token(token)
+            if payload:
                 admin_email = payload.get("email", "")
                 admin_role = payload.get("role", "")
 
@@ -88,10 +123,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         "role": admin_role,
                     }
                     logger.debug(f"Auth middleware: Admin {admin_email} ({admin_role}) for {method} {path}")
-            except Exception as e:
+            else:
                 # Invalid token - for GET we continue without admin, for write we reject
                 if method not in ["GET", "HEAD"]:
-                    logger.warning(f"Auth middleware: Token verification failed: {e}")
+                    logger.warning(f"Auth middleware: Token verification failed for {method} {path}")
                     return JSONResponse(
                         {"detail": "Invalid or expired token"},
                         status_code=401
