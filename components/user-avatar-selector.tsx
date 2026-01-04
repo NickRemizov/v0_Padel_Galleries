@@ -98,6 +98,7 @@ export function UserAvatarSelector({
       const response = await fetch("/api/user/avatar", {
         method: "POST",
         body: formData,
+        credentials: "include",
       })
 
       if (!response.ok) {
