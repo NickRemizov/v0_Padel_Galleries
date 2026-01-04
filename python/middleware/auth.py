@@ -1,27 +1,37 @@
 """
 Authentication Middleware for FastAPI
+
 Protects all write operations (POST/PUT/PATCH/DELETE) with admin auth.
-GET/HEAD/OPTIONS requests are public.
+GET/HEAD/OPTIONS requests are PUBLIC by design — this is a public gallery site.
+
+Security model:
+- Public read: galleries, photos, players are public content
+- Protected write: only authenticated admins can create/update/delete
 
 v1.0: Initial implementation
 v1.1: Fixed HTTPException handling from verify_supabase_token
 v2.0: Switched to admins table + Google OAuth JWT
 v2.1: Added fallback to Supabase JWT for legacy sessions
+v2.2: Security hardening — require JWT_SECRET, proper exception handling
 """
 
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from jose import jwt
+from jose.exceptions import ExpiredSignatureError, JWTError
 import os
 
 from core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Google OAuth JWT secret
-JWT_SECRET = os.getenv("JWT_SECRET_KEY", "change_this_secret_key")
-# Supabase JWT secret (for legacy sessions)
+# Google OAuth JWT secret (REQUIRED)
+JWT_SECRET = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET_KEY environment variable is required")
+
+# Supabase JWT secret (optional, for legacy sessions)
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 ALGORITHM = "HS256"
 
@@ -36,7 +46,11 @@ def decode_token(token: str) -> dict | None:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
         if payload.get("role"):  # Google OAuth tokens have role
             return payload
-    except Exception:
+    except ExpiredSignatureError:
+        logger.debug("Google OAuth token expired")
+        return None
+    except JWTError:
+        # Not a Google OAuth token, try Supabase
         pass
 
     # 2. Try Supabase JWT (legacy)
@@ -51,8 +65,12 @@ def decode_token(token: str) -> dict | None:
                     "email": payload.get("email", ""),
                     "role": "admin",  # Assume admin for Supabase users
                 }
-        except Exception:
-            pass
+        except ExpiredSignatureError:
+            logger.debug("Supabase token expired")
+            return None
+        except JWTError as e:
+            logger.warning(f"Supabase JWT decode failed: {e}")
+            return None
 
     return None
 
