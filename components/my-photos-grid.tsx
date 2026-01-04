@@ -4,6 +4,16 @@ import { useState } from "react"
 import Link from "next/link"
 import Masonry from "react-masonry-css"
 import { Check, X, EyeOff, Eye } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface PhotoFace {
   id: string
@@ -20,12 +30,21 @@ interface PhotoFace {
     gallery_id: string
     image_url: string
     original_url: string
+    original_filename?: string
     galleries?: {
       id: string
       slug?: string
       title: string
+      shoot_date?: string
     }
   }
+}
+
+interface HideDialogData {
+  photoFaceId: string
+  filename: string
+  galleryTitle: string
+  galleryDate: string
 }
 
 interface MyPhotosGridProps {
@@ -36,12 +55,19 @@ interface MyPhotosGridProps {
 export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhotosGridProps) {
   const [photoFaces, setPhotoFaces] = useState(initialPhotoFaces)
   const [loading, setLoading] = useState<string | null>(null)
+  const [hideDialog, setHideDialog] = useState<HideDialogData | null>(null)
 
   const breakpointColumns = {
     default: 4,
     1536: 3,
     1024: 2,
     640: 1,
+  }
+
+  function formatDate(dateStr?: string): string {
+    if (!dateStr) return ""
+    const date = new Date(dateStr)
+    return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })
   }
 
   async function handleVerify(photoFaceId: string) {
@@ -77,10 +103,20 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
     }
   }
 
-  async function handleHide(photoFaceId: string) {
-    if (!confirm("Скрыть это фото из общего просмотра?")) {
-      return
-    }
+  function openHideDialog(photoFace: PhotoFace) {
+    const image = photoFace.gallery_images
+    setHideDialog({
+      photoFaceId: photoFace.id,
+      filename: image?.original_filename || image?.slug || "фото",
+      galleryTitle: image?.galleries?.title || "галереи",
+      galleryDate: formatDate(image?.galleries?.shoot_date),
+    })
+  }
+
+  async function confirmHide() {
+    if (!hideDialog) return
+    const photoFaceId = hideDialog.photoFaceId
+    setHideDialog(null)
     setLoading(photoFaceId)
     try {
       const res = await fetch(`/api/my-photos/${photoFaceId}/hide`, { method: "POST" })
@@ -210,7 +246,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
               ) : (
                 // Hide button
                 <button
-                  onClick={(e) => { e.preventDefault(); handleHide(photoFace.id) }}
+                  onClick={(e) => { e.preventDefault(); openHideDialog(photoFace) }}
                   disabled={isLoading}
                   className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-600 hover:bg-gray-700 text-white p-1.5 rounded-md disabled:opacity-50"
                   title="Скрыть из общего просмотра"
@@ -239,6 +275,25 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
           </div>
         )
       })}
+
+      {/* Hide confirmation dialog */}
+      <AlertDialog open={!!hideDialog} onOpenChange={(open) => !open && setHideDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Скрыть фото из общего доступа?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                Скрыть фото <strong>{hideDialog?.filename}</strong> из галереи{" "}
+                <strong>{hideDialog?.galleryTitle} {hideDialog?.galleryDate}</strong> из общего доступа?
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmHide}>Скрыть</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Masonry>
   )
 }

@@ -72,10 +72,12 @@ export default async function MyPhotosPage() {
         gallery_id,
         image_url,
         original_url,
+        original_filename,
         galleries (
           id,
           slug,
-          title
+          title,
+          shoot_date
         )
       )
     `)
