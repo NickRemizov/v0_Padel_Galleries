@@ -99,6 +99,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # Auth paths - public for OAuth flow
     AUTH_PATHS_PREFIX = "/api/admin/auth"
 
+    # User paths - authenticated by Next.js via telegram_user cookie
+    # These allow POST without admin token (Next.js validates user auth)
+    USER_PATHS_PREFIX = "/api/user"
+
     async def dispatch(self, request: Request, call_next):
         path = request.url.path.rstrip("/") or "/"  # Normalize trailing slash
         method = request.method
@@ -113,6 +117,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # 3. Auth paths — always allow (OAuth flow)
         if path.startswith(self.AUTH_PATHS_PREFIX):
+            return await call_next(request)
+
+        # 3b. User paths — allow (Next.js validates telegram_user cookie)
+        if path.startswith(self.USER_PATHS_PREFIX):
             return await call_next(request)
 
         # 4. Non-API paths (uploads, static) — always allow
