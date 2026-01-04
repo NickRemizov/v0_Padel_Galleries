@@ -288,15 +288,6 @@ async def delete_person(identifier: UUID):
         ).eq("person_id", person_id).execute()
         face_ids_in_index = [f["id"] for f in (faces_result.data or []) if f.get("insightface_descriptor")]
 
-        # Cleanup deprecated face_descriptors table (if exists)
-        for table_name in ["face_descriptors_DEPRECATED", "face_descriptors"]:
-            try:
-                supabase_db.client.table(table_name).delete().eq("person_id", person_id).execute()
-                logger.debug(f"Cleaned up {table_name} for person {person_id}")
-                break
-            except Exception:
-                continue
-
         # Unlink photo_faces (clear person_id, keep embeddings)
         supabase_db.client.table("photo_faces").update({
             "person_id": None,

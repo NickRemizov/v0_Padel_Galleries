@@ -23,7 +23,6 @@
 
 ### Phase 4: Repositories
 - [x] `repositories/base.py` - BaseRepository with generic CRUD
-- [x] `repositories/faces_repo.py` - FacesRepository
 - [x] `repositories/people_repo.py` - PeopleRepository
 - [x] `repositories/galleries_repo.py` - GalleriesRepository
 - [x] `repositories/config_repo.py` - ConfigRepository
