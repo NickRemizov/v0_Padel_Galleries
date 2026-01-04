@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 
 // GET /api/favorites/[imageId] - Check if image is favorited
 export async function GET(request: NextRequest, { params }: { params: Promise<{ imageId: string }> }) {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const user = JSON.parse(userCookie.value)
     const userId = user.id
 
-    const supabase = await createClient()
+    const supabase = createServiceClient()
 
     const { data, error } = await supabase
       .from("favorites")
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const user = JSON.parse(userCookie.value)
     const userId = user.id
 
-    const supabase = await createClient()
+    const supabase = createServiceClient()
 
     // Check if already favorited
     const { data: existing } = await supabase

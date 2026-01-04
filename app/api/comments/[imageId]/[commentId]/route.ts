@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { cookies } from "next/headers"
+import { createServiceClient } from "@/lib/supabase/service"
 
 // DELETE /api/comments/[imageId]/[commentId] - Delete a comment
 export async function DELETE(
@@ -9,14 +8,15 @@ export async function DELETE(
 ) {
   try {
     const { commentId } = await params
-    const cookieStore = await cookies()
-    const userId = cookieStore.get("user_id")?.value
-
-    if (!userId) {
+    const userCookie = request.cookies.get("telegram_user")
+    if (!userCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const supabase = await createClient()
+    const user = JSON.parse(userCookie.value)
+    const userId = user.id
+
+    const supabase = createServiceClient()
 
     // Check if comment belongs to user
     const { data: comment } = await supabase.from("comments").select("user_id").eq("id", commentId).single()

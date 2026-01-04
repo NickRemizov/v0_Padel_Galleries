@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 import { verifyTelegramAuth, isTelegramAuthDataValid } from "@/lib/telegram-auth"
 
 // Try to find matching person by Telegram name/nickname
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create or update user in database
-    const supabase = await createClient()
+    const supabase = createServiceClient()
 
     const { data: existingUser } = await supabase.from("users").select("*").eq("telegram_id", id).single()
 

@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 
 // GET /api/comments/[imageId] - Get all comments for an image
 export async function GET(request: NextRequest, { params }: { params: Promise<{ imageId: string }> }) {
   try {
     const { imageId } = await params
-    const supabase = await createClient()
+    const supabase = createServiceClient()
 
     const { data: comments, error } = await supabase
       .from("comments")
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Comment is too long (max 1000 characters)" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createServiceClient()
 
     const { data: comment, error } = await supabase
       .from("comments")

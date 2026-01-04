@@ -1,18 +1,18 @@
-import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { cookies } from "next/headers"
+import { type NextRequest, NextResponse } from "next/server"
+import { createServiceClient } from "@/lib/supabase/service"
 
 // GET /api/favorites - Get all favorites for current user
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const userId = cookieStore.get("user_id")?.value
-
-    if (!userId) {
+    const userCookie = request.cookies.get("telegram_user")
+    if (!userCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const supabase = await createClient()
+    const user = JSON.parse(userCookie.value)
+    const userId = user.id
+
+    const supabase = createServiceClient()
 
     const { data: favorites, error } = await supabase
       .from("favorites")
