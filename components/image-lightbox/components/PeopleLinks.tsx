@@ -2,8 +2,10 @@
 
 /**
  * People Links
- * 
+ *
  * Displays links to verified people on the photo
+ *
+ * Privacy: hasGallery=false means name is shown but not clickable
  */
 
 import Link from "next/link"
@@ -20,7 +22,7 @@ export function PeopleLinks({ verifiedPeople, currentPlayerId, hideUI }: PeopleL
   if (verifiedPeople.length === 0) return null
 
   return (
-    <div 
+    <div
       className={cn(
         "absolute md:top-4 md:left-4 bottom-4 left-4 md:bottom-auto flex flex-col gap-1 z-20 transition-opacity duration-200",
         hideUI && "opacity-0 pointer-events-none"
@@ -28,15 +30,25 @@ export function PeopleLinks({ verifiedPeople, currentPlayerId, hideUI }: PeopleL
     >
       {verifiedPeople.map((person) => {
         const isCurrentPlayer = person.id === currentPlayerId
+        const hasGallery = person.hasGallery !== false  // Default true
         const personSlug = person.slug || person.id
-        return isCurrentPlayer ? (
-          <div
-            key={person.id}
-            className="bg-black/70 text-white/50 px-3 py-1.5 rounded-full text-sm cursor-default"
-          >
-            {person.name}
-          </div>
-        ) : (
+
+        // No link if: current player OR no gallery
+        if (isCurrentPlayer || !hasGallery) {
+          return (
+            <div
+              key={person.id}
+              className={cn(
+                "bg-black/70 px-3 py-1.5 rounded-full text-sm cursor-default",
+                isCurrentPlayer ? "text-white/50" : "text-white"
+              )}
+            >
+              {person.name}
+            </div>
+          )
+        }
+
+        return (
           <Link
             key={person.id}
             href={`/players/${personSlug}`}

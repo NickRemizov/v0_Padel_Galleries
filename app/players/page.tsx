@@ -25,10 +25,10 @@ export default async function PlayersPage() {
       return renderPage([])
     }
 
-    // Filter players: show_in_players_gallery=true AND has avatar
+    // Filter players: show_in_players_gallery=true AND create_personal_gallery=true AND has avatar
     // Map to expected format with _count and _mostRecentGalleryDate
     const filteredPlayers = response.data
-      .filter((p: any) => p.show_in_players_gallery && p.avatar_url)
+      .filter((p: any) => p.show_in_players_gallery && p.create_personal_gallery !== false && p.avatar_url)
       .map((player: any) => ({
         ...player,
         _count: {

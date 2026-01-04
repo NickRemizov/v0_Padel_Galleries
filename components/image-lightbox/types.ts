@@ -35,4 +35,5 @@ export interface VerifiedPerson {
   id: string
   slug?: string
   name: string
+  hasGallery?: boolean  // If false, name is shown but not clickable
 }

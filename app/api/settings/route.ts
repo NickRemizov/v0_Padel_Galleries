@@ -43,6 +43,17 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 })
     }
 
+    // Enforce cascading logic for privacy settings:
+    // show_name_on_photos=false -> create_personal_gallery=false, show_in_players_gallery=false
+    // create_personal_gallery=false -> show_in_players_gallery=false
+    if (updateData.show_name_on_photos === false) {
+      updateData.create_personal_gallery = false
+      updateData.show_in_players_gallery = false
+    }
+    if (updateData.create_personal_gallery === false) {
+      updateData.show_in_players_gallery = false
+    }
+
     // Validate gmail format if provided
     if (updateData.gmail && typeof updateData.gmail === "string") {
       if (!updateData.gmail.match(/^[a-zA-Z0-9._%+-]+@gmail\.com$/)) {

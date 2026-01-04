@@ -183,8 +183,12 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
       {/* Privacy Settings */}
       <div className="bg-card rounded-lg border p-6">
         <h3 className="text-lg font-semibold mb-4">Приватность</h3>
+        <p className="text-sm text-muted-foreground mb-6">
+          Настройки влияют друг на друга: отключение нижнего переключателя автоматически отключает верхние
+        </p>
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          {/* Level 3: show_in_players_gallery (depends on create_personal_gallery) */}
+          <div className={`flex items-center justify-between ${!createPersonalGallery ? "opacity-50" : ""}`}>
             <div>
               <Label htmlFor="show_in_players_gallery">Показывать в галерее игроков</Label>
               <p className="text-sm text-muted-foreground">
@@ -195,23 +199,33 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
               id="show_in_players_gallery"
               checked={showInPlayersGallery}
               onCheckedChange={setShowInPlayersGallery}
+              disabled={!createPersonalGallery}
             />
           </div>
 
-          <div className="flex items-center justify-between">
+          {/* Level 2: create_personal_gallery (depends on show_name_on_photos) */}
+          <div className={`flex items-center justify-between ${!showNameOnPhotos ? "opacity-50" : ""}`}>
             <div>
               <Label htmlFor="create_personal_gallery">Создавать галерею моих фото</Label>
               <p className="text-sm text-muted-foreground">
-                Отдельная страница со всеми вашими фотографиями
+                Имя на фото будет ссылкой на все ваши фотографии
               </p>
             </div>
             <Switch
               id="create_personal_gallery"
               checked={createPersonalGallery}
-              onCheckedChange={setCreatePersonalGallery}
+              onCheckedChange={(checked) => {
+                setCreatePersonalGallery(checked)
+                // Cascade: if turning off, also turn off dependent
+                if (!checked) {
+                  setShowInPlayersGallery(false)
+                }
+              }}
+              disabled={!showNameOnPhotos}
             />
           </div>
 
+          {/* Level 1: show_name_on_photos (master) */}
           <div className="flex items-center justify-between">
             <div>
               <Label htmlFor="show_name_on_photos">Подписывать меня на фото</Label>
@@ -222,9 +236,18 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
             <Switch
               id="show_name_on_photos"
               checked={showNameOnPhotos}
-              onCheckedChange={setShowNameOnPhotos}
+              onCheckedChange={(checked) => {
+                setShowNameOnPhotos(checked)
+                // Cascade: if turning off, also turn off all dependents
+                if (!checked) {
+                  setCreatePersonalGallery(false)
+                  setShowInPlayersGallery(false)
+                }
+              }}
             />
           </div>
+
+          <hr className="my-4" />
 
           <div className="flex items-center justify-between">
             <div>
