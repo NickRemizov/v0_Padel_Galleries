@@ -2,14 +2,11 @@
 Descriptor Regeneration Endpoints
 
 Endpoints:
-- POST /generate-descriptors
 - POST /regenerate-missing-descriptors
 - POST /regenerate-single-descriptor
 - POST /regenerate-unknown-descriptors
 """
 
-from typing import List, Dict, Any
-from pydantic import BaseModel
 from fastapi import APIRouter, Query, Depends
 
 from core.config import VERSION
@@ -18,92 +15,10 @@ from core.exceptions import DescriptorError, FaceNotFoundError
 from core.logging import get_logger
 from utils.geometry import calculate_iou
 
-
-class GenerateDescriptorsRequest(BaseModel):
-    """Request schema for generating descriptors for manually tagged faces."""
-    image_url: str
-    faces: List[Dict[str, Any]]  # Each face has person_id, bbox, and optionally photo_id
-
 from ..dependencies import get_face_service, get_supabase_client
 
 logger = get_logger(__name__)
 router = APIRouter()
-
-
-@router.post("/generate-descriptors")
-async def generate_descriptors(
-    request: GenerateDescriptorsRequest,
-    face_service=Depends(get_face_service)
-):
-    """
-    Generate descriptors for manually tagged faces.
-    Called when admin manually assigns people to faces.
-    """
-    supabase_client = get_supabase_client()
-    try:
-        logger.info(f"[v{VERSION}] ===== GENERATE DESCRIPTORS FOR MANUAL TAGS =====")
-        logger.info(f"[v{VERSION}] Image URL: {request.image_url}")
-        logger.info(f"[v{VERSION}] Faces to process: {len(request.faces)}")
-        
-        # Detect all faces on the image
-        detected_faces = await face_service.detect_faces(request.image_url)
-        logger.info(f"[v{VERSION}] Detected {len(detected_faces)} faces on image")
-        
-        generated_count = 0
-        
-        for tagged_face in request.faces:
-            person_id = tagged_face["person_id"]
-            tagged_bbox = tagged_face["bbox"]
-            
-            # Find matching detected face by IoU
-            best_match = None
-            best_iou = 0.0
-            
-            for detected_face in detected_faces:
-                detected_bbox = {
-                    "x": float(detected_face["bbox"][0]),
-                    "y": float(detected_face["bbox"][1]),
-                    "width": float(detected_face["bbox"][2] - detected_face["bbox"][0]),
-                    "height": float(detected_face["bbox"][3] - detected_face["bbox"][1]),
-                }
-                
-                iou = calculate_iou(tagged_bbox, detected_bbox)
-                
-                if iou > best_iou:
-                    best_iou = iou
-                    best_match = detected_face
-            
-            if best_match and best_iou > 0.3:  # 30% overlap threshold
-                logger.info(f"[v{VERSION}] Found matching face for person {person_id} (IoU: {best_iou:.2f})")
-                
-                # Save descriptor to database
-                descriptor = best_match["embedding"].tolist()
-                photo_id = tagged_face.get("photo_id")
-                
-                if photo_id:
-                    success = await supabase_client.save_face_descriptor(
-                        person_id=person_id,
-                        descriptor=descriptor,
-                        source_image_id=photo_id
-                    )
-                    
-                    if success:
-                        generated_count += 1
-                        logger.info(f"[v{VERSION}] ✓ Descriptor saved for person {person_id}")
-            else:
-                logger.warning(f"[v{VERSION}] No matching face for person {person_id} (best IoU: {best_iou:.2f})")
-        
-        logger.info(f"[v{VERSION}] ✓ Generated {generated_count}/{len(request.faces)} descriptors")
-        logger.info(f"[v{VERSION}] ===== END GENERATE DESCRIPTORS =====")
-        
-        return ApiResponse.ok({
-            "generated": generated_count,
-            "total": len(request.faces)
-        }).model_dump()
-        
-    except Exception as e:
-        logger.error(f"[v{VERSION}] ERROR generating descriptors: {str(e)}", exc_info=True)
-        raise DescriptorError(f"Failed to generate descriptors: {str(e)}")
 
 
 @router.post("/regenerate-missing-descriptors")

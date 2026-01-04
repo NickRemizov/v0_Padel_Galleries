@@ -3,9 +3,9 @@ Descriptor Router Package
 Descriptor generation and regeneration endpoints
 
 v2.0: Modular structure (refactored from monolithic descriptors.py)
+v2.1: Removed dead /generate-descriptors endpoint
 
 Endpoints:
-- POST /generate-descriptors
 - GET /missing-descriptors-count
 - GET /missing-descriptors-list
 - POST /regenerate-missing-descriptors
