@@ -64,18 +64,24 @@ app = FastAPI(
 # CORS Configuration
 # ============================================================
 
-vercel_preview_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.vercel\.app")
+# Production origins (set via ALLOWED_ORIGINS env var)
+# Default: vlcpadel.com + localhost for dev
+DEFAULT_ORIGINS = [
+    "https://vlcpadel.com",
+    "https://www.vlcpadel.com",
+    "http://localhost:3000",
+]
 
-def is_origin_allowed(origin: str) -> bool:
-    if origin in settings.cors_origins or "*" in settings.cors_origins:
-        return True
-    if vercel_preview_pattern.match(origin):
-        return True
-    return False
+# Use env var if set, otherwise defaults
+cors_origins = settings.cors_origins if settings.cors_origins != ["*"] else DEFAULT_ORIGINS
+
+# Vercel preview deployments pattern
+vercel_preview_regex = r"https://[a-zA-Z0-9-]+\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
+    allow_origin_regex=vercel_preview_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -83,7 +89,7 @@ app.add_middleware(
     max_age=3600,
 )
 
-logger.info("CORS middleware configured")
+logger.info(f"CORS configured for origins: {cors_origins} + Vercel previews")
 
 # ============================================================
 # Auth Middleware (v4.2)
