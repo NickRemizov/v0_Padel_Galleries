@@ -22,6 +22,7 @@ from .helpers import (
     resolve_person,
     get_person_id,
     calculate_people_stats,
+    PUBLIC_FIELDS,
 )
 
 logger = get_logger(__name__)
@@ -65,9 +66,9 @@ async def get_people(
     - for_gallery: Include photo_count and most_recent_gallery_date (optimized for /players page)
     """
     supabase_db = get_supabase_db()
-    
+
     try:
-        result = supabase_db.client.table("people").select("*").order("real_name").execute()
+        result = supabase_db.client.table("people").select(PUBLIC_FIELDS).order("real_name").execute()
         people = result.data or []
         
         # For players gallery page - add photo_count and most_recent_gallery_date

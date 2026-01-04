@@ -11,6 +11,15 @@ from core.slug import resolve_identifier
 
 logger = get_logger(__name__)
 
+# Public fields - exclude private data (gmail, telegram_profile_url)
+PUBLIC_FIELDS = (
+    "id, real_name, telegram_name, telegram_nickname, "
+    "facebook_profile_url, instagram_profile_url, paddle_ranking, "
+    "avatar_url, show_in_players_gallery, show_photos_in_galleries, "
+    "custom_confidence_threshold, use_custom_confidence, category, "
+    "slug, created_by, created_at, updated_at, tournament_results"
+)
+
 
 def get_supabase_db():
     """Get supabase_db instance from package globals."""
@@ -25,13 +34,14 @@ def get_face_service():
 
 
 def resolve_person(identifier: str) -> Optional[dict]:
-    """Resolve person by ID or slug."""
+    """Resolve person by ID or slug. Returns public fields only."""
     supabase_db = get_supabase_db()
     return resolve_identifier(
         supabase_db.client,
         "people",
         identifier,
-        slug_column="slug"
+        slug_column="slug",
+        select=PUBLIC_FIELDS
     )
 
 
