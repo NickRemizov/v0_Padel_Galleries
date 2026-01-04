@@ -107,8 +107,8 @@ export function RecognitionStatsDialog() {
                         <tr key={person.id} className={index % 2 === 0 ? "bg-background" : "bg-muted/50"}>
                           <td className="p-3">
                             {person.name}
-                            {person.telegramName && (
-                              <span className="text-sm text-muted-foreground ml-2">({person.telegramName})</span>
+                            {person.telegram_full_name && (
+                              <span className="text-sm text-muted-foreground ml-2">({person.telegram_full_name})</span>
                             )}
                           </td>
                           <td className="text-right p-3">{person.verifiedPhotos}</td>
