@@ -2,16 +2,10 @@ import { NextResponse, type NextRequest } from "next/server"
 
 /**
  * Admin Auth Middleware
- *
  * Checks for admin_token cookie (JWT from Google OAuth).
- * Redirects to login if not authenticated.
- *
- * v1.0: Initial Supabase auth
- * v2.0: Migrated to admin_token JWT (Google OAuth)
  */
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next({ request })
-
   const path = request.nextUrl.pathname
 
   // Only protect /admin/* routes
@@ -32,8 +26,12 @@ export async function updateSession(request: NextRequest) {
   // Check for admin_token cookie
   const adminToken = request.cookies.get("admin_token")?.value
 
+  // DEBUG: Log all cookies
+  const allCookies = request.cookies.getAll()
+  console.log(`[Middleware] Path: ${path}, Cookies: [${allCookies.map(c => c.name).join(", ")}], admin_token: ${adminToken ? "YES" : "NO"}`)
+
   if (!adminToken) {
-    // Not authenticated - redirect to login
+    console.log(`[Middleware] No admin_token, redirecting to login`)
     const url = request.nextUrl.clone()
     url.pathname = "/admin/login"
     return NextResponse.redirect(url)

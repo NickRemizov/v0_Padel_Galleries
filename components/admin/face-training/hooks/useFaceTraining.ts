@@ -14,14 +14,12 @@ export function useFaceTraining() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [trainingProgress, setTrainingProgress] = useState(0)
   const [fastapiError, setFastapiError] = useState(false)
-  const [httpsRequired, setHttpsRequired] = useState(false)
   const [localConfig, setLocalConfig] = useState<Config>(DEFAULT_CONFIG)
 
   // Загрузка данных
   const loadData = useCallback(async () => {
     setLoading(true)
     setFastapiError(false)
-    setHttpsRequired(false)
     try {
       console.log("[v0] Loading training data from API routes")
 
@@ -251,7 +249,6 @@ export function useFaceTraining() {
     training,
     trainingProgress,
     fastapiError,
-    httpsRequired,
     lastSession,
     needsRetraining,
     // Действия

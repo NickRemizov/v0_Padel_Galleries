@@ -13,8 +13,6 @@ interface AdminPayload {
 /**
  * Server-side guard для защиты admin API роутов
  * Проверяет наличие валидного admin_token JWT (от Google OAuth)
- *
- * @returns { admin, error } - объект с админом или ошибкой
  */
 export async function requireAdmin() {
   const cookieStore = await cookies()
@@ -30,7 +28,6 @@ export async function requireAdmin() {
   try {
     const payload = jwtDecode<AdminPayload>(adminToken)
 
-    // Check expiration
     if (payload.exp && payload.exp * 1000 < Date.now()) {
       return {
         admin: null,
@@ -38,7 +35,6 @@ export async function requireAdmin() {
       }
     }
 
-    // Check role exists
     if (!payload.role) {
       return {
         admin: null,
@@ -65,28 +61,21 @@ export async function requireAdmin() {
 
 /**
  * Get auth headers for protected API calls to FastAPI backend
- *
- * Supports both:
- * - admin_token cookie (Google OAuth) - preferred
- * - Supabase session (legacy) - fallback
+ * Uses admin_token cookie from Google OAuth
  */
 export async function getAuthHeaders(): Promise<Record<string, string>> {
   const cookieStore = await cookies()
-
-  // 1. Try admin_token (Google OAuth)
   const adminToken = cookieStore.get("admin_token")?.value
+
+  // DEBUG: Log all cookies to understand what's happening
+  const allCookies = cookieStore.getAll()
+  console.log("[getAuthHeaders] All cookies:", allCookies.map(c => c.name))
+  console.log("[getAuthHeaders] admin_token exists:", !!adminToken)
+
   if (adminToken) {
     return { "Authorization": `Bearer ${adminToken}` }
   }
 
-  // 2. Fallback: try Supabase session
-  const { createClient } = await import("@/lib/supabase/server")
-  const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-
-  if (session?.access_token) {
-    return { "Authorization": `Bearer ${session.access_token}` }
-  }
-
+  console.error("[getAuthHeaders] NO admin_token cookie found!")
   return {}
 }

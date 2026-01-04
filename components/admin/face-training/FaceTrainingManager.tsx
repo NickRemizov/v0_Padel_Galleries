@@ -10,7 +10,7 @@
 import { Loader2 } from "lucide-react"
 
 import { useFaceTraining } from "./hooks"
-import { ErrorBanners, ConfigurationCard } from "./components"
+import { ConfigurationCard } from "./components"
 
 export function FaceTrainingManager() {
   const {
@@ -18,7 +18,6 @@ export function FaceTrainingManager() {
     setLocalConfig,
     loading,
     fastapiError,
-    httpsRequired,
     saveConfig,
     resetConfig,
   } = useFaceTraining()
@@ -39,9 +38,6 @@ export function FaceTrainingManager() {
           Параметры качества и порогов распознавания лиц
         </p>
       </div>
-
-      {/* Предупреждения об ошибках */}
-      <ErrorBanners httpsRequired={httpsRequired} fastapiError={fastapiError} />
 
       {/* Настройки */}
       <ConfigurationCard

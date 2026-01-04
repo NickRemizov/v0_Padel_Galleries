@@ -45,6 +45,7 @@ import { useEffect, useState } from "react"
 import { getCitiesAction } from "@/app/admin/actions/entities"
 import { useAdminAuth } from "./admin-auth-provider"
 import { logout, hasMinRole } from "@/lib/admin-auth"
+import { BackendStatusIndicator } from "./backend-status-indicator"
 
 interface City {
   id: string
@@ -120,6 +121,7 @@ export function AdminNav() {
           <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
             {APP_VERSION}
           </span>
+          <BackendStatusIndicator />
         </div>
 
         <nav className="flex items-center gap-1">
