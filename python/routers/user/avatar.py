@@ -12,10 +12,10 @@ from core.slug import to_slug
 from infrastructure.minio_storage import get_minio_storage
 
 
-def get_supabase_db():
-    """Get global supabase_db instance."""
+def get_supabase_client():
+    """Get global supabase client instance."""
     from main import supabase_service
-    return supabase_service.db
+    return supabase_service.client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -44,7 +44,7 @@ async def update_user_avatar(
     Returns:
         New avatar URL
     """
-    supabase_db = get_supabase_db()
+    supabase = get_supabase_client()
     minio = get_minio_storage()
 
     try:
@@ -55,7 +55,7 @@ async def update_user_avatar(
             raise HTTPException(400, "Invalid person_id format")
 
         # Get person data (including current avatar)
-        result = supabase_db.client.table("people").select(
+        result = supabase.table("people").select(
             "id, real_name, avatar_url"
         ).eq("id", person_id).execute()
 
@@ -105,7 +105,7 @@ async def update_user_avatar(
         new_avatar_url = upload_result["url"]
 
         # Update person.avatar_url
-        supabase_db.client.table("people").update({
+        supabase.table("people").update({
             "avatar_url": new_avatar_url
         }).eq("id", person_id).execute()
 
