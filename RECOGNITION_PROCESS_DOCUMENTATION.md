@@ -106,13 +106,10 @@
 | `person_id` | uuid | FK → people (nullable) |
 | `insightface_descriptor` | vector(512) | **Эмбеддинг лица** |
 | `insightface_bbox` | jsonb | Координаты лица [x1, y1, x2, y2] |
-| `insightface_confidence` | float | Уверенность детекции (0-1) |
+| `insightface_det_score` | float | Уверенность детекции (0-1) |
 | `recognition_confidence` | float | Уверенность распознавания (0-1) |
 | `verified` | boolean | Подтверждено вручную |
 | `blur_score` | float | Резкость (Laplacian variance) |
-
-> ⚠️ **DEPRECATED:** Таблица `face_descriptors` переименована в `face_descriptors_DEPRECATED`.
-> Все эмбеддинги теперь хранятся в `photo_faces.insightface_descriptor`.
 
 ---
 

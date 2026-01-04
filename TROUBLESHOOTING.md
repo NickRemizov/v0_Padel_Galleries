@@ -84,7 +84,7 @@ console.log("[v0] Face metrics:", {
 3. **Ошибка в обучении**
    - Найдите неправильно верифицированные лица:
    \`\`\`sql
-   SELECT * FROM face_descriptors
+   SELECT * FROM photo_faces
    WHERE person_id = 'wrong-person-id'
    AND verified = true;
    \`\`\`
@@ -129,8 +129,8 @@ console.log("[v0] Face metrics:", {
 
 1. **Добавьте индексы:**
    \`\`\`sql
-   CREATE INDEX IF NOT EXISTS idx_face_descriptors_embedding 
-   ON face_descriptors USING ivfflat (embedding vector_cosine_ops);
+   CREATE INDEX IF NOT EXISTS idx_photo_faces_person_id
+   ON photo_faces(person_id);
    \`\`\`
 
 2. **Оптимизируйте запросы:**
@@ -227,7 +227,7 @@ console.log("[v0] Face metrics:", {
 
 3. **Проверьте, есть ли верифицированные лица:**
    \`\`\`sql
-   SELECT COUNT(*) FROM face_descriptors WHERE verified = true;
+   SELECT COUNT(*) FROM photo_faces WHERE verified = true;
    \`\`\`
    - Если 0, нужно сначала верифицировать несколько лиц
 

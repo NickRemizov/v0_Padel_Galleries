@@ -1,7 +1,7 @@
 # Схема базы данных Padel Galleries
 
-**Дата обновления:** 22.12.2025  
-**Версия:** 3.9 (Removed deprecated fields from documentation)
+**Дата обновления:** 04.01.2026
+**Версия:** 4.0 (Dropped deprecated fields from database)
 
 ---
 
@@ -681,20 +681,14 @@ ALTER TABLE photographers ADD COLUMN person_id UUID REFERENCES people(id);
 
 ## Миграции (выполненные)
 
-### 22.12.2025 — insightface_confidence → insightface_det_score ✅
+### 04.01.2026 — DROP deprecated fields ✅
 \`\`\`sql
--- Скопировать данные из старой колонки в новую
-UPDATE photo_faces 
-SET insightface_det_score = insightface_confidence 
-WHERE insightface_det_score IS NULL AND insightface_confidence IS NOT NULL;
-
--- Переименовать старую колонку в DEPRECATED
-ALTER TABLE photo_faces 
-RENAME COLUMN insightface_confidence TO insightface_confidence_DEPRECATED;
+DROP TABLE IF EXISTS face_descriptors_DEPRECATED CASCADE;
+DROP TABLE IF EXISTS face_descriptors CASCADE;
+ALTER TABLE photo_faces DROP COLUMN IF EXISTS bounding_box_DEPRECATED;
+ALTER TABLE photo_faces DROP COLUMN IF EXISTS confidence_DEPRECATED;
 \`\`\`
-**Причина:** Устранение путаницы между `insightface_confidence` (detection) и `recognition_confidence` (recognition). Теперь названия однозначны:
-- `insightface_det_score` — detection score (насколько уверен что это лицо)
-- `recognition_confidence` — recognition score (насколько похоже на известного человека)
+**Файл:** `migrations/20260104_drop_deprecated_fields.sql`
 
 ### 20.12.2025 — excluded_from_index ✅
 \`\`\`sql
@@ -745,18 +739,11 @@ VALUES
 
 ## История изменений
 
-### v3.9 (22.12.2025) — Cleanup deprecated documentation ✅
-- **УДАЛЕНО:** Все упоминания deprecated полей из документации
-- **УДАЛЕНА:** Секция "Legacy поля переименованы"
-- **УДАЛЕНА:** Таблица face_descriptors_DEPRECATED из документации
-- **УДАЛЕНА:** Планируемая миграция удаления deprecated
-- **Цель:** Исключить возможность случайного использования deprecated полей
-
-### v3.8 (22.12.2025) — Renamed insightface_confidence → insightface_det_score ✅
-- **ПЕРЕИМЕНОВАНО:** `photo_faces.insightface_confidence` → `insightface_confidence_DEPRECATED`
-- **АКТИВНОЕ ПОЛЕ:** `photo_faces.insightface_det_score` — detection score от InsightFace
-- **ОБНОВЛЁН код:** detect.py, supabase_database.py, face-tagging-dialog.tsx
-- **Цель:** Устранение путаницы между detection и recognition confidence
+### v4.0 (04.01.2026) — DROP deprecated fields ✅
+- **УДАЛЕНА таблица:** `face_descriptors_DEPRECATED` (все эмбеддинги в photo_faces)
+- **УДАЛЕНЫ колонки:** `photo_faces.bounding_box_DEPRECATED`, `photo_faces.confidence_DEPRECATED`
+- **УДАЛЁН мёртвый код:** `repositories/faces_repo.py`
+- **Миграция:** `migrations/20260104_drop_deprecated_fields.sql`
 
 ### v3.7 (20.12.2025) — Excluded embeddings ✅
 - **ДОБАВЛЕНО:** `photo_faces.excluded_from_index` — флаг исключения из HNSW индекса
@@ -791,7 +778,6 @@ VALUES
 - **ДОБАВЛЕНЫ поля в `photo_faces`:** `insightface_det_score`, `face_category`
 - **ДОБАВЛЕНО поле в `gallery_images`:** `has_been_processed`
 - **ИСПРАВЛЕНО:** `photo_faces.verified_by` теперь uuid (было text)
-- **ИСПРАВЛЕНО:** `face_descriptors_deprecated.source_image_id` FK → gallery_images.id
 
 ### v3.4 (14.12.2025) — Gmail и Telegram поля ✅
 - **ДОБАВЛЕНО:** `people.gmail` для OAuth авторизации
@@ -803,11 +789,7 @@ VALUES
 - **ДОБАВЛЕНО:** Индекс `idx_people_gmail`
 - UI: "Рейтинг" → "Уровень в падел"
 
-### v3.3 (14.12.2025) — Legacy renamed to DEPRECATED ✅
-- Поля legacy переименованы в *_DEPRECATED для защиты от случайного использования
-
-### v3.2 (14.12.2025) — Legacy cleanup
-- Добавлено предупреждение о legacy полях
+### v3.2 (14.12.2025) — Schema updates
 - Добавлены поля `width`, `height` в `gallery_images`
 - Добавлены поля профилей в `people`
 

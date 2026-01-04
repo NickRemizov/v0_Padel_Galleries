@@ -127,13 +127,10 @@ cities                          # Мультигородность
 | `person_id` | uuid | FK → people (nullable) |
 | `insightface_descriptor` | vector(512) | **Эмбеддинг лица** |
 | `insightface_bbox` | jsonb | Координаты лица |
-| `insightface_confidence` | float | Уверенность детекции |
+| `insightface_det_score` | float | Уверенность детекции |
 | `recognition_confidence` | float | Уверенность распознавания |
 | `verified` | boolean | Подтверждено вручную |
 | `blur_score` | float | Резкость |
-
-> ⚠️ **DEPRECATED:** Таблица `face_descriptors` переименована в `face_descriptors_DEPRECATED`. 
-> Все эмбеддинги теперь в `photo_faces.insightface_descriptor`.
 
 **Полная схема:** `docs/DATABASE_SCHEMA.md`
 

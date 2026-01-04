@@ -41,5 +41,3 @@ SELECT
     (SELECT COUNT(*) FROM photo_faces WHERE verified = true) as verified_faces,
     (SELECT COUNT(DISTINCT person_id) FROM photo_faces WHERE insightface_descriptor IS NOT NULL) as people_with_embeddings;
 
--- 7. Проверка старой таблицы face_descriptors
-SELECT 'Face descriptors (old table):' as info, COUNT(*) as count FROM face_descriptors;
