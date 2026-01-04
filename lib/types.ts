@@ -132,6 +132,7 @@ export interface Person {
   id: string
   slug?: string
   real_name: string
+  telegram_id: number | null
   telegram_name: string | null
   telegram_nickname: string | null
   telegram_profile_url: string | null
@@ -143,6 +144,7 @@ export interface Person {
   avatar_url: string | null
   show_in_players_gallery: boolean
   show_photos_in_galleries: boolean
+  created_by: string | null  // 'auto_login' | 'admin:email@example.com'
   created_at: string
   updated_at: string
   _count?: {
@@ -173,6 +175,7 @@ export interface PhotoFace {
   /** Recognition confidence from HNSWLIB index (0-1) */
   recognition_confidence: number | null
   verified: boolean
+  hidden_by_user: boolean
   created_at: string
   updated_at: string
   people?: Person

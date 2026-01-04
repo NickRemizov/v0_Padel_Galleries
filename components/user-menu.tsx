@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
-import { LogOut, Star } from "lucide-react"
+import { LogOut, Settings } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,9 +41,9 @@ export function UserMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/favorites">
-            <Star className="mr-2 h-4 w-4" />
-            <span>Избранное</span>
+          <Link href="/settings">
+            <Settings className="mr-2 h-4 w-4" />
+            <span>Настройки</span>
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

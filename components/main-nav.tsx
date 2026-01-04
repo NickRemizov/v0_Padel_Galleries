@@ -17,6 +17,10 @@ export function MainNav() {
       label: "Игроки",
     },
     {
+      href: "/my-photos",
+      label: "Мои фото",
+    },
+    {
       href: "/favorites",
       label: "Избранное",
     },
