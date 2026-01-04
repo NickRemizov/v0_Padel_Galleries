@@ -1,4 +1,3 @@
-import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import Link from "next/link"
@@ -6,18 +5,27 @@ import { AuthButton } from "@/components/auth-button"
 import { MainNav } from "@/components/main-nav"
 import { FavoritesGrid } from "@/components/favorites-grid"
 import { Button } from "@/components/ui/button"
+import { createServiceClient } from "@/lib/supabase/service"
 
 export const dynamic = "force-dynamic"
 
 export default async function FavoritesPage() {
   const cookieStore = await cookies()
-  const userId = cookieStore.get("user_id")?.value
+  const userCookie = cookieStore.get("telegram_user")
 
-  if (!userId) {
+  if (!userCookie) {
     redirect("/")
   }
 
-  const supabase = await createClient()
+  let userId: string
+  try {
+    const user = JSON.parse(userCookie.value)
+    userId = user.id
+  } catch {
+    redirect("/")
+  }
+
+  const supabase = createServiceClient()
 
   const { data: favorites, error } = await supabase
     .from("favorites")
@@ -26,6 +34,7 @@ export default async function FavoritesPage() {
       *,
       gallery_images (
         id,
+        slug,
         gallery_id,
         image_url,
         original_url,
@@ -33,7 +42,11 @@ export default async function FavoritesPage() {
         file_size,
         width,
         height,
-        created_at
+        created_at,
+        galleries (
+          id,
+          slug
+        )
       )
     `,
     )
@@ -43,6 +56,17 @@ export default async function FavoritesPage() {
   if (error) {
     console.error("[v0] Error fetching favorites:", error)
   }
+
+  // Transform data to include gallery_slug
+  const transformedFavorites = favorites?.map((fav) => ({
+    ...fav,
+    gallery_images: fav.gallery_images
+      ? {
+          ...fav.gallery_images,
+          gallery_slug: fav.gallery_images.galleries?.slug || fav.gallery_images.gallery_id,
+        }
+      : null,
+  }))
 
   return (
     <main className="min-h-screen bg-background">
@@ -59,7 +83,7 @@ export default async function FavoritesPage() {
           <MainNav />
         </header>
 
-        {!favorites || favorites.length === 0 ? (
+        {!transformedFavorites || transformedFavorites.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg mb-4">У вас пока нет избранных фотографий</p>
             <Link href="/">
@@ -67,7 +91,7 @@ export default async function FavoritesPage() {
             </Link>
           </div>
         ) : (
-          <FavoritesGrid favorites={favorites} />
+          <FavoritesGrid favorites={transformedFavorites} />
         )}
       </div>
     </main>
