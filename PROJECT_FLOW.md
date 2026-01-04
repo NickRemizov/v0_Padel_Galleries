@@ -80,7 +80,7 @@ AutoRecognitionDialog открывается
     │   │       • app.get(image) → находит лица
     │   │       • Для каждого лица:
     │   │           ├─ insightface_bbox (координаты)
-    │   │           ├─ insightface_confidence (уверенность детекции)
+    │   │           ├─ insightface_det_score (уверенность детекции)
     │   │           ├─ blur_score (резкость, Laplacian)
     │   │           ├─ face_size (ширина bbox)
     │   │           └─ insightface_descriptor (512-мерный вектор)
@@ -94,7 +94,7 @@ AutoRecognitionDialog открывается
     │   │       Отбрасывание лиц:
     │   │           ✗ face_size < min_face_size
     │   │           ✗ blur_score < min_blur_score
-    │   │           ✗ insightface_confidence < min_detection_score
+    │   │           ✗ insightface_det_score < min_detection_score
     │   │       ↓
     │   │   Сохранение в БД:
     │   │       photo_faces {
@@ -102,7 +102,7 @@ AutoRecognitionDialog открывается
     │   │           person_id: NULL
     │   │           insightface_descriptor: vector(512)
     │   │           insightface_bbox: jsonb
-    │   │           insightface_confidence: float
+    │   │           insightface_det_score: float
     │   │           blur_score: float
     │   │           verified: false
     │   │       }

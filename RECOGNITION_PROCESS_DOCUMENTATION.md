@@ -141,13 +141,13 @@
 3. Для каждого лица вычисляется:
    - `bbox` — координаты прямоугольника
    - `blur_score` — резкость (Laplacian variance)
-   - `insightface_confidence` — уверенность что это лицо
+   - `insightface_det_score` — уверенность что это лицо
    - `embedding` — 512-мерный вектор (дескриптор)
 
 **Фильтрация (если включен чекбокс "Применять настройки качества"):**
 - Отбрасываются лица меньше `min_face_size`
 - Отбрасываются лица с `blur_score` < `min_blur_score`
-- Отбрасываются лица с `insightface_confidence` < `min_detection_score`
+- Отбрасываются лица с `insightface_det_score` < `min_detection_score`
 
 ### Этап 3: Распознавание лиц
 
@@ -176,7 +176,7 @@
 - `person_id` — ID игрока (или null)
 - `insightface_descriptor` — 512-мерный эмбеддинг
 - `insightface_bbox` — координаты
-- `insightface_confidence` — уверенность детекции
+- `insightface_det_score` — уверенность детекции
 - `recognition_confidence` — уверенность распознавания
 - `blur_score` — резкость
 - `verified = false` — автоматическое распознавание
