@@ -56,11 +56,12 @@ async def get_person_photos(identifier: str):
         # Include galleries join for title, shoot_date, sort_order
         # Added: original_url, file_size, width, height for lightbox display
         # Added: slug for SEO-friendly URLs
+        # Filter: hidden_by_user = false (user can hide their own photos)
         result = supabase_db.client.table("photo_faces").select(
-            "id, photo_id, verified, recognition_confidence, "
+            "id, photo_id, verified, recognition_confidence, hidden_by_user, "
             "gallery_images!inner(id, slug, image_url, original_url, original_filename, file_size, width, height, gallery_id, created_at, "
             "galleries(id, slug, title, shoot_date, sort_order))"
-        ).eq("person_id", person_id).or_(f"verified.eq.true,recognition_confidence.gte.{confidence_threshold}").execute()
+        ).eq("person_id", person_id).eq("hidden_by_user", False).or_(f"verified.eq.true,recognition_confidence.gte.{confidence_threshold}").execute()
         return ApiResponse.ok(result.data or [])
     except NotFoundError:
         raise

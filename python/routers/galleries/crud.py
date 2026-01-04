@@ -105,11 +105,11 @@ async def get_gallery(identifier: str, full: bool = Query(False)):
             
             if images:
                 image_ids = [img["id"] for img in images]
-                
-                # Get faces with person info, filter by show_photos_in_galleries
+
+                # Get faces with person info, filter by show_photos_in_galleries and hidden_by_user
                 faces_result = supabase_db.client.table("photo_faces").select(
-                    "photo_id, person_id, people(id, real_name, show_photos_in_galleries)"
-                ).in_("photo_id", image_ids).not_.is_("person_id", "null").execute()
+                    "photo_id, person_id, hidden_by_user, people(id, real_name, show_photos_in_galleries)"
+                ).in_("photo_id", image_ids).not_.is_("person_id", "null").eq("hidden_by_user", False).execute()
                 
                 faces = faces_result.data or []
                 
