@@ -169,7 +169,7 @@ export function AddPersonDialog({
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="telegram_nickname">Ник в Telegram</Label>
+                <Label htmlFor="telegram_nickname">Username в Telegram</Label>
                 <Input id="telegram_nickname" name="telegram_nickname" placeholder="@username" />
               </div>
             </div>
