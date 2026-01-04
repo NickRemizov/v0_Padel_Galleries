@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { env } from "@/lib/env"
-import { createClient } from "@/lib/supabase/server"
 
 // Max file size: 12MB
 const MAX_FILE_SIZE = 12 * 1024 * 1024
@@ -30,11 +30,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get auth token for presign request
-    const supabase = await createClient()
-    const { data: { session } } = await supabase.auth.getSession()
+    // Get admin_token from cookies (set by Google OAuth)
+    const cookieStore = await cookies()
+    const adminToken = cookieStore.get("admin_token")?.value
 
-    if (!session?.access_token) {
+    if (!adminToken) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${session.access_token}`,
+        "Authorization": `Bearer ${adminToken}`,
       },
       body: JSON.stringify({ filenames: [file.name], folder }),
     })

@@ -2,20 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { apiFetch } from "@/lib/apiClient"
-import { createClient } from "@/lib/supabase/server"
-
-/**
- * Helper to get auth headers for protected endpoints
- */
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  
-  if (session?.access_token) {
-    return { "Authorization": `Bearer ${session.access_token}` }
-  }
-  return {}
-}
+import { getAuthHeaders } from "@/lib/auth/serverGuard"
 
 export async function getGalleryImagesAction(galleryId: string) {
   return await apiFetch(`/api/images/gallery/${galleryId}`)
