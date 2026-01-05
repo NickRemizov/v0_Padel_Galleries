@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
+import { logActivity } from "@/lib/activity-logger"
 
 // POST /api/my-photos/[photoFaceId]/hide - Hide photo from public galleries
 export async function POST(
@@ -25,7 +26,10 @@ export async function POST(
     // Verify the photo_face belongs to this user's person
     const { data: photoFace, error: fetchError } = await supabase
       .from("photo_faces")
-      .select("id, person_id, photo_id")
+      .select(`
+        id, person_id, photo_id,
+        gallery_images!inner(id, original_filename, gallery_id, galleries(title))
+      `)
       .eq("id", photoFaceId)
       .single()
 
@@ -61,15 +65,28 @@ export async function POST(
       .eq("id", photoFaceId)
 
     if (updateError) {
-      console.error("[v0] Error hiding photo face:", updateError)
+      console.error("[my-photos] Error hiding photo face:", updateError)
       return NextResponse.json({ error: "Failed to hide" }, { status: 500 })
     }
 
-    console.log(`[v0] User ${user.id} hid photo_face ${photoFaceId}`)
+    // Log activity
+    const gi = photoFace.gallery_images as any
+    await logActivity({
+      personId: user.person_id,
+      activityType: "photo_hidden",
+      imageId: gi?.id,
+      galleryId: gi?.gallery_id,
+      metadata: {
+        filename: gi?.original_filename,
+        gallery_title: gi?.galleries?.title,
+      },
+    })
+
+    console.log(`[my-photos] User ${user.id} hid photo_face ${photoFaceId}`)
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("[v0] Error in hide endpoint:", error)
+    console.error("[my-photos] Error in hide endpoint:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

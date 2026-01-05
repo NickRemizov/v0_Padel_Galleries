@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
+import { logActivity } from "@/lib/activity-logger"
 
 // POST /api/my-photos/[photoFaceId]/reject - This is not me, remove link
 export async function POST(
@@ -25,7 +26,10 @@ export async function POST(
     // Verify the photo_face belongs to this user's person
     const { data: photoFace, error: fetchError } = await supabase
       .from("photo_faces")
-      .select("id, person_id, photo_id")
+      .select(`
+        id, person_id, photo_id,
+        gallery_images!inner(id, original_filename, gallery_id, galleries(title))
+      `)
       .eq("id", photoFaceId)
       .single()
 
@@ -36,6 +40,19 @@ export async function POST(
     if (photoFace.person_id !== user.person_id) {
       return NextResponse.json({ error: "Cannot reject other person's photos" }, { status: 403 })
     }
+
+    // Log activity BEFORE removing person_id (need person_id for the log)
+    const gi = photoFace.gallery_images as any
+    await logActivity({
+      personId: user.person_id,
+      activityType: "photo_rejected",
+      imageId: gi?.id,
+      galleryId: gi?.gallery_id,
+      metadata: {
+        filename: gi?.original_filename,
+        gallery_title: gi?.galleries?.title,
+      },
+    })
 
     // Remove person link (set to null, unverified, unhide)
     // Also reset hidden_by_user - user no longer has right to hide this photo
@@ -50,15 +67,15 @@ export async function POST(
       .eq("id", photoFaceId)
 
     if (updateError) {
-      console.error("[v0] Error rejecting photo face:", updateError)
+      console.error("[my-photos] Error rejecting photo face:", updateError)
       return NextResponse.json({ error: "Failed to reject" }, { status: 500 })
     }
 
-    console.log(`[v0] User ${user.id} rejected photo_face ${photoFaceId} (removed person_id)`)
+    console.log(`[my-photos] User ${user.id} rejected photo_face ${photoFaceId} (removed person_id)`)
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("[v0] Error in reject endpoint:", error)
+    console.error("[my-photos] Error in reject endpoint:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
