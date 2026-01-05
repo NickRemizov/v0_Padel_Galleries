@@ -52,8 +52,7 @@ async def get_admin_activity(
         query = supabase.table("admin_activity")\
             .select(
                 "id, event_type, user_id, person_id, metadata, created_at, "
-                "people(id, real_name, telegram_full_name, telegram_username, avatar_url), "
-                "users(id, first_name, username, photo_url)"
+                "people(id, real_name, telegram_full_name, telegram_username, avatar_url)"
             )\
             .order("created_at", desc=True)
 
@@ -69,11 +68,24 @@ async def get_admin_activity(
         result = query.execute()
         activities = result.data or []
 
+        # Collect person_ids to fetch current telegram avatars
+        person_ids = [a.get("person_id") for a in activities if a.get("person_id")]
+
+        # Fetch users by person_id to get current telegram photo_url
+        person_to_avatar = {}
+        if person_ids:
+            users_result = supabase.table("users")\
+                .select("person_id, photo_url")\
+                .in_("person_id", person_ids)\
+                .execute()
+            for u in (users_result.data or []):
+                if u.get("photo_url"):
+                    person_to_avatar[u["person_id"]] = u["photo_url"]
+
         # Format response
         formatted_activities = []
         for activity in activities:
             person = activity.get("people") or {}
-            user = activity.get("users") or {}
             metadata = activity.get("metadata") or {}
 
             # Get person name
@@ -85,8 +97,9 @@ async def get_admin_activity(
                 "Неизвестный"
             )
 
-            # Get avatar: prefer user's telegram photo, fallback to person's custom avatar
-            avatar_url = user.get("photo_url") or person.get("avatar_url")
+            # Get avatar: prefer current telegram photo (via person_id), fallback to person's custom avatar
+            person_id = activity.get("person_id")
+            avatar_url = person_to_avatar.get(person_id) or person.get("avatar_url")
 
             formatted_activities.append({
                 "id": activity["id"],
