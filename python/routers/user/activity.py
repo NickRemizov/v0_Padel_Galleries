@@ -66,15 +66,15 @@ async def get_user_activity(
             })
 
         # 2. New photos with user (grouped by gallery and date)
-        # Get photo_faces created in last 30 days, group by gallery
+        # Get recent photo_faces, group by gallery
         new_photos = supabase.table("photo_faces")\
             .select(
                 "id, created_at, photo_id, "
                 "gallery_images!inner(id, slug, gallery_id, galleries(id, slug, title))"
             )\
             .eq("person_id", person_id)\
-            .gte("created_at", (datetime.now(timezone.utc).replace(day=1)).isoformat())\
             .order("created_at", desc=True)\
+            .limit(200)\
             .execute()
 
         # Group by gallery_id and date (day)
@@ -113,13 +113,9 @@ async def get_user_activity(
             })
 
         # 3. Comments on photos where user appears
-        comments = supabase.rpc(
-            "get_comments_on_person_photos",
-            {"p_person_id": person_id, "p_limit": limit}
-        ).execute()
-
-        # If RPC doesn't exist, use fallback query
-        if not comments.data:
+        # Use direct query (RPC function may not exist)
+        comments_data = []
+        try:
             # Fallback: get photo_ids for this person, then get comments
             person_photos = supabase.table("photo_faces")\
                 .select("photo_id")\
@@ -161,6 +157,8 @@ async def get_user_activity(
                             "gallery_slug": gallery.get("slug"),
                         },
                     })
+        except Exception as e:
+            logger.warning(f"Error fetching comments for activity: {e}")
 
         # 4. User's favorites
         if user_id:
