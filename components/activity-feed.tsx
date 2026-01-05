@@ -129,7 +129,7 @@ function getActivityLink(activity: Activity): string | null {
     case "comment_received":
     case "favorite_added":
       if (meta.gallery_slug && meta.image_slug) {
-        return `/gallery/${meta.gallery_slug}/${meta.image_slug}`
+        return `/gallery/${meta.gallery_slug}?photo=${meta.image_slug}`
       }
       return null
     case "photo_hidden":
