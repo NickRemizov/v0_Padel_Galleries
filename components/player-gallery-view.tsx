@@ -1,40 +1,70 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { ArrowLeft } from "lucide-react"
 import type { Person, GalleryImage } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ImageLightbox } from "@/components/image-lightbox"
 import { usePathname, useSearchParams } from "next/navigation"
+import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
+import "react-photo-album/rows.css"
+import "react-photo-album/masonry.css"
 
 interface PlayerGalleryViewProps {
   player: Person
   images: (GalleryImage & { gallery?: any })[]
 }
 
-/**
- * Создаёт ссылку на Telegram из ника
- * @param nickname - ник в формате @username или username
- * @returns URL ссылки или null
- */
 function getTelegramLink(nickname: string | null | undefined): string | null {
   if (!nickname) return null
   const username = nickname.startsWith("@") ? nickname.slice(1) : nickname
   return `https://t.me/${username}`
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
+  }, [])
+
+  return isMobile
+}
+
 export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
-  const gridRef = useRef<HTMLDivElement>(null)
-  const isotopeRef = useRef<any>(null)
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     setLightboxOpen(false)
   }, [pathname])
+
+  const formatShortDate = (dateString: string | null | undefined) => {
+    if (!dateString) return ""
+    const date = new Date(dateString)
+    const day = String(date.getDate()).padStart(2, "0")
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    return `${day}.${month}`
+  }
+
+  const photos = useMemo(() => {
+    return images.map((img) => ({
+      src: img.image_url || "/placeholder.svg",
+      width: img.width || 1200,
+      height: img.height || 800,
+      key: img.id,
+      gallery: img.gallery,
+    }))
+  }, [images])
 
   const lightboxImages = images.map((img, index) => ({
     id: img.id,
@@ -50,92 +80,17 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
     galleryDate: img.gallery?.shoot_date,
   }))
 
-  const handleImageClick = (index: number) => {
+  const handleImageClick = ({ index }: { index: number }) => {
     setCurrentIndex(index)
     setLightboxOpen(true)
   }
 
-  const formatShortDate = (dateString: string | null | undefined) => {
-    if (!dateString) return ""
-    const date = new Date(dateString)
-    const day = String(date.getDate()).padStart(2, "0")
-    const month = String(date.getMonth() + 1).padStart(2, "0")
-    return `${day}.${month}`
-  }
-
-  useEffect(() => {
-    const initIsotope = async () => {
-      if (typeof window === "undefined" || !gridRef.current || images.length === 0) return
-
-      try {
-        const Isotope = (await import("isotope-layout")).default
-        const imagesLoaded = (await import("imagesloaded")).default
-
-        if (isotopeRef.current) {
-          console.log("[v0] Destroying previous Isotope instance")
-          isotopeRef.current.destroy()
-          isotopeRef.current = null
-        }
-
-        if (!gridRef.current) return
-
-        const items = gridRef.current.querySelectorAll(".gallery-image-item")
-        console.log("[v0] Isotope init for player", player.id, "- found", items.length, "items")
-
-        imagesLoaded(gridRef.current, () => {
-          if (!gridRef.current) return
-
-          console.log("[v0] Images loaded, initializing Isotope for player", player.id)
-
-          isotopeRef.current = new Isotope(gridRef.current, {
-            itemSelector: ".gallery-image-item",
-            layoutMode: "masonry",
-            masonry: {
-              columnWidth: ".gallery-image-item",
-              gutter: 8,
-            },
-            percentPosition: true,
-            transitionDuration: "0.3s",
-          })
-
-          setTimeout(() => {
-            if (isotopeRef.current) {
-              isotopeRef.current.layout()
-              console.log("[v0] Isotope layout refreshed (1st)")
-            }
-          }, 100)
-
-          setTimeout(() => {
-            if (isotopeRef.current) {
-              isotopeRef.current.layout()
-              console.log("[v0] Isotope layout refreshed (2nd)")
-            }
-          }, 300)
-        })
-      } catch (error) {
-        console.error("[v0] Failed to initialize Isotope:", error)
-      }
-    }
-
-    initIsotope()
-
-    return () => {
-      if (isotopeRef.current) {
-        console.log("[v0] Cleaning up Isotope instance")
-        isotopeRef.current.destroy()
-        isotopeRef.current = null
-      }
-    }
-  }, [player.id, images.length])
-
   useEffect(() => {
     const photoParam = searchParams.get("photo")
     if (photoParam) {
-      // Try to find photo by slug first, then by ID
       let photoIndex = images.findIndex((img) => img.slug === photoParam)
 
       if (photoIndex === -1) {
-        // Fallback: try by ID
         photoIndex = images.findIndex((img) => img.id === photoParam)
       }
 
@@ -147,6 +102,31 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
   }, [searchParams, images])
 
   const telegramLink = getTelegramLink(player.telegram_username)
+
+  const renderPhoto = ({ photo, width, height }: { photo: typeof photos[0]; width: number; height: number }) => {
+    const gallery = photo.gallery
+
+    return (
+      <div className="relative overflow-hidden rounded-lg group cursor-pointer">
+        <img
+          src={photo.src}
+          width={width}
+          height={height}
+          alt=""
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+        {gallery && (
+          <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
+            <p className="text-white text-xs leading-tight">
+              {gallery.title} {formatShortDate(gallery.shoot_date)}
+            </p>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   if (images.length === 0) {
     return (
@@ -186,30 +166,27 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
       </div>
 
       <div className="px-1 sm:px-2 pb-8">
-        <div ref={gridRef} className="isotope-gallery-grid">
-          {images.map((image, index) => (
-            <div
-              key={image.id}
-              className="gallery-image-item cursor-pointer group relative overflow-hidden rounded-lg"
-              onClick={() => handleImageClick(index)}
-            >
-              <img
-                src={image.image_url || "/placeholder.svg"}
-                alt={`${player.real_name} - изображение ${index + 1}`}
-                className="w-full h-auto transition-transform duration-300 group-hover:scale-105"
-                loading={index === 0 ? "eager" : "lazy"}
-              />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
-              {image.gallery && (
-                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
-                  <p className="text-white text-xs leading-tight">
-                    {image.gallery.title} {formatShortDate(image.gallery.shoot_date)}
-                  </p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        {isMobile ? (
+          <RowsPhotoAlbum
+            photos={photos}
+            targetRowHeight={150}
+            onClick={handleImageClick}
+            render={{ photo: renderPhoto }}
+            spacing={4}
+          />
+        ) : (
+          <MasonryPhotoAlbum
+            photos={photos}
+            columns={(containerWidth) => {
+              if (containerWidth < 768) return 2
+              if (containerWidth < 1024) return 3
+              return 4
+            }}
+            onClick={handleImageClick}
+            render={{ photo: renderPhoto }}
+            spacing={8}
+          />
+        )}
       </div>
 
       <ImageLightbox

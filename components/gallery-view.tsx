@@ -1,30 +1,40 @@
 "use client"
 
 import { useSearchParams } from "next/navigation"
-
-import { useState, useMemo, useEffect, useRef } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { ArrowLeft } from "lucide-react"
 import type { Gallery } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ImageLightbox } from "@/components/image-lightbox"
-import { GalleryInfoCard } from "@/components/gallery-info-card"
+import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
+import "react-photo-album/rows.css"
+import "react-photo-album/masonry.css"
 
 interface GalleryViewProps {
   gallery: Gallery
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
+  }, [])
+
+  return isMobile
 }
 
 export function GalleryView({ gallery }: GalleryViewProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
   const searchParams = useSearchParams()
-  const gridRef = useRef<HTMLDivElement>(null)
-  const isotopeRef = useRef<any>(null)
-
-  const shortDate = new Date(gallery.shoot_date).toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-  })
+  const isMobile = useIsMobile()
 
   const images = gallery.gallery_images || []
 
@@ -43,6 +53,18 @@ export function GalleryView({ gallery }: GalleryViewProps) {
     }
   }, [images, gallery.sort_order])
 
+  // Photos for react-photo-album
+  const photos = useMemo(() => {
+    return sortedImages.map((img) => ({
+      src: img.image_url || "/placeholder.svg",
+      width: img.width || 1200,
+      height: img.height || 800,
+      key: img.id,
+      // Custom data for rendering
+      people: img.people || [],
+    }))
+  }, [sortedImages])
+
   const lightboxImages = sortedImages.map((img, index) => ({
     id: img.id,
     slug: img.slug,
@@ -55,73 +77,17 @@ export function GalleryView({ gallery }: GalleryViewProps) {
     height: img.height,
   }))
 
-  const handleImageClick = (index: number) => {
+  const handleImageClick = ({ index }: { index: number }) => {
     setCurrentIndex(index)
     setLightboxOpen(true)
   }
 
   useEffect(() => {
-    const initIsotope = async () => {
-      if (typeof window === "undefined" || !gridRef.current || sortedImages.length === 0) return
-
-      try {
-        const Isotope = (await import("isotope-layout")).default
-        const imagesLoaded = (await import("imagesloaded")).default
-
-        imagesLoaded(gridRef.current, () => {
-          if (!gridRef.current) return
-
-          const items = gridRef.current.querySelectorAll(".gallery-image-item")
-          if (items.length === 0) {
-            console.error("[v0] No gallery items found for Isotope")
-            return
-          }
-
-          const regularItem = gridRef.current.querySelector(".gallery-image-item:not(.gallery-image-item--width2)")
-
-          if (isotopeRef.current) {
-            isotopeRef.current.destroy()
-          }
-
-          const isotopeOptions: any = {
-            itemSelector: ".gallery-image-item",
-            layoutMode: "masonry",
-            masonry: {
-              gutter: 8,
-            },
-            percentPosition: true,
-            transitionDuration: "0.3s",
-          }
-
-          if (regularItem) {
-            isotopeOptions.masonry.columnWidth = ".gallery-image-item:not(.gallery-image-item--width2)"
-          }
-
-          isotopeRef.current = new Isotope(gridRef.current, isotopeOptions)
-        })
-      } catch (error) {
-        console.error("[v0] Failed to initialize Isotope:", error)
-      }
-    }
-
-    initIsotope()
-
-    return () => {
-      if (isotopeRef.current) {
-        isotopeRef.current.destroy()
-        isotopeRef.current = null
-      }
-    }
-  }, [sortedImages.length])
-
-  useEffect(() => {
     const photoParam = searchParams.get("photo")
     if (photoParam) {
-      // Try to find photo by slug first, then by ID
       let photoIndex = sortedImages.findIndex((img) => img.slug === photoParam)
 
       if (photoIndex === -1) {
-        // Fallback: try by ID
         photoIndex = sortedImages.findIndex((img) => img.id === photoParam)
       }
 
@@ -129,7 +95,6 @@ export function GalleryView({ gallery }: GalleryViewProps) {
         setCurrentIndex(photoIndex)
         setLightboxOpen(true)
       } else {
-        // Fallback: try as numeric index for backwards compatibility
         const numericIndex = Number.parseInt(photoParam, 10)
         if (!isNaN(numericIndex) && numericIndex >= 0 && numericIndex < sortedImages.length) {
           setCurrentIndex(numericIndex)
@@ -138,6 +103,31 @@ export function GalleryView({ gallery }: GalleryViewProps) {
       }
     }
   }, [searchParams, sortedImages])
+
+  const renderPhoto = ({ photo, width, height }: { photo: typeof photos[0]; width: number; height: number }) => {
+    const people = photo.people as Array<{ name: string }>
+
+    return (
+      <div className="relative overflow-hidden rounded-lg group cursor-pointer">
+        <img
+          src={photo.src}
+          width={width}
+          height={height}
+          alt=""
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+        {people.length > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
+            <p className="text-white text-xs font-medium leading-tight">
+              {people.map((person) => person.name).join(", ")}
+            </p>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -155,41 +145,26 @@ export function GalleryView({ gallery }: GalleryViewProps) {
           <div className="text-center py-12 text-muted-foreground">
             <p>В этой галерее пока нет изображений</p>
           </div>
+        ) : isMobile ? (
+          <RowsPhotoAlbum
+            photos={photos}
+            targetRowHeight={150}
+            onClick={handleImageClick}
+            render={{ photo: renderPhoto }}
+            spacing={4}
+          />
         ) : (
-          <div ref={gridRef} className="isotope-gallery-grid">
-            <div className="gallery-image-item gallery-image-item--width2">
-              <GalleryInfoCard gallery={gallery} />
-            </div>
-
-            {sortedImages.map((image, index) => {
-              // Now properly typed - no more (image as any)
-              const imagePeople = image.people || []
-
-              return (
-                <div
-                  key={image.id}
-                  className="gallery-image-item cursor-pointer group relative overflow-hidden rounded-lg"
-                  onClick={() => handleImageClick(index)}
-                >
-                  <img
-                    src={image.image_url || "/placeholder.svg"}
-                    alt={`${gallery.title} - изображение ${index + 1}`}
-                    className="w-full h-auto transition-transform duration-300 group-hover:scale-105"
-                    loading={index === 0 ? "eager" : "lazy"}
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
-
-                  {imagePeople.length > 0 && (
-                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
-                      <p className="text-white text-xs font-medium leading-tight">
-                        {imagePeople.map((person) => person.name).join(", ")}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          <MasonryPhotoAlbum
+            photos={photos}
+            columns={(containerWidth) => {
+              if (containerWidth < 768) return 2
+              if (containerWidth < 1024) return 3
+              return 4
+            }}
+            onClick={handleImageClick}
+            render={{ photo: renderPhoto }}
+            spacing={8}
+          />
         )}
       </div>
 
