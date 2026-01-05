@@ -65,6 +65,11 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
   const [hideDialog, setHideDialog] = useState<HideDialogData | null>(null)
   const [avatarDialog, setAvatarDialog] = useState<AvatarDialogData | null>(null)
 
+  // Calculate stats from current state
+  const totalPhotos = photoFaces.length
+  const verifiedPhotos = photoFaces.filter(pf => pf.verified).length
+  const hiddenPhotos = photoFaces.filter(pf => pf.hidden_by_user).length
+
   const breakpointColumns = {
     default: 4,
     1536: 3,
@@ -157,11 +162,20 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
   }
 
   return (
-    <Masonry
-      breakpointCols={breakpointColumns}
-      className="flex -ml-4 w-auto"
-      columnClassName="pl-4 bg-clip-padding"
-    >
+    <>
+      {/* Stats header */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold mb-2">Мои фотографии</h2>
+        <p className="text-muted-foreground">
+          Всего: {totalPhotos} | Подтверждённых: {verifiedPhotos} | Скрытых: {hiddenPhotos}
+        </p>
+      </div>
+
+      <Masonry
+        breakpointCols={breakpointColumns}
+        className="flex -ml-4 w-auto"
+        columnClassName="pl-4 bg-clip-padding"
+      >
       {photoFaces.map((photoFace) => {
         const image = photoFace.gallery_images
         if (!image) return null
@@ -298,6 +312,8 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         )
       })}
 
+      </Masonry>
+
       {/* Hide confirmation dialog */}
       <AlertDialog open={!!hideDialog} onOpenChange={(open) => !open && setHideDialog(null)}>
         <AlertDialogContent>
@@ -326,6 +342,6 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
           onAvatarUpdated={() => router.refresh()}
         />
       )}
-    </Masonry>
+    </>
   )
 }

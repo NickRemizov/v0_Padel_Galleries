@@ -115,11 +115,6 @@ export default async function MyPhotosPage() {
     faces_count: facesCountByPhoto[pf.photo_id] || 1
   })) || []
 
-  // Count stats
-  const totalPhotos = photoFacesWithCount.length
-  const verifiedPhotos = photoFacesWithCount.filter(pf => pf.verified).length
-  const hiddenPhotos = photoFacesWithCount.filter(pf => pf.hidden_by_user).length
-
   return (
     <main className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-12">
@@ -135,22 +130,21 @@ export default async function MyPhotosPage() {
           <MainNav />
         </header>
 
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-2">Мои фотографии</h2>
-          <p className="text-muted-foreground">
-            Всего: {totalPhotos} | Подтверждённых: {verifiedPhotos} | Скрытых: {hiddenPhotos}
-          </p>
-        </div>
-
         {photoFacesWithCount.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground text-lg mb-4">
-              Пока нет фотографий с вами
-            </p>
-            <Link href="/">
-              <Button>Перейти к галереям</Button>
-            </Link>
-          </div>
+          <>
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold mb-2">Мои фотографии</h2>
+              <p className="text-muted-foreground">Всего: 0</p>
+            </div>
+            <div className="text-center py-12">
+              <p className="text-muted-foreground text-lg mb-4">
+                Пока нет фотографий с вами
+              </p>
+              <Link href="/">
+                <Button>Перейти к галереям</Button>
+              </Link>
+            </div>
+          </>
         ) : (
           <MyPhotosGrid photoFaces={photoFacesWithCount} personId={user.person_id} />
         )}
