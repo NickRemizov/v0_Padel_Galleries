@@ -77,12 +77,11 @@ export function FavoritesGrid({ favorites }: FavoritesGridProps) {
     return (
       <div
         className="relative overflow-hidden rounded-lg group cursor-pointer"
+        style={{ width, height }}
         onClick={onClick}
       >
         <img
           src={photo.src}
-          width={width}
-          height={height}
           alt={photo.filename}
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"

@@ -113,12 +113,11 @@ export function GalleryView({ gallery }: GalleryViewProps) {
     return (
       <div
         className="relative overflow-hidden rounded-lg group cursor-pointer"
+        style={{ width, height }}
         onClick={onClick}
       >
         <img
           src={photo.src}
-          width={width}
-          height={height}
           alt=""
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"

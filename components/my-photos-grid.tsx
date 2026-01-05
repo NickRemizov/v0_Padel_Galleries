@@ -205,12 +205,11 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         className={`relative overflow-hidden rounded-lg group ${
           photoFace.hidden_by_user ? "opacity-50" : ""
         }`}
+        style={{ width, height }}
       >
         <Link href={`/gallery/${gallerySlug}?photo=${photoSlug}`}>
           <img
             src={photo.src}
-            width={width}
-            height={height}
             alt={image.galleries?.title || "Photo"}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
