@@ -123,13 +123,13 @@ function getActivityLink(activity: Activity): string | null {
   switch (activity.type) {
     case "new_photos":
       if (meta.gallery_slug) {
-        return `/g/${meta.gallery_slug}`
+        return `/gallery/${meta.gallery_slug}`
       }
       return null
     case "comment_received":
     case "favorite_added":
       if (meta.gallery_slug && meta.image_slug) {
-        return `/g/${meta.gallery_slug}/${meta.image_slug}`
+        return `/gallery/${meta.gallery_slug}/${meta.image_slug}`
       }
       return null
     case "photo_hidden":

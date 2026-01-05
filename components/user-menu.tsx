@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
-import { LogOut, Settings } from "lucide-react"
+import { LogOut, Settings, Activity } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +40,12 @@ export function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/activity">
+            <Activity className="mr-2 h-4 w-4" />
+            <span>Активность</span>
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/settings">
             <Settings className="mr-2 h-4 w-4" />

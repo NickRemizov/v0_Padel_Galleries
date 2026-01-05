@@ -24,10 +24,6 @@ export function MainNav() {
       href: "/favorites",
       label: "Избранное",
     },
-    {
-      href: "/activity",
-      label: "Активность",
-    },
   ]
 
   return (
