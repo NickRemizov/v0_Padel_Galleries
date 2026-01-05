@@ -95,8 +95,8 @@ export const GalleryImageCard = memo(function GalleryImageCard({
             className="bg-white border-2 border-gray-400 data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
           />
         </div>
-        {/* Hover overlay with delete button */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        {/* Overlay with delete button - visible on touch, hover on mouse */}
+        <div className="absolute inset-0 bg-black/40 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity pointer-events-none">
           <Button
             variant="destructive"
             size="icon"
@@ -109,12 +109,12 @@ export const GalleryImageCard = memo(function GalleryImageCard({
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
-        {/* Star - always visible when featured, otherwise on hover */}
+        {/* Star - always visible when featured, otherwise visible on touch / hover on mouse */}
         <div
           className={`absolute right-2 bottom-2 cursor-pointer transition-opacity ${
             image.is_featured
               ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100"
+              : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
           }`}
           onClick={(e) => {
             e.stopPropagation()

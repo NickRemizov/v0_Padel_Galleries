@@ -87,14 +87,14 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
           </div>
         ) : (
           <div
-            className={`absolute left-2 bottom-2 z-10 bg-blue-500 text-white rounded-md px-2 py-1 text-xs font-semibold shadow-lg transition-opacity ${canVerify ? "group-hover:opacity-0" : ""}`}
+            className={`absolute left-2 bottom-2 z-10 bg-blue-500 text-white rounded-md px-2 py-1 text-xs font-semibold shadow-lg transition-opacity ${canVerify ? "[@media(hover:hover)]:group-hover:opacity-0" : ""}`}
           >
             {Math.round((photo.confidence || 0) * 100)}%
           </div>
         )}
 
-        {/* Hover overlay with actions */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        {/* Overlay with actions - visible on touch, hover on mouse */}
+        <div className="absolute inset-0 bg-black/40 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity pointer-events-none">
           <Button
             variant="destructive"
             size="icon"
@@ -111,7 +111,7 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
             <Button
               variant="secondary"
               size="icon"
-              className="absolute left-2 bottom-2 pointer-events-auto bg-green-500 hover:bg-green-600 text-white opacity-0 group-hover:opacity-100 transition-opacity z-20"
+              className="absolute left-2 bottom-2 pointer-events-auto bg-green-500 hover:bg-green-600 text-white [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity z-20"
               onClick={(e) => {
                 e.stopPropagation()
                 onVerify(photo.id)
