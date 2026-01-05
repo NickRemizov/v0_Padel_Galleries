@@ -89,7 +89,7 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       {/* Telegram Info (read-only) */}
-      <div className="flex gap-4 items-stretch">
+      <div className="flex gap-4 items-start">
         <div className="flex-1 bg-card rounded-lg border p-6">
           <h3 className="text-lg font-semibold mb-4">Telegram</h3>
           <div className="space-y-4">
@@ -106,7 +106,7 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
           </div>
         </div>
         {person.avatar_url && (
-          <div className="relative w-24 flex-shrink-0" style={{ aspectRatio: '3/4' }}>
+          <div className="relative w-24 h-32 flex-shrink-0">
             <Image
               src={person.avatar_url}
               alt="Аватар"
