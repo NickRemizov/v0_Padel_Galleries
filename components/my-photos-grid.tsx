@@ -211,11 +211,11 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
                 <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-md font-medium">
                   {Math.round(confidence * 100)}%
                 </span>
-                {/* Verify button - visible on mobile, hover on desktop */}
+                {/* Verify button - visible on touch, hover on mouse */}
                 <button
                   onClick={(e) => { e.preventDefault(); handleVerify(photoFace.id) }}
                   disabled={isLoading}
-                  className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-md disabled:opacity-50"
+                  className="[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-md disabled:opacity-50"
                   title="Подтвердить - это я"
                 >
                   <Check className="w-4 h-4" />
@@ -243,38 +243,38 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
               </div>
             )}
 
-            {/* Avatar button (top-left, visible on mobile, hover on desktop) */}
+            {/* Avatar button (top-left, visible on touch, hover on mouse) */}
             {!photoFace.hidden_by_user && (
               <button
                 onClick={(e) => {
                   e.preventDefault()
                   setAvatarDialog({ imageUrl: image.original_url || image.image_url })
                 }}
-                className="absolute top-2 left-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-md"
+                className="absolute top-2 left-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-md"
                 title="Сделать аватаром"
               >
                 <UserPlus className="w-4 h-4" />
               </button>
             )}
 
-            {/* Reject button (top-right) - visible on mobile, hover on desktop */}
+            {/* Reject button (top-right) - visible on touch, hover on mouse */}
             <button
               onClick={(e) => { e.preventDefault(); handleReject(photoFace.id) }}
               disabled={isLoading}
-              className="absolute top-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-md disabled:opacity-50"
+              className="absolute top-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-md disabled:opacity-50"
               title="Это не я"
             >
               <X className="w-4 h-4" />
             </button>
 
-            {/* Hide/Unhide button (bottom-right) - visible on mobile, hover on desktop */}
+            {/* Hide/Unhide button (bottom-right) - visible on touch, hover on mouse */}
             {isOnlyPersonOnPhoto && (
               photoFace.hidden_by_user ? (
                 // Unhide button
                 <button
                   onClick={(e) => { e.preventDefault(); handleUnhide(photoFace.id) }}
                   disabled={isLoading}
-                  className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-700 text-white p-1.5 rounded-md disabled:opacity-50"
+                  className="absolute bottom-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-700 text-white p-1.5 rounded-md disabled:opacity-50"
                   title="Показать в общем просмотре"
                 >
                   <Eye className="w-4 h-4" />
@@ -284,7 +284,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
                 <button
                   onClick={(e) => { e.preventDefault(); openHideDialog(photoFace) }}
                   disabled={isLoading}
-                  className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-gray-600 hover:bg-gray-700 text-white p-1.5 rounded-md disabled:opacity-50"
+                  className="absolute bottom-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-gray-600 hover:bg-gray-700 text-white p-1.5 rounded-md disabled:opacity-50"
                   title="Скрыть из общего просмотра"
                 >
                   <EyeOff className="w-4 h-4" />
@@ -292,10 +292,10 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
               )
             )}
 
-            {/* Info for multi-person photos - visible on mobile, hover on desktop */}
+            {/* Info for multi-person photos - visible on touch, hover on mouse */}
             {!isOnlyPersonOnPhoto && (
               <div
-                className="absolute bottom-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-gray-800/80 text-white text-xs px-2 py-1 rounded-md"
+                className="absolute bottom-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-gray-800/80 text-white text-xs px-2 py-1 rounded-md"
                 title="На этом фото не только вы"
               >
                 +{photoFace.faces_count - 1}
