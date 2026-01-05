@@ -6,13 +6,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Loader2, Save, Check } from "lucide-react"
-import { Slider } from "@/components/ui/slider"
-import Image from "next/image"
 
 interface Person {
   id: string
   real_name: string | null
-  avatar_url: string | null
   gmail: string | null
   facebook_profile_url: string | null
   instagram_profile_url: string | null
@@ -40,7 +37,7 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
   const [gmail, setGmail] = useState(person.gmail || "")
   const [facebook, setFacebook] = useState(person.facebook_profile_url || "")
   const [instagram, setInstagram] = useState(person.instagram_profile_url || "")
-  const [paddleRanking, setPaddleRanking] = useState<number | null>(person.paddle_ranking)
+  const [paddleRanking, setPaddleRanking] = useState(person.paddle_ranking?.toString() || "")
 
   // Toggles
   const [showInPlayersGallery, setShowInPlayersGallery] = useState(person.show_in_players_gallery ?? true)
@@ -64,7 +61,7 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
           gmail: gmail || null,
           facebook_profile_url: facebook || null,
           instagram_profile_url: instagram || null,
-          paddle_ranking: paddleRanking,
+          paddle_ranking: paddleRanking ? parseFloat(paddleRanking) : null,
           show_in_players_gallery: showInPlayersGallery,
           create_personal_gallery: createPersonalGallery,
           show_name_on_photos: showNameOnPhotos,
@@ -87,33 +84,26 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
     }
   }
 
+  // Generate paddle ranking options (0 to 10 with 0.25 step)
+  const paddleOptions: string[] = []
+  for (let i = 0; i <= 40; i++) {
+    paddleOptions.push((i * 0.25).toFixed(2).replace(/\.?0+$/, ""))
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       {/* Telegram Info (read-only) */}
       <div className="bg-card rounded-lg border p-6">
         <h3 className="text-lg font-semibold mb-4">Telegram</h3>
-        <div className="flex items-start gap-4">
-          <div className="flex-1 space-y-4">
-            <div>
-              <Label className="text-muted-foreground">Имя в Telegram</Label>
-              <p className="font-medium">{telegramName}</p>
-            </div>
-            {telegramUsername && (
-              <div>
-                <Label className="text-muted-foreground">Username</Label>
-                <p className="font-medium">@{telegramUsername}</p>
-              </div>
-            )}
+        <div className="space-y-4">
+          <div>
+            <Label className="text-muted-foreground">Имя в Telegram</Label>
+            <p className="font-medium">{telegramName}</p>
           </div>
-          {person.avatar_url && (
-            <div className="relative w-16 h-16 flex-shrink-0">
-              <Image
-                src={person.avatar_url}
-                alt="Аватар"
-                fill
-                className="object-cover rounded-full"
-                sizes="64px"
-              />
+          {telegramUsername && (
+            <div>
+              <Label className="text-muted-foreground">Username</Label>
+              <p className="font-medium">@{telegramUsername}</p>
             </div>
           )}
         </div>
@@ -135,21 +125,17 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
 
           <div>
             <Label htmlFor="paddle_ranking">Уровень в падел</Label>
-            <div className="flex items-center gap-4 mt-2">
-              <Slider
-                id="paddle_ranking"
-                min={1}
-                max={7}
-                step={0.5}
-                value={paddleRanking !== null ? [paddleRanking] : [1]}
-                onValueChange={(values) => setPaddleRanking(values[0])}
-                className="flex-1"
-              />
-              <span className="w-12 text-center font-medium tabular-nums">
-                {paddleRanking !== null ? paddleRanking : "—"}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">От 1 до 7</p>
+            <select
+              id="paddle_ranking"
+              value={paddleRanking}
+              onChange={(e) => setPaddleRanking(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="">Не указан</option>
+              {paddleOptions.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>

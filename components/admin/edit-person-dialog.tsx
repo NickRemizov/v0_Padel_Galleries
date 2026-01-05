@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { updatePersonAction, deletePersonAvatarAction, updatePersonAvatarAction, getBestFaceForAvatarAction } from "@/app/admin/actions"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
-import { Slider } from "@/components/ui/slider"
 import { Trash2, User, Plus } from "lucide-react"
 import { generateAvatarBlob, uploadAvatarBlob, type BoundingBox } from "@/lib/avatar-utils"
 import type { Person } from "@/lib/types"
@@ -40,16 +39,14 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
   const [deleteAvatarDialog, setDeleteAvatarDialog] = useState(false)
   const [createAvatarDialog, setCreateAvatarDialog] = useState(false)
   const [creatingAvatar, setCreatingAvatar] = useState(false)
-  const [paddleRanking, setPaddleRanking] = useState<number | null>(person.paddle_ranking ?? null)
 
   const photoCount = (person.verified_photos_count ?? 0) + (person.high_confidence_photos_count ?? 0)
   const hasPhotos = photoCount > 0
 
-  // Sync state when person changes
+  // Sync avatar when person changes
   useEffect(() => {
     setAvatarUrl(person.avatar_url)
-    setPaddleRanking(person.paddle_ranking ?? null)
-  }, [person.avatar_url, person.paddle_ranking])
+  }, [person.avatar_url])
 
   async function handleSubmit(formData: FormData) {
     setLoading(true)
@@ -61,12 +58,12 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
         } catch {
           data[key] = []
         }
+      } else if (key === "paddle_ranking") {
+        data[key] = value ? Number(value) : null
       } else {
         data[key] = value || null
       }
     })
-    // Add paddle_ranking from state (controlled by slider)
-    data.paddle_ranking = paddleRanking
 
     const result = await updatePersonAction(person.id, data)
     setLoading(false)
@@ -234,21 +231,16 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
 
             <div className="grid gap-2">
               <Label htmlFor="paddle_ranking">Уровень в падел</Label>
-              <div className="flex items-center gap-4">
-                <Slider
-                  id="paddle_ranking"
-                  min={1}
-                  max={7}
-                  step={0.5}
-                  value={paddleRanking !== null ? [paddleRanking] : [1]}
-                  onValueChange={(values) => setPaddleRanking(values[0])}
-                  className="flex-1"
-                />
-                <span className="w-12 text-center font-medium tabular-nums">
-                  {paddleRanking !== null ? paddleRanking : "—"}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">От 1 до 7</p>
+              <Input
+                id="paddle_ranking"
+                name="paddle_ranking"
+                type="number"
+                min="0"
+                max="10"
+                step="0.25"
+                defaultValue={person.paddle_ranking || ""}
+              />
+              <p className="text-xs text-muted-foreground">Значение от 0 до 10 с шагом 0.25</p>
             </div>
 
             <div className="grid gap-2">
