@@ -73,6 +73,8 @@ export default async function MyPhotosPage() {
         image_url,
         original_url,
         original_filename,
+        width,
+        height,
         galleries (
           id,
           slug,

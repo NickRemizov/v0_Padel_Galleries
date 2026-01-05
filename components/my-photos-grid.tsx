@@ -211,7 +211,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
           <img
             src={photo.src}
             alt={image.galleries?.title || "Photo"}
-            className="w-full h-full transition-transform duration-300 group-hover:scale-105"
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
           />
         </Link>
