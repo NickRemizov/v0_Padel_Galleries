@@ -27,9 +27,10 @@ interface SettingsFormProps {
   person: Person
   telegramName: string
   telegramUsername?: string
+  telegramPhotoUrl?: string | null
 }
 
-export function SettingsForm({ person, telegramName, telegramUsername }: SettingsFormProps) {
+export function SettingsForm({ person, telegramName, telegramUsername, telegramPhotoUrl }: SettingsFormProps) {
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -105,14 +106,14 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
             )}
           </div>
         </div>
-        {person.avatar_url && (
+        {(person.avatar_url || telegramPhotoUrl) && (
           <div className="relative w-[132px] h-44 flex-shrink-0">
             <Image
-              src={person.avatar_url}
+              src={person.avatar_url || telegramPhotoUrl!}
               alt="Аватар"
               fill
               className="object-cover rounded-lg"
-              sizes="120px"
+              sizes="132px"
             />
           </div>
         )}

@@ -16,7 +16,7 @@ export default async function SettingsPage() {
     redirect("/")
   }
 
-  let user: { id: string; person_id: string | null; first_name: string; username: string }
+  let user: { id: string; person_id: string | null; first_name: string; username: string; photo_url: string | null }
   try {
     user = JSON.parse(userCookie.value)
   } catch {
@@ -83,6 +83,7 @@ export default async function SettingsPage() {
             person={person}
             telegramName={user.first_name}
             telegramUsername={user.username}
+            telegramPhotoUrl={user.photo_url}
           />
         </div>
       </div>
