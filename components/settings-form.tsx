@@ -6,10 +6,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Loader2, Save, Check } from "lucide-react"
+import Image from "next/image"
 
 interface Person {
   id: string
   real_name: string | null
+  avatar_url: string | null
   gmail: string | null
   facebook_profile_url: string | null
   instagram_profile_url: string | null
@@ -84,26 +86,33 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
     }
   }
 
-  // Generate paddle ranking options (0 to 10 with 0.25 step)
-  const paddleOptions: string[] = []
-  for (let i = 0; i <= 40; i++) {
-    paddleOptions.push((i * 0.25).toFixed(2).replace(/\.?0+$/, ""))
-  }
-
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       {/* Telegram Info (read-only) */}
       <div className="bg-card rounded-lg border p-6">
         <h3 className="text-lg font-semibold mb-4">Telegram</h3>
-        <div className="space-y-4">
-          <div>
-            <Label className="text-muted-foreground">Имя в Telegram</Label>
-            <p className="font-medium">{telegramName}</p>
-          </div>
-          {telegramUsername && (
+        <div className="flex items-start gap-4">
+          <div className="flex-1 space-y-4">
             <div>
-              <Label className="text-muted-foreground">Username</Label>
-              <p className="font-medium">@{telegramUsername}</p>
+              <Label className="text-muted-foreground">Имя в Telegram</Label>
+              <p className="font-medium">{telegramName}</p>
+            </div>
+            {telegramUsername && (
+              <div>
+                <Label className="text-muted-foreground">Username</Label>
+                <p className="font-medium">@{telegramUsername}</p>
+              </div>
+            )}
+          </div>
+          {person.avatar_url && (
+            <div className="relative w-16 h-16 flex-shrink-0">
+              <Image
+                src={person.avatar_url}
+                alt="Аватар"
+                fill
+                className="object-cover rounded-full"
+                sizes="64px"
+              />
             </div>
           )}
         </div>
@@ -125,17 +134,17 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
 
           <div>
             <Label htmlFor="paddle_ranking">Уровень в падел</Label>
-            <select
+            <Input
               id="paddle_ranking"
+              type="number"
+              min="1"
+              max="7"
+              step="0.5"
               value={paddleRanking}
               onChange={(e) => setPaddleRanking(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <option value="">Не указан</option>
-              {paddleOptions.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
+              placeholder="1-7"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Значение от 1 до 7 с шагом 0.5</p>
           </div>
         </div>
       </div>

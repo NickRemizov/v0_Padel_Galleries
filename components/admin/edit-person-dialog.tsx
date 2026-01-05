@@ -235,12 +235,12 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
                 id="paddle_ranking"
                 name="paddle_ranking"
                 type="number"
-                min="0"
-                max="10"
-                step="0.25"
+                min="1"
+                max="7"
+                step="0.5"
                 defaultValue={person.paddle_ranking || ""}
               />
-              <p className="text-xs text-muted-foreground">Значение от 0 до 10 с шагом 0.25</p>
+              <p className="text-xs text-muted-foreground">Значение от 1 до 7 с шагом 0.5</p>
             </div>
 
             <div className="grid gap-2">
