@@ -5,6 +5,8 @@ export type AdminEventType =
   | "user_linked"
   | "name_changed"
   | "privacy_changed"
+  | "photo_verified"
+  | "photo_rejected"
 
 interface LogAdminActivityParams {
   eventType: AdminEventType

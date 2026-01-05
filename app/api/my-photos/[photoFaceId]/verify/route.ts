@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { logActivity } from "@/lib/activity-logger"
+import { logAdminActivity } from "@/lib/admin-activity-logger"
 
 // POST /api/my-photos/[photoFaceId]/verify - Verify that this is me
 export async function POST(
@@ -55,13 +56,24 @@ export async function POST(
       return NextResponse.json({ error: "Failed to verify" }, { status: 500 })
     }
 
-    // Log activity
+    // Log activity (user-facing)
     const gi = photoFace.gallery_images as any
     await logActivity({
       personId: user.person_id,
       activityType: "photo_verified",
       imageId: gi?.id,
       galleryId: gi?.gallery_id,
+      metadata: {
+        filename: gi?.original_filename,
+        gallery_title: gi?.galleries?.title,
+      },
+    })
+
+    // Log admin activity
+    logAdminActivity({
+      eventType: "photo_verified",
+      userId: user.id,
+      personId: user.person_id,
       metadata: {
         filename: gi?.original_filename,
         gallery_title: gi?.galleries?.title,

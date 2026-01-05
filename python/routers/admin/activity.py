@@ -27,6 +27,8 @@ EVENT_TYPE_LABELS = {
     "user_linked": "Привязка аккаунта",
     "name_changed": "Изменение имени",
     "privacy_changed": "Изменение приватности",
+    "photo_verified": "Верификация фото",
+    "photo_rejected": "Отклонение фото",
 }
 
 

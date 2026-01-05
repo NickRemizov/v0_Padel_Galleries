@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Loader2, UserPlus, Link2, Pencil, Eye, ChevronLeft, ChevronRight } from "lucide-react"
+import { Loader2, UserPlus, Link2, Pencil, Eye, ChevronLeft, ChevronRight, Check, X } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -33,6 +33,8 @@ const EVENT_ICONS: Record<string, React.ReactNode> = {
   user_linked: <Link2 className="h-4 w-4" />,
   name_changed: <Pencil className="h-4 w-4" />,
   privacy_changed: <Eye className="h-4 w-4" />,
+  photo_verified: <Check className="h-4 w-4" />,
+  photo_rejected: <X className="h-4 w-4" />,
 }
 
 const EVENT_COLORS: Record<string, string> = {
@@ -40,6 +42,8 @@ const EVENT_COLORS: Record<string, string> = {
   user_linked: "bg-blue-500",
   name_changed: "bg-yellow-500",
   privacy_changed: "bg-purple-500",
+  photo_verified: "bg-emerald-500",
+  photo_rejected: "bg-red-500",
 }
 
 function formatDate(dateString: string): string {
@@ -95,6 +99,12 @@ function getEventDescription(activity: AdminActivity): string {
       const oldVal = meta.old_value ? "вкл" : "выкл"
       const newVal = meta.new_value ? "вкл" : "выкл"
       return `${label}: ${oldVal} → ${newVal}`
+
+    case "photo_verified":
+      return `Подтвердил фото${meta.filename ? `: ${meta.filename}` : ""}${meta.gallery_title ? ` (${meta.gallery_title})` : ""}`
+
+    case "photo_rejected":
+      return `Отклонил фото${meta.filename ? `: ${meta.filename}` : ""}${meta.gallery_title ? ` (${meta.gallery_title})` : ""}`
 
     default:
       return activity.event_label
@@ -186,6 +196,8 @@ export default function AdminActivityPage() {
                 <SelectItem value="user_linked">Привязки</SelectItem>
                 <SelectItem value="name_changed">Изменения имени</SelectItem>
                 <SelectItem value="privacy_changed">Изменения приватности</SelectItem>
+                <SelectItem value="photo_verified">Верификация фото</SelectItem>
+                <SelectItem value="photo_rejected">Отклонение фото</SelectItem>
               </SelectContent>
             </Select>
           </div>

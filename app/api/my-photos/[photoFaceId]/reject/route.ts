@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { logActivity } from "@/lib/activity-logger"
+import { logAdminActivity } from "@/lib/admin-activity-logger"
 
 // POST /api/my-photos/[photoFaceId]/reject - This is not me, remove link
 export async function POST(
@@ -48,6 +49,17 @@ export async function POST(
       activityType: "photo_rejected",
       imageId: gi?.id,
       galleryId: gi?.gallery_id,
+      metadata: {
+        filename: gi?.original_filename,
+        gallery_title: gi?.galleries?.title,
+      },
+    })
+
+    // Log admin activity
+    logAdminActivity({
+      eventType: "photo_rejected",
+      userId: user.id,
+      personId: user.person_id,
       metadata: {
         filename: gi?.original_filename,
         gallery_title: gi?.galleries?.title,
