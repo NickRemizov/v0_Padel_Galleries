@@ -106,13 +106,13 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
           </div>
         </div>
         {person.avatar_url && (
-          <div className="relative w-24 h-32 flex-shrink-0">
+          <div className="relative w-[120px] h-40 flex-shrink-0">
             <Image
               src={person.avatar_url}
               alt="Аватар"
               fill
               className="object-cover rounded-lg"
-              sizes="96px"
+              sizes="120px"
             />
           </div>
         )}
