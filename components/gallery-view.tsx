@@ -104,11 +104,17 @@ export function GalleryView({ gallery }: GalleryViewProps) {
     }
   }, [searchParams, sortedImages])
 
-  const renderPhoto = ({ photo, width, height }: { photo: typeof photos[0]; width: number; height: number }) => {
+  const renderPhoto = (
+    { onClick }: { onClick?: () => void },
+    { photo, width, height }: { photo: typeof photos[0]; width: number; height: number }
+  ) => {
     const people = photo.people as Array<{ name: string }>
 
     return (
-      <div className="relative overflow-hidden rounded-lg group cursor-pointer">
+      <div
+        className="relative overflow-hidden rounded-lg group cursor-pointer"
+        onClick={onClick}
+      >
         <img
           src={photo.src}
           width={width}
@@ -117,9 +123,9 @@ export function GalleryView({ gallery }: GalleryViewProps) {
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 pointer-events-none" />
         {people.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
+          <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent pointer-events-none">
             <p className="text-white text-xs font-medium leading-tight">
               {people.map((person) => person.name).join(", ")}
             </p>

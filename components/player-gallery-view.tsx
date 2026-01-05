@@ -103,11 +103,17 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
 
   const telegramLink = getTelegramLink(player.telegram_username)
 
-  const renderPhoto = ({ photo, width, height }: { photo: typeof photos[0]; width: number; height: number }) => {
+  const renderPhoto = (
+    { onClick }: { onClick?: () => void },
+    { photo, width, height }: { photo: typeof photos[0]; width: number; height: number }
+  ) => {
     const gallery = photo.gallery
 
     return (
-      <div className="relative overflow-hidden rounded-lg group cursor-pointer">
+      <div
+        className="relative overflow-hidden rounded-lg group cursor-pointer"
+        onClick={onClick}
+      >
         <img
           src={photo.src}
           width={width}
@@ -116,9 +122,9 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 pointer-events-none" />
         {gallery && (
-          <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
+          <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent pointer-events-none">
             <p className="text-white text-xs leading-tight">
               {gallery.title} {formatShortDate(gallery.shoot_date)}
             </p>

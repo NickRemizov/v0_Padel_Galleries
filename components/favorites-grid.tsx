@@ -70,9 +70,15 @@ export function FavoritesGrid({ favorites }: FavoritesGridProps) {
     }
   }
 
-  const renderPhoto = ({ photo, width, height }: { photo: typeof photos[0]; width: number; height: number }) => {
+  const renderPhoto = (
+    { onClick }: { onClick?: () => void },
+    { photo, width, height }: { photo: typeof photos[0]; width: number; height: number }
+  ) => {
     return (
-      <div className="relative overflow-hidden rounded-lg group cursor-pointer">
+      <div
+        className="relative overflow-hidden rounded-lg group cursor-pointer"
+        onClick={onClick}
+      >
         <img
           src={photo.src}
           width={width}
@@ -81,7 +87,7 @@ export function FavoritesGrid({ favorites }: FavoritesGridProps) {
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none" />
       </div>
     )
   }

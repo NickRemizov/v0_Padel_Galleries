@@ -188,7 +188,10 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
       })
   }, [photoFaces])
 
-  const renderPhoto = ({ photo, width, height }: { photo: typeof photos[0]; width: number; height: number }) => {
+  const renderPhoto = (
+    _props: { onClick?: () => void },
+    { photo, width, height }: { photo: typeof photos[0]; width: number; height: number }
+  ) => {
     const photoFace = photo.photoFace
     const image = photoFace.gallery_images!
     const gallerySlug = image.galleries?.slug || image.gallery_id
