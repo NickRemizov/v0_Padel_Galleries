@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Check, X, EyeOff, Eye, UserPlus } from "lucide-react"
-import { MasonryPhotoAlbum } from "react-photo-album"
+import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
+import "react-photo-album/rows.css"
 import "react-photo-album/masonry.css"
 import {
   AlertDialog,
@@ -332,16 +333,24 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         </p>
       </div>
 
-      <MasonryPhotoAlbum
-        photos={photos}
-        columns={(containerWidth) => {
-          if (containerWidth < 640) return 2
-          if (containerWidth < 1024) return 3
-          return 4
-        }}
-        render={{ photo: renderPhoto }}
-        spacing={isMobile ? 4 : 8}
-      />
+      {isMobile ? (
+        <RowsPhotoAlbum
+          photos={photos}
+          targetRowHeight={350}
+          render={{ photo: renderPhoto }}
+          spacing={4}
+        />
+      ) : (
+        <MasonryPhotoAlbum
+          photos={photos}
+          columns={(containerWidth) => {
+            if (containerWidth < 1024) return 3
+            return 4
+          }}
+          render={{ photo: renderPhoto }}
+          spacing={8}
+        />
+      )}
 
       {/* Hide confirmation dialog */}
       <AlertDialog open={!!hideDialog} onOpenChange={(open) => !open && setHideDialog(null)}>

@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useEffect, useMemo } from "react"
-import { MasonryPhotoAlbum } from "react-photo-album"
+import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
+import "react-photo-album/rows.css"
 import "react-photo-album/masonry.css"
 import type { Favorite } from "@/lib/types"
 
@@ -95,17 +96,24 @@ export function FavoritesGrid({ favorites }: FavoritesGridProps) {
     return null
   }
 
-  return (
+  return isMobile ? (
+    <RowsPhotoAlbum
+      photos={photos}
+      targetRowHeight={350}
+      onClick={handleClick}
+      render={{ photo: renderPhoto }}
+      spacing={4}
+    />
+  ) : (
     <MasonryPhotoAlbum
       photos={photos}
       columns={(containerWidth) => {
-        if (containerWidth < 640) return 2
         if (containerWidth < 1024) return 3
         return 4
       }}
       onClick={handleClick}
       render={{ photo: renderPhoto }}
-      spacing={isMobile ? 4 : 8}
+      spacing={8}
     />
   )
 }
