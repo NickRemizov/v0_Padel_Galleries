@@ -32,10 +32,10 @@ export function AuthButton() {
         size="icon"
         onClick={() => setShowLoginDialog(true)}
         title="Войти через Telegram"
-        className="h-10 w-10 rounded-full hover:bg-[#0088cc]/10"
+        className="h-12 w-12 rounded-full hover:bg-[#0088cc]/10"
       >
         <svg
-          className="h-6 w-6 text-[#0088cc]"
+          className="h-10 w-10 text-[#0088cc]"
           viewBox="0 0 24 24"
           fill="currentColor"
         >
