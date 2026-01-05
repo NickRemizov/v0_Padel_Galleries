@@ -8,6 +8,7 @@ export interface FaceData {
   confidence: number
   person_id: string | null
   bbox: { x: number; y: number; width: number; height: number } | null
+  hidden_by_user: boolean
 }
 
 /**

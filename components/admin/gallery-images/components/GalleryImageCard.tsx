@@ -4,7 +4,7 @@ import { memo } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Trash2, Star, Download, Heart, Bookmark } from "lucide-react"
+import { Trash2, Star, Download, Heart, Bookmark, EyeOff } from "lucide-react"
 
 import type { GalleryImage } from "@/lib/types"
 import type { FaceData, PhotoRecognitionStats } from "../types"
@@ -51,6 +51,7 @@ export const GalleryImageCard = memo(function GalleryImageCard({
   const unknownCount = faces?.filter((f) => f.person_id === null).length || 0
   const recognizedCount = faces?.filter((f) => f.person_id !== null).length || 0
   const totalCount = faces?.length || 0
+  const hasHiddenFace = faces?.some((f) => f.hidden_by_user) || false
 
   // Calculate object position only when face data is loaded
   const bboxes = photoFacesLoaded
@@ -169,6 +170,12 @@ export const GalleryImageCard = memo(function GalleryImageCard({
         {photoFacesLoaded && hasVerified && (
           <div className="absolute left-2 bottom-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm shadow-lg z-10">
             ✓
+          </div>
+        )}
+        {/* Hidden by user indicator - bottom center */}
+        {photoFacesLoaded && hasHiddenFace && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 text-white rounded px-2 py-1 flex items-center gap-1 shadow-lg z-10">
+            <EyeOff className="h-3 w-3" />
           </div>
         )}
       </div>

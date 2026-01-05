@@ -47,6 +47,7 @@ export function useGalleryData(galleryId: string): UseGalleryDataReturn {
           confidence: face.recognition_confidence || 0,
           person_id: face.person_id || null,
           bbox: face.insightface_bbox || null,
+          hidden_by_user: face.hidden_by_user || false,
         })
       }
 
@@ -128,6 +129,7 @@ export function useGalleryData(galleryId: string): UseGalleryDataReturn {
         confidence: face.recognitionConfidence || 1,
         person_id: face.personId || null,
         bbox: face.face.boundingBox || null,
+        hidden_by_user: false,
       })),
     }))
 
