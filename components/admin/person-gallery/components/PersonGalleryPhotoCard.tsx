@@ -4,7 +4,7 @@ import React, { useMemo } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Check, X, User } from "lucide-react"
+import { Check, X, User, EyeOff } from "lucide-react"
 import type { PersonPhoto } from "../types"
 import { calculateFaceStyles, formatShortDate } from "../utils"
 
@@ -33,6 +33,7 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
 }: PersonGalleryPhotoCardProps) {
   const canVerify = !photo.verified
   const isExcluded = photo.excluded_from_index === true
+  const isHidden = photo.hidden_by_user === true
 
   // Memoize face styles calculation - only recalculate if bbox/dimensions change
   const faceStyles = useMemo(() => {
@@ -132,6 +133,13 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
             <User className="h-4 w-4" />
           </Button>
         </div>
+
+        {/* Hidden by user indicator - bottom center */}
+        {isHidden && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 text-white rounded px-2 py-1 flex items-center gap-1 shadow-lg z-10">
+            <EyeOff className="h-3 w-3" />
+          </div>
+        )}
       </div>
 
       {/* Photo info */}

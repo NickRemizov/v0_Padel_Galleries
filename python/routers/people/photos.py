@@ -83,10 +83,10 @@ async def get_person_photos_with_details(identifier: UUID):
         config = supabase_db.get_recognition_config()
         confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.6)
         
-        # Получаем все photo_faces для этого человека (включая excluded_from_index)
+        # Получаем все photo_faces для этого человека (включая excluded_from_index, hidden_by_user)
         photo_faces_result = supabase_db.client.table("photo_faces")\
             .select(
-                "id, photo_id, recognition_confidence, verified, insightface_bbox, person_id, excluded_from_index, "
+                "id, photo_id, recognition_confidence, verified, insightface_bbox, person_id, excluded_from_index, hidden_by_user, "
                 "gallery_images(id, image_url, gallery_id, width, height, original_filename, galleries(shoot_date, title))"
             )\
             .eq("person_id", person_id)\
@@ -114,13 +114,15 @@ async def get_person_photos_with_details(identifier: UUID):
                 faces_for_photo = [f for f in photo_faces if f.get("gallery_images", {}).get("id") == photo_id]
                 is_verified = any(f.get("verified") == True for f in faces_for_photo)
                 is_excluded = any(f.get("excluded_from_index") == True for f in faces_for_photo)
-                
+                is_hidden = any(f.get("hidden_by_user") == True for f in faces_for_photo)
+
                 photos_map[photo_id] = {
                     **gi,
                     "faceId": pf["id"],
                     "confidence": pf.get("recognition_confidence"),
                     "verified": is_verified,
                     "excluded_from_index": is_excluded,
+                    "hidden_by_user": is_hidden,
                     "boundingBox": pf.get("insightface_bbox"),
                     "shootDate": gi.get("galleries", {}).get("shoot_date") if gi.get("galleries") else None,
                     "filename": gi.get("original_filename", ""),

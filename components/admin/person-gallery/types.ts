@@ -32,6 +32,7 @@ export interface PersonPhoto {
   confidence: number | null
   verified: boolean
   excluded_from_index?: boolean
+  hidden_by_user?: boolean
   boundingBox: BoundingBox | null
   faceCount: number
   filename: string
