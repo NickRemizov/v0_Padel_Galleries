@@ -7,8 +7,7 @@ import type { Gallery } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ImageLightbox } from "@/components/image-lightbox"
-import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
-import "react-photo-album/rows.css"
+import { MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/masonry.css"
 
 interface GalleryViewProps {
@@ -151,25 +150,17 @@ export function GalleryView({ gallery }: GalleryViewProps) {
           <div className="text-center py-12 text-muted-foreground">
             <p>В этой галерее пока нет изображений</p>
           </div>
-        ) : isMobile ? (
-          <RowsPhotoAlbum
-            photos={photos}
-            targetRowHeight={150}
-            onClick={handleImageClick}
-            render={{ photo: renderPhoto }}
-            spacing={4}
-          />
         ) : (
           <MasonryPhotoAlbum
             photos={photos}
             columns={(containerWidth) => {
-              if (containerWidth < 768) return 2
+              if (containerWidth < 640) return 2
               if (containerWidth < 1024) return 3
               return 4
             }}
             onClick={handleImageClick}
             render={{ photo: renderPhoto }}
-            spacing={8}
+            spacing={isMobile ? 4 : 8}
           />
         )}
       </div>

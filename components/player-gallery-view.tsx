@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ImageLightbox } from "@/components/image-lightbox"
 import { usePathname, useSearchParams } from "next/navigation"
-import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
-import "react-photo-album/rows.css"
+import { MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/masonry.css"
 
 interface PlayerGalleryViewProps {
@@ -172,27 +171,17 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
       </div>
 
       <div className="px-1 sm:px-2 pb-8">
-        {isMobile ? (
-          <RowsPhotoAlbum
-            photos={photos}
-            targetRowHeight={150}
-            onClick={handleImageClick}
-            render={{ photo: renderPhoto }}
-            spacing={4}
-          />
-        ) : (
-          <MasonryPhotoAlbum
-            photos={photos}
-            columns={(containerWidth) => {
-              if (containerWidth < 768) return 2
-              if (containerWidth < 1024) return 3
-              return 4
-            }}
-            onClick={handleImageClick}
-            render={{ photo: renderPhoto }}
-            spacing={8}
-          />
-        )}
+        <MasonryPhotoAlbum
+          photos={photos}
+          columns={(containerWidth) => {
+            if (containerWidth < 640) return 2
+            if (containerWidth < 1024) return 3
+            return 4
+          }}
+          onClick={handleImageClick}
+          render={{ photo: renderPhoto }}
+          spacing={isMobile ? 4 : 8}
+        />
       </div>
 
       <ImageLightbox
