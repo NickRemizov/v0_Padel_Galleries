@@ -30,7 +30,7 @@ function useIsMobile() {
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
+      setIsMobile(window.innerWidth < 640)
     }
     checkMobile()
     window.addEventListener("resize", checkMobile)
@@ -107,7 +107,8 @@ export function FavoritesGrid({ favorites }: FavoritesGridProps) {
     <MasonryPhotoAlbum
       photos={photos}
       columns={(containerWidth) => {
-        if (containerWidth < 1024) return 3
+        if (containerWidth < 900) return 2
+        if (containerWidth < 1400) return 3
         return 4
       }}
       onClick={handleClick}
