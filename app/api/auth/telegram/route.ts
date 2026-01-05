@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { verifyTelegramAuth, isTelegramAuthDataValid } from "@/lib/telegram-auth"
+import { logAdminActivity } from "@/lib/admin-activity-logger"
 
 /**
  * Telegram Login Logic:
@@ -35,17 +36,18 @@ async function findPersonByTelegramId(
 /**
  * Find person by telegram_username (case-insensitive)
  * Telegram gives username without @, database stores with @
+ * Returns id, real_name, and telegram_full_name for activity logging
  */
 async function findPersonByUsername(
   supabase: any,
   username: string
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; real_name: string | null; telegram_full_name: string | null } | null> {
   // Add @ prefix and search case-insensitive
   const usernameWithAt = `@${username}`
 
   const { data } = await supabase
     .from("people")
-    .select("id")
+    .select("id, real_name, telegram_full_name")
     .ilike("telegram_username", usernameWithAt)
     .single()
 
@@ -188,15 +190,58 @@ export async function POST(request: NextRequest) {
       if (personByUsername) {
         // Found by username → link to Telegram account
         personId = personByUsername.id
+        const oldTelegramFullName = personByUsername.telegram_full_name
+        const personName = personByUsername.real_name || oldTelegramFullName
+
         await linkPersonByUsername(supabase, personId, id, first_name, last_name)
         console.log(`[telegram-auth] Linked person ${personId} by username @${username}`)
+
+        // Log admin activity: user linked
+        const newTelegramFullName = last_name ? `${first_name} ${last_name}` : first_name
+        const nameChanged = oldTelegramFullName && oldTelegramFullName !== newTelegramFullName
+
+        logAdminActivity({
+          eventType: "user_linked",
+          personId,
+          metadata: {
+            telegram_username: `@${username}`,
+            person_name: personName,
+            telegram_full_name: newTelegramFullName,
+            old_telegram_full_name: nameChanged ? oldTelegramFullName : null,
+            linked_by: "username",
+          },
+        })
       } else {
         // Step 3: Create new person
         personId = await createNewPerson(supabase, id, first_name, last_name, username)
+
+        // Log admin activity: user registered
+        const fullName = last_name ? `${first_name} ${last_name}` : first_name
+        logAdminActivity({
+          eventType: "user_registered",
+          personId,
+          metadata: {
+            telegram_username: username ? `@${username}` : null,
+            telegram_full_name: fullName,
+            person_name: fullName,
+          },
+        })
       }
     } else {
       // No username provided, create new person
       personId = await createNewPerson(supabase, id, first_name, last_name, username)
+
+      // Log admin activity: user registered
+      const fullName = last_name ? `${first_name} ${last_name}` : first_name
+      logAdminActivity({
+        eventType: "user_registered",
+        personId,
+        metadata: {
+          telegram_username: null,
+          telegram_full_name: fullName,
+          person_name: fullName,
+        },
+      })
     }
 
     // === CREATE OR UPDATE USER ===

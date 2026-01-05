@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
+import { logAdminActivity, PRIVACY_SETTINGS, PRIVACY_SETTING_LABELS } from "@/lib/admin-activity-logger"
 
 // Allowed fields that user can update
 const ALLOWED_FIELDS = [
@@ -76,6 +77,13 @@ export async function PUT(request: NextRequest) {
 
     const supabase = createServiceClient()
 
+    // Get current values before updating (for activity logging)
+    const { data: currentData } = await supabase
+      .from("people")
+      .select("real_name, show_in_players_gallery, create_personal_gallery, show_name_on_photos, show_telegram_username, show_social_links")
+      .eq("id", user.person_id)
+      .single()
+
     const { data, error } = await supabase
       .from("people")
       .update(updateData)
@@ -89,6 +97,38 @@ export async function PUT(request: NextRequest) {
     }
 
     console.log(`[settings] User ${user.id} updated profile:`, Object.keys(updateData))
+
+    // Log admin activity for name change
+    if ("real_name" in updateData && currentData && currentData.real_name !== updateData.real_name) {
+      logAdminActivity({
+        eventType: "name_changed",
+        userId: user.id,
+        personId: user.person_id,
+        metadata: {
+          old_value: currentData.real_name,
+          new_value: updateData.real_name,
+        },
+      })
+    }
+
+    // Log admin activity for privacy settings changes
+    if (currentData) {
+      for (const setting of PRIVACY_SETTINGS) {
+        if (setting in updateData && currentData[setting] !== updateData[setting]) {
+          logAdminActivity({
+            eventType: "privacy_changed",
+            userId: user.id,
+            personId: user.person_id,
+            metadata: {
+              setting_name: setting,
+              setting_label: PRIVACY_SETTING_LABELS[setting],
+              old_value: currentData[setting],
+              new_value: updateData[setting],
+            },
+          })
+        }
+      }
+    }
 
     return NextResponse.json({ success: true, data })
   } catch (error) {

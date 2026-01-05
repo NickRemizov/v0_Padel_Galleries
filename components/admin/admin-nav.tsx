@@ -23,6 +23,7 @@ import {
   Globe,
   Shield,
   UserCog,
+  Activity,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,6 +59,7 @@ const navItems = [
   { href: "/admin/people", label: "Люди", icon: Users },
   { href: "/admin/directories", label: "Справочники", icon: BookOpen },
   { href: "/admin/statistics", label: "Статистика", icon: BarChart3 },
+  { href: "/admin/activity", label: "Активность", icon: Activity },
   { href: "/admin/settings", label: "Настройки", icon: Settings },
   { href: "/admin/service", label: "Сервис", icon: Wrench },
   { href: "/admin/admins", label: "Админы", icon: UserCog, minRole: "global_admin" as const },
