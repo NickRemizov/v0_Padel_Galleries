@@ -4,7 +4,7 @@ import React, { useMemo } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Check, X, User, EyeOff } from "lucide-react"
+import { Check, X, UserPlus, EyeOff } from "lucide-react"
 import type { PersonPhoto } from "../types"
 import { calculateFaceStyles, formatShortDate } from "../utils"
 
@@ -130,7 +130,7 @@ export const PersonGalleryPhotoCard = React.memo(function PersonGalleryPhotoCard
               onOpenAvatarSelector(photo.id)
             }}
           >
-            <User className="h-4 w-4" />
+            <UserPlus className="h-4 w-4" />
           </Button>
         </div>
 
