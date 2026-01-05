@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
-import { MessageCircle, Send, Trash2 } from "lucide-react"
+import { MessageCircle, Send, Trash2, Pencil, X, Check } from "lucide-react"
 import type { Comment } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +22,8 @@ export function CommentsSection({ imageId, className }: CommentsSectionProps) {
   const [newComment, setNewComment] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState("")
 
   useEffect(() => {
     fetchComments()
@@ -86,7 +88,42 @@ export function CommentsSection({ imageId, className }: CommentsSectionProps) {
         setComments(comments.filter((c) => c.id !== commentId))
       }
     } catch (error) {
-      console.error("[v0] Error deleting comment:", error)
+      console.error("[comments] Error deleting comment:", error)
+    }
+  }
+
+  function startEditing(comment: Comment) {
+    setEditingId(comment.id)
+    setEditContent(comment.content)
+  }
+
+  function cancelEditing() {
+    setEditingId(null)
+    setEditContent("")
+  }
+
+  async function handleEdit(commentId: string) {
+    if (!editContent.trim()) return
+
+    try {
+      const response = await fetch(`/api/comments/${imageId}/${commentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editContent }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setComments(comments.map((c) => (c.id === commentId ? data.comment : c)))
+        setEditingId(null)
+        setEditContent("")
+      } else {
+        const error = await response.json()
+        alert(error.error || "Не удалось обновить комментарий")
+      }
+    } catch (error) {
+      console.error("[comments] Error updating comment:", error)
+      alert("Произошла ошибка при обновлении комментария")
     }
   }
 
@@ -152,6 +189,8 @@ export function CommentsSection({ imageId, className }: CommentsSectionProps) {
           comments.map((comment) => {
             const commentUser = comment.users
             const displayName = commentUser?.first_name || commentUser?.username || "Пользователь"
+            const isEditing = editingId === comment.id
+            const isOwner = user?.id === comment.user_id
 
             return (
               <div key={comment.id} className="flex gap-3">
@@ -162,19 +201,63 @@ export function CommentsSection({ imageId, className }: CommentsSectionProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-sm">{displayName}</span>
-                    <span className="text-xs text-muted-foreground">{formatDate(comment.created_at)}</span>
-                    {user?.id === comment.user_id && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 ml-auto"
-                        onClick={() => handleDelete(comment.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(comment.created_at)}
+                      {comment.updated_at && comment.updated_at !== comment.created_at && " (ред.)"}
+                    </span>
+                    {isOwner && !isEditing && (
+                      <div className="flex gap-1 ml-auto">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => startEditing(comment)}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleDelete(comment.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     )}
                   </div>
-                  <p className="text-sm whitespace-pre-wrap break-words">{comment.content}</p>
+                  {isEditing ? (
+                    <div className="flex gap-2">
+                      <Textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="min-h-[60px] resize-none text-sm"
+                        maxLength={1000}
+                        autoFocus
+                      />
+                      <div className="flex flex-col gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleEdit(comment.id)}
+                          disabled={!editContent.trim()}
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={cancelEditing}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap break-words">{comment.content}</p>
+                  )}
                 </div>
               </div>
             )
