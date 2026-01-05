@@ -139,12 +139,12 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
               type="number"
               min="1"
               max="7"
-              step="0.5"
+              step="0.25"
               value={paddleRanking}
               onChange={(e) => setPaddleRanking(e.target.value)}
               placeholder="1-7"
             />
-            <p className="text-xs text-muted-foreground mt-1">Значение от 1 до 7 с шагом 0.5</p>
+            <p className="text-xs text-muted-foreground mt-1">Значение от 1 до 7 с шагом 0.25</p>
           </div>
         </div>
       </div>

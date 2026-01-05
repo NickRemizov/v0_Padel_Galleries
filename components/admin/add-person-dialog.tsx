@@ -250,8 +250,8 @@ export function AddPersonDialog({
 
           <div className="grid gap-2">
             <Label htmlFor="paddle_ranking">Уровень в падел</Label>
-            <Input id="paddle_ranking" name="paddle_ranking" type="number" min="1" max="7" step="0.5" />
-            <p className="text-xs text-muted-foreground">Значение от 1 до 7 с шагом 0.5</p>
+            <Input id="paddle_ranking" name="paddle_ranking" type="number" min="1" max="7" step="0.25" />
+            <p className="text-xs text-muted-foreground">Значение от 1 до 7 с шагом 0.25</p>
           </div>
         </div>
 
