@@ -52,7 +52,7 @@ async def get_admin_activity(
         query = supabase.table("admin_activity")\
             .select(
                 "id, event_type, user_id, person_id, metadata, created_at, "
-                "people(id, real_name, telegram_full_name, telegram_username), "
+                "people(id, real_name, telegram_full_name, telegram_username, avatar_url), "
                 "users(id, first_name, username, photo_url)"
             )\
             .order("created_at", desc=True)
@@ -85,6 +85,9 @@ async def get_admin_activity(
                 "Неизвестный"
             )
 
+            # Get avatar: prefer user's telegram photo, fallback to person's custom avatar
+            avatar_url = user.get("photo_url") or person.get("avatar_url")
+
             formatted_activities.append({
                 "id": activity["id"],
                 "event_type": activity["event_type"],
@@ -94,7 +97,7 @@ async def get_admin_activity(
                 "user_id": activity.get("user_id"),
                 "person_name": person_name,
                 "telegram_username": person.get("telegram_username") or metadata.get("telegram_username"),
-                "user_avatar": user.get("photo_url"),
+                "user_avatar": avatar_url,
                 "metadata": metadata,
             })
 
