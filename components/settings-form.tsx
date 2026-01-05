@@ -89,10 +89,10 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       {/* Telegram Info (read-only) */}
-      <div className="bg-card rounded-lg border p-6">
-        <h3 className="text-lg font-semibold mb-4">Telegram</h3>
-        <div className="flex items-start gap-4">
-          <div className="flex-1 space-y-4">
+      <div className="flex gap-4 items-stretch">
+        <div className="flex-1 bg-card rounded-lg border p-6">
+          <h3 className="text-lg font-semibold mb-4">Telegram</h3>
+          <div className="space-y-4">
             <div>
               <Label className="text-muted-foreground">Имя в Telegram</Label>
               <p className="font-medium">{telegramName}</p>
@@ -104,18 +104,18 @@ export function SettingsForm({ person, telegramName, telegramUsername }: Setting
               </div>
             )}
           </div>
-          {person.avatar_url && (
-            <div className="relative w-16 h-16 flex-shrink-0">
-              <Image
-                src={person.avatar_url}
-                alt="Аватар"
-                fill
-                className="object-cover rounded-full"
-                sizes="64px"
-              />
-            </div>
-          )}
         </div>
+        {person.avatar_url && (
+          <div className="relative w-24 flex-shrink-0" style={{ aspectRatio: '3/4' }}>
+            <Image
+              src={person.avatar_url}
+              alt="Аватар"
+              fill
+              className="object-cover rounded-lg"
+              sizes="96px"
+            />
+          </div>
+        )}
       </div>
 
       {/* Profile Info */}
