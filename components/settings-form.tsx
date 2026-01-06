@@ -28,9 +28,20 @@ interface SettingsFormProps {
   telegramName: string
   telegramUsername?: string
   telegramPhotoUrl?: string | null
+  hasTelegramAuth?: boolean
+  hasGoogleAuth?: boolean
+  googleEmail?: string
 }
 
-export function SettingsForm({ person, telegramName, telegramUsername, telegramPhotoUrl }: SettingsFormProps) {
+export function SettingsForm({
+  person,
+  telegramName,
+  telegramUsername,
+  telegramPhotoUrl,
+  hasTelegramAuth = false,
+  hasGoogleAuth = false,
+  googleEmail,
+}: SettingsFormProps) {
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -89,20 +100,40 @@ export function SettingsForm({ person, telegramName, telegramUsername, telegramP
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
-      {/* Telegram Info (read-only) */}
+      {/* Auth Info */}
       <div className="flex gap-4 items-start">
         <div className="flex-1 bg-card rounded-lg border p-6">
-          <h3 className="text-lg font-semibold mb-4">Telegram</h3>
+          <h3 className="text-lg font-semibold mb-4">Способы входа</h3>
           <div className="space-y-4">
-            <div>
-              <Label className="text-muted-foreground">Имя в Telegram</Label>
-              <p className="font-medium">{telegramName}</p>
-            </div>
-            {telegramUsername && (
+            {/* Telegram auth info */}
+            {hasTelegramAuth && (
+              <>
+                <div>
+                  <Label className="text-muted-foreground">Telegram</Label>
+                  <p className="font-medium">{telegramName}</p>
+                </div>
+                {telegramUsername && (
+                  <div>
+                    <Label className="text-muted-foreground">Username</Label>
+                    <p className="font-medium">@{telegramUsername}</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Google auth info */}
+            {hasGoogleAuth && googleEmail && (
               <div>
-                <Label className="text-muted-foreground">Username</Label>
-                <p className="font-medium">@{telegramUsername}</p>
+                <Label className="text-muted-foreground">Google</Label>
+                <p className="font-medium">{googleEmail}</p>
               </div>
+            )}
+
+            {/* Show both if linked */}
+            {hasTelegramAuth && hasGoogleAuth && (
+              <p className="text-xs text-green-600 mt-2">
+                Аккаунты связаны. Вы можете входить через Telegram или Google.
+              </p>
             )}
           </div>
         </div>
@@ -162,10 +193,16 @@ export function SettingsForm({ person, telegramName, telegramUsername, telegramP
             <Input
               id="gmail"
               type="email"
-              value={gmail}
+              value={hasGoogleAuth && googleEmail ? googleEmail : gmail}
               onChange={(e) => setGmail(e.target.value)}
               placeholder="your@gmail.com"
+              disabled={hasGoogleAuth}
             />
+            {hasGoogleAuth && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Email из Google-аккаунта (изменить нельзя)
+              </p>
+            )}
           </div>
 
           <div>

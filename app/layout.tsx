@@ -1,6 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { AuthProvider } from "@/lib/auth-context"
+import { Providers } from "@/components/providers"
 
 import "./globals.css"
 import { Suspense } from "react"
@@ -30,12 +30,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+
   return (
     <html lang="ru">
       <body className={`font-sans ${oswald.variable} ${playfair.variable}`}>
-        <AuthProvider>
+        <Providers googleClientId={googleClientId}>
           <Suspense fallback={null}>{children}</Suspense>
-        </AuthProvider>
+        </Providers>
       </body>
     </html>
   )

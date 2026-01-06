@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/lib/auth-context"
 import { TelegramLoginButton } from "./telegram-login-button"
+import { GoogleLoginButton } from "./google-login-button"
 import { UserMenu } from "./user-menu"
 import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog"
@@ -11,6 +12,7 @@ export function AuthButton() {
   const [showLoginDialog, setShowLoginDialog] = useState(false)
 
   const botName = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
   if (loading) {
     return <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
@@ -20,7 +22,8 @@ export function AuthButton() {
     return <UserMenu />
   }
 
-  if (!botName) {
+  // Need at least one auth method configured
+  if (!botName && !googleClientId) {
     return null
   }
 
@@ -28,7 +31,7 @@ export function AuthButton() {
     <>
       <button
         onClick={() => setShowLoginDialog(true)}
-        title="Войти через Telegram"
+        title="Войти"
         className="p-1 rounded-full hover:bg-[#0088cc]/10 transition-colors"
       >
         <svg
@@ -44,20 +47,39 @@ export function AuthButton() {
       <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Вход через Telegram</DialogTitle>
+            <DialogTitle>Вход</DialogTitle>
             <DialogDescription>
-              Войдите с помощью вашего аккаунта Telegram, чтобы оставлять комментарии и лайки
+              Войдите, чтобы оставлять комментарии и лайки
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-center py-4">
-            <TelegramLoginButton
-              botName={botName}
-              onAuth={(user) => {
-                login()
-                setShowLoginDialog(false)
-              }}
-              requestAccess={false}
-            />
+          <div className="flex flex-col items-center gap-4 py-4">
+            {botName && (
+              <TelegramLoginButton
+                botName={botName}
+                onAuth={() => {
+                  login()
+                  setShowLoginDialog(false)
+                }}
+                requestAccess={false}
+              />
+            )}
+
+            {botName && googleClientId && (
+              <div className="flex items-center gap-3 w-full">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-sm text-muted-foreground">или</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+            )}
+
+            {googleClientId && (
+              <GoogleLoginButton
+                onAuth={() => {
+                  login()
+                  setShowLoginDialog(false)
+                }}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>
