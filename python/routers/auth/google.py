@@ -14,14 +14,13 @@ Logic:
 from datetime import datetime
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core.config import settings
 from core.logging import get_logger
 from core.responses import ApiResponse
 from infrastructure.supabase import get_supabase_client
+from services.auth import verify_google_token  # Reuse existing function
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -33,54 +32,6 @@ router = APIRouter()
 
 class GoogleAuthRequest(BaseModel):
     credential: str  # Google ID Token
-
-
-class UserResponse(BaseModel):
-    id: str
-    google_id: str
-    email: str
-    first_name: str
-    last_name: Optional[str]
-    photo_url: Optional[str]
-    person_id: str
-
-
-# =============================================================================
-# Google Token Verification
-# =============================================================================
-
-async def verify_google_token(credential: str, client_id: str) -> Optional[dict]:
-    """
-    Verify Google ID Token via Google's tokeninfo endpoint.
-
-    Returns dict with: sub (google_id), email, name, picture, given_name, family_name
-    """
-    try:
-        async with httpx.AsyncClient() as http:
-            response = await http.get(
-                f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}"
-            )
-
-        if response.status_code != 200:
-            logger.warning(f"Google tokeninfo returned {response.status_code}")
-            return None
-
-        idinfo = response.json()
-
-        # Check audience matches our client ID
-        if idinfo.get("aud") != client_id:
-            logger.warning(f"Token audience mismatch: {idinfo.get('aud')} != {client_id}")
-            return None
-
-        # Check issuer
-        if idinfo.get('iss') not in ['accounts.google.com', 'https://accounts.google.com']:
-            logger.warning(f"Invalid issuer: {idinfo.get('iss')}")
-            return None
-
-        return idinfo
-    except Exception as e:
-        logger.warning(f"Google token verification failed: {e}")
-        return None
 
 
 # =============================================================================
@@ -199,14 +150,8 @@ async def google_auth(data: GoogleAuthRequest) -> dict:
 
     Returns user data to be stored in cookie by frontend.
     """
-    # Check client ID configured
-    if not settings.google_client_id:
-        raise HTTPException(status_code=500, detail="Google client ID not configured")
-
-    # Verify Google token
-    token_info = await verify_google_token(data.credential, settings.google_client_id)
-    if not token_info:
-        raise HTTPException(status_code=401, detail="Invalid Google token")
+    # Verify Google token (raises HTTPException on failure)
+    token_info = await verify_google_token(data.credential)
 
     # Extract user info from token
     google_id = token_info.get("sub")
