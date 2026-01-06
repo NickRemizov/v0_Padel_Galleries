@@ -53,6 +53,11 @@ interface HideDialogData {
   galleryDate: string
 }
 
+interface RejectDialogData {
+  photoFaceId: string
+  filename: string
+}
+
 interface AvatarDialogData {
   imageUrl: string
 }
@@ -82,6 +87,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
   const [photoFaces, setPhotoFaces] = useState(initialPhotoFaces)
   const [loading, setLoading] = useState<string | null>(null)
   const [hideDialog, setHideDialog] = useState<HideDialogData | null>(null)
+  const [rejectDialog, setRejectDialog] = useState<RejectDialogData | null>(null)
   const [avatarDialog, setAvatarDialog] = useState<AvatarDialogData | null>(null)
   const isMobile = useIsMobile()
 
@@ -111,10 +117,18 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
     }
   }
 
-  async function handleReject(photoFaceId: string) {
-    if (!confirm("Это точно не вы на фото? Связь с этим фото будет удалена.")) {
-      return
-    }
+  function openRejectDialog(photoFace: PhotoFace) {
+    const image = photoFace.gallery_images
+    setRejectDialog({
+      photoFaceId: photoFace.id,
+      filename: image?.original_filename || image?.slug || "фото",
+    })
+  }
+
+  async function confirmReject() {
+    if (!rejectDialog) return
+    const photoFaceId = rejectDialog.photoFaceId
+    setRejectDialog(null)
     setLoading(photoFaceId)
     try {
       const res = await fetch(`/api/my-photos/${photoFaceId}/reject`, { method: "POST" })
@@ -271,7 +285,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
 
         {/* Reject button */}
         <button
-          onClick={(e) => { e.preventDefault(); handleReject(photoFace.id) }}
+          onClick={(e) => { e.preventDefault(); openRejectDialog(photoFace) }}
           disabled={isLoading}
           className="absolute top-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-md disabled:opacity-50"
           title="Это не я"
@@ -351,6 +365,24 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
           spacing={8}
         />
       )}
+
+      {/* Reject confirmation dialog */}
+      <AlertDialog open={!!rejectDialog} onOpenChange={(open) => !open && setRejectDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить связь с фото?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                Это точно не вы на фото <strong>{rejectDialog?.filename}</strong>?
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmReject}>Да, это не я</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Hide confirmation dialog */}
       <AlertDialog open={!!hideDialog} onOpenChange={(open) => !open && setHideDialog(null)}>
