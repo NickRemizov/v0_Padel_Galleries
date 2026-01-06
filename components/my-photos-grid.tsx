@@ -241,7 +241,9 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
             ) : (
               <Lock className="w-3 h-3 text-yellow-400" />
             )}
-            <span className="max-w-[120px] truncate">{image.galleries?.title}</span>
+            <span className="max-w-[150px] truncate">
+              {image.galleries?.title} {formatDate(image.galleries?.shoot_date)}
+            </span>
           </div>
         </div>
 
