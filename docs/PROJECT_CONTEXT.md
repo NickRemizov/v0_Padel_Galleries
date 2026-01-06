@@ -1,12 +1,10 @@
 # VLC Padel Photo Portal — Project Context
 
-> **Последнее обновление:** 30 декабря 2025
-> **Frontend версия:** v1.1.15
-> **Backend версия:** v5.1.x
+> **Последнее обновление:** 6 января 2026
 
 ---
 
-## 🎯 Что это
+## Что это
 
 Веб-портал для фотографий с падель-турниров с AI-распознаванием лиц.
 
@@ -14,67 +12,99 @@
 - Галереи фото по турнирам
 - AI-распознавание игроков (InsightFace + HNSW)
 - Личные страницы игроков с их фото
+- Социальные функции (лайки, комментарии, избранное)
 - Админ-панель для управления
 
 ---
 
-## 🏗️ Архитектура
+## Архитектура
 
-\`\`\`
+```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Next.js 15    │────▶│   FastAPI       │────▶│   Supabase      │
-│   (Vercel)      │     │   (VPS)         │     │   (DB + Storage)│
+│   (Vercel)      │     │   (Hetzner VPS) │     │   (PostgreSQL)  │
 │   vlcpadel.com  │     │   :8001         │     │                 │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
-\`\`\`
+                              │
+                              ▼
+                        ┌─────────────────┐
+                        │   MinIO         │
+                        │   (Hetzner VPS) │
+                        │   :9200         │
+                        └─────────────────┘
+```
 
 **Frontend:** Next.js 15, React, TypeScript, Tailwind, shadcn/ui
 **Backend:** FastAPI, Python 3.11, InsightFace, hnswlib
 **Database:** PostgreSQL (Supabase)
-**Storage:** Supabase Storage (фото, аватары)
+**Storage:** MinIO (фото), Supabase Storage (аватары)
 
 ---
 
-## 📁 Структура проекта
+## Авторизация
+
+### Пользователи
+```
+Telegram Widget → POST /api/auth/telegram (FastAPI) → telegram_user cookie
+```
+
+### Админы
+```
+Google OAuth → FastAPI callback → admin_token cookie
+```
+
+### Данные
+```
+Next.js → apiFetch() → FastAPI → Supabase
+```
+
+Все данные идут через FastAPI. Прямой Supabase остался только для:
+- Admin integrity actions (низкий приоритет)
+- Activity logging
+
+---
+
+## Структура проекта
 
 ### Frontend (корень репозитория)
-\`\`\`
+```
 ├── app/                    # Next.js App Router
 │   ├── admin/             # Админ-панель
-│   ├── galleries/         # Публичные галереи
-│   └── players/           # Страницы игроков
+│   ├── gallery/           # Публичные галереи
+│   ├── players/           # Страницы игроков
+│   ├── my-photos/         # Мои фотографии
+│   ├── favorites/         # Избранное
+│   └── settings/          # Настройки профиля
 ├── components/
 │   ├── admin/             # Админ-компоненты (модульные)
-│   │   ├── face-tagging/  # Тегирование лиц
-│   │   ├── gallery-images/# Управление фото
-│   │   ├── face-training/ # Настройки распознавания
-│   │   └── ...
 │   └── ui/                # shadcn/ui компоненты
 ├── lib/                   # Утилиты, типы, API клиенты
 └── docs/                  # Документация
-\`\`\`
+```
 
 ### Backend (python/)
-\`\`\`
+```
 python/
 ├── main.py                # Entry point
 ├── core/                  # Exceptions, logging, responses
 ├── middleware/            # Auth middleware
-├── routers/               # API endpoints
-│   ├── people/           # Модульный роутер
-│   ├── faces/            # Модульный роутер
-│   ├── recognition/      # Модульный роутер
-│   ├── galleries.py      # TODO: модуляризовать
-│   └── images.py         # TODO: модуляризовать
-└── services/              # Business logic
+├── routers/
+│   ├── auth/             # Telegram auth
+│   ├── user/             # User API (profile, social, photos)
+│   ├── people/           # Players CRUD
+│   ├── faces/            # Face operations
+│   ├── recognition/      # ML recognition
+│   ├── galleries.py
+│   └── images.py
+└── services/
     ├── face_recognition.py
     ├── hnsw_index.py
-    └── supabase/
-\`\`\`
+    └── infrastructure/
+```
 
 ---
 
-## 🔑 Ключевые концепции
+## Ключевые концепции
 
 ### Face Recognition Pipeline
 1. **Detect** — InsightFace находит лица на фото
@@ -87,64 +117,26 @@ python/
 - **verified=false** — AI распознал автоматически
 - Только verified embeddings используются в индексе
 
-### Auto-Avatar (v1.1.15)
-При создании игрока через face-tagging можно автоматически генерировать аватар из выбранного лица.
-
 ---
 
-## 🔐 Авторизация
-
-- **Frontend:** Supabase Auth (email/password)
-- **Backend:** AuthMiddleware проверяет JWT для write-операций
-- **Публичные:** GET запросы, главная, галереи
-- **Защищённые:** POST/PUT/DELETE на /api/*
-
----
-
-## 📊 Основные сущности (DB)
-
-| Таблица | Описание |
-|---------|----------|
-| people | Игроки (real_name, avatar_url, club) |
-| photo_galleries | Галереи турниров |
-| photo_images | Фотографии |
-| photo_faces | Лица на фото (bbox, embedding, person_id) |
-| face_recognition_config | Настройки распознавания |
-
----
-
-## 🛠️ Деплой
+## Деплой
 
 **Frontend:** Автодеплой через Vercel при push в main
-**Backend:** 
-\`\`\`bash
-# На сервере
-cd /home/nickr/python
-git pull
-~/scripts/run.sh  # Рестарт через nohup
-\`\`\`
+
+**Backend:**
+```bash
+/home/nickr/scripts/run.sh      # Рестарт FastAPI
+/home/nickr/scripts/run-next.sh # Рестарт Next.js
+/home/nickr/scripts/commit.sh "message"  # Git add + commit + push
+```
 
 ---
 
-## 📚 Документация
+## Документация
 
 | Файл | Содержание |
 |------|------------|
-| `docs/DATABASE_SCHEMA.md` | Полная схема БД |
-| `docs/RECOGNITION_SUMMARY.md` | Система распознавания |
-| `docs/BACKEND_REFACTORING_BRIEF.md` | ТЗ рефакторинга backend |
+| `docs/SUPABASE_AUDIT.md` | Статус миграции Supabase → FastAPI |
+| `docs/PROJECT_CONTEXT.md` | Этот файл |
 | `python/ARCHITECTURE.md` | Архитектура backend |
 | `python/DEPLOYMENT.md` | Инструкции деплоя |
-
----
-
-## ⚡ Quick Start для AI
-
-1. **Прочитать контекст:** этот файл
-2. **Backend работа:** читать `python/ARCHITECTURE.md`
-3. **Frontend работа:** компоненты в `components/admin/`
-4. **API интеграция:** СНАЧАЛА проверить backend response, ПОТОМ писать frontend
-
----
-
-*Создано: декабрь 2025*
