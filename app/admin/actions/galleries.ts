@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache"
 
 export async function getGalleriesAction(sortBy: "created_at" | "shoot_date" = "created_at") {
   try {
-    return await apiFetch(`/api/galleries?sort_by=${sortBy}&with_relations=true&with_photo_count=true`)
+    return await apiFetch(`/api/galleries?sort_by=${sortBy}&with_relations=true&with_photo_count=true&public_only=false`)
   } catch (error) {
     console.error("[getGalleriesAction] Error:", error)
     if (error instanceof ApiError) {
@@ -71,6 +71,7 @@ export async function addGalleryAction(formData: FormData) {
     const photographer_id = formData.get("photographer_id") as string | null
     const location_id = formData.get("location_id") as string | null
     const organizer_id = formData.get("organizer_id") as string | null
+    const is_public = formData.get("is_public") === "true"
 
     // Generate gallery_url from title and date
     const slugifiedTitle = title
@@ -85,6 +86,7 @@ export async function addGalleryAction(formData: FormData) {
       shoot_date,
       gallery_url,
       cover_image_url,
+      is_public,
     }
 
     // Add optional fields

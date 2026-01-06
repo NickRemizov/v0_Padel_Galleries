@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Plus, X, Camera } from "lucide-react"
 import { addGalleryAction } from "@/app/admin/actions"
 import type { Photographer, Location, Organizer } from "@/lib/types"
@@ -58,6 +59,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
   const [cropperSquareOpen, setCropperSquareOpen] = useState(false)
   const [originalImage, setOriginalImage] = useState("")
   const [externalGalleryUrl, setExternalGalleryUrl] = useState("")
+  const [isPublic, setIsPublic] = useState(false)
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -163,6 +165,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
     if (externalGalleryUrl) {
       formData.set("external_gallery_url", externalGalleryUrl)
     }
+    formData.set("is_public", isPublic.toString())
 
     setLoading(true)
     const result = await addGalleryAction(formData)
@@ -178,6 +181,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
       setShootDate("")
       setPhotographerId("")
       setExternalGalleryUrl("")
+      setIsPublic(false)
       onSuccess?.()
     }
   }
@@ -374,6 +378,20 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
                 />
                 <p className="text-xs text-muted-foreground">Используется, если нет загруженных фотографий</p>
               </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="is_public"
+                  checked={isPublic}
+                  onCheckedChange={(checked) => setIsPublic(checked === true)}
+                />
+                <Label htmlFor="is_public" className="cursor-pointer">
+                  Публичная галерея
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Публичные галереи отображаются в общем списке. Непубличные доступны только участникам в разделе "Мои фото".
+              </p>
             </div>
 
             <DialogFooter>

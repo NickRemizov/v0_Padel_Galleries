@@ -430,7 +430,7 @@ async def get_my_photos(
     galleries_map = {}
     if gallery_ids:
         galleries_result = db.table("galleries").select(
-            "id, slug, title, shoot_date"
+            "id, slug, title, shoot_date, is_public"
         ).in_("id", gallery_ids).execute()
         galleries_map = {g["id"]: g for g in (galleries_result.data or [])}
 

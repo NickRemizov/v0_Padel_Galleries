@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Check, X, EyeOff, Eye, UserPlus } from "lucide-react"
+import { Check, X, EyeOff, Eye, UserPlus, Globe, Lock } from "lucide-react"
 import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 import "react-photo-album/masonry.css"
@@ -42,6 +42,7 @@ interface PhotoFace {
       slug?: string
       title: string
       shoot_date?: string
+      is_public?: boolean
     }
   }
 }
@@ -231,6 +232,18 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         </Link>
 
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors pointer-events-none" />
+
+        {/* Gallery info badge (bottom-left, first row) */}
+        <div className="absolute bottom-9 left-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 bg-black/60 text-white text-xs px-2 py-1 rounded-md backdrop-blur-sm">
+            {image.galleries?.is_public ? (
+              <Globe className="w-3 h-3 text-green-400" />
+            ) : (
+              <Lock className="w-3 h-3 text-yellow-400" />
+            )}
+            <span className="max-w-[120px] truncate">{image.galleries?.title}</span>
+          </div>
+        </div>
 
         {/* Confidence badge (bottom-left) */}
         {!photoFace.verified && confidence !== null && (

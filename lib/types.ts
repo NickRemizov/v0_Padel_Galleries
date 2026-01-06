@@ -71,6 +71,7 @@ export interface Gallery {
   location_id: string | null
   organizer_id: string | null
   sort_order: string | null
+  is_public: boolean
   created_at: string
   updated_at: string
   photographers?: Photographer

@@ -16,7 +16,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Pencil, X, Camera } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Pencil, X, Camera, Globe, Lock } from "lucide-react"
 import { updateGalleryAction } from "@/app/admin/actions"
 import type { Gallery, Photographer, Location, Organizer } from "@/lib/types"
 import Image from "next/image"
@@ -194,7 +195,20 @@ export function EditGalleryDialog({ gallery, photographers, locations, organizer
         <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
           <form action={handleSubmit}>
             <DialogHeader>
-              <DialogTitle>Редактировать галерею</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                Редактировать галерею
+                {gallery.is_public ? (
+                  <Badge variant="default" className="bg-green-600">
+                    <Globe className="h-3 w-3" />
+                    Публичная
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">
+                    <Lock className="h-3 w-3" />
+                    Непубличная
+                  </Badge>
+                )}
+              </DialogTitle>
               <DialogDescription>Измените информацию о галерее</DialogDescription>
             </DialogHeader>
 
