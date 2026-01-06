@@ -228,7 +228,21 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
                 />
               </div>
 
-              <div className="grid gap-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="is_public"
+                  checked={isPublic}
+                  onCheckedChange={(checked) => setIsPublic(checked === true)}
+                />
+                <Label htmlFor="is_public" className="cursor-pointer">
+                  Публичная галерея
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Публичные галереи отображаются в общем списке. Непубличные доступны только участникам в разделе "Мои фото".
+              </p>
+
+              <div className={`grid gap-2 ${!isPublic ? "opacity-50 pointer-events-none" : ""}`}>
                 <Label htmlFor="cover_image">Заголовочное фото (3:4)</Label>
                 {!previewUrl ? (
                   <div className="flex items-center gap-2">
@@ -277,7 +291,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
                 )}
               </div>
 
-              <div className="grid gap-2">
+              <div className={`grid gap-2 ${!isPublic ? "opacity-50 pointer-events-none" : ""}`}>
                 <Label htmlFor="cover_image_square">Заголовочное фото (квадрат)</Label>
                 <p className="text-xs text-muted-foreground">Используется в карточках на мобильных устройствах</p>
                 {!previewSquareUrl ? (
@@ -366,7 +380,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
                 </Select>
               </div>
 
-              <div className="grid gap-2">
+              <div className={`grid gap-2 ${!isPublic ? "opacity-50 pointer-events-none" : ""}`}>
                 <Label htmlFor="external_gallery_url">Ссылка на галерею (необязательно)</Label>
                 <Input
                   id="external_gallery_url"
@@ -375,29 +389,16 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
                   placeholder="https://example.com/gallery"
                   value={externalGalleryUrl}
                   onChange={(e) => setExternalGalleryUrl(e.target.value)}
+                  disabled={!isPublic}
                 />
                 <p className="text-xs text-muted-foreground">Используется, если нет загруженных фотографий</p>
               </div>
-
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="is_public"
-                  checked={isPublic}
-                  onCheckedChange={(checked) => setIsPublic(checked === true)}
-                />
-                <Label htmlFor="is_public" className="cursor-pointer">
-                  Публичная галерея
-                </Label>
-              </div>
-              <p className="text-xs text-muted-foreground -mt-2">
-                Публичные галереи отображаются в общем списке. Непубличные доступны только участникам в разделе "Мои фото".
-              </p>
             </div>
 
             <DialogFooter>
               <Button
                 type="submit"
-                disabled={loading || uploading || (!coverImageUrl && !externalGalleryUrl) || !coverImageSquareUrl}
+                disabled={loading || uploading || (isPublic && !coverImageUrl && !externalGalleryUrl) || (isPublic && !coverImageSquareUrl)}
               >
                 {loading ? "Добавление..." : "Добавить"}
               </Button>
