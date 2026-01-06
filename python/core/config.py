@@ -58,6 +58,9 @@ class Settings:
     jwt_secret: Optional[str] = None
     jwt_algorithm: str = "HS256"
     jwt_expiration_hours: int = 24
+
+    # === Telegram ===
+    telegram_bot_token: Optional[str] = None
     
     @property
     def cors_origins(self) -> List[str]:
@@ -84,6 +87,7 @@ class Settings:
             jwt_secret=os.getenv("JWT_SECRET"),
             jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
             jwt_expiration_hours=int(os.getenv("JWT_EXPIRATION_HOURS", "24")),
+            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
         )
 
 
