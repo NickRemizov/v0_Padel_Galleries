@@ -58,26 +58,13 @@ def find_user_by_person_id(db, person_id: str) -> Optional[dict]:
     return result.data[0] if result.data else None
 
 
-def update_user_with_google(
-    db,
-    user_id: str,
-    google_id: str,
-    email: str,
-    first_name: str,
-    last_name: Optional[str],
-    photo_url: Optional[str]
-) -> dict:
-    """Update existing user with Google data."""
-    update_data = {
+def update_user_with_google(db, user_id: str, google_id: str) -> dict:
+    """Update existing user with Google ID."""
+    db.table("users").update({
         "google_id": google_id,
-        "email": email,
         "updated_at": datetime.utcnow().isoformat(),
-    }
+    }).eq("id", user_id).execute()
 
-    # Only update name/photo if not set (preserve Telegram data)
-    db.table("users").update(update_data).eq("id", user_id).execute()
-
-    # Fetch updated record
     result = db.table("users").select("*").eq("id", user_id).execute()
     return result.data[0]
 
@@ -106,23 +93,20 @@ def create_new_person_google(
 def create_user_google(
     db,
     google_id: str,
-    email: str,
     first_name: str,
     last_name: Optional[str],
     photo_url: Optional[str],
     person_id: str
 ) -> dict:
     """Create new user for Google login."""
-    insert_result = db.table("users").insert({
+    db.table("users").insert({
         "google_id": google_id,
-        "email": email,
         "first_name": first_name,
         "last_name": last_name,
         "photo_url": photo_url,
         "person_id": person_id,
     }).execute()
 
-    # Fetch created record
     result = db.table("users").select("*").eq("google_id", google_id).execute()
     return result.data[0]
 
@@ -173,10 +157,7 @@ async def google_auth(data: GoogleAuthRequest) -> dict:
 
     if existing_user:
         # Update and return existing user
-        user = update_user_with_google(
-            db, existing_user["id"], google_id, email,
-            first_name, last_name, photo_url
-        )
+        user = update_user_with_google(db, existing_user["id"], google_id)
         logger.info(f"Found user {user['id']} by google_id")
         return ApiResponse.ok({"user": user}).model_dump()
 
@@ -192,10 +173,7 @@ async def google_auth(data: GoogleAuthRequest) -> dict:
 
         if existing_user_for_person:
             # Link Google to existing user (add google_id)
-            user = update_user_with_google(
-                db, existing_user_for_person["id"], google_id, email,
-                first_name, last_name, photo_url
-            )
+            user = update_user_with_google(db, existing_user_for_person["id"], google_id)
             logger.info(f"Linked Google to existing user {user['id']} via email {email}")
 
             # Log admin activity
@@ -207,7 +185,7 @@ async def google_auth(data: GoogleAuthRequest) -> dict:
         else:
             # Create new user for existing person
             user = create_user_google(
-                db, google_id, email, first_name, last_name, photo_url, person_id
+                db, google_id, first_name, last_name, photo_url, person_id
             )
             logger.info(f"Created user for existing person {person_id} via email {email}")
 
@@ -223,7 +201,7 @@ async def google_auth(data: GoogleAuthRequest) -> dict:
     # Step 3: Create new person and user
     person_id = create_new_person_google(db, email, first_name, last_name)
     user = create_user_google(
-        db, google_id, email, first_name, last_name, photo_url, person_id
+        db, google_id, first_name, last_name, photo_url, person_id
     )
 
     # Log admin activity

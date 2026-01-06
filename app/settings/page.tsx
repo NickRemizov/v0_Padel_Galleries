@@ -24,7 +24,6 @@ export default async function SettingsPage() {
     photo_url: string | null
     telegram_id?: number
     google_id?: string
-    email?: string
   }
   try {
     user = JSON.parse(userCookie.value)
@@ -92,7 +91,6 @@ export default async function SettingsPage() {
             telegramPhotoUrl={user.photo_url}
             hasTelegramAuth={!!user.telegram_id}
             hasGoogleAuth={!!user.google_id}
-            googleEmail={user.email}
           />
         </div>
       </div>

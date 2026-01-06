@@ -30,7 +30,6 @@ interface SettingsFormProps {
   telegramPhotoUrl?: string | null
   hasTelegramAuth?: boolean
   hasGoogleAuth?: boolean
-  googleEmail?: string
 }
 
 export function SettingsForm({
@@ -40,7 +39,6 @@ export function SettingsForm({
   telegramPhotoUrl,
   hasTelegramAuth = false,
   hasGoogleAuth = false,
-  googleEmail,
 }: SettingsFormProps) {
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -122,10 +120,10 @@ export function SettingsForm({
             )}
 
             {/* Google auth info */}
-            {hasGoogleAuth && googleEmail && (
+            {hasGoogleAuth && person.gmail && (
               <div>
                 <Label className="text-muted-foreground">Google</Label>
-                <p className="font-medium">{googleEmail}</p>
+                <p className="font-medium">{person.gmail}</p>
               </div>
             )}
 
@@ -193,14 +191,14 @@ export function SettingsForm({
             <Input
               id="gmail"
               type="email"
-              value={hasGoogleAuth && googleEmail ? googleEmail : gmail}
+              value={gmail}
               onChange={(e) => setGmail(e.target.value)}
               placeholder="your@gmail.com"
               disabled={hasGoogleAuth}
             />
             {hasGoogleAuth && (
               <p className="text-xs text-muted-foreground mt-1">
-                Email из Google-аккаунта (изменить нельзя)
+                Email связан с Google-аккаунтом
               </p>
             )}
           </div>
