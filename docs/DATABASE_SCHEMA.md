@@ -282,12 +282,13 @@ WHERE person_id = 'xxx'
 ## Социальные функции
 
 ### users (Пользователи)
-Пользователи, авторизованные через Telegram.
+Пользователи, авторизованные через Telegram или Google.
 
 | Поле | Тип | NULL | Описание |
 |------|-----|------|----------|
 | `id` | uuid | NO | Первичный ключ |
-| `telegram_id` | bigint | NO | ID в Telegram, UNIQUE |
+| `telegram_id` | bigint | YES | ID в Telegram, UNIQUE (nullable — можно войти только через Google) |
+| `google_id` | text | YES | ID в Google, UNIQUE (для Google OAuth) |
 | `username` | text | YES | Username в Telegram |
 | `first_name` | text | YES | Имя |
 | `last_name` | text | YES | Фамилия |
@@ -296,13 +297,21 @@ WHERE person_id = 'xxx'
 | `created_at` | timestamptz | YES | Дата создания |
 | `updated_at` | timestamptz | YES | Дата обновления |
 
+**Авторизация:**
+- Telegram: `telegram_id` заполняется при входе через Telegram Widget
+- Google: `google_id` заполняется при входе через Google Sign-In
+- Email хранится в `people.gmail` (не дублируется в users)
+- Связывание аккаунтов: поиск по `people.gmail` при входе через Google
+
 **Связи:**
 - `person_id` → `people.id` — связь пользователя с игроком
 
 **Индексы:**
 - PRIMARY KEY (id)
 - UNIQUE (telegram_id)
+- UNIQUE (google_id)
 - INDEX idx_users_person_id (person_id)
+- INDEX idx_users_google_id (google_id)
 
 ---
 
@@ -689,6 +698,15 @@ ALTER TABLE photo_faces DROP COLUMN IF EXISTS bounding_box_DEPRECATED;
 ALTER TABLE photo_faces DROP COLUMN IF EXISTS confidence_DEPRECATED;
 \`\`\`
 **Файл:** `migrations/20260104_drop_deprecated_fields.sql`
+
+### 06.01.2026 — Google OAuth ✅
+\`\`\`sql
+-- Файл: scripts/061_add_google_auth.sql
+ALTER TABLE users ADD COLUMN google_id TEXT UNIQUE;
+ALTER TABLE users ALTER COLUMN telegram_id DROP NOT NULL;
+CREATE INDEX idx_users_google_id ON users(google_id);
+\`\`\`
+**Связывание:** При входе через Google ищем `people.gmail`, email не дублируется в `users`.
 
 ### 20.12.2025 — excluded_from_index ✅
 \`\`\`sql
