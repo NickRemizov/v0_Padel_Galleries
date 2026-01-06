@@ -62,9 +62,6 @@ class Settings:
     # === Telegram ===
     telegram_bot_token: Optional[str] = None
 
-    # === Google ===
-    google_client_id: Optional[str] = None
-    
     @property
     def cors_origins(self) -> List[str]:
         """Parse ALLOWED_ORIGINS into list."""
@@ -91,7 +88,6 @@ class Settings:
             jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
             jwt_expiration_hours=int(os.getenv("JWT_EXPIRATION_HOURS", "24")),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
-            google_client_id=os.getenv("GOOGLE_CLIENT_ID"),
         )
 
 
