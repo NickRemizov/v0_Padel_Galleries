@@ -7,6 +7,7 @@ import type { Gallery } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ImageLightbox } from "@/components/image-lightbox"
+import { TruncatedNames } from "@/components/truncated-names"
 import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 import "react-photo-album/masonry.css"
@@ -125,9 +126,11 @@ export function GalleryView({ gallery }: GalleryViewProps) {
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 pointer-events-none" />
         {people.length > 0 && (
           <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent pointer-events-none">
-            <p className="text-white text-xs font-medium leading-tight">
-              {people.map((person) => person.name).join(", ")}
-            </p>
+            <TruncatedNames
+              names={people.map((person) => person.name)}
+              className="text-white text-xs font-medium leading-tight"
+              maxLines={2}
+            />
           </div>
         )}
       </div>
