@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/service"
+import { apiFetch } from "@/lib/apiClient"
 
 // GET /api/favorites - Get all favorites for current user
 export async function GET(request: NextRequest) {
@@ -10,39 +10,16 @@ export async function GET(request: NextRequest) {
     }
 
     const user = JSON.parse(userCookie.value)
-    const userId = user.id
 
-    const supabase = createServiceClient()
+    const result = await apiFetch(`/api/user/favorites?user_id=${user.id}`)
 
-    const { data: favorites, error } = await supabase
-      .from("favorites")
-      .select(
-        `
-        *,
-        gallery_images (
-          id,
-          gallery_id,
-          image_url,
-          original_url,
-          original_filename,
-          file_size,
-          width,
-          height,
-          created_at
-        )
-      `,
-      )
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      console.error("[v0] Error fetching favorites:", error)
-      return NextResponse.json({ error: "Failed to fetch favorites" }, { status: 500 })
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 500 })
     }
 
-    return NextResponse.json({ favorites: favorites || [] })
+    return NextResponse.json(result.data)
   } catch (error) {
-    console.error("[v0] Error in GET /api/favorites:", error)
+    console.error("[favorites] Error in GET:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

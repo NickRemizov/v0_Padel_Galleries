@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/service"
-import { logActivity } from "@/lib/activity-logger"
+import { apiFetch } from "@/lib/apiClient"
 
 // POST /api/my-photos/[photoFaceId]/hide - Hide photo from public galleries
 export async function POST(
@@ -21,68 +20,21 @@ export async function POST(
       return NextResponse.json({ error: "No person linked to user" }, { status: 400 })
     }
 
-    const supabase = createServiceClient()
+    // Call FastAPI
+    const result = await apiFetch(
+      `/api/user/photo-faces/${photoFaceId}/hide?person_id=${user.person_id}&user_id=${user.id}`,
+      { method: "POST" }
+    )
 
-    // Verify the photo_face belongs to this user's person
-    const { data: photoFace, error: fetchError } = await supabase
-      .from("photo_faces")
-      .select(`
-        id, person_id, photo_id,
-        gallery_images!inner(id, original_filename, gallery_id, galleries(title))
-      `)
-      .eq("id", photoFaceId)
-      .single()
-
-    if (fetchError || !photoFace) {
-      return NextResponse.json({ error: "Photo face not found" }, { status: 404 })
-    }
-
-    if (photoFace.person_id !== user.person_id) {
-      return NextResponse.json({ error: "Cannot hide other person's photos" }, { status: 403 })
-    }
-
-    // Check if this person is the only one on the photo
-    const { count } = await supabase
-      .from("photo_faces")
-      .select("id", { count: "exact", head: true })
-      .eq("photo_id", photoFace.photo_id)
-      .not("person_id", "is", null)
-
-    if (count && count > 1) {
+    if (!result.success) {
+      console.error("[my-photos] FastAPI error:", result.error)
       return NextResponse.json(
-        { error: "Cannot hide photo with multiple people" },
+        { error: result.error || "Failed to hide" },
         { status: 400 }
       )
     }
 
-    // Hide the photo
-    const { error: updateError } = await supabase
-      .from("photo_faces")
-      .update({
-        hidden_by_user: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", photoFaceId)
-
-    if (updateError) {
-      console.error("[my-photos] Error hiding photo face:", updateError)
-      return NextResponse.json({ error: "Failed to hide" }, { status: 500 })
-    }
-
-    // Log activity
-    const gi = photoFace.gallery_images as any
-    await logActivity({
-      personId: user.person_id,
-      activityType: "photo_hidden",
-      imageId: gi?.id,
-      galleryId: gi?.gallery_id,
-      metadata: {
-        filename: gi?.original_filename,
-        gallery_title: gi?.galleries?.title,
-      },
-    })
-
-    console.log(`[my-photos] User ${user.id} hid photo_face ${photoFaceId}`)
+    console.log(`[my-photos] User ${user.id} hid photo_face ${photoFaceId} via FastAPI`)
 
     return NextResponse.json({ success: true })
   } catch (error) {

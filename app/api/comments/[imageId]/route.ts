@@ -1,38 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/service"
+import { apiFetch } from "@/lib/apiClient"
 
 // GET /api/comments/[imageId] - Get all comments for an image
 export async function GET(request: NextRequest, { params }: { params: Promise<{ imageId: string }> }) {
   try {
     const { imageId } = await params
-    const supabase = createServiceClient()
 
-    const { data: comments, error } = await supabase
-      .from("comments")
-      .select(
-        `
-        *,
-        users (
-          id,
-          telegram_id,
-          username,
-          first_name,
-          last_name,
-          photo_url
-        )
-      `,
-      )
-      .eq("gallery_image_id", imageId)
-      .order("created_at", { ascending: true })
+    const result = await apiFetch(`/api/user/images/${imageId}/comments`)
 
-    if (error) {
-      console.error("[v0] Error fetching comments:", error)
-      return NextResponse.json({ error: "Failed to fetch comments" }, { status: 500 })
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 500 })
     }
 
-    return NextResponse.json({ comments: comments || [] })
+    return NextResponse.json(result.data)
   } catch (error) {
-    console.error("[v0] Error in GET /api/comments:", error)
+    console.error("[comments] Error in GET:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -42,57 +24,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { imageId } = await params
 
-    // Get user from telegram_user cookie
     const userCookie = request.cookies.get("telegram_user")
     if (!userCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const user = JSON.parse(userCookie.value)
-    const userId = user.id
-
     const { content } = await request.json()
 
-    if (!content || content.trim().length === 0) {
-      return NextResponse.json({ error: "Comment content is required" }, { status: 400 })
+    const result = await apiFetch(
+      `/api/user/images/${imageId}/comments?user_id=${user.id}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      }
+    )
+
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 400 })
     }
 
-    if (content.length > 1000) {
-      return NextResponse.json({ error: "Comment is too long (max 1000 characters)" }, { status: 400 })
-    }
-
-    const supabase = createServiceClient()
-
-    const { data: comment, error } = await supabase
-      .from("comments")
-      .insert({
-        gallery_image_id: imageId,
-        user_id: userId,
-        content: content.trim(),
-      })
-      .select(
-        `
-        *,
-        users (
-          id,
-          telegram_id,
-          username,
-          first_name,
-          last_name,
-          photo_url
-        )
-      `,
-      )
-      .single()
-
-    if (error) {
-      console.error("[v0] Error creating comment:", error)
-      return NextResponse.json({ error: "Failed to create comment" }, { status: 500 })
-    }
-
-    return NextResponse.json({ comment })
+    return NextResponse.json(result.data)
   } catch (error) {
-    console.error("[v0] Error in POST /api/comments:", error)
+    console.error("[comments] Error in POST:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

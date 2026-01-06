@@ -3,8 +3,8 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { AuthButton } from "@/components/auth-button"
 import { MainNav } from "@/components/main-nav"
-import { createServiceClient } from "@/lib/supabase/service"
 import { SettingsForm } from "@/components/settings-form"
+import { apiFetch } from "@/lib/apiClient"
 
 export const dynamic = "force-dynamic"
 
@@ -49,17 +49,14 @@ export default async function SettingsPage() {
     )
   }
 
-  // Get person data
-  const supabase = createServiceClient()
-  const { data: person } = await supabase
-    .from("people")
-    .select("*")
-    .eq("id", user.person_id)
-    .single()
+  // Get person data from FastAPI
+  const result = await apiFetch(`/api/user/profile/${user.person_id}`)
 
-  if (!person) {
+  if (!result.success || !result.data) {
     redirect("/")
   }
+
+  const person = result.data
 
   return (
     <main className="min-h-screen bg-background">

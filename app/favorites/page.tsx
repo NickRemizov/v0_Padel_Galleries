@@ -5,7 +5,7 @@ import { AuthButton } from "@/components/auth-button"
 import { MainNav } from "@/components/main-nav"
 import { FavoritesGrid } from "@/components/favorites-grid"
 import { Button } from "@/components/ui/button"
-import { createServiceClient } from "@/lib/supabase/service"
+import { apiFetch } from "@/lib/apiClient"
 
 export const dynamic = "force-dynamic"
 
@@ -25,48 +25,10 @@ export default async function FavoritesPage() {
     redirect("/")
   }
 
-  const supabase = createServiceClient()
+  // Get favorites from FastAPI
+  const result = await apiFetch(`/api/user/favorites-full?user_id=${userId}`)
 
-  const { data: favorites, error } = await supabase
-    .from("favorites")
-    .select(
-      `
-      *,
-      gallery_images (
-        id,
-        slug,
-        gallery_id,
-        image_url,
-        original_url,
-        original_filename,
-        file_size,
-        width,
-        height,
-        created_at,
-        galleries (
-          id,
-          slug
-        )
-      )
-    `,
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-
-  if (error) {
-    console.error("[v0] Error fetching favorites:", error)
-  }
-
-  // Transform data to include gallery_slug
-  const transformedFavorites = favorites?.map((fav) => ({
-    ...fav,
-    gallery_images: fav.gallery_images
-      ? {
-          ...fav.gallery_images,
-          gallery_slug: fav.gallery_images.galleries?.slug || fav.gallery_images.gallery_id,
-        }
-      : null,
-  }))
+  const favorites = result.success ? (result.data?.favorites || []) : []
 
   return (
     <main className="min-h-screen bg-background">
@@ -83,7 +45,7 @@ export default async function FavoritesPage() {
           <MainNav />
         </header>
 
-        {!transformedFavorites || transformedFavorites.length === 0 ? (
+        {favorites.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg mb-4">У вас пока нет избранных фотографий</p>
             <Link href="/">
@@ -91,7 +53,7 @@ export default async function FavoritesPage() {
             </Link>
           </div>
         ) : (
-          <FavoritesGrid favorites={transformedFavorites} />
+          <FavoritesGrid favorites={favorites} />
         )}
       </div>
     </main>

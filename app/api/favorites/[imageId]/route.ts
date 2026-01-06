@@ -1,37 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/service"
+import { apiFetch } from "@/lib/apiClient"
 
 // GET /api/favorites/[imageId] - Check if image is favorited
 export async function GET(request: NextRequest, { params }: { params: Promise<{ imageId: string }> }) {
   try {
     const { imageId } = await params
 
-    // Get user from telegram_user cookie
     const userCookie = request.cookies.get("telegram_user")
     if (!userCookie) {
       return NextResponse.json({ isFavorited: false })
     }
 
     const user = JSON.parse(userCookie.value)
-    const userId = user.id
 
-    const supabase = createServiceClient()
+    const result = await apiFetch(`/api/user/images/${imageId}/favorite?user_id=${user.id}`)
 
-    const { data, error } = await supabase
-      .from("favorites")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("gallery_image_id", imageId)
-      .single()
-
-    if (error && error.code !== "PGRST116") {
-      console.error("[v0] Error checking favorite:", error)
-      return NextResponse.json({ error: "Failed to check favorite" }, { status: 500 })
+    if (!result.success) {
+      return NextResponse.json({ isFavorited: false })
     }
 
-    return NextResponse.json({ isFavorited: !!data })
+    return NextResponse.json(result.data)
   } catch (error) {
-    console.error("[v0] Error in GET /api/favorites:", error)
+    console.error("[favorites] Error in GET:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -41,51 +31,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { imageId } = await params
 
-    // Get user from telegram_user cookie
     const userCookie = request.cookies.get("telegram_user")
     if (!userCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const user = JSON.parse(userCookie.value)
-    const userId = user.id
 
-    const supabase = createServiceClient()
+    const result = await apiFetch(
+      `/api/user/images/${imageId}/favorite/toggle?user_id=${user.id}`,
+      { method: "POST" }
+    )
 
-    // Check if already favorited
-    const { data: existing } = await supabase
-      .from("favorites")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("gallery_image_id", imageId)
-      .single()
-
-    if (existing) {
-      // Remove from favorites
-      const { error } = await supabase.from("favorites").delete().eq("id", existing.id)
-
-      if (error) {
-        console.error("[v0] Error removing favorite:", error)
-        return NextResponse.json({ error: "Failed to remove favorite" }, { status: 500 })
-      }
-
-      return NextResponse.json({ isFavorited: false })
-    } else {
-      // Add to favorites
-      const { error } = await supabase.from("favorites").insert({
-        user_id: userId,
-        gallery_image_id: imageId,
-      })
-
-      if (error) {
-        console.error("[v0] Error adding favorite:", error)
-        return NextResponse.json({ error: "Failed to add favorite" }, { status: 500 })
-      }
-
-      return NextResponse.json({ isFavorited: true })
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 500 })
     }
+
+    return NextResponse.json(result.data)
   } catch (error) {
-    console.error("[v0] Error in POST /api/favorites:", error)
+    console.error("[favorites] Error in POST:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

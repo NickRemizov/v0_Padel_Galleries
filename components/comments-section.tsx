@@ -167,7 +167,7 @@ export function CommentsSection({ imageId, className }: CommentsSectionProps) {
               onChange={(e) => setNewComment(e.target.value)}
               placeholder="Добавить комментарий..."
               className="min-h-[60px] resize-none"
-              maxLength={1000}
+              maxLength={256}
               disabled={isSubmitting}
             />
             <Button type="submit" size="icon" disabled={isSubmitting || !newComment.trim()}>
@@ -232,7 +232,7 @@ export function CommentsSection({ imageId, className }: CommentsSectionProps) {
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
                         className="min-h-[60px] resize-none text-sm"
-                        maxLength={1000}
+                        maxLength={256}
                         autoFocus
                       />
                       <div className="flex flex-col gap-1">

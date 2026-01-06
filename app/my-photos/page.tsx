@@ -4,8 +4,8 @@ import Link from "next/link"
 import { AuthButton } from "@/components/auth-button"
 import { MainNav } from "@/components/main-nav"
 import { Button } from "@/components/ui/button"
-import { createServiceClient } from "@/lib/supabase/service"
 import { MyPhotosGrid } from "@/components/my-photos-grid"
+import { apiFetch } from "@/lib/apiClient"
 
 export const dynamic = "force-dynamic"
 
@@ -53,69 +53,10 @@ export default async function MyPhotosPage() {
     )
   }
 
-  const supabase = createServiceClient()
+  // Get photos from FastAPI
+  const result = await apiFetch(`/api/user/my-photos?person_id=${user.person_id}`)
 
-  // Get all photos where this person is tagged
-  const { data: photoFaces, error } = await supabase
-    .from("photo_faces")
-    .select(`
-      id,
-      photo_id,
-      person_id,
-      recognition_confidence,
-      verified,
-      hidden_by_user,
-      insightface_bbox,
-      gallery_images!photo_id (
-        id,
-        slug,
-        gallery_id,
-        image_url,
-        original_url,
-        original_filename,
-        width,
-        height,
-        galleries (
-          id,
-          slug,
-          title,
-          shoot_date
-        )
-      )
-    `)
-    .eq("person_id", user.person_id)
-    .order("verified", { ascending: true })  // Unverified first
-    .order("recognition_confidence", { ascending: true })  // Low confidence first
-
-  if (error) {
-    console.error("[v0] Error fetching my photos:", error)
-  }
-
-  // Get faces count for each photo (all people, not just current user)
-  let facesCountByPhoto: Record<string, number> = {}
-  if (photoFaces && photoFaces.length > 0) {
-    const photoIds = [...new Set(photoFaces.map(pf => pf.photo_id))]
-
-    // Count all faces on these photos (with person_id, not null)
-    const { data: allFaces } = await supabase
-      .from("photo_faces")
-      .select("photo_id")
-      .in("photo_id", photoIds)
-      .not("person_id", "is", null)
-
-    if (allFaces) {
-      facesCountByPhoto = allFaces.reduce((acc, face) => {
-        acc[face.photo_id] = (acc[face.photo_id] || 0) + 1
-        return acc
-      }, {} as Record<string, number>)
-    }
-  }
-
-  // Add faces_count to each photo face
-  const photoFacesWithCount = photoFaces?.map(pf => ({
-    ...pf,
-    faces_count: facesCountByPhoto[pf.photo_id] || 1
-  })) || []
+  const photoFacesWithCount = result.success ? (result.data?.photo_faces || []) : []
 
   return (
     <main className="min-h-screen bg-background">
