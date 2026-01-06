@@ -1,243 +1,194 @@
-# Аудит прямого использования Supabase
+# Аудит: Supabase vs FastAPI
 
 **Дата:** 2026-01-06
-**Цель:** Выявить все места, где Next.js напрямую обращается к Supabase вместо FastAPI бэкенда
+**Обновлено:** после удаления мёртвого кода Supabase Auth
 
 ---
 
 ## Резюме
 
-Найдено **34 файла** с прямым использованием Supabase. Основные категории:
-
-| Категория | Кол-во файлов | Приоритет миграции |
-|-----------|---------------|-------------------|
-| Пользовательские страницы | 3 | Высокий |
-| API роуты (user-facing) | 12 | Высокий |
-| Admin actions | 8 | Средний |
-| Activity logging | 2 | Низкий |
-| Auth (Supabase Auth) | 3 | Отдельно |
-
----
-
-## 1. Пользовательские страницы (Server Components)
-
-### `/app/my-photos/page.tsx`
-- **Операция:** READ
-- **Таблицы:** `photo_faces`, `gallery_images`, `galleries`
-- **Что делает:** Загружает все фото, где отмечен текущий пользователь
-- **Нужен endpoint:** `GET /api/users/{person_id}/photos`
-
-### `/app/settings/page.tsx`
-- **Операция:** READ
-- **Таблицы:** `people`
-- **Что делает:** Загружает профиль пользователя для формы настроек
-- **Нужен endpoint:** `GET /api/users/{person_id}/profile`
-
-### `/app/favorites/page.tsx`
-- **Операция:** READ
-- **Таблицы:** `favorites`, `gallery_images`, `galleries`
-- **Что делает:** Загружает избранные фото пользователя
-- **Нужен endpoint:** `GET /api/users/{user_id}/favorites`
+| Категория | Supabase | FastAPI | Статус |
+|-----------|----------|---------|--------|
+| Главная страница | - | ✅ | Мигрировано |
+| Галереи | - | ✅ | Мигрировано |
+| Игроки | - | ✅ | Мигрировано |
+| Настройки | ✅ | - | Нужна миграция |
+| Мои фото | ✅ | - | Нужна миграция |
+| Избранное | ✅ | - | Нужна миграция |
+| Лайки/Комментарии | ✅ | - | Нужна миграция |
+| Telegram Auth | ✅ | - | Нужна миграция |
+| Admin Integrity | ✅ | - | Низкий приоритет |
+| Activity Logging | ✅ | - | Низкий приоритет |
 
 ---
 
-## 2. API роуты (User-Facing)
+## Удалённый мёртвый код
 
-### Операции с фото (My Photos)
-
-| Файл | Метод | Операция | Таблицы |
-|------|-------|----------|---------|
-| `/api/my-photos/[id]/verify` | POST | UPDATE | photo_faces |
-| `/api/my-photos/[id]/reject` | POST | UPDATE | photo_faces |
-| `/api/my-photos/[id]/hide` | POST | UPDATE | photo_faces |
-| `/api/my-photos/[id]/unhide` | POST | UPDATE | photo_faces |
-
-**Нужны endpoints:**
-- `POST /api/photo-faces/{id}/verify`
-- `POST /api/photo-faces/{id}/reject`
-- `POST /api/photo-faces/{id}/hide`
-- `POST /api/photo-faces/{id}/unhide`
-
-### Избранное
-
-| Файл | Метод | Операция | Таблицы |
-|------|-------|----------|---------|
-| `/api/favorites/route.ts` | GET | READ | favorites, gallery_images |
-| `/api/favorites/[imageId]` | GET | READ | favorites |
-| `/api/favorites/[imageId]` | POST | TOGGLE | favorites |
-
-**Нужны endpoints:**
-- `GET /api/users/{user_id}/favorites`
-- `GET /api/favorites/check/{image_id}?user_id=X`
-- `POST /api/favorites/toggle`
-
-### Лайки
-
-| Файл | Метод | Операция | Таблицы |
-|------|-------|----------|---------|
-| `/api/likes/[imageId]` | GET | READ | likes |
-| `/api/likes/[imageId]` | POST | TOGGLE | likes |
-
-**Нужны endpoints:**
-- `GET /api/images/{id}/likes?user_id=X`
-- `POST /api/images/{id}/likes/toggle`
-
-### Комментарии
-
-| Файл | Метод | Операция | Таблицы |
-|------|-------|----------|---------|
-| `/api/comments/[imageId]` | GET | READ | comments, users |
-| `/api/comments/[imageId]` | POST | INSERT | comments |
-| `/api/comments/[imageId]/[commentId]` | PATCH | UPDATE | comments |
-| `/api/comments/[imageId]/[commentId]` | DELETE | DELETE | comments |
-
-**Нужны endpoints:**
-- `GET /api/images/{id}/comments`
-- `POST /api/images/{id}/comments`
-- `PATCH /api/comments/{id}`
-- `DELETE /api/comments/{id}`
-
-### Настройки
-
-| Файл | Метод | Операция | Таблицы |
-|------|-------|----------|---------|
-| `/api/settings` | PUT | UPDATE | people |
-
-**Нужен endpoint:** `PUT /api/users/{person_id}/profile`
-
-### Скачивания
-
-| Файл | Метод | Операция | Функция |
-|------|-------|----------|---------|
-| `/api/downloads/[imageId]` | POST | RPC | increment_download_count |
-
-**Нужен endpoint:** `POST /api/images/{id}/download`
+```
+✗ app/admin/actions/auth.ts           - старый Supabase Auth
+✗ app/admin/(auth)/auth/callback/     - старый callback
+✗ components/admin/login-form.tsx     - старая форма логина
+✗ export * from "./auth" в index.ts   - экспорт удалённого модуля
+```
 
 ---
 
-## 3. Авторизация
+## Текущая архитектура авторизации
 
-### `/api/auth/telegram/route.ts`
-- **Операции:** READ + INSERT + UPDATE
-- **Таблицы:** `people`, `users`
-- **Что делает:** Полный флоу Telegram авторизации
-- **Сложность:** Высокая (много бизнес-логики)
+```
+Админка:   Google OAuth → FastAPI → admin_token cookie → middleware.ts
+Юзеры:    Telegram Auth → Next.js API → Supabase напрямую → telegram_user cookie
+```
 
-**Нужен endpoint:** `POST /api/auth/telegram`
-
-### `/app/admin/(auth)/auth/callback/route.ts`
-- **Использует:** Supabase Auth (exchangeCodeForSession)
-- **Статус:** Оставить как есть (это Supabase Auth, не данные)
-
-### `/app/admin/actions/auth.ts`
-- **Использует:** Supabase Auth (signIn, signUp, signOut)
-- **Статус:** Оставить как есть (это Supabase Auth для админки)
+**Проблема:** Telegram Auth ещё не мигрирован на FastAPI.
 
 ---
 
-## 4. Admin Actions (Server Actions)
+## Что уже работает через FastAPI
 
-### Integrity Check & Fix
+### Страницы
+| Страница | Endpoint |
+|----------|----------|
+| `/` (главная) | `GET /api/galleries` |
+| `/gallery/[id]` | `GET /api/galleries/{id}?full=true` |
+| `/players` | `GET /api/people` |
+| `/players/[id]` | `GET /api/people/{id}/photos` |
 
-| Файл | Функции | Приоритет |
-|------|---------|-----------|
-| `/admin/actions/integrity/check-integrity.ts` | checkDatabaseIntegrityFullAction | Средний |
-| `/admin/actions/integrity/fix-integrity.ts` | fixIntegrityIssuesAction | Средний |
-| `/admin/actions/integrity/face-actions.ts` | getIssueDetailsAction, confirmFaceAction, rejectFaceAction | Средний |
-
-### People Management
-
-| Файл | Функции | Приоритет |
-|------|---------|-----------|
-| `/admin/actions/people/duplicate-people.ts` | findDuplicatePeopleAction, deletePersonWithUnlinkAction, mergePeopleAction | Средний |
-
-### Cleanup & Debug
-
-| Файл | Функции | Приоритет |
-|------|---------|-----------|
-| `/admin/actions/cleanup.ts` | syncVerifiedAndConfidenceAction, cleanupDuplicateFacesAction | Низкий |
-| `/admin/actions/debug.ts` | debugPersonPhotosAction, debugPhotoFacesAction | Низкий |
+### Admin Actions
+| Модуль | Endpoints |
+|--------|-----------|
+| galleries.ts | `/api/galleries/*` |
+| entities.ts | `/api/people/*` |
+| recognition.ts | `/api/recognition/*`, `/api/faces/*` |
+| faces/*.ts | `/api/faces/*`, `/api/images/*` |
 
 ---
 
-## 5. Activity Logging
+## Что ещё использует Supabase напрямую
 
-| Файл | Таблица | Статус |
-|------|---------|--------|
-| `/lib/activity-logger.ts` | user_activity | Fire-and-forget |
-| `/lib/admin-activity-logger.ts` | admin_activity | Fire-and-forget |
+### 1. Пользовательские страницы (Высокий приоритет)
 
-**Рекомендация:** Можно оставить напрямую или перенести в FastAPI для консистентности.
+| Файл | Операция | Таблицы |
+|------|----------|---------|
+| `app/settings/page.tsx` | READ | people |
+| `app/my-photos/page.tsx` | READ | photo_faces, gallery_images |
+| `app/favorites/page.tsx` | READ | favorites, gallery_images |
+
+### 2. API Routes (Высокий приоритет)
+
+| Файл | Методы | Таблицы |
+|------|--------|---------|
+| `api/auth/telegram/route.ts` | POST | people, users |
+| `api/settings/route.ts` | PUT | people |
+| `api/my-photos/[id]/verify` | POST | photo_faces |
+| `api/my-photos/[id]/reject` | POST | photo_faces |
+| `api/my-photos/[id]/hide` | POST | photo_faces |
+| `api/my-photos/[id]/unhide` | POST | photo_faces |
+| `api/favorites/route.ts` | GET | favorites |
+| `api/favorites/[imageId]` | GET, POST | favorites |
+| `api/likes/[imageId]` | GET, POST | likes |
+| `api/comments/[imageId]` | GET, POST | comments |
+| `api/comments/[id]/[commentId]` | PATCH, DELETE | comments |
+| `api/downloads/[imageId]` | POST | RPC: increment_download_count |
+
+### 3. Admin Actions (Средний приоритет)
+
+| Файл | Операции |
+|------|----------|
+| `admin/actions/integrity/check-integrity.ts` | READ photo_faces |
+| `admin/actions/integrity/fix-integrity.ts` | UPDATE/DELETE photo_faces |
+| `admin/actions/integrity/face-actions.ts` | UPDATE photo_faces |
+| `admin/actions/integrity/utils.ts` | READ helpers |
+| `admin/actions/cleanup.ts` | UPDATE photo_faces |
+| `admin/actions/debug.ts` | READ photo_faces |
+| `admin/actions/people/duplicate-people.ts` | READ/UPDATE/DELETE people, photo_faces |
+
+### 4. Activity Logging (Низкий приоритет)
+
+| Файл | Таблица |
+|------|---------|
+| `lib/activity-logger.ts` | user_activity |
+| `lib/admin-activity-logger.ts` | admin_activity |
 
 ---
 
 ## План миграции
 
-### Фаза 1: User-Facing API (Высокий приоритет)
+### Фаза 1: Авторизация (Критично)
 
-**Порядок:**
-1. `POST /api/auth/telegram` — критично для авторизации
-2. `GET/PUT /api/users/{person_id}/profile` — настройки
-3. `GET /api/users/{person_id}/photos` — мои фото (read)
-4. `POST /api/photo-faces/{id}/*` — операции с фото (verify/reject/hide/unhide)
-5. `GET/POST /api/users/{user_id}/favorites` — избранное
-6. `GET/POST /api/images/{id}/likes` — лайки
-7. `GET/POST/PATCH/DELETE /api/images/{id}/comments` — комментарии
+```
+POST /api/auth/telegram
+  - Поиск/создание person
+  - Поиск/создание user
+  - Генерация JWT
+```
 
-**Оценка:** ~15-20 endpoints
+### Фаза 2: User Profile & Settings
 
-### Фаза 2: Admin Actions (Средний приоритет)
+```
+GET  /api/users/{person_id}/profile
+PUT  /api/users/{person_id}/profile
+GET  /api/users/{person_id}/photos      (для /my-photos)
+GET  /api/users/{user_id}/favorites     (для /favorites)
+```
 
-Перенести server actions в FastAPI endpoints:
-- `/api/admin/integrity/check`
-- `/api/admin/integrity/fix`
-- `/api/admin/people/duplicates`
-- `/api/admin/people/merge`
+### Фаза 3: Photo Face Operations
 
-**Оценка:** ~8-10 endpoints
+```
+POST /api/photo-faces/{id}/verify
+POST /api/photo-faces/{id}/reject
+POST /api/photo-faces/{id}/hide
+POST /api/photo-faces/{id}/unhide
+```
 
-### Фаза 3: Activity Logging (Низкий приоритет)
+### Фаза 4: Social Features
 
-- `/api/activity/user` — логирование активности
-- `/api/activity/admin` — логирование админ-активности
+```
+GET  /api/images/{id}/likes?user_id=X
+POST /api/images/{id}/likes/toggle
+GET  /api/images/{id}/comments
+POST /api/images/{id}/comments
+PATCH /api/comments/{id}
+DELETE /api/comments/{id}
+GET/POST /api/users/{user_id}/favorites
+POST /api/images/{id}/download  (increment counter)
+```
 
-**Оценка:** ~2-3 endpoints
+### Фаза 5: Admin Integrity (Низкий приоритет)
 
----
-
-## Таблицы для миграции
-
-| Таблица | Кол-во файлов | FastAPI endpoints нужны |
-|---------|---------------|------------------------|
-| photo_faces | 14 | Да |
-| people | 8 | Да |
-| gallery_images | 8 | Частично есть |
-| galleries | 5 | Есть |
-| favorites | 3 | Да |
-| likes | 2 | Да |
-| comments | 3 | Да |
-| users | 2 | Да |
-| user_activity | 1 | Опционально |
-| admin_activity | 1 | Опционально |
+Можно оставить на Supabase — это внутренние админские операции.
 
 ---
 
-## Что уже мигрировано на FastAPI
+## Supabase Client Files
 
-- `GET /api/galleries` — список галерей
-- `GET /api/galleries/{id}` — галерея с фото
-- `GET /api/players` — список игроков
-- `GET /api/players/{id}` — игрок с фото
-- `POST /api/upload` — загрузка фото
-- `POST /api/user/avatar` — загрузка аватара
+| Файл | Используется | Назначение |
+|------|--------------|------------|
+| `lib/supabase/service.ts` | ✅ Да | Service role клиент (bypasses RLS) |
+| `lib/supabase/server.ts` | ✅ Да | SSR клиент для admin actions |
+| `lib/supabase/middleware.ts` | ✅ Да | **НЕ Supabase!** JWT middleware для Google OAuth |
+
+**Примечание:** `middleware.ts` неправильно лежит в папке supabase — это JWT валидация для admin_token, не имеет отношения к Supabase.
+
+---
+
+## Оценка работ
+
+| Фаза | Endpoints | Сложность |
+|------|-----------|-----------|
+| 1. Auth | 1 | Высокая |
+| 2. Profile | 4 | Средняя |
+| 3. Photo Faces | 4 | Низкая |
+| 4. Social | 7-8 | Средняя |
+| 5. Admin | - | Пропустить |
+
+**Итого:** ~15-17 новых FastAPI endpoints
 
 ---
 
 ## Рекомендации
 
-1. **Начать с авторизации** — `POST /api/auth/telegram` критичен
-2. **User-facing endpoints** — они влияют на UX
-3. **Admin actions** — можно оставить на потом, они работают
-4. **Activity logging** — низкий приоритет, можно оставить
-
-**Общий объём работ:** ~25-30 новых FastAPI endpoints
+1. **middleware.ts** — переместить из `lib/supabase/` в `lib/auth/` или `lib/middleware/`
+2. **Telegram Auth** — мигрировать первым, т.к. это критичный путь
+3. **Admin integrity** — оставить на Supabase, не критично
+4. **Activity logging** — можно оставить или перенести для консистентности
