@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.logging import get_logger
+from core.responses import ApiResponse
 from infrastructure.supabase import get_supabase_client
 
 logger = get_logger(__name__)
@@ -187,15 +188,17 @@ def get_or_create_user(
 
     if result.data:
         # Update existing user
-        update_result = db.table("users").update({
+        db.table("users").update({
             "username": username,
             "first_name": first_name,
             "last_name": last_name,
             "photo_url": photo_url,
             "person_id": person_id,
             "updated_at": datetime.utcnow().isoformat(),
-        }).eq("telegram_id", telegram_id).select().execute()
-        return update_result.data[0]
+        }).eq("telegram_id", telegram_id).execute()
+        # Fetch updated record
+        updated = db.table("users").select("*").eq("telegram_id", telegram_id).execute()
+        return updated.data[0]
     else:
         # Create new user
         insert_result = db.table("users").insert({
@@ -205,8 +208,10 @@ def get_or_create_user(
             "last_name": last_name,
             "photo_url": photo_url,
             "person_id": person_id,
-        }).select().execute()
-        return insert_result.data[0]
+        }).execute()
+        # Fetch created record
+        created = db.table("users").select("*").eq("telegram_id", telegram_id).execute()
+        return created.data[0]
 
 
 def log_admin_activity(db, event_type: str, person_id: str, metadata: dict) -> None:
@@ -329,4 +334,4 @@ async def telegram_auth(data: TelegramAuthRequest) -> dict:
         person_id=person_id,
     )
 
-    return {"user": user}
+    return ApiResponse.ok({"user": user}).model_dump()

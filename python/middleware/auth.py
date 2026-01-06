@@ -96,8 +96,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/openapi.json",
     }
 
-    # Auth paths - public for OAuth flow
-    AUTH_PATHS_PREFIX = "/api/admin/auth"
+    # Admin auth paths - public for OAuth flow
+    ADMIN_AUTH_PATHS_PREFIX = "/api/admin/auth"
+
+    # User auth paths - public for Telegram login
+    USER_AUTH_PATHS_PREFIX = "/api/auth"
 
     # User paths - authenticated by Next.js via telegram_user cookie
     # These allow POST without admin token (Next.js validates user auth)
@@ -115,8 +118,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path in self.PUBLIC_PATHS:
             return await call_next(request)
 
-        # 3. Auth paths — always allow (OAuth flow)
-        if path.startswith(self.AUTH_PATHS_PREFIX):
+        # 3. Auth paths — always allow (OAuth flow, Telegram login)
+        if path.startswith(self.ADMIN_AUTH_PATHS_PREFIX) or path.startswith(self.USER_AUTH_PATHS_PREFIX):
             return await call_next(request)
 
         # 3b. User paths — allow (Next.js validates telegram_user cookie)
