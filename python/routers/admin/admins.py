@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from core.logging import get_logger
 from services.supabase.base import get_supabase_client
+from .helpers import log_admin_activity
 
 logger = get_logger(__name__)
 
@@ -110,9 +111,23 @@ async def create_admin(data: AdminCreate, request: Request):
     if not result.data:
         raise HTTPException(500, "Failed to create admin")
 
+    new_admin = result.data[0]
     logger.info(f"Admin created: {data.email} ({data.role}) by {current_admin['email']}")
 
-    return {"admin": result.data[0]}
+    # Log activity
+    log_admin_activity(
+        event_type="admin_created",
+        metadata={
+            "target_admin_id": new_admin["id"],
+            "target_admin_email": data.email,
+            "target_admin_role": data.role,
+            "by_admin_name": current_admin.get("name"),
+            "by_admin_email": current_admin.get("email"),
+        },
+        admin=current_admin,
+    )
+
+    return {"admin": new_admin}
 
 
 @router.patch("/{admin_id}")
@@ -163,6 +178,21 @@ async def update_admin(admin_id: str, data: AdminUpdate, request: Request):
 
     logger.info(f"Admin updated: {target_admin['email']} -> {update_data} by {current_admin['email']}")
 
+    # Log activity for activation/deactivation
+    if data.is_active is not None:
+        event_type = "admin_activated" if data.is_active else "admin_deactivated"
+        log_admin_activity(
+            event_type=event_type,
+            metadata={
+                "target_admin_id": admin_id,
+                "target_admin_email": target_admin["email"],
+                "target_admin_name": target_admin.get("name"),
+                "by_admin_name": current_admin.get("name"),
+                "by_admin_email": current_admin.get("email"),
+            },
+            admin=current_admin,
+        )
+
     return {"admin": result.data[0]}
 
 
@@ -195,5 +225,18 @@ async def delete_admin(admin_id: str, request: Request):
     supabase.table("admins").delete().eq("id", admin_id).execute()
 
     logger.info(f"Admin deleted: {target_admin['email']} by {current_admin['email']}")
+
+    # Log activity
+    log_admin_activity(
+        event_type="admin_deleted",
+        metadata={
+            "target_admin_id": admin_id,
+            "target_admin_email": target_admin["email"],
+            "target_admin_name": target_admin.get("name"),
+            "by_admin_name": current_admin.get("name"),
+            "by_admin_email": current_admin.get("email"),
+        },
+        admin=current_admin,
+    )
 
     return {"success": True}

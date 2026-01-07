@@ -23,12 +23,24 @@ router = APIRouter()
 
 # Human-readable labels for event types
 EVENT_TYPE_LABELS = {
+    # User & Admin events
     "user_registered": "Регистрация",
-    "user_linked": "Привязка аккаунта",
+    "user_linked": "Привязка TG",
+    "google_linked": "Привязка Gmail",
+    "person_created": "Создание",
+    "person_deleted": "Удаление",
+    "admin_created": "Назначение админа",
+    "admin_deleted": "Удаление админа",
+    "admin_activated": "Активация админа",
+    "admin_deactivated": "Деактивация админа",
+    # Settings events
     "name_changed": "Изменение имени",
-    "privacy_changed": "Изменение приватности",
-    "photo_verified": "Верификация фото",
-    "photo_rejected": "Отклонение фото",
+    "privacy_changed": "Приватность",
+    # Photo events
+    "photo_verified": "Верификация",
+    "photo_rejected": "Отклонение",
+    "photo_hidden": "Скрытие",
+    "photo_unhidden": "Показ",
 }
 
 

@@ -7,7 +7,7 @@ v1.3: Removed per-endpoint auth (moved to middleware)
 v1.4: Added for_gallery parameter for optimized players gallery loading
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from uuid import UUID
 
 from core.responses import ApiResponse
@@ -222,7 +222,7 @@ async def _add_user_auth_info(people: list) -> list:
 
 
 @router.post("/")
-async def create_person(data: PersonCreate):
+async def create_person(data: PersonCreate, request: Request):
     """Create a new person."""
     supabase_db = get_supabase_db()
 
@@ -237,8 +237,21 @@ async def create_person(data: PersonCreate):
 
         result = supabase_db.client.table("people").insert(insert_data).execute()
         if result.data:
+            person = result.data[0]
             logger.info(f"Created person: {data.real_name} (slug: {insert_data['slug']})")
-            return ApiResponse.ok(result.data[0])
+
+            # Log admin activity
+            admin = getattr(request.state, "admin", None)
+            if admin:
+                from routers.admin.helpers import log_admin_activity
+                log_admin_activity(
+                    event_type="person_created",
+                    person_id=person["id"],
+                    metadata={"person_name": data.real_name},
+                    admin=admin,
+                )
+
+            return ApiResponse.ok(person)
         raise DatabaseError("Insert failed", operation="create_person")
     except Exception as e:
         logger.error(f"Error creating person: {e}")
@@ -322,17 +335,18 @@ async def update_person(identifier: UUID, data: PersonUpdate):
 
 
 @router.delete("/{identifier:uuid}")
-async def delete_person(identifier: UUID):
+async def delete_person(identifier: UUID, request: Request):
     """Delete a person and cleanup related data."""
     supabase_db = get_supabase_db()
     face_service = get_face_service()
-    
+
     try:
-        # Verify person exists
-        result = supabase_db.client.table("people").select("id").eq("id", str(identifier)).execute()
+        # Verify person exists and get name for logging
+        result = supabase_db.client.table("people").select("id, real_name").eq("id", str(identifier)).execute()
         if not result.data:
             raise NotFoundError("Person", str(identifier))
         person_id = str(identifier)
+        person_name = result.data[0].get("real_name", "Unknown")
         
         # Get face_ids with descriptors before unlinking (for index removal)
         faces_result = supabase_db.client.table("photo_faces").select(
@@ -358,8 +372,20 @@ async def delete_person(identifier: UUID):
             result = await face_service.remove_faces_from_index(face_ids_in_index)
             index_rebuilt = result.get("deleted", 0) > 0
             logger.info(f"Removed {result.get('deleted', 0)} faces from index")
-        
+
         logger.info(f"Deleted person {person_id}")
+
+        # Log admin activity
+        admin = getattr(request.state, "admin", None)
+        if admin:
+            from routers.admin.helpers import log_admin_activity
+            log_admin_activity(
+                event_type="person_deleted",
+                person_id=person_id,
+                metadata={"person_name": person_name},
+                admin=admin,
+            )
+
         return ApiResponse.ok({"deleted": True, "index_rebuilt": index_rebuilt})
     except NotFoundError:
         raise

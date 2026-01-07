@@ -52,9 +52,9 @@ export function AuthButton() {
 
   return (
     <>
-      <div className="flex flex-col items-center bg-gray-800 rounded-lg overflow-hidden px-3 py-2">
+      <div className="flex flex-col items-center bg-white rounded-lg border border-gray-300 px-3 py-2">
         {/* Заголовок */}
-        <span className="text-xs text-gray-400 mb-1">Login</span>
+        <span className="text-xs text-gray-500 mb-1">Login</span>
 
         {/* Иконки */}
         <div className="flex items-center gap-1">
@@ -62,7 +62,7 @@ export function AuthButton() {
           {botName && (
             <button
               onClick={() => setShowTelegramDialog(true)}
-              className="w-9 h-8 flex items-center justify-center hover:bg-gray-700 rounded transition-colors"
+              className="w-9 h-8 flex items-center justify-center hover:bg-gray-100 rounded transition-colors"
               title="Войти через Telegram"
             >
               <svg className="w-5 h-5" fill="#26A5E4" viewBox="0 0 24 24">
@@ -75,7 +75,7 @@ export function AuthButton() {
           {googleClientId && (
             <button
               onClick={() => googleLogin()}
-              className="w-9 h-8 flex items-center justify-center hover:bg-gray-700 rounded transition-colors"
+              className="w-9 h-8 flex items-center justify-center hover:bg-gray-100 rounded transition-colors"
               title="Войти через Google"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">

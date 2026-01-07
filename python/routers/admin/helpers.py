@@ -123,3 +123,44 @@ def count_faces_for_gallery(image_ids: List[str], all_photo_faces: List[Dict]) -
     unverified = len([f for f in gallery_faces if f.get("person_id") and f.get("recognition_confidence") is not None and f.get("recognition_confidence") < 1])
     unknown = len([f for f in gallery_faces if f.get("person_id") is None])
     return {"verified": verified, "unverified": unverified, "unknown": unknown}
+
+
+def log_admin_activity(
+    event_type: str,
+    person_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    admin: Optional[Dict[str, Any]] = None,
+):
+    """
+    Log admin activity to admin_activity table.
+
+    Args:
+        event_type: Type of event (person_created, person_deleted, admin_created, etc.)
+        person_id: ID of the affected person (if applicable)
+        user_id: ID of the affected user (if applicable)
+        metadata: Additional event data
+        admin: Current admin dict (from request.state.admin)
+    """
+    from services.supabase.base import get_supabase_client
+
+    try:
+        supabase = get_supabase_client()
+
+        # Add admin info to metadata
+        event_metadata = metadata or {}
+        if admin:
+            event_metadata["admin_id"] = admin.get("id")
+            event_metadata["admin_email"] = admin.get("email")
+            event_metadata["admin_name"] = admin.get("name")
+
+        supabase.table("admin_activity").insert({
+            "event_type": event_type,
+            "person_id": person_id,
+            "user_id": user_id,
+            "metadata": event_metadata,
+        }).execute()
+
+        logger.info(f"Logged admin activity: {event_type} by {admin.get('email') if admin else 'system'}")
+    except Exception as e:
+        logger.error(f"Failed to log admin activity: {e}")
