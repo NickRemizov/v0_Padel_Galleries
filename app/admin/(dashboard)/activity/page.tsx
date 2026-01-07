@@ -6,11 +6,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Loader2, UserPlus, Link2, Pencil, Eye, ChevronLeft, ChevronRight,
-  Check, X, Shield, UserMinus, UserCog, EyeOff
+  Check, X, Shield, UserMinus, EyeOff
 } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface AdminActivity {
   id: string
@@ -25,32 +31,43 @@ interface AdminActivity {
   metadata: Record<string, any>
 }
 
-// Section 1: Users & Admins
-const USER_ADMIN_EVENTS = [
-  "user_registered",
-  "user_linked",
-  "google_linked",
-  "person_created",
-  "person_deleted",
-  "admin_created",
-  "admin_deleted",
-  "admin_activated",
-  "admin_deactivated",
-]
-
-// Section 2: User Settings
-const SETTINGS_EVENTS = [
-  "name_changed",
-  "privacy_changed",
-]
-
-// Section 3: Photo Actions
-const PHOTO_EVENTS = [
-  "photo_verified",
-  "photo_rejected",
-  "photo_hidden",
-  "photo_unhidden",
-]
+// Section definitions for filter
+const SECTIONS = {
+  all: {
+    label: "Все события",
+    events: [] as string[], // empty = all
+  },
+  users: {
+    label: "Пользователи и админы",
+    events: [
+      "user_registered",
+      "user_linked",
+      "google_linked",
+      "person_created",
+      "person_deleted",
+      "admin_created",
+      "admin_deleted",
+      "admin_activated",
+      "admin_deactivated",
+    ],
+  },
+  settings: {
+    label: "Настройки",
+    events: [
+      "name_changed",
+      "privacy_changed",
+    ],
+  },
+  photos: {
+    label: "Фото",
+    events: [
+      "photo_verified",
+      "photo_rejected",
+      "photo_hidden",
+      "photo_unhidden",
+    ],
+  },
+}
 
 const EVENT_ICONS: Record<string, React.ReactNode> = {
   user_registered: <UserPlus className="h-4 w-4" />,
@@ -113,6 +130,11 @@ function formatRelativeDate(dateString: string): string {
 function getEventDescription(activity: AdminActivity): string {
   const meta = activity.metadata || {}
 
+  // Helper to get admin name from metadata
+  const getAdminName = () => {
+    return meta.admin_name || meta.admin_email || meta.by_admin_name || meta.by_admin_email || null
+  }
+
   switch (activity.event_type) {
     // User & Admin events
     case "user_registered": {
@@ -135,33 +157,33 @@ function getEventDescription(activity: AdminActivity): string {
       return `Gmail ${meta.email || ""} привязан к аккаунту`
 
     case "person_created": {
-      const admin = meta.admin_name || meta.admin_username || "Админ"
-      return `Создан администратором ${admin}`
+      const admin = getAdminName()
+      return admin ? `Создан администратором ${admin}` : "Создан администратором"
     }
 
     case "person_deleted": {
-      const admin = meta.admin_name || meta.admin_username || "Админ"
-      return `Удалён администратором ${admin}`
+      const admin = getAdminName()
+      return admin ? `Удалён администратором ${admin}` : "Удалён администратором"
     }
 
     case "admin_created": {
-      const byAdmin = meta.by_admin_name || meta.by_admin_username || "Система"
-      return `Назначен администратором (${byAdmin})`
+      const byAdmin = meta.by_admin_name || meta.by_admin_email
+      return byAdmin ? `Назначен администратором (${byAdmin})` : "Назначен администратором"
     }
 
     case "admin_deleted": {
-      const byAdmin = meta.by_admin_name || meta.by_admin_username || "Система"
-      return `Удалён из администраторов (${byAdmin})`
+      const byAdmin = meta.by_admin_name || meta.by_admin_email
+      return byAdmin ? `Удалён из администраторов (${byAdmin})` : "Удалён из администраторов"
     }
 
     case "admin_activated": {
-      const byAdmin = meta.by_admin_name || meta.by_admin_username || "Система"
-      return `Активирован (${byAdmin})`
+      const byAdmin = meta.by_admin_name || meta.by_admin_email
+      return byAdmin ? `Активирован (${byAdmin})` : "Активирован"
     }
 
     case "admin_deactivated": {
-      const byAdmin = meta.by_admin_name || meta.by_admin_username || "Система"
-      return `Деактивирован (${byAdmin})`
+      const byAdmin = meta.by_admin_name || meta.by_admin_email
+      return byAdmin ? `Деактивирован (${byAdmin})` : "Деактивирован"
     }
 
     // Settings events
@@ -196,18 +218,13 @@ function getEventDescription(activity: AdminActivity): string {
   }
 }
 
-interface ActivityListProps {
-  eventTypes: string[]
-  title: string
-  description: string
-}
-
-function ActivityList({ eventTypes, title, description }: ActivityListProps) {
+export default function AdminActivityPage() {
   const [activities, setActivities] = useState<AdminActivity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
+  const [sectionFilter, setSectionFilter] = useState<string>("all")
   const limit = 50
 
   const loadActivities = async () => {
@@ -216,8 +233,13 @@ function ActivityList({ eventTypes, title, description }: ActivityListProps) {
       const params = new URLSearchParams({
         limit: String(limit),
         offset: String(offset),
-        event_types: eventTypes.join(","),
       })
+
+      // Add event_types filter if not "all"
+      const section = SECTIONS[sectionFilter as keyof typeof SECTIONS]
+      if (section && section.events.length > 0) {
+        params.set("event_types", section.events.join(","))
+      }
 
       const response = await adminFetch(`/api/admin/activity?${params}`)
       if (!response.ok) {
@@ -235,151 +257,140 @@ function ActivityList({ eventTypes, title, description }: ActivityListProps) {
 
   useEffect(() => {
     loadActivities()
-  }, [offset])
+  }, [offset, sectionFilter])
+
+  const handleFilterChange = (value: string) => {
+    setSectionFilter(value)
+    setOffset(0)
+  }
 
   const totalPages = Math.ceil(total / limit)
   const currentPage = Math.floor(offset / limit) + 1
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{total} событий</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <div className="rounded-md bg-destructive/10 p-4 text-destructive mb-4">
-            {error}
-            <Button variant="ghost" size="sm" className="ml-4" onClick={() => setError(null)}>
-              Закрыть
-            </Button>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        ) : activities.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Нет событий
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {activities.map((activity) => (
-              <div
-                key={activity.id}
-                className="flex items-start gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-              >
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={activity.user_avatar || undefined} />
-                  <AvatarFallback>
-                    {activity.person_name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium">{activity.person_name}</span>
-                    {activity.telegram_username && (
-                      <span className="text-sm text-muted-foreground">
-                        {activity.telegram_username}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {getEventDescription(activity)}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <Badge className={EVENT_COLORS[activity.event_type] || "bg-gray-500"}>
-                    {EVENT_ICONS[activity.event_type]}
-                    <span className="ml-1">{activity.event_label}</span>
-                  </Badge>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatRelativeDate(activity.created_at)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-6 pt-4 border-t">
-            <div className="text-sm text-muted-foreground">
-              Страница {currentPage} из {totalPages}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Назад
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offset + limit >= total}
-                onClick={() => setOffset(offset + limit)}
-              >
-                Вперед
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-export default function AdminActivityPage() {
-  return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Активность</h1>
-        <p className="text-muted-foreground">
-          Действия пользователей и администраторов
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Активность</h1>
+          <p className="text-muted-foreground">
+            Действия пользователей и администраторов
+          </p>
+        </div>
       </div>
 
-      <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="users">Пользователи и админы</TabsTrigger>
-          <TabsTrigger value="settings">Настройки</TabsTrigger>
-          <TabsTrigger value="photos">Фото</TabsTrigger>
-        </TabsList>
+      {error && (
+        <div className="rounded-md bg-destructive/10 p-4 text-destructive">
+          {error}
+          <Button variant="ghost" size="sm" className="ml-4" onClick={() => setError(null)}>
+            Закрыть
+          </Button>
+        </div>
+      )}
 
-        <TabsContent value="users" className="mt-6">
-          <ActivityList
-            eventTypes={USER_ADMIN_EVENTS}
-            title="Пользователи и администраторы"
-            description="Регистрации, привязки аккаунтов, управление пользователями и админами"
-          />
-        </TabsContent>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Лента событий</CardTitle>
+              <CardDescription>
+                {total} событий
+              </CardDescription>
+            </div>
+            <Select value={sectionFilter} onValueChange={handleFilterChange}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Фильтр по разделу" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(SECTIONS).map(([key, section]) => (
+                  <SelectItem key={key} value={key}>
+                    {section.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : activities.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Нет событий
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {activities.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-start gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                >
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={activity.user_avatar || undefined} />
+                    <AvatarFallback>
+                      {activity.person_name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
 
-        <TabsContent value="settings" className="mt-6">
-          <ActivityList
-            eventTypes={SETTINGS_EVENTS}
-            title="Настройки пользователей"
-            description="Изменения имени и настроек приватности"
-          />
-        </TabsContent>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium">{activity.person_name}</span>
+                      {activity.telegram_username && (
+                        <span className="text-sm text-muted-foreground">
+                          {activity.telegram_username}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {getEventDescription(activity)}
+                    </p>
+                  </div>
 
-        <TabsContent value="photos" className="mt-6">
-          <ActivityList
-            eventTypes={PHOTO_EVENTS}
-            title="Действия с фото"
-            description="Подтверждения, отклонения, скрытие фото"
-          />
-        </TabsContent>
-      </Tabs>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <Badge className={EVENT_COLORS[activity.event_type] || "bg-gray-500"}>
+                      {EVENT_ICONS[activity.event_type]}
+                      <span className="ml-1">{activity.event_label}</span>
+                    </Badge>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatRelativeDate(activity.created_at)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-6 pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Страница {currentPage} из {totalPages}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={offset === 0}
+                  onClick={() => setOffset(Math.max(0, offset - limit))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Назад
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={offset + limit >= total}
+                  onClick={() => setOffset(offset + limit)}
+                >
+                  Вперед
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
