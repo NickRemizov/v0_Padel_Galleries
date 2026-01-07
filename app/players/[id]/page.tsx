@@ -2,12 +2,59 @@ import { notFound, redirect } from "next/navigation"
 import { PlayerGalleryView } from "@/components/player-gallery-view"
 import type { Person } from "@/lib/types"
 import { apiFetch } from "@/lib/apiClient"
+import type { Metadata } from "next"
 
-interface PlayerGalleryPageProps {
+type Props = {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ photo?: string }>
 }
 
 export const revalidate = 300
+
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+  const { id } = await params
+  const { photo } = await searchParams
+
+  const playerResponse = await apiFetch<any>(`/api/people/${id}`)
+  if (!playerResponse.success || !playerResponse.data) {
+    return { title: "Игрок не найден" }
+  }
+
+  const player = playerResponse.data
+  let ogImage = player.avatar_url
+  let title = `Фотографии ${player.real_name}`
+
+  // If specific photo requested, get its URL
+  if (photo) {
+    const photosResponse = await apiFetch<any>(`/api/people/${id}/photos`)
+    if (photosResponse.success && photosResponse.data) {
+      const photoData = photosResponse.data.find((f: any) => f.gallery_images?.slug === photo)
+      if (photoData?.gallery_images?.image_url) {
+        ogImage = photoData.gallery_images.image_url
+        title = `${player.real_name} - Фото`
+      }
+    }
+  }
+
+  const description = `Фотографии игрока ${player.real_name}`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: ogImage ? [{ url: ogImage, width: 1200, height: 630 }] : [],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: ogImage ? [ogImage] : [],
+    },
+  }
+}
 
 /**
  * Sort images by gallery sort_order setting
@@ -24,7 +71,7 @@ function sortByGalleryOrder(images: any[], sortOrder: string): any[] {
   }
 }
 
-export default async function PlayerGalleryPage({ params }: PlayerGalleryPageProps) {
+export default async function PlayerGalleryPage({ params }: Props) {
   const { id } = await params
 
   // Get player from FastAPI - unified format: {success, data, error, code}

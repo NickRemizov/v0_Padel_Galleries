@@ -85,11 +85,11 @@ export async function addGalleryAction(formData: FormData) {
       title,
       shoot_date,
       gallery_url,
-      cover_image_url,
       is_public,
     }
 
     // Add optional fields
+    if (cover_image_url) data.cover_image_url = cover_image_url
     if (cover_image_square_url) data.cover_image_square_url = cover_image_square_url
     if (external_gallery_url) data.external_gallery_url = external_gallery_url
     if (photographer_id && photographer_id !== "none") data.photographer_id = photographer_id

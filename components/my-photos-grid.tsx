@@ -267,10 +267,12 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         {/* Verified badge */}
         {photoFace.verified && (
           <div className="absolute bottom-2 left-2">
-            <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-md font-medium flex items-center gap-1">
-              <Check className="w-3 h-3" />
-              Подтверждено
-            </span>
+            <div
+              className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center shadow-sm"
+              title="Подтверждено"
+            >
+              <Check className="h-3.5 w-3.5 text-white" />
+            </div>
           </div>
         )}
 

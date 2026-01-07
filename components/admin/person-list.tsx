@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Trash2, Pencil, Images } from "lucide-react"
+import { Trash2, Pencil, Images, Check } from "lucide-react"
 import { deletePersonAction, updatePersonVisibilityAction } from "@/app/admin/actions"
 import { EditPersonDialog } from "./edit-person-dialog"
 import { PersonGalleryDialog } from "./person-gallery-dialog"
@@ -19,11 +19,8 @@ type PersonWithStats = Person & {
   verified_photos_count?: number
   high_confidence_photos_count?: number
   descriptor_count?: number
-}
-
-interface PersonListProps {
-  people: PersonWithStats[]
-  onUpdate?: () => void
+  has_telegram_auth?: boolean
+  has_google_auth?: boolean
 }
 
 /**
@@ -37,7 +34,15 @@ function getTelegramLink(nickname: string | null | undefined): string | null {
   return `https://t.me/${username}`
 }
 
-export function PersonList({ people: initialPeople, onUpdate }: PersonListProps) {
+type FilterType = "telegram" | "gmail" | "auto"
+
+interface PersonListProps {
+  people: PersonWithStats[]
+  onUpdate?: () => void
+  activeFilters?: FilterType[]
+}
+
+export function PersonList({ people: initialPeople, onUpdate, activeFilters = [] }: PersonListProps) {
   // Local state for optimistic updates
   const [localPeople, setLocalPeople] = useState<PersonWithStats[]>(initialPeople)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -48,6 +53,16 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
     open: false,
     person: null,
   })
+
+  // Filter people based on active filters (AND logic)
+  const filteredPeople = activeFilters.length === 0
+    ? localPeople
+    : localPeople.filter(person => {
+        if (activeFilters.includes("telegram") && !person.has_telegram_auth) return false
+        if (activeFilters.includes("gmail") && !person.has_google_auth) return false
+        if (activeFilters.includes("auto") && !(person.created_by && !person.created_by.startsWith("admin:"))) return false
+        return true
+      })
 
   // Sync with props when they change externally (e.g., after router.refresh)
   useEffect(() => {
@@ -68,16 +83,36 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
   const handlePhotoCountChange = useCallback((personId: string, delta: number) => {
     setLocalPeople(prev => prev.map(p => {
       if (p.id !== personId) return p
-      
+
       // Уменьшаем счётчик verified_photos_count (или high_confidence)
       const currentCount = (p.verified_photos_count || 0) + (p.high_confidence_photos_count || 0)
       const newTotal = Math.max(0, currentCount + delta)
-      
+
       // Пропорционально уменьшаем verified (упрощённая логика)
       return {
         ...p,
         verified_photos_count: Math.max(0, (p.verified_photos_count || 0) + delta),
       }
+    }))
+  }, [])
+
+  // Handle person data update from gallery (avatar, verified count)
+  const handlePersonUpdate = useCallback((personId: string, updates: { avatar_url?: string; verified_delta?: number }) => {
+    console.log("[PersonList] handlePersonUpdate called:", personId, updates)
+    setLocalPeople(prev => prev.map(p => {
+      if (p.id !== personId) return p
+
+      const newData = { ...p }
+      if (updates.avatar_url) {
+        newData.avatar_url = updates.avatar_url
+      }
+      if (updates.verified_delta) {
+        newData.verified_photos_count = (p.verified_photos_count || 0) + updates.verified_delta
+        // При верификации уменьшаем high_confidence
+        newData.high_confidence_photos_count = Math.max(0, (p.high_confidence_photos_count || 0) - updates.verified_delta)
+      }
+      console.log("[PersonList] Updated person:", newData.real_name, "verified:", newData.verified_photos_count)
+      return newData
     }))
   }, [])
 
@@ -148,9 +183,19 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
   return (
     <>
       <div className="grid gap-3">
-        {localPeople.map((person) => {
+        {filteredPeople.map((person) => {
           const socialLinks = []
-          
+
+          // Verified badge component
+          const VerifiedBadge = () => (
+            <span
+              className="inline-flex items-center justify-center w-4 h-4 bg-black rounded-full ml-1"
+              title="Верифицировано"
+            >
+              <Check className="w-3 h-3 text-white" />
+            </span>
+          )
+
           // Telegram: используем telegram_username для создания ссылки
           const telegramLink = getTelegramLink(person.telegram_username)
           if (telegramLink) {
@@ -165,10 +210,22 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
                 >
                   {person.telegram_username}
                 </a>
+                {person.has_telegram_auth && <VerifiedBadge />}
               </span>,
             )
           }
-          
+
+          // Gmail
+          if (person.gmail) {
+            socialLinks.push(
+              <span key="gmail">
+                Gmail:{" "}
+                <span className="text-primary">{person.gmail}</span>
+                {person.has_google_auth && <VerifiedBadge />}
+              </span>,
+            )
+          }
+
           if (person.instagram_profile_url) {
             socialLinks.push(
               <span key="instagram">
@@ -348,6 +405,7 @@ export function PersonList({ people: initialPeople, onUpdate }: PersonListProps)
           open={!!galleryPerson}
           onOpenChange={(open) => !open && setGalleryPerson(null)}
           onPhotoCountChange={(delta) => handlePhotoCountChange(galleryPerson.id, delta)}
+          onPersonUpdate={(updates) => handlePersonUpdate(galleryPerson.id, updates)}
         />
       )}
 

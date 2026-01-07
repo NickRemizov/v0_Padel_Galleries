@@ -17,7 +17,7 @@ import {
   SingleDeleteDialog,
 } from "./components"
 
-export function PersonGalleryDialog({ personId, personName, open, onOpenChange, onPhotoCountChange }: PersonGalleryDialogProps) {
+export function PersonGalleryDialog({ personId, personName, open, onOpenChange, onPhotoCountChange, onPersonUpdate }: PersonGalleryDialogProps) {
   const router = useRouter()
 
   // Data and operations
@@ -97,6 +97,8 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange, 
       const photosToVerify = getPhotosToVerify()
       try {
         await batchVerifyPhotos(photosToVerify)
+        // Уведомляем родителя об изменении количества verified
+        onPersonUpdate?.({ verified_delta: photosToVerify.length })
       } catch (error) {
         alert(`Ошибка верификации: ${error}`)
       }
@@ -108,7 +110,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange, 
     }
     setConfirmDialog({ open: false, action: null, count: 0 })
     clearSelection()
-  }, [confirmDialog.action, getPhotosToVerify, getSelectedPhotosArray, batchVerifyPhotos, batchDeletePhotos, clearSelection, onPhotoCountChange])
+  }, [confirmDialog.action, getPhotosToVerify, getSelectedPhotosArray, batchVerifyPhotos, batchDeletePhotos, clearSelection, onPhotoCountChange, onPersonUpdate])
 
   const confirmSingleDelete = useCallback(async () => {
     if (!singleDeleteDialog.photoId) return
@@ -122,6 +124,15 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange, 
     setSelectedPhotoForAvatar(photoId)
     setAvatarSelectorOpen(true)
   }, [])
+
+  // Wrap verifyPhoto to also notify parent
+  const handleVerifyPhoto = useCallback(async (photoId: string) => {
+    const success = await verifyPhoto(photoId)
+    console.log("[PersonGalleryDialog] verifyPhoto result:", success, "calling onPersonUpdate")
+    if (success) {
+      onPersonUpdate?.({ verified_delta: 1 })
+    }
+  }, [verifyPhoto, onPersonUpdate])
 
   const handleTaggingSave = useCallback((imageId?: string, faces?: any[]) => {
     if (!imageId || !faces) return
@@ -168,7 +179,7 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange, 
               onSelectPhoto={toggleSelection}
               onOpenTagging={openTaggingDialog}
               onDeletePhoto={handleDeletePhoto}
-              onVerifyPhoto={verifyPhoto}
+              onVerifyPhoto={handleVerifyPhoto}
               onOpenAvatarSelector={handleOpenAvatarSelector}
             />
           </div>
@@ -220,11 +231,12 @@ export function PersonGalleryDialog({ personId, personName, open, onOpenChange, 
             setAvatarSelectorOpen(open)
             if (!open) setSelectedPhotoForAvatar(null)
           }}
-          onAvatarSelected={async () => {
+          onAvatarSelected={async (avatarUrl?: string) => {
             setAvatarSelectorOpen(false)
             setSelectedPhotoForAvatar(null)
-            router.refresh()
-            onOpenChange(false)
+            if (avatarUrl) {
+              onPersonUpdate?.({ avatar_url: avatarUrl })
+            }
           }}
           preselectedPhotoId={selectedPhotoForAvatar}
         />

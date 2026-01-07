@@ -7,6 +7,7 @@ export interface PersonGalleryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onPhotoCountChange?: (delta: number) => void
+  onPersonUpdate?: (updates: { avatar_url?: string; verified_delta?: number }) => void
 }
 
 /**

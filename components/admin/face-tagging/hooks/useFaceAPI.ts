@@ -92,60 +92,29 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
       }
 
       const tagged: TaggedFace[] = result.faces.map((f: any) => {
-        if (f.person_id && f.people) {
-          return {
-            id: f.id,
-            face: { boundingBox: f.insightface_bbox, confidence: f.insightface_det_score, blur_score: 0, embedding: null },
-            personId: f.person_id,
-            personName: f.people.real_name || f.people.telegram_full_name || null,
-            recognitionConfidence: f.recognition_confidence,
-            verified: f.verified,
-          }
-        }
-        
-        const topMatch = f.top_matches?.[0]
-        const similarity = topMatch?.similarity || 0
-        
-        if (similarity > 0.3 && topMatch) {
-          return {
-            id: f.id,
-            face: { boundingBox: f.insightface_bbox, confidence: f.insightface_det_score, blur_score: 0, embedding: null },
-            personId: topMatch.person_id || null,
-            personName: topMatch.name || null,
-            recognitionConfidence: similarity,
-            verified: false,
-          }
-        }
-        
+        // Only use person_id from backend (already filtered by threshold)
+        // Don't auto-assign from top_matches - user should select manually via Metrics panel
         return {
           id: f.id,
           face: { boundingBox: f.insightface_bbox, confidence: f.insightface_det_score, blur_score: 0, embedding: null },
-          personId: null,
-          personName: null,
-          recognitionConfidence: similarity,
-          verified: false,
+          personId: f.person_id || null,
+          personName: f.people?.real_name || f.people?.telegram_full_name || null,
+          recognitionConfidence: f.recognition_confidence,
+          verified: f.verified || false,
         }
       })
 
-      const detailed: DetailedFace[] = result.faces.map((f: any) => {
-        const topMatch = f.top_matches?.[0]
-        const similarity = topMatch?.similarity || 0
-        let personName = f.people?.real_name || f.people?.telegram_full_name || null
-        if (!personName && similarity > 0.3 && topMatch) {
-          personName = topMatch.name || null
-        }
-        return {
-          boundingBox: f.insightface_bbox,
-          size: Math.max(f.insightface_bbox.width, f.insightface_bbox.height),
-          blur_score: f.blur_score,
-          detection_score: f.insightface_det_score,
-          recognition_confidence: f.recognition_confidence,
-          embedding_quality: f.embedding_quality,
-          distance_to_nearest: f.distance_to_nearest,
-          top_matches: f.top_matches,
-          person_name: personName,
-        }
-      })
+      const detailed: DetailedFace[] = result.faces.map((f: any) => ({
+        boundingBox: f.insightface_bbox,
+        size: Math.max(f.insightface_bbox.width, f.insightface_bbox.height),
+        blur_score: f.blur_score,
+        detection_score: f.insightface_det_score,
+        recognition_confidence: f.recognition_confidence,
+        embedding_quality: f.embedding_quality,
+        distance_to_nearest: f.distance_to_nearest,
+        top_matches: f.top_matches,
+        person_name: f.people?.real_name || f.people?.telegram_full_name || null,
+      }))
 
       setRedetecting(false)
       return { tagged, detailed }

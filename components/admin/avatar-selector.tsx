@@ -17,7 +17,7 @@ interface AvatarSelectorProps {
   onAvatarUpdated?: () => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  onAvatarSelected?: () => void
+  onAvatarSelected?: (avatarUrl?: string) => void
   preselectedPhotoId?: string | null
 }
 
@@ -192,10 +192,8 @@ export function AvatarSelector({
       setZoom(1)
       setCroppedAreaPixels(null)
 
-      router.refresh()
-
       onAvatarUpdated?.()
-      onAvatarSelected?.()
+      onAvatarSelected?.(result.url)
       setOpen(false)
     } catch (error) {
       console.error("[AvatarSelector] Error uploading avatar:", error)

@@ -31,6 +31,8 @@ interface AdminActivity {
 const EVENT_ICONS: Record<string, React.ReactNode> = {
   user_registered: <UserPlus className="h-4 w-4" />,
   user_linked: <Link2 className="h-4 w-4" />,
+  google_linked: <Link2 className="h-4 w-4" />,
+  person_created: <UserPlus className="h-4 w-4" />,
   name_changed: <Pencil className="h-4 w-4" />,
   privacy_changed: <Eye className="h-4 w-4" />,
   photo_verified: <Check className="h-4 w-4" />,
@@ -40,6 +42,8 @@ const EVENT_ICONS: Record<string, React.ReactNode> = {
 const EVENT_COLORS: Record<string, string> = {
   user_registered: "bg-green-500",
   user_linked: "bg-blue-500",
+  google_linked: "bg-blue-500",
+  person_created: "bg-cyan-500",
   name_changed: "bg-yellow-500",
   privacy_changed: "bg-purple-500",
   photo_verified: "bg-emerald-500",
@@ -77,8 +81,13 @@ function getEventDescription(activity: AdminActivity): string {
   const meta = activity.metadata || {}
 
   switch (activity.event_type) {
-    case "user_registered":
-      return `Зарегистрировался через Telegram${meta.telegram_username ? ` (${meta.telegram_username})` : ""}`
+    case "user_registered": {
+      const authMethod = meta.auth_method === "google" ? "Gmail" : "Telegram"
+      const identifier = meta.auth_method === "google"
+        ? (meta.email ? ` (${meta.email})` : "")
+        : (meta.telegram_username ? ` (${meta.telegram_username})` : "")
+      return `Зарегистрировался через ${authMethod}${identifier}`
+    }
 
     case "user_linked": {
       let desc = `Telegram ${meta.telegram_username || ""} привязан к аккаунту`
@@ -86,6 +95,15 @@ function getEventDescription(activity: AdminActivity): string {
         desc += `. Имя в Telegram: "${meta.old_telegram_full_name}" → "${meta.telegram_full_name}"`
       }
       return desc
+    }
+
+    case "google_linked": {
+      return `Gmail ${meta.email || ""} привязан к аккаунту`
+    }
+
+    case "person_created": {
+      const admin = meta.admin_name || meta.admin_username || "Админ"
+      return `Создан администратором ${admin}`
     }
 
     case "name_changed":

@@ -50,26 +50,56 @@ ADMIN_EMAILS = [
 # ============================================================
 
 async def verify_google_token(token: str) -> dict:
-    """Проверка Google OAuth токена"""
+    """Проверка Google OAuth ID токена"""
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"https://oauth2.googleapis.com/tokeninfo?id_token={token}"
             )
-            
+
             if response.status_code != 200:
                 raise HTTPException(status_code=401, detail="Неверный Google токен")
-            
+
             token_info = response.json()
-            
+
             # Проверяем что токен для нашего приложения
             if token_info.get("aud") != GOOGLE_CLIENT_ID:
                 raise HTTPException(status_code=401, detail="Токен не для этого приложения")
-            
+
             return token_info
-    
+
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Ошибка проверки токена: {str(e)}")
+
+
+async def verify_google_access_token(access_token: str) -> dict:
+    """Проверка Google OAuth access token через userinfo API"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(status_code=401, detail="Неверный Google access token")
+
+            user_info = response.json()
+
+            # Возвращаем в том же формате что и verify_google_token
+            return {
+                "sub": user_info.get("sub"),
+                "email": user_info.get("email"),
+                "given_name": user_info.get("given_name"),
+                "family_name": user_info.get("family_name"),
+                "name": user_info.get("name"),
+                "picture": user_info.get("picture"),
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Ошибка проверки access token: {str(e)}")
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):

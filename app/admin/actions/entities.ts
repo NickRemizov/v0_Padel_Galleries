@@ -23,8 +23,8 @@ function revalidateGalleryPaths() {
 
 // ===== PEOPLE =====
 
-export async function getPeopleAction(withStats = false) {
-  return await apiFetch(`/api/people?with_stats=${withStats}`)
+export async function getPeopleAction(withStats = false, admin = true) {
+  return await apiFetch(`/api/people?with_stats=${withStats}&admin=${admin}`)
 }
 
 export async function getPersonAction(personId: string) {

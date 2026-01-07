@@ -21,8 +21,8 @@ export default async function HomePage() {
   if (!result.success) {
     return (
       <main className="min-h-screen bg-background border-background">
-        <div className="mx-auto py-12 shadow-none">
-          <header className="mb-12 text-center px-4">
+        <div className="container mx-auto px-4 py-12 shadow-none">
+          <header className="mb-12 text-center">
             <h1 className="mb-4 font-serif font-bold tracking-tight text-foreground text-8xl">Padel in Valencia</h1>
             <p className="text-muted-foreground">
               {result.error || "Failed to load galleries. Please try again later."}
@@ -37,8 +37,8 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-background border-background">
-      <div className="mx-auto py-12 shadow-none">
-        <header className="mb-12 text-center relative px-4">
+      <div className="container mx-auto px-4 py-12 shadow-none">
+        <header className="mb-12 text-center relative">
           <div className="absolute right-0 top-0">
             <AuthButton />
           </div>

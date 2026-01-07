@@ -24,6 +24,8 @@ type PersonWithStats = Person & {
   verified_photos_count?: number
   high_confidence_photos_count?: number
   descriptor_count?: number
+  has_telegram_auth?: boolean
+  has_google_auth?: boolean
 }
 
 interface EditPersonDialogProps {
@@ -152,7 +154,12 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
                     name="telegram_username"
                     defaultValue={person.telegram_username || ""}
                     placeholder="@username"
+                    disabled={person.has_telegram_auth}
+                    title={person.has_telegram_auth ? "Нельзя изменить — пользователь авторизован через Telegram" : undefined}
                   />
+                  {person.has_telegram_auth && (
+                    <p className="text-xs text-muted-foreground">Заблокировано: пользователь авторизован через Telegram</p>
+                  )}
                 </div>
               </div>
 
@@ -203,8 +210,12 @@ export function EditPersonDialog({ person, open, onOpenChange, onSuccess }: Edit
                 defaultValue={person.gmail || ""}
                 placeholder="user@gmail.com"
                 pattern="[a-zA-Z0-9._%+-]+@gmail\.com$"
-                title="Введите адрес Gmail (example@gmail.com)"
+                title={person.has_google_auth ? "Нельзя изменить — пользователь авторизован через Google" : "Введите адрес Gmail (example@gmail.com)"}
+                disabled={person.has_google_auth}
               />
+              {person.has_google_auth && (
+                <p className="text-xs text-muted-foreground">Заблокировано: пользователь авторизован через Google</p>
+              )}
             </div>
 
             <div className="grid gap-2">

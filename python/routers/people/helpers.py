@@ -21,6 +21,9 @@ PUBLIC_FIELDS = (
     "slug, created_by, created_at, updated_at, tournament_results"
 )
 
+# Admin fields - includes gmail for admin panel
+ADMIN_FIELDS = PUBLIC_FIELDS + ", gmail"
+
 
 def get_supabase_db():
     """Get supabase_db instance from package globals."""

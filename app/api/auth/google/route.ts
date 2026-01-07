@@ -11,16 +11,16 @@ import { apiFetch } from "@/lib/apiClient"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { credential } = body
+    const { credential, access_token } = body
 
-    if (!credential) {
-      return NextResponse.json({ error: "Missing credential" }, { status: 400 })
+    if (!credential && !access_token) {
+      return NextResponse.json({ error: "Missing credential or access_token" }, { status: 400 })
     }
 
     // Call FastAPI backend
     const result = await apiFetch("/api/auth/google", {
       method: "POST",
-      body: JSON.stringify({ credential }),
+      body: JSON.stringify({ credential, access_token }),
     })
 
     if (!result.success) {

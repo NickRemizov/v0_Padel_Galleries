@@ -23,6 +23,7 @@ from .helpers import (
     get_person_id,
     calculate_people_stats,
     PUBLIC_FIELDS,
+    ADMIN_FIELDS,
 )
 
 logger = get_logger(__name__)
@@ -56,20 +57,27 @@ def _generate_unique_player_slug(
 @router.get("/")
 async def get_people(
     with_stats: bool = Query(False),
-    for_gallery: bool = Query(False, description="Optimized response for players gallery page")
+    for_gallery: bool = Query(False, description="Optimized response for players gallery page"),
+    admin: bool = Query(False, description="Include admin-only fields (gmail)")
 ):
     """
     Get all people.
-    
+
     Parameters:
     - with_stats: Include face verification stats (slower)
     - for_gallery: Include photo_count and most_recent_gallery_date (optimized for /players page)
+    - admin: Include gmail and linked user info (for admin panel)
     """
     supabase_db = get_supabase_db()
 
     try:
-        result = supabase_db.client.table("people").select(PUBLIC_FIELDS).order("real_name").execute()
+        fields = ADMIN_FIELDS if admin else PUBLIC_FIELDS
+        result = supabase_db.client.table("people").select(fields).order("real_name").execute()
         people = result.data or []
+
+        # For admin panel - add linked user info (telegram_id, google_id)
+        if admin:
+            people = await _add_user_auth_info(people)
         
         # For players gallery page - add photo_count and most_recent_gallery_date
         if for_gallery:
@@ -168,6 +176,49 @@ async def _add_gallery_data(people: list) -> list:
         logger.error(f"Error adding gallery data: {e}")
         # Fallback - return people without gallery data
         return [{**p, "photo_count": 0, "most_recent_gallery_date": None} for p in people]
+
+
+async def _add_user_auth_info(people: list) -> list:
+    """
+    Add linked user auth info (telegram_id, google_id) to each person.
+    Used in admin panel to determine which fields should be read-only.
+    """
+    if not people:
+        return people
+
+    supabase_db = get_supabase_db()
+
+    try:
+        # Get all users with person_id
+        users_result = supabase_db.client.table("users").select(
+            "person_id, telegram_id, google_id"
+        ).execute()
+        users = users_result.data or []
+
+        # Build lookup: person_id -> {telegram_id, google_id}
+        user_lookup = {}
+        for user in users:
+            pid = user.get("person_id")
+            if pid:
+                user_lookup[pid] = {
+                    "has_telegram_auth": user.get("telegram_id") is not None,
+                    "has_google_auth": user.get("google_id") is not None,
+                }
+
+        # Add to people
+        result = []
+        for person in people:
+            auth_info = user_lookup.get(person["id"], {
+                "has_telegram_auth": False,
+                "has_google_auth": False,
+            })
+            result.append({**person, **auth_info})
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error adding user auth info: {e}")
+        return [{**p, "has_telegram_auth": False, "has_google_auth": False} for p in people]
 
 
 @router.post("/")

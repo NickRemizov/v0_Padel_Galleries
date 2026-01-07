@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from core.logging import get_logger
 from core.responses import ApiResponse
 from infrastructure.supabase import get_supabase_client
-from services.auth import verify_google_token  # Reuse existing function
+from services.auth import verify_google_token, verify_google_access_token
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -31,7 +31,8 @@ router = APIRouter()
 # =============================================================================
 
 class GoogleAuthRequest(BaseModel):
-    credential: str  # Google ID Token
+    credential: Optional[str] = None  # Google ID Token (from GoogleLogin component)
+    access_token: Optional[str] = None  # Google Access Token (from useGoogleLogin)
 
 
 # =============================================================================
@@ -58,12 +59,17 @@ def find_user_by_person_id(db, person_id: str) -> Optional[dict]:
     return result.data[0] if result.data else None
 
 
-def update_user_with_google(db, user_id: str, google_id: str) -> dict:
-    """Update existing user with Google ID."""
-    db.table("users").update({
+def update_user_with_google(db, user_id: str, google_id: str, photo_url: Optional[str] = None) -> dict:
+    """Update existing user with Google ID and photo."""
+    update_data = {
         "google_id": google_id,
         "updated_at": datetime.utcnow().isoformat(),
-    }).eq("id", user_id).execute()
+    }
+    # Update photo_url if provided (always use latest from Google)
+    if photo_url:
+        update_data["photo_url"] = photo_url
+
+    db.table("users").update(update_data).eq("id", user_id).execute()
 
     result = db.table("users").select("*").eq("id", user_id).execute()
     return result.data[0]
@@ -132,10 +138,19 @@ async def google_auth(data: GoogleAuthRequest) -> dict:
     """
     Authenticate user via Google Sign-In.
 
+    Accepts either:
+    - credential: Google ID Token (from GoogleLogin component)
+    - access_token: Google Access Token (from useGoogleLogin hook)
+
     Returns user data to be stored in cookie by frontend.
     """
     # Verify Google token (raises HTTPException on failure)
-    token_info = await verify_google_token(data.credential)
+    if data.access_token:
+        token_info = await verify_google_access_token(data.access_token)
+    elif data.credential:
+        token_info = await verify_google_token(data.credential)
+    else:
+        raise HTTPException(status_code=400, detail="Missing credential or access_token")
 
     # Extract user info from token
     google_id = token_info.get("sub")
@@ -156,8 +171,8 @@ async def google_auth(data: GoogleAuthRequest) -> dict:
     existing_user = find_user_by_google_id(db, google_id)
 
     if existing_user:
-        # Update and return existing user
-        user = update_user_with_google(db, existing_user["id"], google_id)
+        # Update and return existing user (update photo from Google)
+        user = update_user_with_google(db, existing_user["id"], google_id, photo_url)
         logger.info(f"Found user {user['id']} by google_id")
         return ApiResponse.ok({"user": user}).model_dump()
 
@@ -172,8 +187,8 @@ async def google_auth(data: GoogleAuthRequest) -> dict:
         existing_user_for_person = find_user_by_person_id(db, person_id)
 
         if existing_user_for_person:
-            # Link Google to existing user (add google_id)
-            user = update_user_with_google(db, existing_user_for_person["id"], google_id)
+            # Link Google to existing user (add google_id and update photo)
+            user = update_user_with_google(db, existing_user_for_person["id"], google_id, photo_url)
             logger.info(f"Linked Google to existing user {user['id']} via email {email}")
 
             # Log admin activity

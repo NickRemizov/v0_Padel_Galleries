@@ -60,8 +60,8 @@ export default async function PlayersPage() {
 function renderPage(players: Person[]) {
   return (
     <main className="min-h-screen bg-background border-background">
-      <div className="mx-auto py-12 shadow-none">
-        <header className="mb-12 text-center relative px-4">
+      <div className="container mx-auto px-4 py-12 shadow-none">
+        <header className="mb-12 text-center relative">
           <div className="absolute right-0 top-0">
             <AuthButton />
           </div>

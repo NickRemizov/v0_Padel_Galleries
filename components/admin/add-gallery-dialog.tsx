@@ -251,8 +251,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
                       type="file"
                       accept="image/*"
                       onChange={handleImageSelect}
-                      disabled={uploading}
-                      required
+                      disabled={uploading || !isPublic}
                     />
                     {uploading && <span className="text-sm text-muted-foreground">Загрузка...</span>}
                   </div>
@@ -301,8 +300,7 @@ export function AddGalleryDialog({ photographers, locations, organizers, onSucce
                       type="file"
                       accept="image/*"
                       onChange={handleSquareImageSelect}
-                      disabled={uploading}
-                      required
+                      disabled={uploading || !isPublic}
                     />
                     {uploading && <span className="text-sm text-muted-foreground">Загрузка...</span>}
                   </div>
