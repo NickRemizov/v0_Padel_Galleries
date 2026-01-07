@@ -40,6 +40,7 @@ from .check import router as check_router
 from .auth import router as auth_router
 from .admins import router as admins_router
 from .activity import router as activity_router
+from .content import router as content_router
 
 # Include all sub-routers
 router.include_router(statistics_router)
@@ -48,6 +49,7 @@ router.include_router(check_router)
 router.include_router(auth_router)
 router.include_router(admins_router)
 router.include_router(activity_router)
+router.include_router(content_router)
 
 # Export for main.py
 __all__ = ["router", "set_services"]
