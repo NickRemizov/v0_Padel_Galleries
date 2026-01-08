@@ -47,13 +47,15 @@ def _generate_unique_gallery_slug(title: str, shoot_date: str = None, exclude_id
     return make_unique_slug(base_slug, existing_slugs)
 
 
-def _select_cover_image(images: list) -> str | None:
+def _select_cover_image(images: list) -> dict | None:
     """Select cover image for gallery.
 
     Priority:
     1. Random from is_featured=true
     2. Random from vertical images (height/width >= 1.5, i.e. 2:3 or more)
     3. Single most vertical image (highest height/width ratio)
+
+    Returns dict with id, image_url, width, height or None.
     """
     if not images:
         return None
@@ -63,19 +65,32 @@ def _select_cover_image(images: list) -> str | None:
         h = img.get("height") or 1
         return h / w
 
+    selected = None
+
     # 1. Random from featured
     featured = [img for img in images if img.get("is_featured")]
     if featured:
-        return random.choice(featured).get("image_url")
+        selected = random.choice(featured)
+    else:
+        # 2. Random from vertical (ratio >= 1.5)
+        vertical = [img for img in images if aspect_ratio(img) >= 1.5]
+        if vertical:
+            selected = random.choice(vertical)
+        else:
+            # 3. Single most vertical
+            sorted_images = sorted(images, key=aspect_ratio, reverse=True)
+            if sorted_images:
+                selected = sorted_images[0]
 
-    # 2. Random from vertical (ratio >= 1.5)
-    vertical = [img for img in images if aspect_ratio(img) >= 1.5]
-    if vertical:
-        return random.choice(vertical).get("image_url")
+    if not selected:
+        return None
 
-    # 3. Single most vertical
-    sorted_images = sorted(images, key=aspect_ratio, reverse=True)
-    return sorted_images[0].get("image_url") if sorted_images else None
+    return {
+        "id": selected.get("id"),
+        "image_url": selected.get("image_url"),
+        "width": selected.get("width"),
+        "height": selected.get("height")
+    }
 
 
 @router.get("/")
@@ -105,11 +120,52 @@ async def get_galleries(
         result = query.order(sort_by, desc=True).execute()
         galleries = result.data or []
 
+        # Collect cover image IDs for bbox query
+        cover_image_ids = []
         for gallery in galleries:
             images = gallery.pop("gallery_images", None) or []
             gallery["photo_count"] = len(images)
             # Dynamic cover image selection
-            gallery["cover_image_url"] = _select_cover_image(images)
+            cover = _select_cover_image(images)
+            if cover:
+                gallery["cover_image_url"] = cover["image_url"]
+                gallery["cover_image_width"] = cover["width"]
+                gallery["cover_image_height"] = cover["height"]
+                gallery["_cover_image_id"] = cover["id"]
+                if cover["id"]:
+                    cover_image_ids.append(cover["id"])
+            else:
+                gallery["cover_image_url"] = None
+                gallery["cover_image_width"] = None
+                gallery["cover_image_height"] = None
+
+        # Get bboxes for all cover images in one query
+        bboxes_by_image = {}
+        if cover_image_ids:
+            faces_result = supabase_db.client.table("photo_faces").select(
+                "photo_id, insightface_bbox"
+            ).in_("photo_id", cover_image_ids).not_.is_("insightface_bbox", "null").execute()
+
+            for face in (faces_result.data or []):
+                photo_id = face["photo_id"]
+                bbox = face.get("insightface_bbox")
+                if bbox:
+                    if photo_id not in bboxes_by_image:
+                        bboxes_by_image[photo_id] = []
+                    # Convert {x, y, width, height} to [x1, y1, x2, y2] for frontend
+                    if isinstance(bbox, dict):
+                        x1 = bbox.get("x", 0)
+                        y1 = bbox.get("y", 0)
+                        x2 = x1 + bbox.get("width", 0)
+                        y2 = y1 + bbox.get("height", 0)
+                        bboxes_by_image[photo_id].append([x1, y1, x2, y2])
+                    else:
+                        bboxes_by_image[photo_id].append(bbox)
+
+        # Attach bboxes to galleries
+        for gallery in galleries:
+            cover_id = gallery.pop("_cover_image_id", None)
+            gallery["cover_image_bboxes"] = bboxes_by_image.get(cover_id, [])
 
         return ApiResponse.ok(galleries)
     except Exception as e:
