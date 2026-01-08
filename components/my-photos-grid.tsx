@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Check, X, EyeOff, Eye, UserPlus, Globe, Lock, Menu, Download } from "lucide-react"
+import { Check, X, EyeOff, Eye, UserPlus, Globe, Lock, Menu, Download, Share2 } from "lucide-react"
 import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 import "react-photo-album/masonry.css"
@@ -240,6 +240,33 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
       document.body.removeChild(a)
     } catch (error) {
       console.error("Error downloading:", error)
+    }
+  }
+
+  async function handleShare(imageUrl: string, title: string) {
+    const shareUrl = window.location.href
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: title,
+          text: `${title} - Padel in Valencia`,
+          url: shareUrl,
+        })
+      } catch (error) {
+        // User cancelled or error
+        if ((error as Error).name !== "AbortError") {
+          console.error("Error sharing:", error)
+        }
+      }
+    } else {
+      // Fallback: copy link to clipboard
+      try {
+        await navigator.clipboard.writeText(shareUrl)
+        alert("Ссылка скопирована")
+      } catch {
+        console.error("Failed to copy link")
+      }
     }
   }
 
@@ -515,7 +542,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
                 </DrawerHeader>
 
                 <div className="flex flex-col gap-2 mt-4">
-                  {/* Verify button - only if not verified */}
+                  {/* 1. Verify button - only if not verified */}
                   {!photoFace.verified && (
                     <Button
                       variant="default"
@@ -531,7 +558,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
                     </Button>
                   )}
 
-                  {/* Reject button */}
+                  {/* 2. Reject button */}
                   <Button
                     variant="outline"
                     className="w-full justify-start gap-3"
@@ -545,20 +572,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
                     Это не я
                   </Button>
 
-                  {/* Download button */}
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start gap-3"
-                    onClick={() => {
-                      handleDownload(image.original_url || image.image_url, filename)
-                      setMobileDrawer(null)
-                    }}
-                  >
-                    <Download className="w-5 h-5" />
-                    Скачать фото
-                  </Button>
-
-                  {/* Hide/Unhide button - only if single person */}
+                  {/* 3. Hide/Unhide button - only if single person */}
                   {isOnlyPersonOnPhoto && (
                     photoFace.hidden_by_user ? (
                       <Button
@@ -589,7 +603,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
                     )
                   )}
 
-                  {/* Avatar button */}
+                  {/* 4. Avatar button */}
                   <Button
                     variant="outline"
                     className="w-full justify-start gap-3"
@@ -600,6 +614,32 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
                   >
                     <UserPlus className="w-5 h-5" />
                     Сделать аватаром
+                  </Button>
+
+                  {/* 5. Download button */}
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-3"
+                    onClick={() => {
+                      handleDownload(image.original_url || image.image_url, filename)
+                      setMobileDrawer(null)
+                    }}
+                  >
+                    <Download className="w-5 h-5" />
+                    Скачать фото
+                  </Button>
+
+                  {/* 6. Share button */}
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-3"
+                    onClick={() => {
+                      handleShare(image.image_url, image.galleries?.title || "Фото")
+                      setMobileDrawer(null)
+                    }}
+                  >
+                    <Share2 className="w-5 h-5" />
+                    Поделиться
                   </Button>
                 </div>
               </div>
