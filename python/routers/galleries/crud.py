@@ -10,6 +10,8 @@ Endpoints:
 - PATCH /{id}/sort-order - Update sort order
 """
 
+import random
+
 from fastapi import APIRouter, Query
 
 from core.responses import ApiResponse
@@ -45,6 +47,31 @@ def _generate_unique_gallery_slug(title: str, shoot_date: str = None, exclude_id
     return make_unique_slug(base_slug, existing_slugs)
 
 
+def _select_cover_image(images: list) -> str | None:
+    """Select cover image for gallery.
+
+    Priority:
+    1. Random from is_featured=true
+    2. Most vertical image (highest height/width ratio)
+    """
+    if not images:
+        return None
+
+    # Filter featured images
+    featured = [img for img in images if img.get("is_featured")]
+    if featured:
+        return random.choice(featured).get("image_url")
+
+    # Sort by aspect ratio (height/width) descending - most vertical first
+    def aspect_ratio(img):
+        w = img.get("width") or 1
+        h = img.get("height") or 1
+        return h / w
+
+    sorted_images = sorted(images, key=aspect_ratio, reverse=True)
+    return sorted_images[0].get("image_url") if sorted_images else None
+
+
 @router.get("/")
 async def get_galleries(
     sort_by: str = Query("shoot_date", enum=["created_at", "shoot_date"]),
@@ -53,7 +80,7 @@ async def get_galleries(
 ):
     """Get all galleries for listing.
 
-    Returns galleries with photo_count field.
+    Returns galleries with photo_count and dynamic cover_image_url.
     By default only public galleries are returned.
     """
     supabase_db = get_supabase_db()
@@ -61,7 +88,7 @@ async def get_galleries(
     try:
         select = "*"
         if with_relations:
-            select = "*, photographers(id, name), locations(id, name), organizers(id, name), gallery_images(id)"
+            select = "*, photographers(id, name), locations(id, name), organizers(id, name), gallery_images(id, image_url, is_featured, width, height)"
 
         query = supabase_db.client.table("galleries").select(select)
 
@@ -73,8 +100,10 @@ async def get_galleries(
         galleries = result.data or []
 
         for gallery in galleries:
-            images = gallery.pop("gallery_images", None)
-            gallery["photo_count"] = len(images) if images else 0
+            images = gallery.pop("gallery_images", None) or []
+            gallery["photo_count"] = len(images)
+            # Dynamic cover image selection
+            gallery["cover_image_url"] = _select_cover_image(images)
 
         return ApiResponse.ok(galleries)
     except Exception as e:
