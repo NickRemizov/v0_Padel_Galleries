@@ -1,14 +1,12 @@
 "use client"
 
 import type React from "react"
-import { useMemo } from "react"
 
 import Image from "next/image"
 import Link from "next/link"
 import { Calendar, MapPin, Camera, Users, ImageIcon, ExternalLink } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import type { Gallery } from "@/lib/types"
-import { calculateFacePosition } from "@/lib/utils/face-position"
 
 interface GalleryCardProps {
   gallery: Gallery
@@ -17,13 +15,7 @@ interface GalleryCardProps {
 }
 
 export function GalleryCard({ gallery, onOrganizerClick, onLocationClick }: GalleryCardProps) {
-  const objectPosition = useMemo(() => {
-    return calculateFacePosition(
-      gallery.cover_image_width,
-      gallery.cover_image_height,
-      gallery.cover_image_bboxes
-    )
-  }, [gallery.cover_image_width, gallery.cover_image_height, gallery.cover_image_bboxes])
+  const objectPosition = gallery.cover_image_position || "center"
 
   const formattedDate = new Date(gallery.shoot_date).toLocaleDateString("ru-RU", {
     year: "numeric",
