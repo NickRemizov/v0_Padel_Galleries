@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Check, X, EyeOff, Eye, UserPlus, Globe, Lock, Info, Download } from "lucide-react"
+import { Check, X, EyeOff, Eye, UserPlus, Globe, Lock, Menu, Download } from "lucide-react"
 import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 import "react-photo-album/masonry.css"
@@ -264,16 +264,16 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
           </div>
         )}
 
-        {/* Info button - bottom right */}
+        {/* Menu button - bottom right */}
         <button
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
             setMobileDrawer({ photoFace })
           }}
-          className="absolute bottom-2 right-2 bg-black/60 text-white p-2 rounded-full"
+          className="absolute bottom-2 right-2 bg-black/60 text-white p-2 rounded"
         >
-          <Info className="w-4 h-4" />
+          <Menu className="w-4 h-4" />
         </button>
 
         {/* Loading overlay */}
