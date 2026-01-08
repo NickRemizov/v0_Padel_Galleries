@@ -243,8 +243,8 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
     }
   }
 
-  async function handleShare(imageUrl: string, title: string) {
-    const shareUrl = window.location.href
+  async function handleShare(gallerySlug: string, photoSlug: string, title: string) {
+    const shareUrl = `${window.location.origin}/gallery/${gallerySlug}?photo=${photoSlug}`
 
     if (navigator.share) {
       try {
@@ -436,18 +436,6 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
             <UserPlus className="w-4 h-4" />
           </button>
         )}
-
-        {/* Share button */}
-        <button
-          onClick={(e) => {
-            e.preventDefault()
-            handleShare(image.image_url, image.galleries?.title || "Фото")
-          }}
-          className="absolute top-2 left-10 opacity-0 group-hover:opacity-100 transition-opacity bg-purple-500 hover:bg-purple-600 text-white p-1.5 rounded-md"
-          title="Поделиться"
-        >
-          <Share2 className="w-4 h-4" />
-        </button>
 
         {/* Reject button */}
         <button
@@ -646,7 +634,9 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
                     variant="outline"
                     className="w-full justify-start gap-3"
                     onClick={() => {
-                      handleShare(image.image_url, image.galleries?.title || "Фото")
+                      const gallerySlug = image.galleries?.slug || image.gallery_id
+                      const photoSlug = image.slug || image.id
+                      handleShare(gallerySlug, photoSlug, image.galleries?.title || "Фото")
                       setMobileDrawer(null)
                     }}
                   >
