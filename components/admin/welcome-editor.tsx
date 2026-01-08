@@ -16,15 +16,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
+type Lang = "en" | "es" | "ru"
+
+interface LangContent {
+  title: string
+  content: string
+}
+
 interface WelcomeContent {
   key: string
   value: {
     version: number
-    title: string
-    content: string
+    title?: string // legacy
+    content?: string // legacy
+    en?: LangContent
+    es?: LangContent
+    ru?: LangContent
   }
   updated_at: string | null
 }
+
+const LANGS: { code: Lang; label: string }[] = [
+  { code: "en", label: "EN" },
+  { code: "es", label: "ES" },
+  { code: "ru", label: "RU" },
+]
 
 export function WelcomeEditor() {
   const [loading, setLoading] = useState(true)
@@ -33,8 +49,9 @@ export function WelcomeEditor() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const [title, setTitle] = useState("")
-  const [content, setContent] = useState("")
+  const [activeLang, setActiveLang] = useState<Lang>("en")
+  const [titles, setTitles] = useState<Record<Lang, string>>({ en: "", es: "", ru: "" })
+  const [contents, setContents] = useState<Record<Lang, string>>({ en: "", es: "", ru: "" })
   const [version, setVersion] = useState(1)
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
 
@@ -51,9 +68,20 @@ export function WelcomeEditor() {
       if (!response.ok) throw new Error("Failed to load")
 
       const data: WelcomeContent = await response.json()
-      setTitle(data.value?.title || "")
-      setContent(data.value?.content || "")
-      setVersion(data.value?.version || 1)
+      const val = data.value || {}
+
+      // Load multilang content or fallback to legacy
+      setTitles({
+        en: val.en?.title || val.title || "",
+        es: val.es?.title || "",
+        ru: val.ru?.title || "",
+      })
+      setContents({
+        en: val.en?.content || val.content || "",
+        es: val.es?.content || "",
+        ru: val.ru?.content || "",
+      })
+      setVersion(val.version || 1)
       setUpdatedAt(data.updated_at)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error loading content")
@@ -71,7 +99,12 @@ export function WelcomeEditor() {
       const response = await adminFetch("/api/admin/content/welcome", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content, version }),
+        body: JSON.stringify({
+          version,
+          en: { title: titles.en, content: contents.en },
+          es: { title: titles.es, content: contents.es },
+          ru: { title: titles.ru, content: contents.ru },
+        }),
       })
 
       if (!response.ok) throw new Error("Failed to save")
@@ -126,12 +159,26 @@ export function WelcomeEditor() {
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle>Welcome Message</CardTitle>
-          <CardDescription>
-            Message shown to users on first login. Version: {version}
-            {updatedAt && ` | Updated: ${new Date(updatedAt).toLocaleString("ru-RU")}`}
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <div>
+            <CardTitle>Welcome Message</CardTitle>
+            <CardDescription>
+              Message shown to users on first login. Version: {version}
+              {updatedAt && ` | Updated: ${new Date(updatedAt).toLocaleString("ru-RU")}`}
+            </CardDescription>
+          </div>
+          <div className="flex gap-1">
+            {LANGS.map((lang) => (
+              <Button
+                key={lang.code}
+                variant={activeLang === lang.code ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveLang(lang.code)}
+              >
+                {lang.label}
+              </Button>
+            ))}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
@@ -146,21 +193,21 @@ export function WelcomeEditor() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor="title">Title ({activeLang.toUpperCase()})</Label>
             <Input
               id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              value={titles[activeLang]}
+              onChange={(e) => setTitles({ ...titles, [activeLang]: e.target.value })}
               placeholder="Welcome!"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="content">Content (Markdown)</Label>
+            <Label htmlFor="content">Content ({activeLang.toUpperCase()}) - Markdown</Label>
             <Textarea
               id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
+              value={contents[activeLang]}
+              onChange={(e) => setContents({ ...contents, [activeLang]: e.target.value })}
               placeholder="## Welcome text..."
               rows={10}
               className="font-mono text-sm"
@@ -208,10 +255,10 @@ export function WelcomeEditor() {
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{title || "Welcome!"}</DialogTitle>
+            <DialogTitle>{titles[activeLang] || "Welcome!"}</DialogTitle>
           </DialogHeader>
           <div className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground">
-            <ReactMarkdown>{content}</ReactMarkdown>
+            <ReactMarkdown>{contents[activeLang]}</ReactMarkdown>
           </div>
         </DialogContent>
       </Dialog>
