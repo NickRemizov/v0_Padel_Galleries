@@ -48,26 +48,34 @@ def _generate_unique_gallery_slug(title: str, shoot_date: str = None, exclude_id
 @router.get("/")
 async def get_galleries(
     sort_by: str = Query("shoot_date", enum=["created_at", "shoot_date"]),
-    with_relations: bool = Query(True)
+    with_relations: bool = Query(True),
+    include_private: bool = Query(False)
 ):
     """Get all galleries for listing.
-    
+
     Returns galleries with photo_count field.
+    By default only public galleries are returned.
     """
     supabase_db = get_supabase_db()
-    
+
     try:
         select = "*"
         if with_relations:
             select = "*, photographers(id, name), locations(id, name), organizers(id, name), gallery_images(id)"
-        
-        result = supabase_db.client.table("galleries").select(select).order(sort_by, desc=True).execute()
+
+        query = supabase_db.client.table("galleries").select(select)
+
+        # Filter by visibility (default: only public)
+        if not include_private:
+            query = query.eq("visibility", "public")
+
+        result = query.order(sort_by, desc=True).execute()
         galleries = result.data or []
-        
+
         for gallery in galleries:
             images = gallery.pop("gallery_images", None)
             gallery["photo_count"] = len(images) if images else 0
-        
+
         return ApiResponse.ok(galleries)
     except Exception as e:
         logger.error(f"Error getting galleries: {e}")
