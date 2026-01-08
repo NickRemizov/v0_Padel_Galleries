@@ -67,6 +67,9 @@ export interface Gallery {
   external_gallery_url: string | null
   cover_image_url: string
   cover_image_square_url: string | null
+  cover_image_width?: number | null
+  cover_image_height?: number | null
+  cover_image_bboxes?: number[][] | null
   photographer_id: string | null
   location_id: string | null
   organizer_id: string | null

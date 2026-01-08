@@ -1,12 +1,14 @@
 "use client"
 
 import type React from "react"
+import { useMemo } from "react"
 
 import Image from "next/image"
 import Link from "next/link"
 import { Calendar, MapPin, Camera, Users, ImageIcon, ExternalLink } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import type { Gallery } from "@/lib/types"
+import { calculateFacePosition } from "@/lib/utils/face-position"
 
 interface GalleryCardProps {
   gallery: Gallery
@@ -15,6 +17,14 @@ interface GalleryCardProps {
 }
 
 export function GalleryCard({ gallery, onOrganizerClick, onLocationClick }: GalleryCardProps) {
+  const objectPosition = useMemo(() => {
+    return calculateFacePosition(
+      gallery.cover_image_width,
+      gallery.cover_image_height,
+      gallery.cover_image_bboxes
+    )
+  }, [gallery.cover_image_width, gallery.cover_image_height, gallery.cover_image_bboxes])
+
   const formattedDate = new Date(gallery.shoot_date).toLocaleDateString("ru-RU", {
     year: "numeric",
     month: "long",
@@ -80,7 +90,8 @@ export function GalleryCard({ gallery, onOrganizerClick, onLocationClick }: Gall
               src={gallery.cover_image_square_url || gallery.cover_image_url || "/placeholder.svg?height=600&width=600"}
               alt={gallery.title}
               fill
-              className="object-cover object-top transition-transform duration-500 group-hover:scale-105"
+              className="object-cover transition-transform duration-500 group-hover:scale-105"
+              style={{ objectPosition }}
               sizes="66vw"
             />
           </div>
@@ -165,6 +176,7 @@ export function GalleryCard({ gallery, onOrganizerClick, onLocationClick }: Gall
               alt={gallery.title}
               fill
               className="object-cover transition-transform duration-500 group-hover:scale-105 border-0 mx-0 my-0"
+              style={{ objectPosition }}
               sizes="(max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
             />
             <div className="absolute bottom-1 left-1 right-1 sm:bottom-2 sm:left-2 sm:right-2 bg-black/40 text-white px-2 py-1 sm:px-3 sm:py-2 rounded-md backdrop-blur-sm">
