@@ -475,6 +475,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
 
       {isTouch ? (
         <RowsPhotoAlbum
+          key={`rows-${photos.length}`}
           photos={photos}
           targetRowHeight={350}
           render={{ photo: renderMobilePhoto }}
@@ -482,6 +483,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         />
       ) : (
         <MasonryPhotoAlbum
+          key={`masonry-${photos.length}`}
           photos={photos}
           columns={(containerWidth) => {
             if (containerWidth < 900) return 2
