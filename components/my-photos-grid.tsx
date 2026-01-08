@@ -80,19 +80,16 @@ interface MyPhotosGridProps {
   personId: string
 }
 
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false)
+function useIsTouchDevice() {
+  const [isTouch, setIsTouch] = useState(false)
 
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 640)
-    }
-    checkMobile()
-    window.addEventListener("resize", checkMobile)
-    return () => window.removeEventListener("resize", checkMobile)
+    // Check if device supports hover (mouse) - if not, it's touch device
+    const hasHover = window.matchMedia('(hover: hover)').matches
+    setIsTouch(!hasHover)
   }, [])
 
-  return isMobile
+  return isTouch
 }
 
 export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhotosGridProps) {
@@ -103,7 +100,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
   const [rejectDialog, setRejectDialog] = useState<RejectDialogData | null>(null)
   const [avatarDialog, setAvatarDialog] = useState<AvatarDialogData | null>(null)
   const [mobileDrawer, setMobileDrawer] = useState<MobileDrawerData | null>(null)
-  const isMobile = useIsMobile()
+  const isTouch = useIsTouchDevice()
 
   const totalPhotos = photoFaces.length
   const verifiedPhotos = photoFaces.filter(pf => pf.verified).length
@@ -450,7 +447,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         </p>
       </div>
 
-      {isMobile ? (
+      {isTouch ? (
         <RowsPhotoAlbum
           photos={photos}
           targetRowHeight={350}
