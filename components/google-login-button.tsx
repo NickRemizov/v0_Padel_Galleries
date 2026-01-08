@@ -1,6 +1,7 @@
 "use client"
 
 import { GoogleLogin, CredentialResponse } from "@react-oauth/google"
+import { trackLogin } from "@/lib/analytics"
 
 interface GoogleLoginButtonProps {
   onAuth: (user: any) => void
@@ -24,6 +25,7 @@ export function GoogleLoginButton({ onAuth, onError }: GoogleLoginButtonProps) {
 
       if (response.ok) {
         const data = await response.json()
+        trackLogin("google")
         onAuth(data.user)
       } else {
         console.error("[v0] Google login failed:", await response.text())

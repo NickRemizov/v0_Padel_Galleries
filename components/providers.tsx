@@ -1,8 +1,10 @@
 "use client"
 
+import { Suspense } from "react"
 import { GoogleOAuthProvider } from "@react-oauth/google"
 import { AuthProvider } from "@/lib/auth-context"
 import { WelcomeDialog } from "@/components/welcome-dialog"
+import { PostHogProvider } from "@/components/posthog-provider"
 
 interface ProvidersProps {
   children: React.ReactNode
@@ -12,10 +14,12 @@ interface ProvidersProps {
 export function Providers({ children, googleClientId }: ProvidersProps) {
   // Wrap with GoogleOAuthProvider only if client ID is configured
   const content = (
-    <AuthProvider>
-      {children}
-      <WelcomeDialog />
-    </AuthProvider>
+    <PostHogProvider>
+      <AuthProvider>
+        {children}
+        <WelcomeDialog />
+      </AuthProvider>
+    </PostHogProvider>
   )
 
   if (googleClientId) {

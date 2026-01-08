@@ -28,19 +28,12 @@ async def get_welcome(request: Request):
     """
     supabase = get_supabase_client()
 
-    # Get current user from request state (set by auth middleware)
-    user = getattr(request.state, "user", None)
-    if not user:
-        return ApiResponse.ok({
-            "show": False,
-            "reason": "not_authenticated"
-        })
-
-    user_id = user.get("id")
+    # Get user_id from X-User-Id header (set by Next.js route)
+    user_id = request.headers.get("X-User-Id")
     if not user_id:
         return ApiResponse.ok({
             "show": False,
-            "reason": "no_user_id"
+            "reason": "not_authenticated"
         })
 
     try:
@@ -107,14 +100,10 @@ async def mark_welcome_seen(request: Request):
     """
     supabase = get_supabase_client()
 
-    # Get current user
-    user = getattr(request.state, "user", None)
-    if not user:
-        raise HTTPException(401, "Not authenticated")
-
-    user_id = user.get("id")
+    # Get user_id from X-User-Id header (set by Next.js route)
+    user_id = request.headers.get("X-User-Id")
     if not user_id:
-        raise HTTPException(400, "No user ID")
+        raise HTTPException(401, "Not authenticated")
 
     try:
         # Get current welcome version

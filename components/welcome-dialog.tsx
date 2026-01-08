@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import { useAuth } from "@/lib/auth-context"
+import { trackWelcomeSeen } from "@/lib/analytics"
 import {
   Dialog,
   DialogContent,
@@ -59,6 +60,7 @@ export function WelcomeDialog() {
     setLoading(true)
     try {
       await fetch("/api/user/welcome/seen", { method: "POST" })
+      trackWelcomeSeen(welcomeData.version)
     } catch (error) {
       console.error("Error marking welcome as seen:", error)
     } finally {

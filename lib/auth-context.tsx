@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import type { User } from "./types"
+import { identifyUser, resetUser, trackLogout } from "./analytics"
 
 interface AuthContextType {
   user: User | null
@@ -19,6 +20,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     checkAuth()
   }, [])
+
+  // Identify user in PostHog when user changes
+  useEffect(() => {
+    if (user) {
+      identifyUser(user.id, {
+        person_id: user.person_id,
+        name: user.first_name,
+      })
+    }
+  }, [user])
 
   async function checkAuth() {
     try {
@@ -41,6 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" })
+      trackLogout()
+      resetUser()
       setUser(null)
     } catch (error) {
       console.error("[v0] Logout error:", error)

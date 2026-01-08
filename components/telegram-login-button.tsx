@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
+import { trackLogin } from "@/lib/analytics"
 
 interface TelegramLoginButtonProps {
   botName: string
@@ -32,6 +33,7 @@ export function TelegramLoginButton({
 
           if (response.ok) {
             const data = await response.json()
+            trackLogin("telegram")
             onAuth(data.user)
           }
         } catch (error) {
