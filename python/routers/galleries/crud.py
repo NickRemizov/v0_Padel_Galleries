@@ -52,7 +52,7 @@ def _select_cover_image(images: list) -> dict | None:
 
     Priority:
     1. Random from is_featured=true
-    2. Random from vertical images (height/width >= 1.5, i.e. 2:3 or more)
+    2. Random from vertical images (height/width >= 1.33, i.e. 3:4 or more)
     3. Single most vertical image (highest height/width ratio)
 
     Returns dict with id, image_url, width, height or None.
@@ -72,8 +72,8 @@ def _select_cover_image(images: list) -> dict | None:
     if featured:
         selected = random.choice(featured)
     else:
-        # 2. Random from vertical (ratio >= 1.5)
-        vertical = [img for img in images if aspect_ratio(img) >= 1.5]
+        # 2. Random from vertical (ratio >= 1.33, i.e. 3:4)
+        vertical = [img for img in images if aspect_ratio(img) >= 1.33]
         if vertical:
             selected = random.choice(vertical)
         else:
@@ -177,7 +177,7 @@ async def get_galleries(
                 return h / w
 
             featured = [img for img in images if img.get("is_featured")]
-            vertical = [img for img in images if aspect_ratio(img) >= 1.5]
+            vertical = [img for img in images if aspect_ratio(img) >= 1.33]
             gallery["featured_count"] = len(featured)
             gallery["vertical_count"] = len(vertical)
 

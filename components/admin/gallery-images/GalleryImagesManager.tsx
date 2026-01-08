@@ -210,8 +210,11 @@ export function GalleryImagesManager({
         prev.map((img) => (img.id === imageId ? { ...img, is_featured: !isFeatured } : img))
       )
       console.error("Failed to toggle featured:", result.error)
+    } else {
+      // Update gallery stats in list
+      onImagesChange?.()
     }
-  }, [setImages])
+  }, [setImages, onImagesChange])
 
   const confirmSingleDelete = async () => {
     if (!singleDeleteDialog.imageId) return

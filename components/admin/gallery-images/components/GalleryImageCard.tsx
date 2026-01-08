@@ -65,8 +65,8 @@ export const GalleryImageCard = memo(function GalleryImageCard({
 
   const objectPosition = calculateFacePosition(image.width, image.height, bboxes)
 
-  // Only show star for vertical photos (ratio >= 1.5, i.e. 2:3 or more)
-  const isVertical = (image.height ?? 0) / (image.width ?? 1) >= 1.5
+  // Only show star for vertical photos (ratio >= 1.33, i.e. 3:4 or more)
+  const isVertical = (image.height ?? 0) / (image.width ?? 1) >= 1.33
 
   return (
     <div
