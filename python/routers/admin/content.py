@@ -18,10 +18,16 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/content", tags=["Content Management"])
 
 
-class WelcomeContentUpdate(BaseModel):
+class LangContent(BaseModel):
     title: str
     content: str
+
+
+class WelcomeContentUpdate(BaseModel):
     version: int
+    en: Optional[LangContent] = None
+    es: Optional[LangContent] = None
+    ru: Optional[LangContent] = None
 
 
 @router.get("/welcome")
@@ -41,8 +47,9 @@ async def get_welcome_content(request: Request):
             "key": "welcome",
             "value": {
                 "version": 1,
-                "title": "Welcome!",
-                "content": ""
+                "en": {"title": "Welcome!", "content": ""},
+                "es": {"title": "¡Bienvenido!", "content": ""},
+                "ru": {"title": "Добро пожаловать!", "content": ""},
             },
             "updated_at": None
         }
@@ -57,9 +64,13 @@ async def update_welcome_content(data: WelcomeContentUpdate, request: Request):
 
     value = {
         "version": data.version,
-        "title": data.title,
-        "content": data.content,
     }
+    if data.en:
+        value["en"] = {"title": data.en.title, "content": data.en.content}
+    if data.es:
+        value["es"] = {"title": data.es.title, "content": data.es.content}
+    if data.ru:
+        value["ru"] = {"title": data.ru.title, "content": data.ru.content}
 
     # Upsert into site_content
     result = supabase.table("site_content").upsert({

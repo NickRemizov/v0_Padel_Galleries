@@ -16,9 +16,12 @@ router = APIRouter()
 
 
 @router.get("/welcome")
-async def get_welcome(request: Request):
+async def get_welcome(request: Request, lang: str = "en"):
     """
     Get welcome message if user hasn't seen current version.
+
+    Args:
+    - lang: Language code (en, es, ru)
 
     Returns:
     - show: bool - whether to show the welcome message
@@ -27,6 +30,10 @@ async def get_welcome(request: Request):
     - version: int - current welcome version
     """
     supabase = get_supabase_client()
+
+    # Validate lang
+    if lang not in ("en", "es", "ru"):
+        lang = "en"
 
     # Get user_id from X-User-Id header (set by Next.js route)
     user_id = request.headers.get("X-User-Id")
@@ -76,11 +83,23 @@ async def get_welcome(request: Request):
                 "version": current_version
             })
 
+        # Get content for requested language, fallback to en, then legacy
+        lang_content = welcome_data.get(lang, {})
+        if not lang_content.get("title") and not lang_content.get("content"):
+            # Fallback to English
+            lang_content = welcome_data.get("en", {})
+        if not lang_content.get("title") and not lang_content.get("content"):
+            # Fallback to legacy format
+            lang_content = {
+                "title": welcome_data.get("title", "Welcome!"),
+                "content": welcome_data.get("content", "")
+            }
+
         # User needs to see welcome
         return ApiResponse.ok({
             "show": True,
-            "title": welcome_data.get("title", "Добро пожаловать!"),
-            "content": welcome_data.get("content", ""),
+            "title": lang_content.get("title", "Welcome!"),
+            "content": lang_content.get("content", ""),
             "version": current_version
         })
 
