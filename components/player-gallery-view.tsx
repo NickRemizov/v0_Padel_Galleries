@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ImageLightbox } from "@/components/image-lightbox"
 import { usePathname, useSearchParams } from "next/navigation"
+import { trackPlayerView } from "@/lib/analytics"
 import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 import "react-photo-album/masonry.css"
@@ -47,6 +48,13 @@ export function PlayerGalleryView({ player, images }: PlayerGalleryViewProps) {
   useEffect(() => {
     setLightboxOpen(false)
   }, [pathname])
+
+  // Track player view
+  useEffect(() => {
+    if (player.id) {
+      trackPlayerView(player.id, player.real_name || "")
+    }
+  }, [player.id, player.real_name])
 
   const formatShortDate = (dateString: string | null | undefined) => {
     if (!dateString) return ""

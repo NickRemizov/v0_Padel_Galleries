@@ -7,6 +7,7 @@ import type { Gallery } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ImageLightbox } from "@/components/image-lightbox"
+import { trackGalleryView } from "@/lib/analytics"
 import { TruncatedNames } from "@/components/truncated-names"
 import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
@@ -36,6 +37,13 @@ export function GalleryView({ gallery }: GalleryViewProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const searchParams = useSearchParams()
   const isMobile = useIsMobile()
+
+  // Track gallery view
+  useEffect(() => {
+    if (gallery.id) {
+      trackGalleryView(gallery.id, gallery.title || "")
+    }
+  }, [gallery.id, gallery.title])
 
   const images = gallery.gallery_images || []
 
