@@ -2,17 +2,19 @@
 
 /**
  * Image Lightbox Container
- * 
+ *
  * Main orchestrator component that composes all lightbox parts.
  * Рефакторинг: 600 строк → 8 модулей
- * 
+ *
  * @refactored 2025-12-29
  */
 
 import type React from "react"
+import { useEffect, useRef } from "react"
 import type { ImageLightboxProps } from "./types"
 import { useLightboxState } from "./hooks/useLightboxState"
 import { useSwipeNavigation } from "./hooks/useSwipeNavigation"
+import { trackPhotoView, trackPhotoDownload } from "@/lib/analytics"
 import {
   LightboxToolbar,
   NavigationButtons,
@@ -34,6 +36,15 @@ export function ImageLightbox({
   currentPlayerSlug,
 }: ImageLightboxProps) {
   const currentImage = images[currentIndex]
+  const lastTrackedPhotoId = useRef<string | null>(null)
+
+  // Track photo view when image changes
+  useEffect(() => {
+    if (isOpen && currentImage?.id && currentImage.id !== lastTrackedPhotoId.current) {
+      trackPhotoView(currentImage.id, galleryId || "")
+      lastTrackedPhotoId.current = currentImage.id
+    }
+  }, [isOpen, currentImage?.id, galleryId])
 
   // State management
   const {
@@ -75,11 +86,14 @@ export function ImageLightbox({
   const handleDownload = async () => {
     try {
       if (currentImage?.id) {
+        // Track in backend
         fetch(`/api/downloads/${currentImage.id}`, {
           method: "POST",
         }).catch((error) => {
           console.error("[v0] Error tracking download:", error)
         })
+        // Track in PostHog
+        trackPhotoDownload(currentImage.id, galleryId || "")
       }
 
       const response = await fetch(currentImage.originalUrl)
