@@ -80,7 +80,8 @@ export interface Gallery {
   organizers?: Organizer
   gallery_images?: GalleryImage[]
   photo_count?: number
-  cover_candidates_count?: number
+  featured_count?: number
+  vertical_count?: number
 }
 
 export interface User {

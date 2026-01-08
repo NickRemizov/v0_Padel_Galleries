@@ -177,7 +177,7 @@ export function GalleryList({ galleries: initialGalleries, photographers, locati
                         Подтверждено фото: {verifiedCount} ({verificationPercentage}%)
                       </span>
                     )}
-                    <span>Фото для обложки: {gallery.cover_candidates_count ?? 0}</span>
+                    <span>Обложка: {gallery.featured_count ?? 0} featured / {gallery.vertical_count ?? 0} вертикальных</span>
                   </div>
                   <div className="mt-1 flex gap-4 text-xs text-muted-foreground">
                     <span>Создание галереи: {formatDateTime(gallery.created_at)}</span>
