@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Check, X, EyeOff, Eye, UserPlus, Globe, Lock } from "lucide-react"
+import { Check, X, EyeOff, Eye, UserPlus, Globe, Lock, Info, Download } from "lucide-react"
 import { RowsPhotoAlbum, MasonryPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 import "react-photo-album/masonry.css"
@@ -17,6 +17,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from "@/components/ui/drawer"
+import { Button } from "@/components/ui/button"
 import { UserAvatarSelector } from "@/components/user-avatar-selector"
 
 interface PhotoFace {
@@ -63,6 +71,10 @@ interface AvatarDialogData {
   imageUrl: string
 }
 
+interface MobileDrawerData {
+  photoFace: PhotoFace
+}
+
 interface MyPhotosGridProps {
   photoFaces: PhotoFace[]
   personId: string
@@ -90,6 +102,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
   const [hideDialog, setHideDialog] = useState<HideDialogData | null>(null)
   const [rejectDialog, setRejectDialog] = useState<RejectDialogData | null>(null)
   const [avatarDialog, setAvatarDialog] = useState<AvatarDialogData | null>(null)
+  const [mobileDrawer, setMobileDrawer] = useState<MobileDrawerData | null>(null)
   const isMobile = useIsMobile()
 
   const totalPhotos = photoFaces.length
@@ -188,6 +201,23 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
     }
   }
 
+  async function handleDownload(imageUrl: string, filename: string) {
+    try {
+      const response = await fetch(imageUrl)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error("Error downloading:", error)
+    }
+  }
+
   const photos = useMemo(() => {
     return photoFaces
       .filter(pf => pf.gallery_images)
@@ -203,7 +233,64 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
       })
   }, [photoFaces])
 
-  const renderPhoto = (
+  // Mobile version - minimal UI with info button
+  const renderMobilePhoto = (
+    _props: { onClick?: () => void },
+    { photo, width, height }: { photo: typeof photos[0]; width: number; height: number }
+  ) => {
+    const photoFace = photo.photoFace
+    const image = photoFace.gallery_images!
+    const gallerySlug = image.galleries?.slug || image.gallery_id
+    const photoSlug = image.slug || image.id
+    const isLoading = loading === photoFace.id
+
+    return (
+      <div
+        className={`relative overflow-hidden rounded-lg ${
+          photoFace.hidden_by_user ? "opacity-50" : ""
+        }`}
+        style={{ width, height }}
+      >
+        <Link href={`/gallery/${gallerySlug}?photo=${photoSlug}`}>
+          <img
+            src={photo.src}
+            alt={image.galleries?.title || "Photo"}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </Link>
+
+        {/* Hidden indicator - top right */}
+        {photoFace.hidden_by_user && (
+          <div className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-full">
+            <EyeOff className="w-4 h-4" />
+          </div>
+        )}
+
+        {/* Info button - bottom right */}
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setMobileDrawer({ photoFace })
+          }}
+          className="absolute bottom-2 right-2 bg-black/60 text-white p-2 rounded-full"
+        >
+          <Info className="w-4 h-4" />
+        </button>
+
+        {/* Loading overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop version - full UI with hover effects
+  const renderDesktopPhoto = (
     _props: { onClick?: () => void },
     { photo, width, height }: { photo: typeof photos[0]; width: number; height: number }
   ) => {
@@ -234,7 +321,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors pointer-events-none" />
 
         {/* Gallery info badge (bottom-left, first row) */}
-        <div className="absolute bottom-9 left-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
+        <div className="absolute bottom-9 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="flex items-center gap-1 bg-black/60 text-white text-xs px-2 py-1 rounded-md backdrop-blur-sm">
             {image.galleries?.is_public ? (
               <Globe className="w-3 h-3 text-green-400" />
@@ -256,7 +343,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
             <button
               onClick={(e) => { e.preventDefault(); handleVerify(photoFace.id) }}
               disabled={isLoading}
-              className="[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-md disabled:opacity-50"
+              className="opacity-0 group-hover:opacity-100 transition-opacity bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-md disabled:opacity-50"
               title="Подтвердить - это я"
             >
               <Check className="w-4 h-4" />
@@ -293,7 +380,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
               e.preventDefault()
               setAvatarDialog({ imageUrl: image.original_url || image.image_url })
             }}
-            className="absolute top-2 left-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-md"
+            className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-md"
             title="Сделать аватаром"
           >
             <UserPlus className="w-4 h-4" />
@@ -304,7 +391,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         <button
           onClick={(e) => { e.preventDefault(); openRejectDialog(photoFace) }}
           disabled={isLoading}
-          className="absolute top-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-md disabled:opacity-50"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-md disabled:opacity-50"
           title="Это не я"
         >
           <X className="w-4 h-4" />
@@ -316,7 +403,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
             <button
               onClick={(e) => { e.preventDefault(); handleUnhide(photoFace.id) }}
               disabled={isLoading}
-              className="absolute bottom-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-700 text-white p-1.5 rounded-md disabled:opacity-50"
+              className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-700 text-white p-1.5 rounded-md disabled:opacity-50"
               title="Показать в общем просмотре"
             >
               <Eye className="w-4 h-4" />
@@ -325,7 +412,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
             <button
               onClick={(e) => { e.preventDefault(); openHideDialog(photoFace) }}
               disabled={isLoading}
-              className="absolute bottom-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-gray-600 hover:bg-gray-700 text-white p-1.5 rounded-md disabled:opacity-50"
+              className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-600 hover:bg-gray-700 text-white p-1.5 rounded-md disabled:opacity-50"
               title="Скрыть из общего просмотра"
             >
               <EyeOff className="w-4 h-4" />
@@ -336,7 +423,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         {/* Multi-person indicator */}
         {!isOnlyPersonOnPhoto && (
           <div
-            className="absolute bottom-2 right-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity bg-gray-800/80 text-white text-xs px-2 py-1 rounded-md"
+            className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800/80 text-white text-xs px-2 py-1 rounded-md"
             title="На этом фото не только вы"
           >
             +{photoFace.faces_count - 1}
@@ -367,7 +454,7 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         <RowsPhotoAlbum
           photos={photos}
           targetRowHeight={350}
-          render={{ photo: renderPhoto }}
+          render={{ photo: renderMobilePhoto }}
           spacing={4}
         />
       ) : (
@@ -378,10 +465,123 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
             if (containerWidth < 1400) return 3
             return 4
           }}
-          render={{ photo: renderPhoto }}
+          render={{ photo: renderDesktopPhoto }}
           spacing={8}
         />
       )}
+
+      {/* Mobile drawer for photo actions */}
+      <Drawer open={!!mobileDrawer} onOpenChange={(open) => !open && setMobileDrawer(null)}>
+        <DrawerContent>
+          {mobileDrawer && (() => {
+            const photoFace = mobileDrawer.photoFace
+            const image = photoFace.gallery_images!
+            const isOnlyPersonOnPhoto = photoFace.faces_count === 1
+            const isLoading = loading === photoFace.id
+            const filename = image.original_filename || image.slug || "photo"
+
+            return (
+              <div className="px-4 pb-8">
+                <DrawerHeader className="px-0">
+                  <DrawerTitle className="text-left">{filename}</DrawerTitle>
+                  <DrawerDescription className="text-left">
+                    {image.galleries?.title} {formatDate(image.galleries?.shoot_date)}
+                  </DrawerDescription>
+                </DrawerHeader>
+
+                <div className="flex flex-col gap-2 mt-4">
+                  {/* Verify button - only if not verified */}
+                  {!photoFace.verified && (
+                    <Button
+                      variant="default"
+                      className="w-full justify-start gap-3"
+                      disabled={isLoading}
+                      onClick={() => {
+                        handleVerify(photoFace.id)
+                        setMobileDrawer(null)
+                      }}
+                    >
+                      <Check className="w-5 h-5" />
+                      Подтвердить, что это я
+                    </Button>
+                  )}
+
+                  {/* Reject button */}
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-3"
+                    disabled={isLoading}
+                    onClick={() => {
+                      openRejectDialog(photoFace)
+                      setMobileDrawer(null)
+                    }}
+                  >
+                    <X className="w-5 h-5" />
+                    Это не я
+                  </Button>
+
+                  {/* Download button */}
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-3"
+                    onClick={() => {
+                      handleDownload(image.original_url || image.image_url, filename)
+                      setMobileDrawer(null)
+                    }}
+                  >
+                    <Download className="w-5 h-5" />
+                    Скачать фото
+                  </Button>
+
+                  {/* Hide/Unhide button - only if single person */}
+                  {isOnlyPersonOnPhoto && (
+                    photoFace.hidden_by_user ? (
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-3"
+                        disabled={isLoading}
+                        onClick={() => {
+                          handleUnhide(photoFace.id)
+                          setMobileDrawer(null)
+                        }}
+                      >
+                        <Eye className="w-5 h-5" />
+                        Показать в галерее
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-3"
+                        disabled={isLoading}
+                        onClick={() => {
+                          openHideDialog(photoFace)
+                          setMobileDrawer(null)
+                        }}
+                      >
+                        <EyeOff className="w-5 h-5" />
+                        Скрыть из галереи
+                      </Button>
+                    )
+                  )}
+
+                  {/* Avatar button */}
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-3"
+                    onClick={() => {
+                      setAvatarDialog({ imageUrl: image.original_url || image.image_url })
+                      setMobileDrawer(null)
+                    }}
+                  >
+                    <UserPlus className="w-5 h-5" />
+                    Сделать аватаром
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
+        </DrawerContent>
+      </Drawer>
 
       {/* Reject confirmation dialog */}
       <AlertDialog open={!!rejectDialog} onOpenChange={(open) => !open && setRejectDialog(null)}>
