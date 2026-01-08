@@ -112,14 +112,10 @@ export const GalleryImageCard = memo(function GalleryImageCard({
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
-        {/* Star - always visible when featured, hover only for vertical photos */}
+        {/* Star - always visible for vertical photos */}
         {(image.is_featured || isVertical) && (
           <div
-            className={`absolute right-2 bottom-2 cursor-pointer transition-opacity ${
-              image.is_featured
-                ? "opacity-100"
-                : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
-            }`}
+            className="absolute right-2 bottom-2 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation()
               onToggleFeatured(image.id, !image.is_featured)
@@ -129,7 +125,7 @@ export const GalleryImageCard = memo(function GalleryImageCard({
               className={`h-6 w-6 drop-shadow-md ${
                 image.is_featured
                   ? "fill-yellow-400 text-yellow-400"
-                  : "text-yellow-400/70"
+                  : "text-yellow-400/50"
               }`}
             />
           </div>
