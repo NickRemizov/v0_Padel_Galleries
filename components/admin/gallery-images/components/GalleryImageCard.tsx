@@ -65,6 +65,9 @@ export const GalleryImageCard = memo(function GalleryImageCard({
 
   const objectPosition = calculateFacePosition(image.width, image.height, bboxes)
 
+  // Only show star for vertical photos (ratio >= 1.5, i.e. 2:3 or more)
+  const isVertical = (image.height ?? 0) / (image.width ?? 1) >= 1.5
+
   return (
     <div
       className="group relative overflow-hidden rounded-lg border cursor-pointer"
@@ -109,26 +112,28 @@ export const GalleryImageCard = memo(function GalleryImageCard({
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
-        {/* Star - always visible when featured, otherwise visible on touch / hover on mouse */}
-        <div
-          className={`absolute right-2 bottom-2 cursor-pointer transition-opacity ${
-            image.is_featured
-              ? "opacity-100"
-              : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
-          }`}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleFeatured(image.id, !image.is_featured)
-          }}
-        >
-          <Star
-            className={`h-6 w-6 drop-shadow-md ${
+        {/* Star - always visible when featured, hover only for vertical photos */}
+        {(image.is_featured || isVertical) && (
+          <div
+            className={`absolute right-2 bottom-2 cursor-pointer transition-opacity ${
               image.is_featured
-                ? "fill-yellow-400 text-yellow-400"
-                : "text-yellow-400/70"
+                ? "opacity-100"
+                : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
             }`}
-          />
-        </div>
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleFeatured(image.id, !image.is_featured)
+            }}
+          >
+            <Star
+              className={`h-6 w-6 drop-shadow-md ${
+                image.is_featured
+                  ? "fill-yellow-400 text-yellow-400"
+                  : "text-yellow-400/70"
+              }`}
+            />
+          </div>
+        )}
         {/* Stats row at top: downloads (1/4), likes (1/2), favorites (3/4) */}
         {(image.download_count > 0 || (image.likes_count ?? 0) > 0 || (image.favorites_count ?? 0) > 0) && (
           <div className="absolute top-2 left-0 right-0 flex justify-center gap-3 z-10">
