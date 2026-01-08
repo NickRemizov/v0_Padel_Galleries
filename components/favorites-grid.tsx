@@ -75,7 +75,7 @@ export function FavoritesGrid({ favorites: initialFavorites }: FavoritesGridProp
     try {
       const res = await fetch(`/api/favorites/${imageId}`, { method: "POST" })
       if (res.ok) {
-        setFavorites(prev => prev.filter(f => f.image_id !== imageId))
+        setFavorites(prev => prev.filter(f => f.gallery_image_id !== imageId))
       }
     } catch (error) {
       console.error("Error removing from favorites:", error)
