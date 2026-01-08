@@ -169,6 +169,17 @@ async def get_galleries(
         for gallery in galleries:
             images = gallery.pop("gallery_images", None) or []
             gallery["photo_count"] = len(images)
+
+            # Count cover candidates (featured or vertical >= 1.5)
+            def aspect_ratio(img):
+                w = img.get("width") or 1
+                h = img.get("height") or 1
+                return h / w
+
+            featured = [img for img in images if img.get("is_featured")]
+            vertical = [img for img in images if aspect_ratio(img) >= 1.5]
+            gallery["cover_candidates_count"] = len(featured) if featured else len(vertical)
+
             # Dynamic cover image selection
             cover = _select_cover_image(images)
             if cover:
