@@ -52,22 +52,28 @@ def _select_cover_image(images: list) -> str | None:
 
     Priority:
     1. Random from is_featured=true
-    2. Most vertical image (highest height/width ratio)
+    2. Random from vertical images (height/width >= 1.5, i.e. 2:3 or more)
+    3. Single most vertical image (highest height/width ratio)
     """
     if not images:
         return None
 
-    # Filter featured images
-    featured = [img for img in images if img.get("is_featured")]
-    if featured:
-        return random.choice(featured).get("image_url")
-
-    # Sort by aspect ratio (height/width) descending - most vertical first
     def aspect_ratio(img):
         w = img.get("width") or 1
         h = img.get("height") or 1
         return h / w
 
+    # 1. Random from featured
+    featured = [img for img in images if img.get("is_featured")]
+    if featured:
+        return random.choice(featured).get("image_url")
+
+    # 2. Random from vertical (ratio >= 1.5)
+    vertical = [img for img in images if aspect_ratio(img) >= 1.5]
+    if vertical:
+        return random.choice(vertical).get("image_url")
+
+    # 3. Single most vertical
     sorted_images = sorted(images, key=aspect_ratio, reverse=True)
     return sorted_images[0].get("image_url") if sorted_images else None
 
