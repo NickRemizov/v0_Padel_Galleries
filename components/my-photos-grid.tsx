@@ -92,6 +92,34 @@ function useIsTouchDevice() {
   return isTouch
 }
 
+// Image component with retry on error
+function RetryImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [imageSrc, setImageSrc] = useState(src)
+  const [retryCount, setRetryCount] = useState(0)
+  const maxRetries = 3
+
+  const handleError = () => {
+    if (retryCount < maxRetries) {
+      // Retry after delay with cache-busting parameter
+      setTimeout(() => {
+        const separator = src.includes("?") ? "&" : "?"
+        setImageSrc(`${src}${separator}_retry=${Date.now()}`)
+        setRetryCount((c) => c + 1)
+      }, 1000 * (retryCount + 1)) // 1s, 2s, 3s delays
+    }
+  }
+
+  return (
+    <img
+      src={imageSrc}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      onError={handleError}
+    />
+  )
+}
+
 export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhotosGridProps) {
   const router = useRouter()
   const [photoFaces, setPhotoFaces] = useState(initialPhotoFaces)
@@ -249,11 +277,10 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         style={{ width, height }}
       >
         <Link href={`/gallery/${gallerySlug}?photo=${photoSlug}`}>
-          <img
+          <RetryImage
             src={photo.src}
             alt={image.galleries?.title || "Photo"}
             className="w-full h-full object-cover"
-            loading="lazy"
           />
         </Link>
 
@@ -307,11 +334,10 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
         style={{ width, height }}
       >
         <Link href={`/gallery/${gallerySlug}?photo=${photoSlug}`}>
-          <img
+          <RetryImage
             src={photo.src}
             alt={image.galleries?.title || "Photo"}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            loading="lazy"
           />
         </Link>
 
