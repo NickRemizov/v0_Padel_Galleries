@@ -21,6 +21,14 @@ interface WelcomeData {
   reason?: string
 }
 
+function getBrowserLang(): "en" | "es" | "ru" {
+  if (typeof navigator === "undefined") return "en"
+  const lang = navigator.language.toLowerCase()
+  if (lang.startsWith("es")) return "es"
+  if (lang.startsWith("ru")) return "ru"
+  return "en"
+}
+
 export function WelcomeDialog() {
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
@@ -39,7 +47,8 @@ export function WelcomeDialog() {
 
   async function checkWelcome() {
     try {
-      const response = await fetch("/api/user/welcome")
+      const lang = getBrowserLang()
+      const response = await fetch(`/api/user/welcome?lang=${lang}`)
       const data = await response.json()
 
       if (data.success && data.data?.show) {

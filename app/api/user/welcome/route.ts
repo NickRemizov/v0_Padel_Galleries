@@ -27,8 +27,11 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Get lang from query params
+    const lang = request.nextUrl.searchParams.get("lang") || "en"
+
     // Forward to FastAPI with user info
-    const response = await fetch(`${env.FASTAPI_URL}/api/user/welcome`, {
+    const response = await fetch(`${env.FASTAPI_URL}/api/user/welcome?lang=${lang}`, {
       headers: {
         "X-User-Id": user.id,
         "Content-Type": "application/json",
