@@ -93,6 +93,49 @@ def _select_cover_image(images: list) -> dict | None:
     }
 
 
+def _calculate_face_position(width: int, height: int, bboxes: list) -> str:
+    """Calculate CSS object-position based on face bounding boxes.
+
+    Centers crop on the area containing all detected faces.
+    Returns CSS value like "50% 30%" or "center".
+    """
+    if not width or not height or not bboxes:
+        return "center"
+
+    min_x = float('inf')
+    min_y = float('inf')
+    max_x = float('-inf')
+    max_y = float('-inf')
+
+    for bbox in bboxes:
+        if len(bbox) >= 4:
+            min_x = min(min_x, bbox[0])
+            min_y = min(min_y, bbox[1])
+            max_x = max(max_x, bbox[2])
+            max_y = max(max_y, bbox[3])
+
+    if min_x == float('inf'):
+        return "center"
+
+    face_center_x = (min_x + max_x) / 2
+    face_center_y = (min_y + max_y) / 2
+    is_horizontal = width > height
+    short_side = min(width, height)
+
+    if is_horizontal:
+        max_offset = width - short_side
+        if max_offset <= 0:
+            return "center"
+        offset = max(0, min(face_center_x - short_side / 2, max_offset))
+        return f"{(offset / max_offset * 100):.1f}% 50%"
+    else:
+        max_offset = height - short_side
+        if max_offset <= 0:
+            return "center"
+        offset = max(0, min(face_center_y - short_side / 2, max_offset))
+        return f"50% {(offset / max_offset * 100):.1f}%"
+
+
 @router.get("/")
 async def get_galleries(
     sort_by: str = Query("shoot_date", enum=["created_at", "shoot_date"]),
@@ -120,7 +163,8 @@ async def get_galleries(
         result = query.order(sort_by, desc=True).execute()
         galleries = result.data or []
 
-        # Collect cover image IDs for bbox query
+        # Collect cover image data for bbox query
+        cover_data_by_gallery = {}
         cover_image_ids = []
         for gallery in galleries:
             images = gallery.pop("gallery_images", None) or []
@@ -129,15 +173,12 @@ async def get_galleries(
             cover = _select_cover_image(images)
             if cover:
                 gallery["cover_image_url"] = cover["image_url"]
-                gallery["cover_image_width"] = cover["width"]
-                gallery["cover_image_height"] = cover["height"]
-                gallery["_cover_image_id"] = cover["id"]
+                cover_data_by_gallery[gallery["id"]] = cover
                 if cover["id"]:
                     cover_image_ids.append(cover["id"])
             else:
                 gallery["cover_image_url"] = None
-                gallery["cover_image_width"] = None
-                gallery["cover_image_height"] = None
+                gallery["cover_image_position"] = "center"
 
         # Get bboxes for all cover images in one query
         bboxes_by_image = {}
@@ -152,7 +193,7 @@ async def get_galleries(
                 if bbox:
                     if photo_id not in bboxes_by_image:
                         bboxes_by_image[photo_id] = []
-                    # Convert {x, y, width, height} to [x1, y1, x2, y2] for frontend
+                    # Convert {x, y, width, height} to [x1, y1, x2, y2]
                     if isinstance(bbox, dict):
                         x1 = bbox.get("x", 0)
                         y1 = bbox.get("y", 0)
@@ -162,10 +203,14 @@ async def get_galleries(
                     else:
                         bboxes_by_image[photo_id].append(bbox)
 
-        # Attach bboxes to galleries
+        # Calculate position for each gallery
         for gallery in galleries:
-            cover_id = gallery.pop("_cover_image_id", None)
-            gallery["cover_image_bboxes"] = bboxes_by_image.get(cover_id, [])
+            cover = cover_data_by_gallery.get(gallery["id"])
+            if cover:
+                bboxes = bboxes_by_image.get(cover["id"], [])
+                gallery["cover_image_position"] = _calculate_face_position(
+                    cover["width"], cover["height"], bboxes
+                )
 
         return ApiResponse.ok(galleries)
     except Exception as e:
