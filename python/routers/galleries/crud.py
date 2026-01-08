@@ -65,9 +65,9 @@ async def get_galleries(
 
         query = supabase_db.client.table("galleries").select(select)
 
-        # Filter by visibility (default: only public)
+        # Filter by is_public (default: only public)
         if not include_private:
-            query = query.eq("visibility", "public")
+            query = query.eq("is_public", True)
 
         result = query.order(sort_by, desc=True).execute()
         galleries = result.data or []
