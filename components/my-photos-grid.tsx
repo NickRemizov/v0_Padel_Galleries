@@ -437,6 +437,18 @@ export function MyPhotosGrid({ photoFaces: initialPhotoFaces, personId }: MyPhot
           </button>
         )}
 
+        {/* Share button */}
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            handleShare(image.image_url, image.galleries?.title || "Фото")
+          }}
+          className="absolute top-2 left-10 opacity-0 group-hover:opacity-100 transition-opacity bg-purple-500 hover:bg-purple-600 text-white p-1.5 rounded-md"
+          title="Поделиться"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
+
         {/* Reject button */}
         <button
           onClick={(e) => { e.preventDefault(); openRejectDialog(photoFace) }}
