@@ -162,6 +162,7 @@ export function FavoritesGrid({ favorites: initialFavorites }: FavoritesGridProp
     <>
       {isMobile ? (
         <RowsPhotoAlbum
+          key={`rows-${photos.length}`}
           photos={photos}
           targetRowHeight={350}
           onClick={handleClick}
@@ -170,6 +171,7 @@ export function FavoritesGrid({ favorites: initialFavorites }: FavoritesGridProp
         />
       ) : (
         <MasonryPhotoAlbum
+          key={`masonry-${photos.length}`}
           photos={photos}
           columns={(containerWidth) => {
             if (containerWidth < 900) return 2
