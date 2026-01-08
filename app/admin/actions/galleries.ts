@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache"
 
 export async function getGalleriesAction(sortBy: "created_at" | "shoot_date" = "created_at") {
   try {
-    return await apiFetch(`/api/galleries?sort_by=${sortBy}&with_relations=true&with_photo_count=true&public_only=false`)
+    return await apiFetch(`/api/galleries?sort_by=${sortBy}&with_relations=true&include_private=true`)
   } catch (error) {
     console.error("[getGalleriesAction] Error:", error)
     if (error instanceof ApiError) {
