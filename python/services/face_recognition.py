@@ -227,7 +227,8 @@ class FaceRecognitionService:
                 else:
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
                 verified = face.get("verified", False) or False
-                confidence = face.get("recognition_confidence") or (1.0 if verified else 0.0)
+                # Fix: Enforce 1.0 confidence for verified faces matches embeddings.py
+                confidence = 1.0 if verified else (face.get("recognition_confidence") or 0.0)
 
             # Try to add to index
             success = self._players_index.add_item(face_id, person_id, embedding, verified, confidence)
@@ -284,7 +285,8 @@ class FaceRecognitionService:
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
 
                 verified = face.get("verified", False) or False
-                confidence = face.get("recognition_confidence") or (1.0 if verified else 0.0)
+                # Fix: Enforce 1.0 confidence for verified faces matches embeddings.py
+                confidence = 1.0 if verified else (face.get("recognition_confidence") or 0.0)
 
                 if self._players_index.add_item(face["id"], person_id, embedding, verified, confidence):
                     added += 1
