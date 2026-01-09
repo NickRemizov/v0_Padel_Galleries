@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Check } from "lucide-react"
+import { Check, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 interface FaceRecognitionDetailsDialogProps {
@@ -13,6 +13,7 @@ interface FaceRecognitionDetailsDialogProps {
   faces: DetailedFace[]
   imageUrl?: string
   onAssignPerson?: (faceIndex: number, personId: string, personName: string) => void
+  onDeleteFace?: (faceIndex: number) => void
 }
 
 export interface DetailedFace {
@@ -27,6 +28,8 @@ export interface DetailedFace {
     person_id: string
     name: string
     similarity: number
+    source_verified?: boolean
+    source_confidence?: number
   }>
   person_name?: string
 }
@@ -37,6 +40,7 @@ export function FaceRecognitionDetailsDialog({
   faces,
   imageUrl,
   onAssignPerson,
+  onDeleteFace,
 }: FaceRecognitionDetailsDialogProps) {
   // Track which faces have been assigned in this session
   const [assignedFaces, setAssignedFaces] = useState<Set<number>>(new Set())
@@ -99,12 +103,33 @@ export function FaceRecognitionDetailsDialog({
             return (
               <Card key={index} className={isAssigned ? "border-green-500 bg-green-50" : ""}>
                 <CardHeader>
-                  <CardTitle className="text-2xl flex items-center gap-2">
-                    {face.person_name || `Неизвестный ${index + 1}`}
-                    {isAssigned && (
-                      <span className="text-green-600 text-sm font-normal">(назначен)</span>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-2xl flex items-center gap-2">
+                      {face.person_name || `Неизвестный ${index + 1}`}
+                      {isAssigned && (
+                        <span className="text-green-600 text-sm font-normal">(назначен)</span>
+                      )}
+                    </CardTitle>
+                    {onDeleteFace && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => onDeleteFace(index)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Удалить эмбеддинг</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
-                  </CardTitle>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="flex gap-6">
@@ -154,7 +179,11 @@ export function FaceRecognitionDetailsDialog({
                         {face.top_matches.map((match, i) => (
                           <li key={i} className="flex items-center gap-2">
                             <span className="flex-1">
-                              {match.name} (similarity: {match.similarity.toFixed(2)})
+                              {match.name} (similarity: {match.similarity.toFixed(2)}, from: {
+                                match.source_verified
+                                  ? <span className="text-green-600">Verified</span>
+                                  : <span className="text-amber-600">{Math.round((match.source_confidence || 0) * 100)}%</span>
+                              })
                             </span>
                             {onAssignPerson && (
                               <TooltipProvider>

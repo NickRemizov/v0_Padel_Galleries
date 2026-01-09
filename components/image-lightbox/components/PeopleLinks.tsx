@@ -3,7 +3,7 @@
 /**
  * People Links
  *
- * Displays links to verified people on the photo
+ * Displays links to people on the photo (verified and recognized)
  *
  * Privacy: hasGallery=false means name is shown but not clickable
  */

@@ -258,6 +258,38 @@ export function FaceTaggingDialog({
     }
   }, [taggedFaces, detailedFaces, selectedFaceIndex, drawFaces])
 
+  const handleDeleteFaceFromDetails = useCallback(async (faceIndex: number) => {
+    const face = taggedFaces[faceIndex]
+    if (!face?.id) return
+
+    try {
+      // Exclude face from index via API
+      const response = await fetch(`/api/faces/${face.id}/set-excluded?excluded=true`, {
+        method: "POST",
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to exclude face")
+      }
+
+      // Remove from UI
+      const updatedTagged = taggedFaces.filter((_, i) => i !== faceIndex)
+      setTaggedFaces(updatedTagged)
+      drawFaces(updatedTagged, null)
+
+      const updatedDetailed = detailedFaces.filter((_, i) => i !== faceIndex)
+      setDetailedFaces(updatedDetailed)
+
+      // Close dialog if no faces left
+      if (updatedDetailed.length === 0) {
+        setShowDetailsDialog(false)
+      }
+    } catch (error) {
+      console.error("[FaceTaggingDialog] Error excluding face:", error)
+      alert("Ошибка при удалении эмбеддинга")
+    }
+  }, [taggedFaces, detailedFaces, drawFaces])
+
   const handleSaveWithoutClosing = useCallback(async () => {
     const updatedFaces = await saveFaces(imageId, taggedFaces, false)
     if (updatedFaces) {
@@ -416,6 +448,7 @@ export function FaceTaggingDialog({
         faces={detailedFaces}
         imageUrl={imageUrl}
         onAssignPerson={handleAssignFromDetails}
+        onDeleteFace={handleDeleteFaceFromDetails}
       />
     </Dialog>
   )

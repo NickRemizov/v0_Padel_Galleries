@@ -19,9 +19,9 @@ export function useLightboxState(currentImage: LightboxImage | undefined) {
   const [verifiedPeople, setVerifiedPeople] = useState<VerifiedPerson[]>([])
   const [hideUI, setHideUI] = useState(false)
 
-  // Fetch verified people when image changes
+  // Fetch linked people when image changes (includes verified and recognized)
   useEffect(() => {
-    const fetchVerifiedPeople = async () => {
+    const fetchLinkedPeople = async () => {
       if (!currentImage?.id) {
         setVerifiedPeople([])
         return
@@ -30,7 +30,7 @@ export function useLightboxState(currentImage: LightboxImage | undefined) {
       try {
         const response = await fetch(`/api/images/${currentImage.id}/people`)
         const result = await response.json()
-        
+
         // Handle unified API response format: {success, data, error, code}
         if (result.success && Array.isArray(result.data)) {
           setVerifiedPeople(result.data)
@@ -38,12 +38,12 @@ export function useLightboxState(currentImage: LightboxImage | undefined) {
           setVerifiedPeople([])
         }
       } catch (error) {
-        console.error("[v0] Error fetching verified people:", error)
+        console.error("[v0] Error fetching linked people:", error)
         setVerifiedPeople([])
       }
     }
 
-    fetchVerifiedPeople()
+    fetchLinkedPeople()
   }, [currentImage?.id])
 
   const toggleUI = () => setHideUI(prev => !prev)

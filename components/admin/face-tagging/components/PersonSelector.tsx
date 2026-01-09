@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Check, X, ChevronsUpDown } from "lucide-react"
+import { Check, Trash2, ChevronsUpDown } from "lucide-react"
 import type { Person, TaggedFace } from "@/lib/types"
 import { formatPersonDisplayName, getPersonSearchString } from "@/lib/utils/person-display"
 
@@ -93,9 +93,18 @@ export function PersonSelector({
         </Badge>
       )}
 
-      <Button variant="destructive" size="icon" onClick={onRemoveFace}>
-        <X className="h-4 w-4" />
-      </Button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="destructive" size="icon" onClick={onRemoveFace}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Удалить лицо</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   )
 }

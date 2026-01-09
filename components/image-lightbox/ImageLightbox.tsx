@@ -164,7 +164,7 @@ export function ImageLightbox({
           hideUI={hideUI}
         />
 
-        {/* Verified people links */}
+        {/* People links (verified and recognized) */}
         <PeopleLinks
           verifiedPeople={verifiedPeople}
           currentPlayerId={currentPlayerId}
