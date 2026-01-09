@@ -4,6 +4,7 @@ import { Suspense } from "react"
 import { GoogleOAuthProvider } from "@react-oauth/google"
 import { AuthProvider } from "@/lib/auth-context"
 import { WelcomeDialog } from "@/components/welcome-dialog"
+import { SelfieFlowTrigger } from "@/components/selfie"
 import { PostHogProvider } from "@/components/posthog-provider"
 
 interface ProvidersProps {
@@ -18,6 +19,7 @@ export function Providers({ children, googleClientId }: ProvidersProps) {
       <AuthProvider>
         {children}
         <WelcomeDialog />
+        <SelfieFlowTrigger />
       </AuthProvider>
     </PostHogProvider>
   )
