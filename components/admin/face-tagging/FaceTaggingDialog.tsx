@@ -272,23 +272,14 @@ export function FaceTaggingDialog({
         throw new Error("Failed to exclude face")
       }
 
-      // Remove from UI
-      const updatedTagged = taggedFaces.filter((_, i) => i !== faceIndex)
-      setTaggedFaces(updatedTagged)
-      drawFaces(updatedTagged, null)
-
-      const updatedDetailed = detailedFaces.filter((_, i) => i !== faceIndex)
-      setDetailedFaces(updatedDetailed)
-
-      // Close dialog if no faces left
-      if (updatedDetailed.length === 0) {
-        setShowDetailsDialog(false)
-      }
+      console.log("[FaceTaggingDialog] Face excluded from index:", face.id)
+      // UI state is managed by the dialog component itself (excludedFaces set)
     } catch (error) {
       console.error("[FaceTaggingDialog] Error excluding face:", error)
       alert("Ошибка при удалении эмбеддинга")
+      throw error // Re-throw so the dialog knows it failed
     }
-  }, [taggedFaces, detailedFaces, drawFaces])
+  }, [taggedFaces])
 
   const handleSaveWithoutClosing = useCallback(async () => {
     const updatedFaces = await saveFaces(imageId, taggedFaces, false)

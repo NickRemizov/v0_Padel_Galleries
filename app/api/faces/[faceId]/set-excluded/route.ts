@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { apiFetch } from "@/lib/apiClient"
+import { getAuthHeaders } from "@/lib/auth/serverGuard"
 
 // POST /api/faces/[faceId]/set-excluded - Exclude face from recognition index
 export async function POST(
@@ -11,10 +12,13 @@ export async function POST(
     const { searchParams } = new URL(request.url)
     const excluded = searchParams.get("excluded") ?? "true"
 
+    // Get auth headers for FastAPI
+    const authHeaders = await getAuthHeaders()
+
     // Call FastAPI
     const result = await apiFetch(
       `/api/faces/${faceId}/set-excluded?excluded=${excluded}`,
-      { method: "POST" }
+      { method: "POST", headers: authHeaders }
     )
 
     if (!result.success) {

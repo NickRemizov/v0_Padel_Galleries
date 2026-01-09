@@ -13,7 +13,7 @@ interface FaceRecognitionDetailsDialogProps {
   faces: DetailedFace[]
   imageUrl?: string
   onAssignPerson?: (faceIndex: number, personId: string, personName: string) => void
-  onDeleteFace?: (faceIndex: number) => void
+  onDeleteFace?: (faceIndex: number) => Promise<void>
 }
 
 export interface DetailedFace {
@@ -44,11 +44,14 @@ export function FaceRecognitionDetailsDialog({
 }: FaceRecognitionDetailsDialogProps) {
   // Track which faces have been assigned in this session
   const [assignedFaces, setAssignedFaces] = useState<Set<number>>(new Set())
+  // Track which faces have been excluded (deleted) in this session
+  const [excludedFaces, setExcludedFaces] = useState<Set<number>>(new Set())
 
-  // Reset assigned faces when dialog opens
+  // Reset state when dialog opens
   useEffect(() => {
     if (open) {
       setAssignedFaces(new Set())
+      setExcludedFaces(new Set())
     }
   }, [open])
 
@@ -79,6 +82,22 @@ export function FaceRecognitionDetailsDialog({
     }
   }
 
+  const handleExclude = async (faceIndex: number) => {
+    if (!onDeleteFace) return
+
+    try {
+      // Call the parent's delete handler (API call)
+      await onDeleteFace(faceIndex)
+
+      // Mark this face as excluded only on success
+      const newExcluded = new Set(excludedFaces)
+      newExcluded.add(faceIndex)
+      setExcludedFaces(newExcluded)
+    } catch {
+      // Error is already shown by parent, don't mark as excluded
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[80vh] flex flex-col overflow-hidden">
@@ -92,16 +111,24 @@ export function FaceRecognitionDetailsDialog({
             const isExactMatch = face.recognition_confidence !== undefined && face.recognition_confidence >= 0.999
             const isRecognized = face.recognition_confidence !== undefined && face.recognition_confidence > 0 && face.person_name
             const isAssigned = assignedFaces.has(index)
-            
+            const isExcluded = excludedFaces.has(index)
+
             // Use distance_to_nearest if available, otherwise calculate from confidence
             const distance = face.distance_to_nearest !== undefined && face.distance_to_nearest !== null
               ? face.distance_to_nearest.toFixed(3)
-              : face.recognition_confidence !== undefined 
+              : face.recognition_confidence !== undefined
                 ? (1 - face.recognition_confidence).toFixed(3)
                 : "N/A"
 
+            // Card style: green for assigned, red for excluded
+            const cardClass = isExcluded
+              ? "border-red-500 bg-red-50"
+              : isAssigned
+                ? "border-green-500 bg-green-50"
+                : ""
+
             return (
-              <Card key={index} className={isAssigned ? "border-green-500 bg-green-50" : ""}>
+              <Card key={index} className={cardClass}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-2xl flex items-center gap-2">
@@ -109,16 +136,19 @@ export function FaceRecognitionDetailsDialog({
                       {isAssigned && (
                         <span className="text-green-600 text-sm font-normal">(назначен)</span>
                       )}
+                      {isExcluded && (
+                        <span className="text-red-600 text-sm font-normal">(удалён)</span>
+                      )}
                     </CardTitle>
-                    {onDeleteFace && (
+                    {onDeleteFace && !isAssigned && !isExcluded && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => onDeleteFace(index)}
+                              variant="destructive"
+                              className="h-7 w-7 p-0"
+                              onClick={() => handleExclude(index)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -172,7 +202,7 @@ export function FaceRecognitionDetailsDialog({
                     </div>
                   </div>
 
-                  {face.top_matches && face.top_matches.length > 0 && !face.person_name && !isAssigned && (
+                  {face.top_matches && face.top_matches.length > 0 && !face.person_name && !isAssigned && !isExcluded && (
                     <div className="mt-4 pt-4 border-t">
                       <p className="text-sm text-muted-foreground mb-2">Топ-3 похожих лиц:</p>
                       <ol className="list-decimal list-inside space-y-2">
