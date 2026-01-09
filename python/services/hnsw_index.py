@@ -32,15 +32,22 @@ class HNSWIndex:
     - mark_deleted for removing faces
     - Automatic rebuild when deleted >= 5% or capacity >= 95%
 
+    v6.0: Variant C - ALL faces in index:
+    - Faces without person_id are in index (person_id can be None)
+    - excluded_map tracks excluded_from_index status
+    - update_metadata() for changing person_id/verified/confidence/excluded without rebuild
+    - Recognition skips faces where person_id is None OR excluded is True
+
     Stores verified status and confidence for each embedding to support
     confidence chain multiplication for non-verified matches.
     """
 
     def __init__(self):
         self.index: Optional[hnswlib.Index] = None
-        self.ids_map: List[str] = []  # label → person_id
+        self.ids_map: List[Optional[str]] = []  # label → person_id (can be None)
         self.verified_map: List[bool] = []  # label → verified status
         self.confidence_map: List[float] = []  # label → recognition_confidence
+        self.excluded_map: List[bool] = []  # label → excluded_from_index (v6.0)
         self.face_id_map: List[str] = []  # label → face_id (for incremental ops)
         self.face_id_to_label: Dict[str, int] = {}  # face_id → label (reverse lookup)
         self.dim: int = 512  # InsightFace embedding dimension
@@ -69,11 +76,12 @@ class HNSWIndex:
     
     def load_from_embeddings(
         self,
-        person_ids: List[str],
+        person_ids: List[Optional[str]],
         embeddings: List[np.ndarray],
         verified_flags: List[bool] = None,
         confidences: List[float] = None,
         face_ids: List[str] = None,
+        excluded_flags: List[bool] = None,
         ef_construction: int = 200,
         M: int = 16,
         ef_search: int = 50
@@ -81,12 +89,15 @@ class HNSWIndex:
         """
         Build index from embeddings (full rebuild).
 
+        v6.0: Supports faces without person_id and excluded flags.
+
         Args:
-            person_ids: List of person IDs corresponding to embeddings
+            person_ids: List of person IDs (can contain None for unassigned faces)
             embeddings: List of 512-dim embeddings
             verified_flags: List of verified status (True/False) for each embedding
             confidences: List of recognition_confidence for each embedding
             face_ids: List of face IDs for incremental operations (optional)
+            excluded_flags: List of excluded_from_index status (v6.0)
             ef_construction: HNSW construction parameter
             M: HNSW M parameter (number of connections)
             ef_search: HNSW search parameter
@@ -98,13 +109,15 @@ class HNSWIndex:
             logger.warning("No embeddings provided for index")
             return False
 
-        # Default to all verified with confidence 1.0 if not provided (backward compatibility)
+        # Default values for optional parameters
         if verified_flags is None:
-            verified_flags = [True] * len(embeddings)
+            verified_flags = [False] * len(embeddings)
         if confidences is None:
-            confidences = [1.0] * len(embeddings)
+            confidences = [0.0] * len(embeddings)
         if face_ids is None:
             face_ids = [f"unknown_{i}" for i in range(len(embeddings))]
+        if excluded_flags is None:
+            excluded_flags = [False] * len(embeddings)
 
         try:
             dim = len(embeddings[0])
@@ -128,10 +141,11 @@ class HNSWIndex:
             self.index.add_items(embeddings_array, labels)
             self.index.set_ef(ef_search)
 
-            # Store mappings
+            # Store mappings (person_ids can contain None)
             self.ids_map = list(person_ids)
             self.verified_map = list(verified_flags)
             self.confidence_map = list(confidences)
+            self.excluded_map = list(excluded_flags)
             self.face_id_map = list(face_ids)
 
             # Build reverse lookup
@@ -140,10 +154,15 @@ class HNSWIndex:
             self.deleted_count = 0
             self.last_rebuild_time = datetime.now()
 
-            unique_people = len(set(person_ids))
+            # Count statistics
+            with_person = sum(1 for p in person_ids if p is not None)
             verified_count = sum(1 for v in verified_flags if v)
-            logger.info(f"HNSW index built: {num_elements} embeddings ({verified_count} verified) "
-                       f"for {unique_people} people, capacity={self.max_elements}")
+            excluded_count = sum(1 for e in excluded_flags if e)
+            unique_people = len(set(p for p in person_ids if p is not None))
+
+            logger.info(f"HNSW index built: {num_elements} faces ({with_person} with person_id, "
+                       f"{verified_count} verified, {excluded_count} excluded) "
+                       f"for {unique_people} unique people, capacity={self.max_elements}")
 
             return True
 
@@ -156,20 +175,24 @@ class HNSWIndex:
     def add_item(
         self,
         face_id: str,
-        person_id: str,
+        person_id: Optional[str],
         embedding: np.ndarray,
         verified: bool = False,
-        confidence: float = 1.0
+        confidence: float = 0.0,
+        excluded: bool = False
     ) -> bool:
         """
         Add a single face to the index.
 
+        v6.0: person_id can be None for unassigned faces.
+
         Args:
             face_id: Unique face identifier
-            person_id: Person this face belongs to
+            person_id: Person this face belongs to (can be None)
             embedding: 512-dim face embedding
             verified: Whether this face is verified
-            confidence: Recognition confidence
+            confidence: Recognition confidence (0.0 if no person_id)
+            excluded: Whether face is excluded from recognition
 
         Returns:
             True if successful
@@ -195,22 +218,24 @@ class HNSWIndex:
 
             # Ensure maps are long enough
             while len(self.ids_map) <= label:
-                self.ids_map.append("")
+                self.ids_map.append(None)
                 self.verified_map.append(False)
                 self.confidence_map.append(0.0)
+                self.excluded_map.append(False)
                 self.face_id_map.append("")
 
             # Store mappings
             self.ids_map[label] = person_id
             self.verified_map[label] = verified
             self.confidence_map[label] = confidence
+            self.excluded_map[label] = excluded
             self.face_id_map[label] = face_id
             self.face_id_to_label[face_id] = label
 
             # Add to HNSW
             self.index.add_items(embedding.reshape(1, -1), np.array([label]))
 
-            logger.debug(f"Added face {face_id[:8]}... as label {label}")
+            logger.debug(f"Added face {face_id[:8]}... as label {label}, person_id={person_id[:8] if person_id else 'None'}")
             return True
 
         except Exception as e:
@@ -220,13 +245,16 @@ class HNSWIndex:
     def add_items(
         self,
         face_ids: List[str],
-        person_ids: List[str],
+        person_ids: List[Optional[str]],
         embeddings: List[np.ndarray],
         verified_flags: List[bool] = None,
-        confidences: List[float] = None
+        confidences: List[float] = None,
+        excluded_flags: List[bool] = None
     ) -> int:
         """
         Add multiple faces to the index.
+
+        v6.0: person_ids can contain None.
 
         Returns:
             Number of items successfully added
@@ -238,12 +266,14 @@ class HNSWIndex:
         if verified_flags is None:
             verified_flags = [False] * len(face_ids)
         if confidences is None:
-            confidences = [1.0] * len(face_ids)
+            confidences = [0.0] * len(face_ids)
+        if excluded_flags is None:
+            excluded_flags = [False] * len(face_ids)
 
         added = 0
         for i, face_id in enumerate(face_ids):
             if self.add_item(face_id, person_ids[i], embeddings[i],
-                           verified_flags[i], confidences[i]):
+                           verified_flags[i], confidences[i], excluded_flags[i]):
                 added += 1
 
         logger.info(f"Added {added}/{len(face_ids)} items to index")
@@ -297,6 +327,56 @@ class HNSWIndex:
         logger.info(f"Marked {deleted}/{len(face_ids)} items as deleted")
         return deleted
 
+    def update_metadata(
+        self,
+        face_id: str,
+        person_id: Optional[str] = None,
+        verified: Optional[bool] = None,
+        confidence: Optional[float] = None,
+        excluded: Optional[bool] = None
+    ) -> bool:
+        """
+        Update metadata for a face WITHOUT rebuilding the index.
+
+        v6.0: Key method for Variant C architecture.
+        Allows changing person_id, verified, confidence, excluded without touching HNSW.
+
+        Args:
+            face_id: Face to update
+            person_id: New person_id (use empty string "" to explicitly set None)
+            verified: New verified status
+            confidence: New confidence value
+            excluded: New excluded status
+
+        Returns:
+            True if face found and updated
+        """
+        label = self.face_id_to_label.get(face_id)
+        if label is None:
+            logger.debug(f"Face {face_id} not in index, cannot update metadata")
+            return False
+
+        try:
+            # Update only provided values
+            if person_id is not None:
+                # Special case: empty string means set to None
+                self.ids_map[label] = None if person_id == "" else person_id
+            if verified is not None:
+                self.verified_map[label] = verified
+            if confidence is not None:
+                self.confidence_map[label] = confidence
+            if excluded is not None:
+                self.excluded_map[label] = excluded
+
+            logger.debug(f"Updated metadata for face {face_id[:8]}...: "
+                        f"person_id={self.ids_map[label]}, verified={self.verified_map[label]}, "
+                        f"confidence={self.confidence_map[label]:.2f}, excluded={self.excluded_map[label]}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error updating metadata for {face_id}: {e}")
+            return False
+
     def needs_rebuild(self) -> Tuple[bool, str]:
         """
         Check if index needs rebuilding.
@@ -340,42 +420,46 @@ class HNSWIndex:
         self,
         embedding: np.ndarray,
         k: int = 1
-    ) -> Tuple[List[str], List[float], List[bool], List[float]]:
+    ) -> Tuple[List[Optional[str]], List[float], List[bool], List[float], List[bool]]:
         """
         Query index for nearest neighbors.
-        
+
+        v6.0: Returns excluded flags. person_ids can contain None.
+
         Args:
             embedding: Query embedding (512-dim)
             k: Number of neighbors to return
-            
+
         Returns:
-            Tuple of (person_ids, similarities, verified_flags, source_confidences)
-            Similarities are converted from cosine distance (1 - distance)
+            Tuple of (person_ids, similarities, verified_flags, source_confidences, excluded_flags)
+            - person_ids can contain None for unassigned faces
+            - Similarities are converted from cosine distance (1 - distance)
         """
         if not self.is_loaded():
             logger.warning("Index not loaded, cannot query")
-            return [], [], [], []
-        
+            return [], [], [], [], []
+
         try:
             # Ensure k doesn't exceed index size
             k = min(k, self.get_count())
-            
+
             labels, distances = self.index.knn_query(
                 embedding.reshape(1, -1),
                 k=k
             )
-            
+
             # Convert to person IDs, similarities, and metadata
             person_ids = [self.ids_map[int(idx)] for idx in labels[0]]
             similarities = [1.0 - float(d) for d in distances[0]]
             verified_flags = [self.verified_map[int(idx)] for idx in labels[0]]
             source_confidences = [self.confidence_map[int(idx)] for idx in labels[0]]
-            
-            return person_ids, similarities, verified_flags, source_confidences
-            
+            excluded_flags = [self.excluded_map[int(idx)] for idx in labels[0]]
+
+            return person_ids, similarities, verified_flags, source_confidences, excluded_flags
+
         except Exception as e:
             logger.error(f"Error querying HNSW index: {e}")
-            return [], [], [], []
+            return [], [], [], [], []
     
     def query_raw(
         self,

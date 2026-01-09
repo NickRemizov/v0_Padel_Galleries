@@ -14,6 +14,11 @@ v4.2: Face size filter uses max(width, height)
 v5.0: Incremental index operations (add_item, mark_deleted)
       - Reduces full rebuilds by using incremental updates
       - Auto-rebuild when deleted >= 5% or capacity >= 95%
+v6.0: Variant C - ALL faces with descriptors in index
+      - person_id can be None (unassigned faces)
+      - excluded_from_index is metadata, not filter
+      - update_metadata() for changing person_id without rebuild
+      - Recognition skips faces where person_id is None OR excluded is True
 """
 
 import os
@@ -135,9 +140,8 @@ class FaceRecognitionService:
         logger.info("[FaceRecognition] Loading players index...")
 
         try:
-            # Get ALL embeddings (verified and non-verified) with metadata
-            # v5.0: Now includes face_ids for incremental operations
-            face_ids, person_ids, embeddings, verified_flags, confidences = self._embeddings.get_all_player_embeddings()
+            # v6.0: Get ALL embeddings including unassigned faces and excluded flags
+            face_ids, person_ids, embeddings, verified_flags, confidences, excluded_flags = self._embeddings.get_all_player_embeddings()
 
             if len(embeddings) > 0:
                 success = self._players_index.load_from_embeddings(
@@ -145,14 +149,19 @@ class FaceRecognitionService:
                     embeddings,
                     verified_flags,
                     confidences,
-                    face_ids
+                    face_ids,
+                    excluded_flags  # v6.0: pass excluded flags
                 )
 
                 if success:
                     unique_count = self._players_index.get_unique_people_count()
                     verified_count = self._players_index.get_verified_count()
                     total_count = len(embeddings)
-                    logger.info(f"[FaceRecognition] Index loaded: {total_count} embeddings ({verified_count} verified) for {unique_count} people")
+                    with_person = sum(1 for p in person_ids if p is not None)
+                    excluded_count = sum(excluded_flags)
+                    logger.info(f"[FaceRecognition] Index loaded: {total_count} embeddings "
+                               f"({with_person} with person_id, {verified_count} verified, {excluded_count} excluded) "
+                               f"for {unique_count} people")
                 else:
                     raise ValueError("Failed to build HNSW index")
             else:
@@ -190,19 +199,24 @@ class FaceRecognitionService:
             logger.error(f"[FaceRecognition] ERROR rebuilding index: {e}")
             return {"success": False, "error": str(e)}
 
-    # ==================== Incremental Index Operations (v5.0) ====================
+    # ==================== Incremental Index Operations (v5.0/v6.0) ====================
 
     async def add_face_to_index(
         self,
         face_id: str,
-        person_id: str,
+        person_id: Optional[str] = None,
         embedding: np.ndarray = None,
         verified: bool = False,
-        confidence: float = 1.0
+        confidence: float = 0.0,
+        excluded: bool = False
     ) -> Dict:
         """
         Add a single face to the index (incremental).
         If embedding not provided, fetches from database.
+
+        v6.0: ALL faces with descriptors go into index.
+        - person_id can be None for unassigned faces
+        - excluded faces are added with excluded=True in metadata
 
         Returns:
             Dict with success status and rebuild_triggered flag
@@ -216,9 +230,6 @@ class FaceRecognitionService:
                 if not faces:
                     return {"success": False, "error": "Face not found"}
                 face = faces[0]
-                # Skip excluded faces
-                if face.get("excluded_from_index"):
-                    return {"success": False, "error": "Face is excluded from index"}
                 descriptor = face.get("insightface_descriptor")
                 if not descriptor:
                     return {"success": False, "error": "No descriptor"}
@@ -226,12 +237,21 @@ class FaceRecognitionService:
                     embedding = np.array(descriptor, dtype=np.float32)
                 else:
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
+
+                # Get metadata from DB
+                person_id = face.get("person_id")  # Can be None
                 verified = face.get("verified", False) or False
-                # Fix: Enforce 1.0 confidence for verified faces matches embeddings.py
-                confidence = 1.0 if verified else (face.get("recognition_confidence") or 0.0)
+                excluded = face.get("excluded_from_index", False) or False
+                # v6.0: confidence depends on verified and person_id
+                if verified:
+                    confidence = 1.0
+                elif person_id:
+                    confidence = face.get("recognition_confidence") or 0.0
+                else:
+                    confidence = 0.0
 
             # Try to add to index
-            success = self._players_index.add_item(face_id, person_id, embedding, verified, confidence)
+            success = self._players_index.add_item(face_id, person_id, embedding, verified, confidence, excluded)
 
             # Check if rebuild needed
             rebuild_triggered = False
@@ -253,6 +273,9 @@ class FaceRecognitionService:
         Add multiple faces to the index (incremental).
         Fetches embeddings from database.
 
+        v6.0: ALL faces with descriptors go into index, including
+        those without person_id or with excluded=True.
+
         Returns:
             Dict with added count and rebuild_triggered flag
         """
@@ -268,15 +291,11 @@ class FaceRecognitionService:
                 return {"added": 0, "error": "No faces found"}
 
             added = 0
-            skipped_excluded = 0
+            skipped_no_descriptor = 0
             for face in faces:
-                # Skip excluded faces
-                if face.get("excluded_from_index"):
-                    skipped_excluded += 1
-                    continue
                 descriptor = face.get("insightface_descriptor")
-                person_id = face.get("person_id")
-                if not descriptor or not person_id:
+                if not descriptor:
+                    skipped_no_descriptor += 1
                     continue
 
                 if isinstance(descriptor, list):
@@ -284,11 +303,20 @@ class FaceRecognitionService:
                 else:
                     embedding = np.array(json.loads(descriptor), dtype=np.float32)
 
+                # v6.0: Get all metadata, person_id can be None
+                person_id = face.get("person_id")
                 verified = face.get("verified", False) or False
-                # Fix: Enforce 1.0 confidence for verified faces matches embeddings.py
-                confidence = 1.0 if verified else (face.get("recognition_confidence") or 0.0)
+                excluded = face.get("excluded_from_index", False) or False
 
-                if self._players_index.add_item(face["id"], person_id, embedding, verified, confidence):
+                # Confidence logic
+                if verified:
+                    confidence = 1.0
+                elif person_id:
+                    confidence = face.get("recognition_confidence") or 0.0
+                else:
+                    confidence = 0.0
+
+                if self._players_index.add_item(face["id"], person_id, embedding, verified, confidence, excluded):
                     added += 1
 
             # Check if rebuild needed
@@ -299,11 +327,8 @@ class FaceRecognitionService:
                 await self.rebuild_players_index()
                 rebuild_triggered = True
 
-            if skipped_excluded > 0:
-                logger.info(f"[FaceRecognition] Added {added}/{len(face_ids)} faces to index (skipped {skipped_excluded} excluded)")
-            else:
-                logger.info(f"[FaceRecognition] Added {added}/{len(face_ids)} faces to index")
-            return {"added": added, "skipped_excluded": skipped_excluded, "rebuild_triggered": rebuild_triggered}
+            logger.info(f"[FaceRecognition] Added {added}/{len(face_ids)} faces to index")
+            return {"added": added, "skipped_no_descriptor": skipped_no_descriptor, "rebuild_triggered": rebuild_triggered}
 
         except Exception as e:
             logger.error(f"[FaceRecognition] Error adding faces to index: {e}")
@@ -365,6 +390,53 @@ class FaceRecognitionService:
         except Exception as e:
             logger.error(f"[FaceRecognition] Error removing faces from index: {e}")
             return {"deleted": 0, "error": str(e)}
+
+    async def update_face_metadata(
+        self,
+        face_id: str,
+        person_id: Optional[str] = None,
+        verified: Optional[bool] = None,
+        confidence: Optional[float] = None,
+        excluded: Optional[bool] = None
+    ) -> Dict:
+        """
+        Update metadata for a face WITHOUT rebuilding the index.
+
+        v6.0: Key method for Variant C architecture.
+        Use this when person_id, verified, confidence, or excluded changes
+        but the embedding itself is unchanged.
+
+        Args:
+            face_id: Face to update
+            person_id: New person_id (use empty string "" to set to None)
+            verified: New verified status
+            confidence: New confidence value
+            excluded: New excluded status
+
+        Returns:
+            Dict with success status
+        """
+        self._ensure_initialized()
+
+        try:
+            success = self._players_index.update_metadata(
+                face_id,
+                person_id=person_id,
+                verified=verified,
+                confidence=confidence,
+                excluded=excluded
+            )
+
+            if success:
+                logger.info(f"[FaceRecognition] Updated metadata for face {face_id[:8]}...")
+            else:
+                logger.warning(f"[FaceRecognition] Face {face_id} not found in index for metadata update")
+
+            return {"success": success}
+
+        except Exception as e:
+            logger.error(f"[FaceRecognition] Error updating face metadata: {e}")
+            return {"success": False, "error": str(e)}
 
     def get_index_stats(self) -> Dict:
         """Get current index statistics."""
@@ -473,86 +545,98 @@ class FaceRecognitionService:
     ) -> Tuple[Optional[str], Optional[float]]:
         """
         Recognize face by embedding using adaptive early exit algorithm.
-        
+
         Algorithm (v4.0):
         1. Query HNSW for candidates sorted by similarity (descending)
         2. For each candidate: final_confidence = source_confidence × similarity
         3. Track best_final_confidence
         4. Early exit when: similarity < best_final_confidence
            (no subsequent candidate can improve the result)
-        
+
+        v6.0: Skip faces where person_id is None OR excluded is True.
+        These faces are in the index for embedding lookup but should not
+        contribute to recognition results.
+
         This naturally handles:
         - Verified faces (source_conf=1.0) get higher scores
         - Non-verified faces get proportionally lower scores
         - Identical descriptors: iterates until finds best (e.g., verified)
         - Confidence chains decay naturally through multiplication
-        
+
         Returns:
             Tuple of (person_id, final_confidence) or (None, None) if below threshold
         """
         self._ensure_initialized()
-        
+
         if confidence_threshold is None:
             # v4.1: Use config repository
             config = self._config.get_recognition_config()
             confidence_threshold = config.get('confidence_thresholds', {}).get('high_data', 0.60)
-        
-        logger.info(f"[v4.0] Recognizing face (threshold={confidence_threshold:.2f})")
-        
+
+        logger.info(f"[v6.0] Recognizing face (threshold={confidence_threshold:.2f})")
+
         # Safety check
         if not self._players_index.is_loaded():
-            logger.warning("[v4.0] Index not loaded, attempting to initialize...")
+            logger.warning("[v6.0] Index not loaded, attempting to initialize...")
             try:
                 self._load_players_index()
             except Exception as e:
-                logger.error(f"[v4.0] Cannot initialize index: {e}")
+                logger.error(f"[v6.0] Cannot initialize index: {e}")
                 return None, None
-        
+
         # Query with safety margin - we'll exit early anyway
         max_k = min(50, self._players_index.get_count())
-        person_ids, similarities, verified_flags, source_confidences = self._players_index.query(embedding, k=max_k)
-        
+        person_ids, similarities, verified_flags, source_confidences, excluded_flags = self._players_index.query(embedding, k=max_k)
+
         if not person_ids:
-            logger.info("[v4.0] No candidates found in index")
+            logger.info("[v6.0] No candidates found in index")
             return None, None
-        
+
         # Adaptive search with early exit
         best_person_id = None
         best_final_confidence = 0.0
         iterations = 0
-        
+        skipped = 0
+
         for i in range(len(person_ids)):
             person_id = person_ids[i]
             similarity = similarities[i]
             source_conf = source_confidences[i]
             is_verified = verified_flags[i]
-            
+            is_excluded = excluded_flags[i]
+
             iterations += 1
-            
+
+            # v6.0: Skip faces without person_id or excluded from recognition
+            # These are in the index but should not contribute to recognition
+            if person_id is None or is_excluded:
+                skipped += 1
+                continue
+
             # Early exit condition: similarity < best means no future candidate can win
             # Because: future_final = future_conf × future_sim ≤ 1.0 × future_sim ≤ similarity < best
             if similarity < best_final_confidence:
-                logger.info(f"[v4.0] Early exit at iteration {iterations}: sim={similarity:.3f} < best={best_final_confidence:.3f}")
+                logger.info(f"[v6.0] Early exit at iteration {iterations}: sim={similarity:.3f} < best={best_final_confidence:.3f}")
                 break
-            
+
             # Calculate final confidence
             final_confidence = source_conf * similarity
-            
+
             # Update best if improved
             if final_confidence > best_final_confidence:
                 best_final_confidence = final_confidence
                 best_person_id = person_id
                 v_marker = "✓" if is_verified else "○"
-                logger.info(f"[v4.0] [{iterations}] {v_marker} New best: person={person_id[:8]}..., sim={similarity:.3f} × conf={source_conf:.3f} = {final_confidence:.3f}")
-        
-        logger.info(f"[v4.0] Search complete: {iterations} iterations, best={best_final_confidence:.3f}")
-        
+                logger.info(f"[v6.0] [{iterations}] {v_marker} New best: person={person_id[:8]}..., sim={similarity:.3f} × conf={source_conf:.3f} = {final_confidence:.3f}")
+
+        logger.info(f"[v6.0] Search complete: {iterations} iterations, {skipped} skipped, best={best_final_confidence:.3f}")
+
         # Check threshold
         if best_final_confidence >= confidence_threshold:
-            logger.info(f"[v4.0] ✓ Match accepted: person={best_person_id}, confidence={best_final_confidence:.3f}")
+            logger.info(f"[v6.0] ✓ Match accepted: person={best_person_id}, confidence={best_final_confidence:.3f}")
             return best_person_id, best_final_confidence
         else:
-            logger.info(f"[v4.0] ✗ Below threshold: {best_final_confidence:.3f} < {confidence_threshold:.3f}")
+            logger.info(f"[v6.0] ✗ Below threshold: {best_final_confidence:.3f} < {confidence_threshold:.3f}")
             return None, None
     
     # ==================== Quality Filters ====================

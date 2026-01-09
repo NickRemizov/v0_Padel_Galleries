@@ -17,6 +17,10 @@ v2.3: Separate search_threshold (for finding candidates) and save_threshold (for
       - search_threshold: 0.30 without filters, config with filters
       - save_threshold: ALWAYS config value (e.g. 0.60)
       - Boxes saved always, person_id only if confidence >= save_threshold
+v3.0: Variant C architecture
+      - ALL faces added to index (not just those with person_id)
+      - Use update_face_metadata() when person_id changes
+      - Skip excluded faces in top_matches
 """
 
 from fastapi import APIRouter, Depends
@@ -37,6 +41,8 @@ def _get_face_metrics(face_service, supabase_client, embedding: np.ndarray):
     """
     Helper function to get distance_to_nearest and top_matches from HNSW index.
 
+    v3.0: Skips faces without person_id or with excluded=True in top_matches.
+
     Returns:
         tuple: (distance_to_nearest, top_matches)
         top_matches includes source_verified and source_confidence for UI display
@@ -50,20 +56,30 @@ def _get_face_metrics(face_service, supabase_client, embedding: np.ndarray):
         return distance_to_nearest, top_matches
 
     try:
-        k = min(3, index.get_count())
-        person_ids, similarities, verified_flags, source_confidences = index.query(embedding, k=k)
+        # v3.0: Query more candidates to account for skipped ones
+        k = min(10, index.get_count())
+        person_ids, similarities, verified_flags, source_confidences, excluded_flags = index.query(embedding, k=k)
 
         if not person_ids:
             return distance_to_nearest, top_matches
 
-        # Distance to nearest = 1 - similarity (since similarity = 1 - distance)
-        distance_to_nearest = 1.0 - similarities[0] if similarities else None
+        # Distance to nearest (first valid result)
+        for i, (pid, sim, excluded) in enumerate(zip(person_ids, similarities, excluded_flags)):
+            if pid is not None and not excluded:
+                distance_to_nearest = 1.0 - sim
+                break
 
         # Build top_matches with verified/confidence info
-        for i, (person_id, similarity, is_verified, source_conf) in enumerate(
-            zip(person_ids, similarities, verified_flags, source_confidences)
+        # v3.0: Skip faces without person_id or excluded
+        match_count = 0
+        for i, (person_id, similarity, is_verified, source_conf, is_excluded) in enumerate(
+            zip(person_ids, similarities, verified_flags, source_confidences, excluded_flags)
         ):
-            if i >= 3:
+            # Skip faces without person_id or excluded
+            if person_id is None or is_excluded:
+                continue
+
+            if match_count >= 3:
                 break
 
             # Get person name
@@ -82,6 +98,7 @@ def _get_face_metrics(face_service, supabase_client, embedding: np.ndarray):
                 "source_verified": is_verified,
                 "source_confidence": float(source_conf)
             })
+            match_count += 1
 
     except Exception as e:
         logger.warning(f"Could not get face metrics: {str(e)}")
@@ -308,13 +325,14 @@ async def process_photo(
             
             logger.info(f"[v{VERSION}] Saved {len(saved_faces)} faces")
 
-            # Add faces with person_id to index (add_faces_to_index filters automatically)
+            # v3.0: Add ALL faces to index (Variant C architecture)
+            # Faces without person_id are added with person_id=None in metadata
             index_rebuilt = False
             if saved_faces:
                 face_ids_to_index = [f["id"] for f in saved_faces]
                 try:
                     idx_result = await face_service.add_faces_to_index(face_ids_to_index)
-                    logger.info(f"[v{VERSION}] Index sync: {idx_result}")
+                    logger.info(f"[v{VERSION}] Index sync (all faces): {idx_result}")
                     index_rebuilt = idx_result.get("rebuild_triggered", False)
                 except Exception as idx_err:
                     logger.error(f"[v{VERSION}] Failed to add to index: {idx_err}")
@@ -350,20 +368,20 @@ async def process_photo(
         # ========================================================================
         # CASE 2: Existing faces - recognize unverified faces
         # v2.3: Also uses save_threshold for DB updates
+        # v3.0: Use update_face_metadata (faces already in index from Variant C)
         # ========================================================================
         logger.info(f"[v{VERSION}] Case 2: Existing faces - recognizing unverified")
 
         face_metrics = {}
         recognized_count = 0
-        recognized_face_ids = []  # Track faces that got person_id for index sync
 
         for face in existing_faces:
             face_id = face["id"]
             descriptor = face.get("insightface_descriptor")
-            
+
             if not descriptor:
                 continue
-            
+
             # Parse embedding
             if isinstance(descriptor, str):
                 embedding = np.array(json.loads(descriptor), dtype=np.float32)
@@ -371,26 +389,26 @@ async def process_photo(
                 embedding = np.array(descriptor, dtype=np.float32)
             else:
                 continue
-            
+
             # Get metrics for all faces
             distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
             face_metrics[face_id] = {
                 "distance_to_nearest": distance_to_nearest,
                 "top_matches": top_matches,
             }
-            
+
             # v2.3: Recognize unverified faces, but only save if >= save_threshold
             if not face.get("verified"):
                 person_id, rec_confidence = await face_service.recognize_face(
-                    embedding, 
+                    embedding,
                     confidence_threshold=search_threshold
                 )
-                
+
                 # Only update DB if confidence >= save_threshold
                 if person_id and rec_confidence and rec_confidence >= save_threshold:
                     old_person_id = face.get("person_id")
                     old_confidence = face.get("recognition_confidence") or 0
-                    
+
                     # Update if new match or better confidence
                     if person_id != old_person_id or rec_confidence > old_confidence:
                         supabase_client.client.table("photo_faces").update({
@@ -398,21 +416,23 @@ async def process_photo(
                             "recognition_confidence": rec_confidence
                         }).eq("id", face_id).execute()
 
+                        # v3.0: Update index metadata (face already in index from Variant C)
+                        try:
+                            await face_service.update_face_metadata(
+                                face_id,
+                                person_id=person_id,
+                                confidence=rec_confidence
+                            )
+                        except Exception as idx_err:
+                            logger.warning(f"[v{VERSION}] Failed to update metadata for {face_id[:8]}: {idx_err}")
+
                         recognized_count += 1
-                        recognized_face_ids.append(face_id)
                         logger.info(f"[v{VERSION}] Recognized face {face_id[:8]}: person={person_id[:8]}, confidence={rec_confidence:.3f}")
 
         logger.info(f"[v{VERSION}] Recognized {recognized_count} unverified faces")
 
-        # Add recognized faces to index
+        # v3.0: No need for index_rebuilt flag - update_metadata doesn't trigger rebuild
         index_rebuilt = False
-        if recognized_face_ids:
-            try:
-                idx_result = await face_service.add_faces_to_index(recognized_face_ids)
-                logger.info(f"[v{VERSION}] Index sync (recognized): {idx_result}")
-                index_rebuilt = idx_result.get("rebuild_triggered", False)
-            except Exception as idx_err:
-                logger.error(f"[v{VERSION}] Failed to add recognized faces to index: {idx_err}")
         
         # Reload faces after potential updates
         final_result = supabase_client.client.table("photo_faces").select(

@@ -5,6 +5,11 @@ Endpoints:
 - POST /regenerate-missing-descriptors
 - POST /regenerate-single-descriptor
 - POST /regenerate-unknown-descriptors
+
+v2.0: Variant C architecture
+- regenerate-missing: add_faces_to_index (faces had no descriptor = weren't in index)
+- regenerate-single: remove + add (embedding changes, face might be in index)
+- regenerate-unknown: add_faces_to_index (faces had no descriptor = weren't in index)
 """
 
 from fastapi import APIRouter, Query, Depends
@@ -203,15 +208,18 @@ async def regenerate_single_descriptor(
 
         logger.info(f"[v{VERSION}] ✓ Regenerated {face_id} (IoU: {best_iou:.2f})")
 
-        # Sync index - add to index if has person_id
+        # v2.0: Embedding changed - remove old entry and add new one
+        # (can't use update_metadata because embedding itself changed)
         index_rebuilt = False
-        if face.get("person_id"):
-            try:
-                idx_result = await face_service.add_face_to_index(face_id, face["person_id"])
-                logger.info(f"[v{VERSION}] Index sync: {idx_result}")
-                index_rebuilt = idx_result.get("rebuild_triggered", False)
-            except Exception as idx_err:
-                logger.error(f"[v{VERSION}] Failed to add to index: {idx_err}")
+        try:
+            # First remove old entry (if exists)
+            await face_service.remove_face_from_index(face_id)
+            # Then add with new embedding
+            idx_result = await face_service.add_face_to_index(face_id)
+            logger.info(f"[v{VERSION}] Index sync (remove+add): {idx_result}")
+            index_rebuilt = idx_result.get("rebuild_triggered", False)
+        except Exception as idx_err:
+            logger.error(f"[v{VERSION}] Failed to sync index: {idx_err}")
 
         return ApiResponse.ok({
             "iou": round(best_iou, 2),
@@ -234,64 +242,67 @@ async def regenerate_unknown_descriptors(
     """
     Regenerate insightface_descriptor for unknown faces that don't have one.
     This fixes faces that were saved without descriptors during batch recognition.
+
+    v2.0: Adds regenerated faces to index (Variant C).
     """
     supabase_client = get_supabase_client()
     try:
         logger.info(f"[v{VERSION}] ===== REGENERATE UNKNOWN DESCRIPTORS =====")
         logger.info(f"[v{VERSION}] Gallery ID: {gallery_id}")
-        
+
         gallery_photos_response = supabase_client.client.table("gallery_images").select("id").eq("gallery_id", gallery_id).execute()
-        
+
         if not gallery_photos_response.data:
             logger.info(f"[v{VERSION}] No photos found in gallery")
             return ApiResponse.ok({"total_faces": 0, "regenerated": 0, "failed": 0, "already_had_descriptor": 0}).model_dump()
-        
+
         photo_ids = [photo["id"] for photo in gallery_photos_response.data]
         logger.info(f"[v{VERSION}] Found {len(photo_ids)} photos in gallery")
-        
+
         faces_response = supabase_client.client.table("photo_faces").select(
             "id, photo_id, insightface_bbox, insightface_descriptor, gallery_images(id, image_url)"
         ).in_("photo_id", photo_ids).is_("person_id", "null").execute()
-        
+
         if not faces_response.data:
             logger.info(f"[v{VERSION}] No unknown faces found")
             return ApiResponse.ok({"total_faces": 0, "regenerated": 0, "failed": 0, "already_had_descriptor": 0}).model_dump()
-        
+
         total_faces = len(faces_response.data)
         regenerated = 0
         failed = 0
         already_had_descriptor = 0
-        
+        regenerated_face_ids = []  # v2.0: Track for index sync
+
         logger.info(f"[v{VERSION}] Found {total_faces} unknown faces, checking descriptors...")
-        
+
         for face in faces_response.data:
             face_id = face["id"]
             photo_data = face.get("gallery_images")
-            
+
             if not photo_data:
                 failed += 1
                 continue
-            
+
             if face.get("insightface_descriptor"):
                 already_had_descriptor += 1
                 continue
-            
+
             bbox = face.get("insightface_bbox")
             if not bbox:
                 failed += 1
                 continue
-            
+
             try:
                 image_url = photo_data["image_url"]
                 detected_faces = await face_service.detect_faces(image_url)
-                
+
                 if not detected_faces:
                     failed += 1
                     continue
-                
+
                 best_match = None
                 best_iou = 0.0
-                
+
                 for detected_face in detected_faces:
                     detected_bbox = {
                         "x": float(detected_face["bbox"][0]),
@@ -303,38 +314,50 @@ async def regenerate_unknown_descriptors(
                     if iou > best_iou:
                         best_iou = iou
                         best_match = detected_face
-                
+
                 if best_match and best_iou > 0.3:
                     descriptor = best_match["embedding"]
                     if len(descriptor) != 512:
                         failed += 1
                         continue
-                    
+
                     descriptor_str = f"[{','.join(map(str, descriptor))}]"
                     supabase_client.client.table("photo_faces").update({
                         "insightface_descriptor": descriptor_str,
                         "insightface_det_score": float(best_match["det_score"])
                     }).eq("id", face_id).execute()
-                    
+
                     regenerated += 1
+                    regenerated_face_ids.append(face_id)  # v2.0: Track for index
                     logger.info(f"[v{VERSION}] ✓ Regenerated {face_id} (IoU: {best_iou:.2f})")
                 else:
                     failed += 1
-                    
+
             except Exception as e:
                 logger.error(f"[v{VERSION}] Error regenerating {face_id}: {str(e)}")
                 failed += 1
-        
+
         logger.info(f"[v{VERSION}] ===== REGENERATION COMPLETE =====")
         logger.info(f"[v{VERSION}] Total: {total_faces}, Already had: {already_had_descriptor}, Regenerated: {regenerated}, Failed: {failed}")
-        
+
+        # v2.0: Add regenerated faces to index (Variant C - all faces with descriptors)
+        index_rebuilt = False
+        if regenerated_face_ids:
+            try:
+                idx_result = await face_service.add_faces_to_index(regenerated_face_ids)
+                logger.info(f"[v{VERSION}] Index sync: {idx_result}")
+                index_rebuilt = idx_result.get("rebuild_triggered", False)
+            except Exception as idx_err:
+                logger.error(f"[v{VERSION}] Failed to add regenerated faces to index: {idx_err}")
+
         return ApiResponse.ok({
             "total_faces": total_faces,
             "regenerated": regenerated,
             "failed": failed,
-            "already_had_descriptor": already_had_descriptor
+            "already_had_descriptor": already_had_descriptor,
+            "index_rebuilt": index_rebuilt
         }).model_dump()
-        
+
     except Exception as e:
         logger.error(f"[v{VERSION}] ERROR: {str(e)}")
         raise DescriptorError(f"Failed to regenerate unknown descriptors: {str(e)}")

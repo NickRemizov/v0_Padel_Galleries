@@ -3,6 +3,10 @@ Faces API - Batch Operations
 Batch operations: batch-verify, batch-assign
 
 v5.0: Cleaned up - removed unused batch-save endpoint
+v6.0: Variant C architecture
+      - Faces are already in index when created
+      - Use update_face_metadata instead of add/remove for person_id changes
+      - Only mark_deleted when faces are actually deleted from DB
 """
 
 from fastapi import APIRouter, Depends
@@ -39,7 +43,9 @@ async def batch_assign_faces(
     supabase_db: SupabaseService = Depends(get_supabase_db)
 ):
     """
-    Batch assign multiple faces to a person with single index rebuild.
+    Batch assign multiple faces to a person.
+
+    v6.0: Faces are already in index (Variant C), use update_face_metadata.
     """
     try:
         logger.info(f"[batch-assign] START: {len(request.face_ids)} faces -> person {request.person_id}")
@@ -47,11 +53,11 @@ async def batch_assign_faces(
         if not request.face_ids:
             return ApiResponse.ok({
                 "updated_count": 0,
-                "index_rebuilt": False
+                "metadata_updated": 0
             })
 
         updated_count = 0
-        faces_with_descriptors = []  # Track face_ids with descriptors for index
+        metadata_updated = 0
 
         for face_id in request.face_ids:
             try:
@@ -73,30 +79,31 @@ async def batch_assign_faces(
 
                     if update_response.data:
                         updated_count += 1
+
+                        # v6.0: Update index metadata (face already in index from Variant C)
                         if has_descriptor:
-                            faces_with_descriptors.append(face_id)
+                            try:
+                                await face_service.update_face_metadata(
+                                    face_id,
+                                    person_id=request.person_id,
+                                    verified=True,
+                                    confidence=1.0,
+                                    excluded=False
+                                )
+                                metadata_updated += 1
+                            except Exception as idx_err:
+                                logger.warning(f"[batch-assign] Failed to update metadata for {face_id}: {idx_err}")
 
             except Exception as e:
                 logger.warning(f"[batch-assign] Failed to update face {face_id}: {e}")
 
-        logger.info(f"[batch-assign] Updated {updated_count}/{len(request.face_ids)} faces")
-
-        index_rebuilt = False
-        if faces_with_descriptors:
-            try:
-                logger.info(f"[batch-assign] Adding {len(faces_with_descriptors)} faces to index...")
-                result = await face_service.add_faces_to_index(faces_with_descriptors)
-                if result.get("added", 0) > 0:
-                    index_rebuilt = True
-                    logger.info(f"[batch-assign] Added {result.get('added')} faces (rebuild_triggered: {result.get('rebuild_triggered')})")
-            except Exception as index_error:
-                logger.error(f"[batch-assign] Error adding to index: {index_error}")
+        logger.info(f"[batch-assign] Updated {updated_count}/{len(request.face_ids)} faces, {metadata_updated} metadata")
 
         return ApiResponse.ok({
             "updated_count": updated_count,
             "total_requested": len(request.face_ids),
             "person_id": request.person_id,
-            "index_rebuilt": index_rebuilt
+            "metadata_updated": metadata_updated
         })
 
     except Exception as e:
@@ -114,6 +121,7 @@ async def batch_verify_faces(
     Batch verify faces: update kept faces and delete removed ones.
 
     v4.8: Optimized - rebuild index ONLY when person_id changes or faces deleted.
+    v6.0: Variant C - use update_face_metadata for person_id changes, mark_deleted only for DB deletes.
     """
     try:
         logger.info(f"[batch-verify] START photo={request.photo_id}, faces={len(request.kept_faces)}")
@@ -132,23 +140,23 @@ async def batch_verify_faces(
         logger.info(f"[batch-verify] Existing IDs in DB: {existing_ids}")
         logger.info(f"[batch-verify] Kept IDs from request: {kept_ids}")
 
-        deleted_face_ids_in_index = []
+        # v6.0: Track faces to delete from index (only those being deleted from DB)
+        deleted_face_ids = []
         to_delete = [fid for fid in existing_ids if fid not in kept_ids]
 
         for face_id in to_delete:
             face_data = next((f for f in existing_faces if f["id"] == face_id), None)
-            if face_data and face_data.get("insightface_descriptor") and face_data.get("person_id"):
-                deleted_face_ids_in_index.append(face_id)
-                logger.info(f"[batch-verify] Deleting face {face_id} (was in index)")
+            if face_data and face_data.get("insightface_descriptor"):
+                deleted_face_ids.append(face_id)
+                logger.info(f"[batch-verify] Deleting face {face_id} (will remove from index)")
             supabase_db.client.table("photo_faces").delete().eq("id", face_id).execute()
 
         if to_delete:
-            logger.info(f"[batch-verify] Deleted {len(to_delete)} faces, {len(deleted_face_ids_in_index)} were in index")
+            logger.info(f"[batch-verify] Deleted {len(to_delete)} faces, {len(deleted_face_ids)} had descriptors")
 
         updated_count = 0
         failed_count = 0
-        faces_removed_from_index = []  # old person_id was set
-        faces_added_to_index = []  # new person_id is set
+        metadata_updated = 0
 
         for face in request.kept_faces:
             if not face.id:
@@ -159,14 +167,6 @@ async def batch_verify_faces(
             has_descriptor = current_face.get("insightface_descriptor") is not None if current_face else False
 
             person_id_changed = face.person_id != current_person_id
-
-            # Only reindex if person_id actually changed
-            # (confidence is handled by embeddings.py - verified=true gives confidence=1.0)
-            if has_descriptor and face.person_id and person_id_changed:
-                if current_person_id:
-                    faces_removed_from_index.append(face.id)
-                faces_added_to_index.append(face.id)
-                logger.info(f"[batch-verify] Face {face.id} person_id changed: {current_person_id} -> {face.person_id}")
 
             from datetime import datetime, timezone
             update_data = {
@@ -185,40 +185,42 @@ async def batch_verify_faces(
 
             if response.data:
                 updated_count += 1
+
+                # v6.0: Update index metadata if person_id changed (face already in index)
+                if has_descriptor and person_id_changed:
+                    try:
+                        # Use empty string to signal "set to None" for person_id
+                        await face_service.update_face_metadata(
+                            face.id,
+                            person_id=face.person_id if face.person_id else "",
+                            verified=bool(face.person_id),
+                            confidence=1.0 if face.person_id else 0.0,
+                            excluded=False
+                        )
+                        metadata_updated += 1
+                        logger.info(f"[batch-verify] Updated metadata for {face.id}: person_id={face.person_id}")
+                    except Exception as idx_err:
+                        logger.warning(f"[batch-verify] Failed to update metadata for {face.id}: {idx_err}")
             else:
                 failed_count += 1
                 logger.error(f"[batch-verify] Face {face.id} update FAILED - no data returned")
 
-        logger.info(f"[batch-verify] Update summary: {updated_count} succeeded, {failed_count} failed")
+        logger.info(f"[batch-verify] Update summary: {updated_count} succeeded, {failed_count} failed, {metadata_updated} metadata updated")
 
-        # Update index incrementally
-        all_removed = deleted_face_ids_in_index + faces_removed_from_index
-        index_rebuilt = False
-
-        if all_removed or faces_added_to_index:
+        # v6.0: Only mark_deleted for faces actually deleted from DB
+        if deleted_face_ids:
             try:
-                if all_removed:
-                    result = await face_service.remove_faces_from_index(all_removed)
-                    logger.info(f"[batch-verify] Removed {result.get('deleted', 0)} faces from index")
-
-                if faces_added_to_index:
-                    result = await face_service.add_faces_to_index(faces_added_to_index)
-                    logger.info(f"[batch-verify] Added {result.get('added', 0)} faces to index")
-                    if result.get("rebuild_triggered"):
-                        index_rebuilt = True
-
-                index_rebuilt = True
+                result = await face_service.remove_faces_from_index(deleted_face_ids)
+                logger.info(f"[batch-verify] Removed {result.get('deleted', 0)} deleted faces from index")
             except Exception as index_error:
-                logger.error(f"[batch-verify] Index update exception: {index_error}")
-        else:
-            logger.info("[batch-verify] No index update needed")
+                logger.error(f"[batch-verify] Index remove exception: {index_error}")
 
         result = {
             "verified": all(f.person_id for f in request.kept_faces) if request.kept_faces else False,
-            "index_rebuilt": index_rebuilt,
             "updated_count": updated_count,
             "failed_count": failed_count,
-            "deleted_count": len(to_delete)
+            "deleted_count": len(to_delete),
+            "metadata_updated": metadata_updated
         }
 
         logger.info(f"[batch-verify] END result={result}")

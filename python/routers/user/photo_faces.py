@@ -2,6 +2,10 @@
 Photo Faces Router
 
 User operations on their photo faces (verify, reject, hide, unhide).
+
+v2.0: Variant C architecture
+- verify/reject use update_face_metadata (face already in index)
+- hide/unhide do NOT sync index (hidden_by_user is display-only, not recognition-related)
 """
 
 from datetime import datetime
@@ -117,12 +121,16 @@ async def verify_photo_face(
 
     logger.info(f"User {user_id or 'unknown'} verified photo_face {photo_face_id}")
 
-    # Sync index - add/update face with confidence=1.0
+    # v2.0: Update index metadata (face already in index from Variant C)
     try:
-        idx_result = await face_service.add_face_to_index(photo_face_id, person_id)
+        idx_result = await face_service.update_face_metadata(
+            photo_face_id,
+            verified=True,
+            confidence=1.0
+        )
         logger.info(f"Index sync (verify): {idx_result}")
     except Exception as idx_err:
-        logger.error(f"Failed to sync index on verify: {idx_err}")
+        logger.error(f"Failed to update index metadata on verify: {idx_err}")
 
     # Log activities
     gi = photo_face.get("gallery_image", {})
@@ -181,12 +189,18 @@ async def reject_photo_face(
 
     logger.info(f"User {user_id or 'unknown'} rejected photo_face {photo_face_id} (removed person_id)")
 
-    # Sync index - remove face (no longer linked to anyone)
+    # v2.0: Update index metadata - set person_id to None (face stays in index)
+    # Empty string "" signals to update_metadata to set person_id to None
     try:
-        idx_result = await face_service.remove_face_from_index(photo_face_id)
+        idx_result = await face_service.update_face_metadata(
+            photo_face_id,
+            person_id="",  # Special value: set to None
+            verified=False,
+            confidence=0.0
+        )
         logger.info(f"Index sync (reject): {idx_result}")
     except Exception as idx_err:
-        logger.error(f"Failed to sync index on reject: {idx_err}")
+        logger.error(f"Failed to update index metadata on reject: {idx_err}")
 
     return ApiResponse.ok({"rejected": True}).model_dump()
 
@@ -196,11 +210,13 @@ async def hide_photo_face(
     photo_face_id: str,
     person_id: str = Query(..., description="Person ID from cookie"),
     user_id: Optional[str] = Query(None, description="User ID for logging"),
-    face_service: FaceRecognitionService = Depends(get_face_service),
 ) -> dict:
     """
     Hide photo from public galleries.
     Only allowed if user is the only person on the photo.
+
+    v2.0: Does NOT affect HNSW index. hidden_by_user is display-only.
+    Hidden photos are still used for recognition ("это я, но не показывать").
     """
     db = get_supabase_client().client
 
@@ -226,12 +242,8 @@ async def hide_photo_face(
 
     logger.info(f"User {user_id or 'unknown'} hid photo_face {photo_face_id}")
 
-    # Sync index - remove hidden face (shouldn't match in searches)
-    try:
-        idx_result = await face_service.remove_face_from_index(photo_face_id)
-        logger.info(f"Index sync (hide): {idx_result}")
-    except Exception as idx_err:
-        logger.error(f"Failed to sync index on hide: {idx_err}")
+    # v2.0: NO index sync - hidden_by_user does not affect recognition
+    # Hidden photo means "это я, но не показывать" - still used for recognition
 
     # Log activity
     gi = photo_face.get("gallery_image", {})
@@ -250,10 +262,11 @@ async def unhide_photo_face(
     photo_face_id: str,
     person_id: str = Query(..., description="Person ID from cookie"),
     user_id: Optional[str] = Query(None, description="User ID for logging"),
-    face_service: FaceRecognitionService = Depends(get_face_service),
 ) -> dict:
     """
     Unhide photo - show in public galleries again.
+
+    v2.0: Does NOT affect HNSW index. hidden_by_user is display-only.
     """
     db = get_supabase_client().client
 
@@ -271,13 +284,7 @@ async def unhide_photo_face(
 
     logger.info(f"User {user_id or 'unknown'} unhid photo_face {photo_face_id}")
 
-    # Sync index - add face back (if has person_id)
-    if photo_face.get("person_id"):
-        try:
-            idx_result = await face_service.add_face_to_index(photo_face_id, photo_face["person_id"])
-            logger.info(f"Index sync (unhide): {idx_result}")
-        except Exception as idx_err:
-            logger.error(f"Failed to sync index on unhide: {idx_err}")
+    # v2.0: NO index sync - hidden_by_user does not affect recognition
 
     # Log activity
     gi = photo_face.get("gallery_image", {})

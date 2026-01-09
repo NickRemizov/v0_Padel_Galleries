@@ -5,9 +5,14 @@ Extracted from supabase_database.py. Handles:
 - Loading embeddings for HNSW index
 - Audit operations (get all embeddings for person)
 - Exclusion management (outliers)
+
+v6.0: Variant C architecture - loads ALL faces with descriptors:
+- Faces without person_id are included (person_id can be None)
+- excluded_from_index is returned as metadata, not filtered
+- Recognition logic handles exclusion in FaceRecognitionService
 """
 
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import numpy as np
 import json
 
@@ -23,46 +28,48 @@ class EmbeddingsRepository:
     def __init__(self):
         self._client = get_supabase_client()
     
-    def get_all_player_embeddings(self) -> Tuple[List[str], List[str], List[np.ndarray], List[bool], List[float]]:
+    def get_all_player_embeddings(self) -> Tuple[List[str], List[Optional[str]], List[np.ndarray], List[bool], List[float], List[bool]]:
         """
         Load InsightFace embeddings from photo_faces table for HNSW index.
-        Only loads embeddings where excluded_from_index = FALSE.
+
+        v6.0 Variant C: Loads ALL faces with descriptors:
+        - Faces without person_id are included (person_id will be None)
+        - excluded_from_index is returned as metadata, not filtered out
+        - Recognition logic will skip faces where person_id is None OR excluded is True
 
         Returns:
-            Tuple of (face_ids, person_ids, embeddings, verified_flags, confidences)
+            Tuple of (face_ids, person_ids, embeddings, verified_flags, confidences, excluded_flags)
+            - person_ids can contain None for unassigned faces
         """
-        logger.info("Loading embeddings from Supabase (excluded_from_index=FALSE)...")
-        
+        logger.info("Loading ALL embeddings from Supabase (Variant C)...")
+
         try:
             all_data = []
             page_size = 1000
             offset = 0
-            
+
             while True:
+                # v6.0: Load ALL faces with descriptors, no filter on person_id or excluded
                 response = self._client.table("photo_faces").select(
-                    "id, person_id, insightface_descriptor, verified, recognition_confidence, created_at"
+                    "id, person_id, insightface_descriptor, verified, recognition_confidence, excluded_from_index, created_at"
                 ).not_.is_(
                     "insightface_descriptor", "null"
-                ).not_.is_(
-                    "person_id", "null"
-                ).eq(
-                    "excluded_from_index", False
                 ).order("created_at", desc=False).range(offset, offset + page_size - 1).execute()
-                
+
                 if not response.data:
                     break
-                
+
                 all_data.extend(response.data)
                 logger.debug(f"Loaded page: offset={offset}, count={len(response.data)}, total={len(all_data)}")
-                
+
                 if len(response.data) < page_size:
                     break
-                
+
                 offset += page_size
-            
+
             if not all_data:
                 logger.warning("No embeddings found in database")
-                return [], [], [], [], []
+                return [], [], [], [], [], []
 
             # Process results
             face_ids = []
@@ -70,13 +77,23 @@ class EmbeddingsRepository:
             embeddings = []
             verified_flags = []
             confidences = []
+            excluded_flags = []
             skipped = 0
 
             for row in all_data:
                 descriptor = row["insightface_descriptor"]
                 verified = row.get("verified", False) or False
+                excluded = row.get("excluded_from_index", False) or False
+                person_id = row.get("person_id")  # Can be None
+
                 # Verified faces ALWAYS have confidence 1.0 (source is trusted)
-                confidence = 1.0 if verified else (row.get("recognition_confidence") or 0.0)
+                # Faces without person_id have confidence 0.0
+                if verified:
+                    confidence = 1.0
+                elif person_id:
+                    confidence = row.get("recognition_confidence") or 0.0
+                else:
+                    confidence = 0.0
 
                 # Convert descriptor
                 if isinstance(descriptor, list):
@@ -93,23 +110,29 @@ class EmbeddingsRepository:
                     continue
 
                 face_ids.append(str(row["id"]))
-                person_ids.append(str(row["person_id"]))
+                person_ids.append(person_id)  # Keep as None if NULL
                 embeddings.append(embedding)
                 verified_flags.append(verified)
                 confidences.append(float(confidence))
+                excluded_flags.append(excluded)
 
+            # Statistics
+            with_person = sum(1 for p in person_ids if p is not None)
             verified_count = sum(verified_flags)
-            unique_people = len(set(person_ids))
-            logger.info(f"Loaded {len(embeddings)} embeddings ({verified_count} verified) for {unique_people} people")
+            excluded_count = sum(excluded_flags)
+            unique_people = len(set(p for p in person_ids if p is not None))
+
+            logger.info(f"Loaded {len(embeddings)} embeddings: {with_person} with person_id, "
+                       f"{verified_count} verified, {excluded_count} excluded, {unique_people} unique people")
 
             if skipped > 0:
                 logger.warning(f"Skipped {skipped} invalid embeddings")
 
-            return face_ids, person_ids, embeddings, verified_flags, confidences
+            return face_ids, person_ids, embeddings, verified_flags, confidences, excluded_flags
 
         except Exception as e:
             logger.error(f"Error loading embeddings: {e}", exc_info=True)
-            return [], [], [], [], []
+            return [], [], [], [], [], []
     
     def get_person_embeddings_for_audit(self, person_id: str) -> List[Dict]:
         """
