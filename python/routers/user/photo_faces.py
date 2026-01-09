@@ -7,14 +7,20 @@ User operations on their photo faces (verify, reject, hide, unhide).
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
 from core.logging import get_logger
 from core.responses import ApiResponse
 from infrastructure.supabase import get_supabase_client
+from services.face_recognition import FaceRecognitionService
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def get_face_service():
+    """Dependency to get FaceRecognitionService instance."""
+    return FaceRecognitionService(get_supabase_client())
 
 
 # =============================================================================
@@ -88,10 +94,11 @@ async def verify_photo_face(
     photo_face_id: str,
     person_id: str = Query(..., description="Person ID from cookie"),
     user_id: Optional[str] = Query(None, description="User ID for logging"),
+    face_service: FaceRecognitionService = Depends(get_face_service),
 ) -> dict:
     """
     Verify that this photo face is the user.
-    Sets verified=true.
+    Sets verified=true and recognition_confidence=1.0.
     """
     db = get_supabase_client().client
 
@@ -101,13 +108,21 @@ async def verify_photo_face(
     if photo_face.get("person_id") != person_id:
         raise HTTPException(status_code=403, detail="Cannot verify other person's photos")
 
-    # Update
+    # Update - set verified=true AND recognition_confidence=1.0
     db.table("photo_faces").update({
         "verified": True,
+        "recognition_confidence": 1.0,  # Fix #5: verified faces always have confidence 1.0
         "updated_at": datetime.utcnow().isoformat(),
     }).eq("id", photo_face_id).execute()
 
     logger.info(f"User {user_id or 'unknown'} verified photo_face {photo_face_id}")
+
+    # Sync index - add/update face with confidence=1.0
+    try:
+        idx_result = await face_service.add_face_to_index(photo_face_id, person_id)
+        logger.info(f"Index sync (verify): {idx_result}")
+    except Exception as idx_err:
+        logger.error(f"Failed to sync index on verify: {idx_err}")
 
     # Log activities
     gi = photo_face.get("gallery_image", {})
@@ -129,10 +144,11 @@ async def reject_photo_face(
     photo_face_id: str,
     person_id: str = Query(..., description="Person ID from cookie"),
     user_id: Optional[str] = Query(None, description="User ID for logging"),
+    face_service: FaceRecognitionService = Depends(get_face_service),
 ) -> dict:
     """
     Reject photo face - "this is not me".
-    Removes person_id link, resets verified and hidden_by_user.
+    Removes person_id link, resets verified, hidden_by_user, and recognition_confidence.
     """
     db = get_supabase_client().client
 
@@ -154,15 +170,23 @@ async def reject_photo_face(
     if user_id:
         log_admin_activity(db, "photo_rejected", user_id, person_id, metadata)
 
-    # Remove person link
+    # Remove person link and reset confidence
     db.table("photo_faces").update({
         "person_id": None,
         "verified": False,
         "hidden_by_user": False,
+        "recognition_confidence": None,  # Reset confidence when rejected
         "updated_at": datetime.utcnow().isoformat(),
     }).eq("id", photo_face_id).execute()
 
     logger.info(f"User {user_id or 'unknown'} rejected photo_face {photo_face_id} (removed person_id)")
+
+    # Sync index - remove face (no longer linked to anyone)
+    try:
+        idx_result = await face_service.remove_face_from_index(photo_face_id)
+        logger.info(f"Index sync (reject): {idx_result}")
+    except Exception as idx_err:
+        logger.error(f"Failed to sync index on reject: {idx_err}")
 
     return ApiResponse.ok({"rejected": True}).model_dump()
 
@@ -172,6 +196,7 @@ async def hide_photo_face(
     photo_face_id: str,
     person_id: str = Query(..., description="Person ID from cookie"),
     user_id: Optional[str] = Query(None, description="User ID for logging"),
+    face_service: FaceRecognitionService = Depends(get_face_service),
 ) -> dict:
     """
     Hide photo from public galleries.
@@ -201,6 +226,13 @@ async def hide_photo_face(
 
     logger.info(f"User {user_id or 'unknown'} hid photo_face {photo_face_id}")
 
+    # Sync index - remove hidden face (shouldn't match in searches)
+    try:
+        idx_result = await face_service.remove_face_from_index(photo_face_id)
+        logger.info(f"Index sync (hide): {idx_result}")
+    except Exception as idx_err:
+        logger.error(f"Failed to sync index on hide: {idx_err}")
+
     # Log activity
     gi = photo_face.get("gallery_image", {})
     metadata = {
@@ -218,6 +250,7 @@ async def unhide_photo_face(
     photo_face_id: str,
     person_id: str = Query(..., description="Person ID from cookie"),
     user_id: Optional[str] = Query(None, description="User ID for logging"),
+    face_service: FaceRecognitionService = Depends(get_face_service),
 ) -> dict:
     """
     Unhide photo - show in public galleries again.
@@ -237,6 +270,14 @@ async def unhide_photo_face(
     }).eq("id", photo_face_id).execute()
 
     logger.info(f"User {user_id or 'unknown'} unhid photo_face {photo_face_id}")
+
+    # Sync index - add face back (if has person_id)
+    if photo_face.get("person_id"):
+        try:
+            idx_result = await face_service.add_face_to_index(photo_face_id, photo_face["person_id"])
+            logger.info(f"Index sync (unhide): {idx_result}")
+        except Exception as idx_err:
+            logger.error(f"Failed to sync index on unhide: {idx_err}")
 
     # Log activity
     gi = photo_face.get("gallery_image", {})

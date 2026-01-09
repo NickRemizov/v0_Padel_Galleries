@@ -52,7 +52,8 @@ async def regenerate_missing_descriptors(
         regenerated = 0
         failed = 0
         details = []
-        
+        regenerated_face_ids = []  # Track for index sync
+
         # Group by photo_id for efficient processing
         faces_by_photo = {}
         for face in missing_faces:
@@ -103,8 +104,9 @@ async def regenerate_missing_descriptors(
                                 "insightface_descriptor": embedding,
                                 "insightface_det_score": float(best_match["det_score"]),
                             }).eq("id", missing_face["id"]).execute()
-                            
+
                             regenerated += 1
+                            regenerated_face_ids.append(missing_face["id"])
                             details.append({"face_id": missing_face["id"], "status": "success", "iou": round(best_iou, 3)})
                             logger.info(f"[v{VERSION}] ✓ Regenerated {missing_face['id']} (IoU: {best_iou:.3f})")
                         else:
@@ -121,12 +123,23 @@ async def regenerate_missing_descriptors(
                     details.append({"face_id": face["id"], "status": "error", "error": str(photo_error)})
         
         logger.info(f"[v{VERSION}] ===== END ===== Total: {len(missing_faces)}, Success: {regenerated}, Failed: {failed}")
-        
+
+        # Sync index - add regenerated faces (they all have person_id)
+        index_rebuilt = False
+        if regenerated_face_ids:
+            try:
+                idx_result = await face_service.add_faces_to_index(regenerated_face_ids)
+                logger.info(f"[v{VERSION}] Index sync: {idx_result}")
+                index_rebuilt = idx_result.get("rebuild_triggered", False)
+            except Exception as idx_err:
+                logger.error(f"[v{VERSION}] Failed to add regenerated faces to index: {idx_err}")
+
         return ApiResponse.ok({
             "total_faces": len(missing_faces),
             "regenerated": regenerated,
             "failed": failed,
-            "details": details
+            "details": details,
+            "index_rebuilt": index_rebuilt
         }).model_dump()
     
     except Exception as e:
@@ -187,11 +200,22 @@ async def regenerate_single_descriptor(
             "insightface_descriptor": embedding,
             "insightface_det_score": float(best_match["det_score"]),
         }).eq("id", face_id).execute()
-        
+
         logger.info(f"[v{VERSION}] ✓ Regenerated {face_id} (IoU: {best_iou:.2f})")
-        
+
+        # Sync index - add to index if has person_id
+        index_rebuilt = False
+        if face.get("person_id"):
+            try:
+                idx_result = await face_service.add_face_to_index(face_id, face["person_id"])
+                logger.info(f"[v{VERSION}] Index sync: {idx_result}")
+                index_rebuilt = idx_result.get("rebuild_triggered", False)
+            except Exception as idx_err:
+                logger.error(f"[v{VERSION}] Failed to add to index: {idx_err}")
+
         return ApiResponse.ok({
             "iou": round(best_iou, 2),
+            "index_rebuilt": index_rebuilt,
             "det_score": round(float(best_match["det_score"]), 2)
         }).model_dump()
         

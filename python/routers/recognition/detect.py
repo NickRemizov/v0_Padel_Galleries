@@ -206,8 +206,22 @@ async def process_photo(
             logger.info(f"[v{VERSION}] Quality filters (request+DB): {face_service.quality_filters}")
         
         if force_redetect:
-            logger.info(f"[v{VERSION}] Force redetect - deleting existing faces")
+            logger.info(f"[v{VERSION}] Force redetect - getting face IDs before deletion")
+            # Get face IDs BEFORE deleting (for index cleanup)
+            existing_for_delete = supabase_client.client.table("photo_faces").select("id").eq("photo_id", photo_id).execute()
+            face_ids_to_remove = [f["id"] for f in (existing_for_delete.data or [])]
+
+            # Delete from DB
             supabase_client.client.table("photo_faces").delete().eq("photo_id", photo_id).execute()
+            logger.info(f"[v{VERSION}] Deleted {len(face_ids_to_remove)} faces from DB")
+
+            # Remove from index
+            if face_ids_to_remove:
+                try:
+                    idx_result = await face_service.remove_faces_from_index(face_ids_to_remove)
+                    logger.info(f"[v{VERSION}] Index cleanup: {idx_result}")
+                except Exception as idx_err:
+                    logger.error(f"[v{VERSION}] Failed to remove from index: {idx_err}")
         
         existing_result = supabase_client.client.table("photo_faces").select(
             "id, person_id, recognition_confidence, verified, insightface_bbox, insightface_det_score, insightface_descriptor, blur_score"
@@ -294,7 +308,18 @@ async def process_photo(
                     }
             
             logger.info(f"[v{VERSION}] Saved {len(saved_faces)} faces")
-            
+
+            # Add faces with person_id to index (add_faces_to_index filters automatically)
+            index_rebuilt = False
+            if saved_faces:
+                face_ids_to_index = [f["id"] for f in saved_faces]
+                try:
+                    idx_result = await face_service.add_faces_to_index(face_ids_to_index)
+                    logger.info(f"[v{VERSION}] Index sync: {idx_result}")
+                    index_rebuilt = idx_result.get("rebuild_triggered", False)
+                except Exception as idx_err:
+                    logger.error(f"[v{VERSION}] Failed to add to index: {idx_err}")
+
             response_faces = []
             for face in saved_faces:
                 if face["person_id"]:
@@ -315,7 +340,7 @@ async def process_photo(
                     "distance_to_nearest": metrics.get("distance_to_nearest"),
                     "top_matches": metrics.get("top_matches", []),
                     "people": person_data,
-                    "index_rebuilt": False,
+                    "index_rebuilt": index_rebuilt,
                 })
             
             logger.info(f"[v{VERSION}] PROCESS PHOTO REQUEST END")
@@ -328,10 +353,11 @@ async def process_photo(
         # v2.3: Also uses save_threshold for DB updates
         # ========================================================================
         logger.info(f"[v{VERSION}] Case 2: Existing faces - recognizing unverified")
-        
+
         face_metrics = {}
         recognized_count = 0
-        
+        recognized_face_ids = []  # Track faces that got person_id for index sync
+
         for face in existing_faces:
             face_id = face["id"]
             descriptor = face.get("insightface_descriptor")
@@ -372,11 +398,22 @@ async def process_photo(
                             "person_id": person_id,
                             "recognition_confidence": rec_confidence
                         }).eq("id", face_id).execute()
-                        
+
                         recognized_count += 1
+                        recognized_face_ids.append(face_id)
                         logger.info(f"[v{VERSION}] Recognized face {face_id[:8]}: person={person_id[:8]}, confidence={rec_confidence:.3f}")
-        
+
         logger.info(f"[v{VERSION}] Recognized {recognized_count} unverified faces")
+
+        # Add recognized faces to index
+        index_rebuilt = False
+        if recognized_face_ids:
+            try:
+                idx_result = await face_service.add_faces_to_index(recognized_face_ids)
+                logger.info(f"[v{VERSION}] Index sync (recognized): {idx_result}")
+                index_rebuilt = idx_result.get("rebuild_triggered", False)
+            except Exception as idx_err:
+                logger.error(f"[v{VERSION}] Failed to add recognized faces to index: {idx_err}")
         
         # Reload faces after potential updates
         final_result = supabase_client.client.table("photo_faces").select(
@@ -391,7 +428,7 @@ async def process_photo(
                 "blur_score": face.get("blur_score") or metrics.get("blur_score"),
                 "distance_to_nearest": metrics.get("distance_to_nearest"),
                 "top_matches": metrics.get("top_matches", []),
-                "index_rebuilt": False,
+                "index_rebuilt": index_rebuilt,
             })
         
         logger.info(f"[v{VERSION}] Returning {len(response_faces)} faces (recognized {recognized_count})")
