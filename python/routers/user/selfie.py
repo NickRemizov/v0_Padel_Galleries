@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from core.logging import get_logger
 from core.responses import ApiResponse
 from infrastructure.supabase import get_supabase_client
-from infrastructure.minio import get_minio_client
+from infrastructure.minio_storage import get_minio_storage
 from services.face_recognition import FaceRecognitionService
 
 logger = get_logger(__name__)
@@ -69,18 +69,19 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 async def save_selfie_to_minio(user_id: str, image_bytes: bytes) -> str:
     """Save selfie image to MinIO and return URL."""
-    minio = get_minio_client()
-    filename = f"selfies/{user_id}/{uuid.uuid4().hex[:12]}.jpg"
+    minio = get_minio_storage()
 
-    minio.client.put_object(
-        minio.bucket_name,
-        filename,
-        io.BytesIO(image_bytes),
-        len(image_bytes),
-        content_type="image/jpeg"
+    # Use avatars bucket for selfies (or could create selfies bucket)
+    filename = f"selfie_{user_id}_{uuid.uuid4().hex[:8]}.jpg"
+
+    result = minio.upload_file(
+        file_data=image_bytes,
+        filename=filename,
+        content_type="image/jpeg",
+        folder="avatars"  # Store in avatars bucket
     )
 
-    return f"{minio.public_url}/{minio.bucket_name}/{filename}"
+    return result["url"]
 
 
 async def search_unknown_faces(
