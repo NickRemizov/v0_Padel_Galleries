@@ -24,17 +24,19 @@ export interface FaceTaggingDialogProps {
 export interface DetailedFace {
   boundingBox: BoundingBox
   size: number
-  blur_score: number
+  blur_score?: number
   detection_score: number
-  recognition_confidence: number | null
+  recognition_confidence?: number | null
   embedding_quality?: number
   distance_to_nearest?: number
   top_matches?: Array<{
     person_id: string
     name: string
     similarity: number
+    source_verified?: boolean
+    source_confidence?: number
   }>
-  person_name: string | null
+  person_name?: string | null
 }
 
 /**

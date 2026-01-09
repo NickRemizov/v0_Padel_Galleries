@@ -4,8 +4,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Check, Trash2 } from "lucide-react"
+import { Check, Trash2, Loader2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import type { DetailedFace } from "./face-tagging/types"
+
+// Re-export for backward compatibility
+export type { DetailedFace }
 
 interface FaceRecognitionDetailsDialogProps {
   open: boolean
@@ -14,24 +18,6 @@ interface FaceRecognitionDetailsDialogProps {
   imageUrl?: string
   onAssignPerson?: (faceIndex: number, personId: string, personName: string) => void
   onDeleteFace?: (faceIndex: number) => Promise<void>
-}
-
-export interface DetailedFace {
-  boundingBox: { x: number; y: number; width: number; height: number }
-  size: number
-  blur_score?: number
-  detection_score: number
-  recognition_confidence?: number
-  embedding_quality?: number
-  distance_to_nearest?: number
-  top_matches?: Array<{
-    person_id: string
-    name: string
-    similarity: number
-    source_verified?: boolean
-    source_confidence?: number
-  }>
-  person_name?: string
 }
 
 export function FaceRecognitionDetailsDialog({
@@ -44,14 +30,14 @@ export function FaceRecognitionDetailsDialog({
 }: FaceRecognitionDetailsDialogProps) {
   // Track which faces have been assigned in this session
   const [assignedFaces, setAssignedFaces] = useState<Set<number>>(new Set())
-  // Track which faces have been excluded (deleted) in this session
-  const [excludedFaces, setExcludedFaces] = useState<Set<number>>(new Set())
+  // Track which faces are currently being deleted (prevent double-click)
+  const [deletingFaces, setDeletingFaces] = useState<Set<number>>(new Set())
 
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
       setAssignedFaces(new Set())
-      setExcludedFaces(new Set())
+      setDeletingFaces(new Set())
     }
   }, [open])
 
@@ -84,17 +70,23 @@ export function FaceRecognitionDetailsDialog({
 
   const handleExclude = async (faceIndex: number) => {
     if (!onDeleteFace) return
+    // Prevent double-click
+    if (deletingFaces.has(faceIndex)) return
+
+    // Mark as deleting
+    setDeletingFaces(prev => new Set(prev).add(faceIndex))
 
     try {
-      // Call the parent's delete handler (API call)
+      // Call the parent's delete handler (API call + removes from arrays)
       await onDeleteFace(faceIndex)
-
-      // Mark this face as excluded only on success
-      const newExcluded = new Set(excludedFaces)
-      newExcluded.add(faceIndex)
-      setExcludedFaces(newExcluded)
+      // Face is removed from parent's array, component will re-render
     } catch {
-      // Error is already shown by parent, don't mark as excluded
+      // Error is already shown by parent, remove from deleting set
+      setDeletingFaces(prev => {
+        const next = new Set(prev)
+        next.delete(faceIndex)
+        return next
+      })
     }
   }
 
@@ -107,11 +99,10 @@ export function FaceRecognitionDetailsDialog({
 
         <div className="flex-1 overflow-y-auto space-y-6 pr-2">
           {faces.map((face, index) => {
-            // Determine if this is a recognized face (exact match)
-            const isExactMatch = face.recognition_confidence !== undefined && face.recognition_confidence >= 0.999
+            // Determine if this is a recognized face (exact match = verified)
+            const isExactMatch = face.recognition_confidence === 1.0
             const isRecognized = face.recognition_confidence !== undefined && face.recognition_confidence > 0 && face.person_name
             const isAssigned = assignedFaces.has(index)
-            const isExcluded = excludedFaces.has(index)
 
             // Use distance_to_nearest if available, otherwise calculate from confidence
             const distance = face.distance_to_nearest !== undefined && face.distance_to_nearest !== null
@@ -120,12 +111,8 @@ export function FaceRecognitionDetailsDialog({
                 ? (1 - face.recognition_confidence).toFixed(3)
                 : "N/A"
 
-            // Card style: green for assigned, red for excluded
-            const cardClass = isExcluded
-              ? "border-red-500 bg-red-50"
-              : isAssigned
-                ? "border-green-500 bg-green-50"
-                : ""
+            // Card style: green for assigned
+            const cardClass = isAssigned ? "border-green-500 bg-green-50" : ""
 
             return (
               <Card key={index} className={cardClass}>
@@ -136,11 +123,8 @@ export function FaceRecognitionDetailsDialog({
                       {isAssigned && (
                         <span className="text-green-600 text-sm font-normal">(назначен)</span>
                       )}
-                      {isExcluded && (
-                        <span className="text-red-600 text-sm font-normal">(удалён)</span>
-                      )}
                     </CardTitle>
-                    {onDeleteFace && !face.person_name && !isAssigned && !isExcluded && (
+                    {onDeleteFace && !face.person_name && !isAssigned && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -149,8 +133,13 @@ export function FaceRecognitionDetailsDialog({
                               variant="destructive"
                               className="h-7 w-7 p-0"
                               onClick={() => handleExclude(index)}
+                              disabled={deletingFaces.has(index)}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              {deletingFaces.has(index) ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -202,7 +191,7 @@ export function FaceRecognitionDetailsDialog({
                     </div>
                   </div>
 
-                  {face.top_matches && face.top_matches.length > 0 && !face.person_name && !isAssigned && !isExcluded && (
+                  {face.top_matches && face.top_matches.length > 0 && !face.person_name && !isAssigned && (
                     <div className="mt-4 pt-4 border-t">
                       <p className="text-sm text-muted-foreground mb-2">Топ-3 похожих лиц:</p>
                       <ol className="list-decimal list-inside space-y-2">

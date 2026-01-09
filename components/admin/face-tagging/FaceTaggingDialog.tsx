@@ -9,9 +9,9 @@ import { APP_VERSION } from "@/lib/version"
 import { updatePersonAvatarAction } from "@/app/admin/actions"
 
 import { AddPersonDialog } from "../add-person-dialog"
-import { FaceRecognitionDetailsDialog, type DetailedFace } from "../face-recognition-details-dialog"
+import { FaceRecognitionDetailsDialog } from "../face-recognition-details-dialog"
 
-import type { FaceTaggingDialogProps, ImageFitMode } from "./types"
+import type { FaceTaggingDialogProps, ImageFitMode, DetailedFace } from "./types"
 import { getDisplayFileName, getFullFileName } from "./utils"
 import { useFaceCanvas, useFaceAPI, useKeyboardShortcuts } from "./hooks"
 import {
@@ -233,10 +233,12 @@ export function FaceTaggingDialog({
       loadedForImageIdRef.current = imageId
       drawFaces(tagged, null)
       setHasRedetectedData(true)
+      // Notify parent to update badges with fresh data
+      onSave?.(imageId, tagged, false)
     } catch (error) {
       alert(`Error: ${error}`)
     }
-  }, [imageId, redetectFaces, drawFaces])
+  }, [imageId, redetectFaces, drawFaces, onSave])
 
   const handleAssignFromDetails = useCallback((faceIndex: number, personId: string, personName: string) => {
     const updated = [...taggedFaces]
@@ -268,7 +270,7 @@ export function FaceTaggingDialog({
     }
 
     try {
-      // Exclude face from index via API
+      // Exclude face from index via API (deletes unrecognized faces from DB)
       console.log("[FaceTaggingDialog] Calling API to exclude face:", face.id)
       const response = await fetch(`/api/faces/${face.id}/set-excluded?excluded=true`, {
         method: "POST",
@@ -282,12 +284,22 @@ export function FaceTaggingDialog({
       }
 
       console.log("[FaceTaggingDialog] Face excluded successfully:", face.id)
+
+      // Remove face from state arrays (it's already deleted from DB)
+      const updatedTagged = taggedFaces.filter((_, i) => i !== faceIndex)
+      const updatedDetailed = detailedFaces.filter((_, i) => i !== faceIndex)
+      setTaggedFaces(updatedTagged)
+      setDetailedFaces(updatedDetailed)
+      drawFaces(updatedTagged, selectedFaceIndex === faceIndex ? null : selectedFaceIndex)
+      if (selectedFaceIndex === faceIndex) {
+        setSelectedFaceIndex(null)
+      }
     } catch (error) {
       console.error("[FaceTaggingDialog] Error excluding face:", error)
       alert("Ошибка при удалении эмбеддинга")
       throw error
     }
-  }, [taggedFaces])
+  }, [taggedFaces, detailedFaces, selectedFaceIndex, drawFaces])
 
   const handleSaveWithoutClosing = useCallback(async () => {
     const updatedFaces = await saveFaces(imageId, taggedFaces, false)

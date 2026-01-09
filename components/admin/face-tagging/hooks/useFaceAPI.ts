@@ -58,7 +58,7 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
         face: {
           boundingBox: f.insightface_bbox,
           confidence: f.insightface_det_score,
-          blur_score: 0,
+          blur_score: f.blur_score ?? 0,
           embedding: null,
         },
         personId: f.person_id,
