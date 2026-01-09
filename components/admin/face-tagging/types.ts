@@ -22,6 +22,7 @@ export interface FaceTaggingDialogProps {
  * Detailed face data for metrics dialog
  */
 export interface DetailedFace {
+  id: string  // photo_faces.id for tracking deletions
   boundingBox: BoundingBox
   size: number
   blur_score?: number

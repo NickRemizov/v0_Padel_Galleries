@@ -28,38 +28,36 @@ export function FaceRecognitionDetailsDialog({
   onAssignPerson,
   onDeleteFace,
 }: FaceRecognitionDetailsDialogProps) {
-  // Track which faces have been assigned in this session
-  const [assignedFaces, setAssignedFaces] = useState<Set<number>>(new Set())
-  // Track which faces are currently being deleted (prevent double-click)
-  const [deletingFaces, setDeletingFaces] = useState<Set<number>>(new Set())
+  // Track by face.id (stable) instead of index (changes on deletion)
+  const [assignedFaceIds, setAssignedFaceIds] = useState<Set<string>>(new Set())
+  const [deletingFaceIds, setDeletingFaceIds] = useState<Set<string>>(new Set())
 
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
-      setAssignedFaces(new Set())
-      setDeletingFaces(new Set())
+      setAssignedFaceIds(new Set())
+      setDeletingFaceIds(new Set())
     }
   }, [open])
 
   // Count unknown faces (faces without person_name that haven't been assigned)
   const unknownFacesCount = faces.filter(
-    (face, index) => !face.person_name && !assignedFaces.has(index)
+    face => !face.person_name && !assignedFaceIds.has(face.id)
   ).length
 
-  const handleAssign = (faceIndex: number, personId: string, personName: string) => {
+  const handleAssign = (faceIndex: number, faceId: string, personId: string, personName: string) => {
     if (!onAssignPerson) return
 
     // Call the parent's assign handler
     onAssignPerson(faceIndex, personId, personName)
 
-    // Mark this face as assigned
-    const newAssigned = new Set(assignedFaces)
-    newAssigned.add(faceIndex)
-    setAssignedFaces(newAssigned)
+    // Mark this face as assigned by ID
+    setAssignedFaceIds(prev => new Set(prev).add(faceId))
 
     // Check if all unknown faces are now assigned
+    const newAssigned = new Set(assignedFaceIds).add(faceId)
     const remainingUnknown = faces.filter(
-      (face, index) => !face.person_name && !newAssigned.has(index)
+      face => !face.person_name && !newAssigned.has(face.id)
     ).length
 
     // If only one unknown face total, or all unknown faces are now assigned, close dialog
@@ -68,23 +66,24 @@ export function FaceRecognitionDetailsDialog({
     }
   }
 
-  const handleExclude = async (faceIndex: number) => {
+  const handleExclude = async (faceIndex: number, faceId: string) => {
     if (!onDeleteFace) return
-    // Prevent double-click
-    if (deletingFaces.has(faceIndex)) return
+    // Prevent double-click using face ID (stable across re-renders)
+    if (deletingFaceIds.has(faceId)) return
 
-    // Mark as deleting
-    setDeletingFaces(prev => new Set(prev).add(faceIndex))
+    // Mark as deleting by ID
+    setDeletingFaceIds(prev => new Set(prev).add(faceId))
 
     try {
       // Call the parent's delete handler (API call + removes from arrays)
       await onDeleteFace(faceIndex)
-      // Face is removed from parent's array, component will re-render
+      // Face is removed from parent's array, component will re-render with new faces
+      // deletingFaceIds will have the old faceId but it won't match any face anymore
     } catch {
       // Error is already shown by parent, remove from deleting set
-      setDeletingFaces(prev => {
+      setDeletingFaceIds(prev => {
         const next = new Set(prev)
-        next.delete(faceIndex)
+        next.delete(faceId)
         return next
       })
     }
@@ -102,7 +101,8 @@ export function FaceRecognitionDetailsDialog({
             // Determine if this is a recognized face (exact match = verified)
             const isExactMatch = face.recognition_confidence === 1.0
             const isRecognized = face.recognition_confidence !== undefined && face.recognition_confidence > 0 && face.person_name
-            const isAssigned = assignedFaces.has(index)
+            const isAssigned = assignedFaceIds.has(face.id)
+            const isDeleting = deletingFaceIds.has(face.id)
 
             // Use distance_to_nearest if available, otherwise calculate from confidence
             const distance = face.distance_to_nearest !== undefined && face.distance_to_nearest !== null
@@ -115,7 +115,7 @@ export function FaceRecognitionDetailsDialog({
             const cardClass = isAssigned ? "border-green-500 bg-green-50" : ""
 
             return (
-              <Card key={index} className={cardClass}>
+              <Card key={face.id} className={cardClass}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-2xl flex items-center gap-2">
@@ -132,10 +132,10 @@ export function FaceRecognitionDetailsDialog({
                               size="sm"
                               variant="destructive"
                               className="h-7 w-7 p-0"
-                              onClick={() => handleExclude(index)}
-                              disabled={deletingFaces.has(index)}
+                              onClick={() => handleExclude(index, face.id)}
+                              disabled={isDeleting}
                             >
-                              {deletingFaces.has(index) ? (
+                              {isDeleting ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <Trash2 className="h-4 w-4" />
@@ -165,8 +165,8 @@ export function FaceRecognitionDetailsDialog({
                       <div>
                         <p className="text-sm text-muted-foreground">Blur score</p>
                         <p className="text-lg font-semibold">
-                          {face.blur_score !== undefined && face.blur_score !== null 
-                            ? face.blur_score.toFixed(1) 
+                          {face.blur_score !== undefined && face.blur_score !== null
+                            ? face.blur_score.toFixed(1)
                             : "N/A"}
                         </p>
                       </div>
@@ -211,7 +211,7 @@ export function FaceRecognitionDetailsDialog({
                                     <Button
                                       size="sm"
                                       className="h-7 w-7 p-0 bg-green-600 hover:bg-green-700 text-white"
-                                      onClick={() => handleAssign(index, match.person_id, match.name)}
+                                      onClick={() => handleAssign(index, face.id, match.person_id, match.name)}
                                     >
                                       <Check className="h-4 w-4" />
                                     </Button>

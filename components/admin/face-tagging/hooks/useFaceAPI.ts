@@ -105,6 +105,7 @@ export function useFaceAPI({ imageId, onSave }: UseFaceAPIProps) {
       })
 
       const detailed: DetailedFace[] = result.faces.map((f: any) => ({
+        id: f.id,
         boundingBox: f.insightface_bbox,
         size: Math.max(f.insightface_bbox.width, f.insightface_bbox.height),
         blur_score: f.blur_score,
