@@ -57,9 +57,48 @@ class HNSWIndex:
         self.last_rebuild_time: Optional[datetime] = None  # When index was last rebuilt
     
     def is_loaded(self) -> bool:
-        """Check if index is loaded and has items"""
-        return self.index is not None and len(self.ids_map) > 0
-    
+        """Check if index is loaded (may be empty)"""
+        return self.index is not None
+
+    def initialize_empty(
+        self,
+        initial_capacity: int = 1000,
+        ef_construction: int = 200,
+        M: int = 16,
+        ef_search: int = 50
+    ) -> bool:
+        """
+        Initialize an empty index for incremental additions.
+
+        v6.1: Used when database has no embeddings yet.
+        """
+        try:
+            self.index = hnswlib.Index(space='cosine', dim=self.dim)
+            self.index.init_index(
+                max_elements=initial_capacity,
+                ef_construction=ef_construction,
+                M=M
+            )
+            self.index.set_ef(ef_search)
+
+            self.max_elements = initial_capacity
+            self.ids_map = []
+            self.verified_map = []
+            self.confidence_map = []
+            self.excluded_map = []
+            self.face_id_map = []
+            self.face_id_to_label = {}
+            self.next_label = 0
+            self.deleted_count = 0
+            self.last_rebuild_time = datetime.now()
+
+            logger.info(f"Empty HNSW index initialized with capacity={initial_capacity}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error initializing empty index: {e}")
+            return False
+
     def get_count(self) -> int:
         """Get number of items in index"""
         if self.index is None:

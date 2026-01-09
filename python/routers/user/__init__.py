@@ -1,6 +1,8 @@
 """
 User Router Package
 User-facing endpoints (not admin)
+
+v6.1: Added face_service_instance for singleton pattern
 """
 
 from fastapi import APIRouter
@@ -20,3 +22,12 @@ router.include_router(avatar_router)
 router.include_router(activity_router)
 router.include_router(welcome_router)
 router.include_router(selfie_router)
+
+# Singleton instances (injected from main.py)
+face_service_instance = None
+
+
+def set_services(face_service):
+    """Inject service instances from main.py."""
+    global face_service_instance
+    face_service_instance = face_service

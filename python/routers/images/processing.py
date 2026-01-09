@@ -4,6 +4,8 @@ Images Processing Operations
 Endpoints:
 - PATCH /{image_id}/mark-processed  - Mark image as processed
 - POST /{image_id}/auto-recognize    - Auto-recognize faces
+
+v6.1: Fixed auto-recognize to sync index via update_face_metadata
 """
 
 from fastapi import APIRouter
@@ -154,7 +156,18 @@ async def auto_recognize_faces(image_id: str):
                         "person_id": person_id,
                         "recognition_confidence": confidence
                     }).eq("id", face_id).execute()
-                    
+
+                    # v6.1: Sync index metadata (face already in index from Variant C)
+                    try:
+                        await face_service.update_face_metadata(
+                            face_id,
+                            person_id=person_id,
+                            confidence=confidence
+                        )
+                        logger.debug(f"Index metadata synced for face {face_id}")
+                    except Exception as idx_err:
+                        logger.warning(f"Failed to sync index for face {face_id}: {idx_err}")
+
                     # Get person name for result
                     person_result = supabase_db.client.table("people").select(
                         "real_name, telegram_full_name"

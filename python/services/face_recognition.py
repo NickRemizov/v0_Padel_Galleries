@@ -165,8 +165,10 @@ class FaceRecognitionService:
                 else:
                     raise ValueError("Failed to build HNSW index")
             else:
-                logger.warning("[FaceRecognition] No embeddings found in Supabase")
-                raise ValueError("No embeddings found in Supabase")
+                # v6.1: Graceful handling of empty database - create empty index
+                logger.warning("[FaceRecognition] No embeddings found in Supabase - creating empty index")
+                self._players_index.initialize_empty()
+                # New faces will be added incrementally
 
         except Exception as e:
             logger.error(f"[FaceRecognition] ERROR loading index: {e}")

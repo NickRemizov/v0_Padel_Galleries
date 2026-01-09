@@ -6,6 +6,8 @@ User operations on their photo faces (verify, reject, hide, unhide).
 v2.0: Variant C architecture
 - verify/reject use update_face_metadata (face already in index)
 - hide/unhide do NOT sync index (hidden_by_user is display-only, not recognition-related)
+
+v6.1: Fixed singleton pattern - use injected face_service_instance
 """
 
 from datetime import datetime
@@ -16,15 +18,15 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from core.logging import get_logger
 from core.responses import ApiResponse
 from infrastructure.supabase import get_supabase_client
-from services.face_recognition import FaceRecognitionService
 
 logger = get_logger(__name__)
 router = APIRouter()
 
 
 def get_face_service():
-    """Dependency to get FaceRecognitionService instance."""
-    return FaceRecognitionService(get_supabase_client())
+    """Get FaceRecognitionService singleton from package globals."""
+    from . import face_service_instance
+    return face_service_instance
 
 
 # =============================================================================
@@ -98,7 +100,7 @@ async def verify_photo_face(
     photo_face_id: str,
     person_id: str = Query(..., description="Person ID from cookie"),
     user_id: Optional[str] = Query(None, description="User ID for logging"),
-    face_service: FaceRecognitionService = Depends(get_face_service),
+    face_service=Depends(get_face_service),
 ) -> dict:
     """
     Verify that this photo face is the user.
@@ -152,7 +154,7 @@ async def reject_photo_face(
     photo_face_id: str,
     person_id: str = Query(..., description="Person ID from cookie"),
     user_id: Optional[str] = Query(None, description="User ID for logging"),
-    face_service: FaceRecognitionService = Depends(get_face_service),
+    face_service=Depends(get_face_service),
 ) -> dict:
     """
     Reject photo face - "this is not me".

@@ -163,6 +163,7 @@ locations.set_services(supabase_service)
 organizers.set_services(supabase_service)
 cities.set_services(supabase_service)
 admin.set_services(supabase_service, face_service)
+user.set_services(face_service)  # v6.1: User router needs face_service for verify/reject
 logger.info("✓ Service instances injected into all routers")
 
 # ============================================================
