@@ -289,21 +289,37 @@ async def set_face_excluded(
     supabase_db: SupabaseService = Depends(get_supabase_db)
 ):
     """
-    Set excluded_from_index flag for a face.
+    Exclude face from index or delete unrecognized face.
+
+    For faces WITH person_id: sets excluded_from_index flag and removes from HNSW index.
+    For faces WITHOUT person_id (unrecognized): DELETES the photo_face record entirely.
     """
     try:
-        logger.info(f"[set-excluded] Setting excluded_from_index={excluded} for face {face_id}")
-        
+        logger.info(f"[set-excluded] Processing face {face_id}, excluded={excluded}")
+
         check_response = supabase_db.client.table("photo_faces").select(
             "id, person_id, excluded_from_index"
         ).eq("id", face_id).execute()
-        
+
         if not check_response.data:
             raise NotFoundError("Face", face_id)
-        
+
         face_data = check_response.data[0]
-        current_excluded = face_data.get("excluded_from_index", False)
         person_id = face_data.get("person_id")
+
+        # For unrecognized faces (no person_id) - DELETE the record entirely
+        if not person_id and excluded:
+            logger.info(f"[set-excluded] Deleting unrecognized face {face_id}")
+            supabase_db.client.table("photo_faces").delete().eq("id", face_id).execute()
+            return ApiResponse.ok({
+                "updated": True,
+                "deleted": True,
+                "face_id": face_id,
+                "message": "Unrecognized face deleted"
+            })
+
+        # For recognized faces - set excluded flag and update index
+        current_excluded = face_data.get("excluded_from_index", False)
 
         if current_excluded == excluded:
             logger.info(f"[set-excluded] Face {face_id} already has excluded_from_index={excluded}")
@@ -320,23 +336,22 @@ async def set_face_excluded(
         logger.info(f"[set-excluded] Updated face {face_id}: excluded_from_index={excluded}")
 
         index_rebuilt = False
-        if person_id:
-            try:
-                if excluded:
-                    # Remove from index
-                    result = await face_service.remove_face_from_index(face_id)
-                    if result.get("success"):
-                        index_rebuilt = True
-                        logger.info(f"[set-excluded] Face removed from index")
-                else:
-                    # Add to index
-                    result = await face_service.add_face_to_index(face_id, person_id)
-                    if result.get("success"):
-                        index_rebuilt = True
-                        logger.info(f"[set-excluded] Face added to index")
-            except Exception as index_error:
-                logger.error(f"[set-excluded] Error updating index: {index_error}")
-        
+        try:
+            if excluded:
+                # Remove from index
+                result = await face_service.remove_face_from_index(face_id)
+                if result.get("success"):
+                    index_rebuilt = True
+                    logger.info(f"[set-excluded] Face removed from index")
+            else:
+                # Add to index
+                result = await face_service.add_face_to_index(face_id, person_id)
+                if result.get("success"):
+                    index_rebuilt = True
+                    logger.info(f"[set-excluded] Face added to index")
+        except Exception as index_error:
+            logger.error(f"[set-excluded] Error updating index: {index_error}")
+
         return ApiResponse.ok({
             "updated": True,
             "face_id": face_id,

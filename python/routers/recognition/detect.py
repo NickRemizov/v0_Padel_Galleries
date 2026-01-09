@@ -35,51 +35,57 @@ router = APIRouter()
 
 def _get_face_metrics(face_service, supabase_client, embedding: np.ndarray):
     """
-    Helper function to get distance_to_nearest and top_matches from HNSWLIB index.
-    
+    Helper function to get distance_to_nearest and top_matches from HNSW index.
+
     Returns:
         tuple: (distance_to_nearest, top_matches)
+        top_matches includes source_verified and source_confidence for UI display
     """
     distance_to_nearest = None
     top_matches = []
-    
-    has_index = hasattr(face_service, 'players_index') and face_service.players_index is not None
-    index_count = face_service.players_index.get_current_count() if has_index else 0
-    
-    if has_index and index_count > 0:
-        try:
-            k = min(3, index_count)
-            labels, distances = face_service.players_index.knn_query(embedding.reshape(1, -1), k=k)
-            
-            if len(distances) > 0 and len(distances[0]) > 0:
-                distance_to_nearest = float(distances[0][0])
-                
-                for i, (label_idx, distance) in enumerate(zip(labels[0], distances[0])):
-                    if i >= 3:
-                        break
-                    
-                    if not hasattr(face_service, 'player_ids_map') or len(face_service.player_ids_map) == 0:
-                        break
-                    
-                    person_id_match = face_service.player_ids_map[int(label_idx)]
-                    
-                    person_response = supabase_client.client.table("people").select(
-                        "real_name"
-                    ).eq("id", person_id_match).execute()
-                    
-                    person_name = "Unknown"
-                    if person_response.data and len(person_response.data) > 0:
-                        person_name = person_response.data[0].get("real_name", "Unknown")
-                    
-                    similarity = 1.0 - float(distance)
-                    top_matches.append({
-                        "person_id": person_id_match,
-                        "name": person_name,
-                        "similarity": similarity
-                    })
-        except Exception as e:
-            logger.warning(f"Could not get face metrics: {str(e)}")
-    
+
+    # Use the wrapped index which has query() method with verified/confidence info
+    index = getattr(face_service, '_players_index', None)
+    if index is None or not index.is_loaded():
+        return distance_to_nearest, top_matches
+
+    try:
+        k = min(3, index.get_count())
+        person_ids, similarities, verified_flags, source_confidences = index.query(embedding, k=k)
+
+        if not person_ids:
+            return distance_to_nearest, top_matches
+
+        # Distance to nearest = 1 - similarity (since similarity = 1 - distance)
+        distance_to_nearest = 1.0 - similarities[0] if similarities else None
+
+        # Build top_matches with verified/confidence info
+        for i, (person_id, similarity, is_verified, source_conf) in enumerate(
+            zip(person_ids, similarities, verified_flags, source_confidences)
+        ):
+            if i >= 3:
+                break
+
+            # Get person name
+            person_response = supabase_client.client.table("people").select(
+                "real_name"
+            ).eq("id", person_id).execute()
+
+            person_name = "Unknown"
+            if person_response.data and len(person_response.data) > 0:
+                person_name = person_response.data[0].get("real_name", "Unknown")
+
+            top_matches.append({
+                "person_id": person_id,
+                "name": person_name,
+                "similarity": float(similarity),
+                "source_verified": is_verified,
+                "source_confidence": float(source_conf)
+            })
+
+    except Exception as e:
+        logger.warning(f"Could not get face metrics: {str(e)}")
+
     return distance_to_nearest, top_matches
 
 

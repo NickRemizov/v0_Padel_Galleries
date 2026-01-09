@@ -140,7 +140,7 @@ export function FaceRecognitionDetailsDialog({
                         <span className="text-red-600 text-sm font-normal">(удалён)</span>
                       )}
                     </CardTitle>
-                    {onDeleteFace && !isAssigned && !isExcluded && (
+                    {onDeleteFace && !face.person_name && !isAssigned && !isExcluded && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>

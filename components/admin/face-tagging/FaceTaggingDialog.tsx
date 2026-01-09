@@ -260,24 +260,32 @@ export function FaceTaggingDialog({
 
   const handleDeleteFaceFromDetails = useCallback(async (faceIndex: number) => {
     const face = taggedFaces[faceIndex]
-    if (!face?.id) return
+    console.log("[FaceTaggingDialog] handleDeleteFaceFromDetails called, faceIndex:", faceIndex, "face:", face)
+
+    if (!face?.id) {
+      console.error("[FaceTaggingDialog] No face.id found!")
+      return
+    }
 
     try {
       // Exclude face from index via API
+      console.log("[FaceTaggingDialog] Calling API to exclude face:", face.id)
       const response = await fetch(`/api/faces/${face.id}/set-excluded?excluded=true`, {
         method: "POST",
       })
 
+      const data = await response.json()
+      console.log("[FaceTaggingDialog] API response:", response.status, data)
+
       if (!response.ok) {
-        throw new Error("Failed to exclude face")
+        throw new Error(data.error || "Failed to exclude face")
       }
 
-      console.log("[FaceTaggingDialog] Face excluded from index:", face.id)
-      // UI state is managed by the dialog component itself (excludedFaces set)
+      console.log("[FaceTaggingDialog] Face excluded successfully:", face.id)
     } catch (error) {
       console.error("[FaceTaggingDialog] Error excluding face:", error)
       alert("Ошибка при удалении эмбеддинга")
-      throw error // Re-throw so the dialog knows it failed
+      throw error
     }
   }, [taggedFaces])
 
