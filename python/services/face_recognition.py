@@ -95,11 +95,7 @@ class FaceRecognitionService:
         # HNSW indices
         self._players_index = HNSWIndex()
         self._tournament_index = TournamentIndex()
-        
-        # Legacy compatibility: direct access to index
-        self.players_index = None  # Will be set after loading
-        self.player_ids_map = []
-        
+
         # Quality filters
         self.quality_filters = DEFAULT_QUALITY_FILTERS.copy()
         
@@ -153,10 +149,6 @@ class FaceRecognitionService:
                 )
 
                 if success:
-                    # Legacy compatibility
-                    self.players_index = self._players_index.index
-                    self.player_ids_map = self._players_index.ids_map
-
                     unique_count = self._players_index.get_unique_people_count()
                     verified_count = self._players_index.get_verified_count()
                     total_count = len(embeddings)
@@ -176,11 +168,11 @@ class FaceRecognitionService:
         logger.info("[FaceRecognition] Rebuilding players index...")
 
         try:
-            old_count = len(self.player_ids_map) if self.player_ids_map else 0
+            old_count = self._players_index.get_count() if self._players_index.is_loaded() else 0
 
             self._load_players_index()
 
-            new_count = len(self.player_ids_map) if self.player_ids_map else 0
+            new_count = self._players_index.get_count()
             unique_people = self._players_index.get_unique_people_count()
             verified_count = self._players_index.get_verified_count()
 

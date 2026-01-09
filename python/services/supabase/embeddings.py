@@ -75,7 +75,8 @@ class EmbeddingsRepository:
             for row in all_data:
                 descriptor = row["insightface_descriptor"]
                 verified = row.get("verified", False) or False
-                confidence = row.get("recognition_confidence") or (1.0 if verified else 0.0)
+                # Verified faces ALWAYS have confidence 1.0 (source is trusted)
+                confidence = 1.0 if verified else (row.get("recognition_confidence") or 0.0)
 
                 # Convert descriptor
                 if isinstance(descriptor, list):

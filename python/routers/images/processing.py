@@ -69,8 +69,8 @@ async def auto_recognize_faces(image_id: str):
         logger.info(f"Using recognition threshold: {threshold}")
         
         # Check if index is available
-        has_index = hasattr(face_service, 'players_index') and face_service.players_index is not None
-        index_count = face_service.players_index.get_current_count() if has_index else 0
+        has_index = face_service._players_index.is_loaded()
+        index_count = face_service._players_index.get_count() if has_index else 0
         
         if not has_index or index_count == 0:
             logger.warning("No players index available for recognition")

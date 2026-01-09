@@ -160,15 +160,13 @@ async def batch_verify_faces(
 
             person_id_changed = face.person_id != current_person_id
 
-            # Always reindex if has person_id + descriptor (to update confidence to 1.0)
-            if has_descriptor and face.person_id:
+            # Only reindex if person_id actually changed
+            # (confidence is handled by embeddings.py - verified=true gives confidence=1.0)
+            if has_descriptor and face.person_id and person_id_changed:
                 if current_person_id:
                     faces_removed_from_index.append(face.id)
                 faces_added_to_index.append(face.id)
-                if person_id_changed:
-                    logger.info(f"[batch-verify] Face {face.id} person_id changed: {current_person_id} -> {face.person_id}")
-                else:
-                    logger.info(f"[batch-verify] Face {face.id} reindexing for confidence update")
+                logger.info(f"[batch-verify] Face {face.id} person_id changed: {current_person_id} -> {face.person_id}")
 
             from datetime import datetime, timezone
             update_data = {
