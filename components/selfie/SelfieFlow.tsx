@@ -11,6 +11,15 @@ import {
 import { SelfiePrompt } from "./SelfiePrompt"
 import { SelfieCapture } from "./SelfieCapture"
 import { SelfieResults } from "./SelfieResults"
+import {
+  trackSelfieFlowStarted,
+  trackSelfieCaptured,
+  trackSelfieSearchCompleted,
+  trackSelfieNoFace,
+  trackSelfieCollision,
+  trackSelfieConfirmed,
+  trackSelfieSkipped,
+} from "@/lib/analytics"
 
 type FlowStep = "prompt" | "capture" | "results" | "collision" | "success"
 
@@ -45,11 +54,13 @@ export function SelfieFlow({ userId, open, onOpenChange }: SelfieFlowProps) {
   const [error, setError] = useState<string | null>(null)
 
   const handleStartCapture = () => {
+    trackSelfieFlowStarted()
     setStep("capture")
     setError(null)
   }
 
   const handleCapture = async (imageBase64: string) => {
+    trackSelfieCaptured()
     setIsProcessing(true)
     setError(null)
 
@@ -70,6 +81,7 @@ export function SelfieFlow({ userId, open, onOpenChange }: SelfieFlowProps) {
 
       // Check for no face detected
       if (data.no_face_detected) {
+        trackSelfieNoFace()
         setError(data.message || "Лицо не обнаружено")
         setStep("capture")
         return
@@ -77,14 +89,17 @@ export function SelfieFlow({ userId, open, onOpenChange }: SelfieFlowProps) {
 
       // Check for collision
       if (data.collision) {
+        trackSelfieCollision()
         setCollision(data.collision)
         setStep("collision")
         return
       }
 
       // Set matches
+      const matchesList = data.matches || []
+      trackSelfieSearchCompleted(matchesList.length)
       setSelfieSearchId(data.selfie_search_id)
-      setMatches(data.matches || [])
+      setMatches(matchesList)
       setStep("results")
 
     } catch (err) {
@@ -118,7 +133,9 @@ export function SelfieFlow({ userId, open, onOpenChange }: SelfieFlowProps) {
       }
 
       const data = result.data || result
-      setTotalPhotos(data.total_photos || 0)
+      const photosCount = data.total_photos || 0
+      trackSelfieConfirmed(photosCount)
+      setTotalPhotos(photosCount)
       setStep("success")
 
       // Redirect after delay
@@ -144,6 +161,7 @@ export function SelfieFlow({ userId, open, onOpenChange }: SelfieFlowProps) {
   }
 
   const handleSkip = () => {
+    trackSelfieSkipped()
     onOpenChange(false)
   }
 

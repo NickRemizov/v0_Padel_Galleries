@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Loader2, Save, Check } from "lucide-react"
 import Image from "next/image"
+import { trackSettingsSaved } from "@/lib/analytics"
 
 interface Person {
   id: string
@@ -85,6 +86,23 @@ export function SettingsForm({
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || "Failed to save")
+      }
+
+      // Track which fields changed
+      const changedFields: string[] = []
+      if (realName !== (person.real_name || "")) changedFields.push("real_name")
+      if (gmail !== (person.gmail || "")) changedFields.push("gmail")
+      if (facebook !== (person.facebook_profile_url || "")) changedFields.push("facebook")
+      if (instagram !== (person.instagram_profile_url || "")) changedFields.push("instagram")
+      if (paddleRanking !== (person.paddle_ranking?.toString() || "")) changedFields.push("paddle_ranking")
+      if (showInPlayersGallery !== (person.show_in_players_gallery ?? true)) changedFields.push("show_in_players_gallery")
+      if (createPersonalGallery !== (person.create_personal_gallery ?? false)) changedFields.push("create_personal_gallery")
+      if (showNameOnPhotos !== (person.show_name_on_photos ?? true)) changedFields.push("show_name_on_photos")
+      if (showTelegramUsername !== (person.show_telegram_username ?? true)) changedFields.push("show_telegram_username")
+      if (showSocialLinks !== (person.show_social_links ?? true)) changedFields.push("show_social_links")
+
+      if (changedFields.length > 0) {
+        trackSettingsSaved(changedFields)
       }
 
       setSaved(true)

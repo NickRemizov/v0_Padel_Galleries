@@ -78,6 +78,40 @@ export function trackWelcomeSeen(version: number) {
   posthog.capture("welcome_seen", { version })
 }
 
+// Selfie flow events
+export function trackSelfieFlowStarted() {
+  posthog.capture("selfie_flow_started")
+}
+
+export function trackSelfieCaptured() {
+  posthog.capture("selfie_captured")
+}
+
+export function trackSelfieSearchCompleted(matchesCount: number) {
+  posthog.capture("selfie_search_completed", { matches_count: matchesCount })
+}
+
+export function trackSelfieNoFace() {
+  posthog.capture("selfie_no_face")
+}
+
+export function trackSelfieCollision() {
+  posthog.capture("selfie_collision")
+}
+
+export function trackSelfieConfirmed(photosCount: number) {
+  posthog.capture("selfie_confirmed", { photos_count: photosCount })
+}
+
+export function trackSelfieSkipped() {
+  posthog.capture("selfie_skipped")
+}
+
+// Settings events
+export function trackSettingsSaved(changedFields: string[]) {
+  posthog.capture("settings_saved", { changed_fields: changedFields })
+}
+
 // Generic event
 export function trackEvent(name: string, properties?: Record<string, any>) {
   posthog.capture(name, properties)

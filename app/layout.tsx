@@ -1,6 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Providers } from "@/components/providers"
+import { GoogleAnalytics } from "@/components/google-analytics"
 
 import "./globals.css"
 import { Suspense } from "react"
@@ -35,6 +36,7 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className={`font-sans ${oswald.variable} ${playfair.variable}`}>
+        <GoogleAnalytics />
         <Providers googleClientId={googleClientId}>
           <Suspense fallback={null}>{children}</Suspense>
         </Providers>
