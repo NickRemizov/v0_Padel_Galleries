@@ -196,14 +196,13 @@ async def process_photo(
         logger.info(f"[v{VERSION}] Apply quality filters: {apply_quality_filters}")
         logger.info(f"[v{VERSION}] Search threshold: {search_threshold}, Save threshold: {save_threshold}")
         
+        # Build filter values locally (avoid mutating global service state - race condition!)
+        local_min_detection_score = req_min_detection_score if req_min_detection_score is not None else quality_filters_config.get('min_detection_score', 0.7)
+        local_min_face_size = req_min_face_size if req_min_face_size is not None else quality_filters_config.get('min_face_size', 80)
+        local_min_blur_score = req_min_blur_score if req_min_blur_score is not None else quality_filters_config.get('min_blur_score', 80)
+
         if apply_quality_filters:
-            # Use request params if provided, otherwise fall back to DB config
-            face_service.quality_filters = {
-                "min_detection_score": req_min_detection_score if req_min_detection_score is not None else quality_filters_config.get('min_detection_score', 0.7),
-                "min_face_size": req_min_face_size if req_min_face_size is not None else quality_filters_config.get('min_face_size', 80),
-                "min_blur_score": req_min_blur_score if req_min_blur_score is not None else quality_filters_config.get('min_blur_score', 80)
-            }
-            logger.info(f"[v{VERSION}] Quality filters (request+DB): {face_service.quality_filters}")
+            logger.info(f"[v{VERSION}] Quality filters: det={local_min_detection_score}, size={local_min_face_size}, blur={local_min_blur_score}")
         
         if force_redetect:
             logger.info(f"[v{VERSION}] Force redetect - getting face IDs before deletion")
@@ -245,9 +244,9 @@ async def process_photo(
             detected_faces = await face_service.detect_faces(
                 image_url,
                 apply_quality_filters=apply_quality_filters,
-                min_detection_score=req_min_detection_score,
-                min_face_size=req_min_face_size,
-                min_blur_score=req_min_blur_score
+                min_detection_score=local_min_detection_score,
+                min_face_size=local_min_face_size,
+                min_blur_score=local_min_blur_score
             )
             logger.info(f"[v{VERSION}] Detected {len(detected_faces)} faces")
             
