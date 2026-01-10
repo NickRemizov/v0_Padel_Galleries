@@ -5,11 +5,11 @@ import { GoogleAnalytics } from "@/components/google-analytics"
 
 import "./globals.css"
 import { Suspense } from "react"
-import { Playfair_Display, Oswald as V0_Font_Oswald } from "next/font/google"
+import { Playfair_Display, Oswald as V0_Font_Oswald, Lobster } from "next/font/google"
 
 // Initialize fonts
 const oswald = V0_Font_Oswald({
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
   weight: ["200", "300", "400", "500", "600", "700"],
   variable: "--font-oswald",
 })
@@ -18,6 +18,12 @@ const playfair = Playfair_Display({
   subsets: ["latin", "cyrillic"],
   variable: "--font-playfair",
   display: "swap",
+})
+
+const lobster = Lobster({
+  subsets: ["latin", "cyrillic"],
+  weight: "400",
+  variable: "--font-lobster",
 })
 
 export const metadata: Metadata = {
@@ -35,7 +41,7 @@ export default function RootLayout({
 
   return (
     <html lang="ru">
-      <body className={`font-sans ${oswald.variable} ${playfair.variable}`}>
+      <body className={`font-sans ${oswald.variable} ${playfair.variable} ${lobster.variable}`}>
         <GoogleAnalytics />
         <Providers googleClientId={googleClientId}>
           <Suspense fallback={null}>{children}</Suspense>
