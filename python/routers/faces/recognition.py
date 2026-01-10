@@ -166,6 +166,17 @@ async def recognize_unknown_faces(
                     "verified": False
                 }).eq("id", face_id).execute()
 
+                # v6.1: Update index metadata (face already in index from Variant C)
+                try:
+                    await face_service.update_face_metadata(
+                        face_id,
+                        person_id=person_id,
+                        confidence=confidence,
+                        verified=False
+                    )
+                except Exception as idx_err:
+                    logger.warning(f"[recognize-unknown] Failed to update metadata for {face_id[:8]}: {idx_err}")
+
                 recognized_count += 1
                 recognized_face_ids.append(face_id)
 
@@ -192,14 +203,7 @@ async def recognize_unknown_faces(
         if skipped_count > 0:
             logger.warning(f"[recognize-unknown] Skipped {skipped_count} faces with invalid descriptors")
 
-        index_rebuilt = False
-        if recognized_face_ids:
-            try:
-                result = await face_service.add_faces_to_index(recognized_face_ids)
-                index_rebuilt = result.get("added", 0) > 0
-                logger.info(f"[recognize-unknown] Added {result.get('added', 0)} faces to index (rebuild_triggered: {result.get('rebuild_triggered')})")
-            except Exception as index_error:
-                logger.error(f"[recognize-unknown] Error adding to index: {index_error}")
+        # v6.1: Metadata already updated in loop above (Variant C - faces already in index)
         
         by_person_list = [
             {"person_id": pid, "name": data["name"], "count": data["count"]}
@@ -212,7 +216,7 @@ async def recognize_unknown_faces(
             "total_unknown": len(unknown_faces),
             "recognized_count": recognized_count,
             "by_person": by_person_list,
-            "index_rebuilt": index_rebuilt
+            "metadata_updated": recognized_count  # v6.1: count of faces with updated metadata
         })
         
     except Exception as e:
@@ -257,12 +261,13 @@ async def clear_face_descriptor(
 
         logger.info(f"[clear-descriptor] Descriptor cleared for face {face_id}")
 
-        index_rebuilt = False
-        if had_person_id:
+        # v6.1: Remove from index if had descriptor (Variant C - all faces with descriptors in index)
+        index_updated = False
+        if had_descriptor:
             try:
                 result = await face_service.remove_face_from_index(face_id)
                 if result.get("success"):
-                    index_rebuilt = result.get("rebuild_triggered", False) or True
+                    index_updated = True
                     logger.info(f"[clear-descriptor] Face removed from index")
             except Exception as index_error:
                 logger.error(f"[clear-descriptor] Error removing from index: {index_error}")
@@ -271,7 +276,7 @@ async def clear_face_descriptor(
             "cleared": True,
             "face_id": face_id,
             "person_id": face_data.get("person_id"),
-            "index_rebuilt": index_rebuilt
+            "index_updated": index_updated
         })
         
     except NotFoundError:
@@ -310,6 +315,14 @@ async def set_face_excluded(
         # For unrecognized faces (no person_id) - DELETE the record entirely
         if not person_id and excluded:
             logger.info(f"[set-excluded] Deleting unrecognized face {face_id}")
+
+            # v6.1: Remove from index BEFORE deleting from DB (Variant C - all faces in index)
+            try:
+                await face_service.remove_face_from_index(face_id)
+                logger.info(f"[set-excluded] Removed face {face_id} from index")
+            except Exception as idx_err:
+                logger.warning(f"[set-excluded] Failed to remove from index: {idx_err}")
+
             supabase_db.client.table("photo_faces").delete().eq("id", face_id).execute()
             return ApiResponse.ok({
                 "updated": True,
@@ -335,28 +348,20 @@ async def set_face_excluded(
 
         logger.info(f"[set-excluded] Updated face {face_id}: excluded_from_index={excluded}")
 
-        index_rebuilt = False
+        # v6.1: Use update_metadata instead of remove/add (Variant C - all faces stay in index)
+        metadata_updated = False
         try:
-            if excluded:
-                # Remove from index
-                result = await face_service.remove_face_from_index(face_id)
-                if result.get("success"):
-                    index_rebuilt = True
-                    logger.info(f"[set-excluded] Face removed from index")
-            else:
-                # Add to index
-                result = await face_service.add_face_to_index(face_id, person_id)
-                if result.get("success"):
-                    index_rebuilt = True
-                    logger.info(f"[set-excluded] Face added to index")
+            await face_service.update_face_metadata(face_id, excluded=excluded)
+            metadata_updated = True
+            logger.info(f"[set-excluded] Updated metadata: excluded={excluded}")
         except Exception as index_error:
-            logger.error(f"[set-excluded] Error updating index: {index_error}")
+            logger.error(f"[set-excluded] Error updating metadata: {index_error}")
 
         return ApiResponse.ok({
             "updated": True,
             "face_id": face_id,
             "excluded_from_index": excluded,
-            "index_rebuilt": index_rebuilt
+            "metadata_updated": metadata_updated
         })
         
     except NotFoundError:

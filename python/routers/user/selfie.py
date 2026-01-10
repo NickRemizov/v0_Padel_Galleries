@@ -22,21 +22,18 @@ from core.logging import get_logger
 from core.responses import ApiResponse
 from infrastructure.supabase import get_supabase_client
 from infrastructure.minio_storage import get_minio_storage
-from services.face_recognition import FaceRecognitionService
 
 logger = get_logger(__name__)
 router = APIRouter()
 
-# Lazy initialization
-_face_service: Optional[FaceRecognitionService] = None
 
-
-def get_face_service() -> FaceRecognitionService:
-    """Get or create FaceRecognitionService singleton."""
-    global _face_service
-    if _face_service is None:
-        _face_service = FaceRecognitionService()
-    return _face_service
+def get_face_service():
+    """
+    Get FaceRecognitionService singleton from package globals.
+    v6.1: Use injected instance instead of creating own singleton.
+    """
+    from . import face_service_instance
+    return face_service_instance
 
 
 class SelfieSearchRequest(BaseModel):

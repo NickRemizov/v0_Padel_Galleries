@@ -186,8 +186,9 @@ async def batch_verify_faces(
             if response.data:
                 updated_count += 1
 
-                # v6.0: Update index metadata if person_id changed (face already in index)
-                if has_descriptor and person_id_changed:
+                # v6.1: Always update index metadata (not just when person_id changes)
+                # This ensures verified/confidence are synced even for verification without reassignment
+                if has_descriptor:
                     try:
                         # Use empty string to signal "set to None" for person_id
                         await face_service.update_face_metadata(
@@ -198,7 +199,8 @@ async def batch_verify_faces(
                             excluded=False
                         )
                         metadata_updated += 1
-                        logger.info(f"[batch-verify] Updated metadata for {face.id}: person_id={face.person_id}")
+                        if person_id_changed:
+                            logger.info(f"[batch-verify] Updated metadata for {face.id}: person_id={face.person_id}")
                     except Exception as idx_err:
                         logger.warning(f"[batch-verify] Failed to update metadata for {face.id}: {idx_err}")
             else:
