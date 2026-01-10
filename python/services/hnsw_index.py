@@ -106,8 +106,10 @@ class HNSWIndex:
         return self.index.get_current_count()
     
     def get_unique_people_count(self) -> int:
-        """Get number of unique people in index"""
-        return len(set(self.ids_map)) if self.ids_map else 0
+        """Get number of unique people in index (excludes None/unassigned faces)"""
+        if not self.ids_map:
+            return 0
+        return len(set(pid for pid in self.ids_map if pid is not None))
     
     def get_verified_count(self) -> int:
         """Get number of verified embeddings in index"""

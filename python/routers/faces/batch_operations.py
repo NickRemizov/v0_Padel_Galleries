@@ -130,7 +130,7 @@ async def batch_verify_faces(
             logger.info(f"[batch-verify] Input face[{i}]: id={face.id}, person_id={face.person_id}")
 
         existing_response = supabase_db.client.table("photo_faces").select(
-            "id, person_id, insightface_descriptor"
+            "id, person_id, insightface_descriptor, excluded_from_index"
         ).eq("photo_id", request.photo_id).execute()
 
         existing_faces = existing_response.data or []
@@ -164,6 +164,7 @@ async def batch_verify_faces(
 
             current_face = next((f for f in existing_faces if f["id"] == face.id), None)
             current_person_id = current_face.get("person_id") if current_face else None
+            current_excluded = current_face.get("excluded_from_index", False) if current_face else False
             has_descriptor = current_face.get("insightface_descriptor") is not None if current_face else False
 
             person_id_changed = face.person_id != current_person_id
@@ -188,15 +189,18 @@ async def batch_verify_faces(
 
                 # v6.1: Always update index metadata (not just when person_id changes)
                 # This ensures verified/confidence are synced even for verification without reassignment
+                # v6.1.2: Preserve excluded status unless person_id changed (P1 fix)
                 if has_descriptor:
                     try:
                         # Use empty string to signal "set to None" for person_id
+                        # excluded: only reset to False when person_id changes (matches DB update logic)
+                        new_excluded = False if person_id_changed else current_excluded
                         await face_service.update_face_metadata(
                             face.id,
                             person_id=face.person_id if face.person_id else "",
                             verified=bool(face.person_id),
                             confidence=1.0 if face.person_id else 0.0,
-                            excluded=False
+                            excluded=new_excluded
                         )
                         metadata_updated += 1
                         if person_id_changed:

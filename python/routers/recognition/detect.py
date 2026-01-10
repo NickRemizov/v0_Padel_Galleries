@@ -71,34 +71,41 @@ def _get_face_metrics(face_service, supabase_client, embedding: np.ndarray):
 
         # Build top_matches with verified/confidence info
         # v3.0: Skip faces without person_id or excluded
-        match_count = 0
+        # v6.1.2: Batch query people names to fix N+1 (P3)
+
+        # First, collect valid candidates
+        valid_candidates = []
         for i, (person_id, similarity, is_verified, source_conf, is_excluded) in enumerate(
             zip(person_ids, similarities, verified_flags, source_confidences, excluded_flags)
         ):
-            # Skip faces without person_id or excluded
             if person_id is None or is_excluded:
                 continue
-
-            if match_count >= 3:
+            if len(valid_candidates) >= 3:
                 break
-
-            # Get person name
-            person_response = supabase_client.client.table("people").select(
-                "real_name"
-            ).eq("id", person_id).execute()
-
-            person_name = "Unknown"
-            if person_response.data and len(person_response.data) > 0:
-                person_name = person_response.data[0].get("real_name", "Unknown")
-
-            top_matches.append({
+            valid_candidates.append({
                 "person_id": person_id,
-                "name": person_name,
                 "similarity": float(similarity),
                 "source_verified": is_verified,
                 "source_confidence": float(source_conf)
             })
-            match_count += 1
+
+        # Batch query all person names at once
+        if valid_candidates:
+            unique_person_ids = list(set(c["person_id"] for c in valid_candidates))
+            people_response = supabase_client.client.table("people").select(
+                "id, real_name"
+            ).in_("id", unique_person_ids).execute()
+
+            person_names = {p["id"]: p.get("real_name", "Unknown") for p in (people_response.data or [])}
+
+            for candidate in valid_candidates:
+                top_matches.append({
+                    "person_id": candidate["person_id"],
+                    "name": person_names.get(candidate["person_id"], "Unknown"),
+                    "similarity": candidate["similarity"],
+                    "source_verified": candidate["source_verified"],
+                    "source_confidence": candidate["source_confidence"]
+                })
 
     except Exception as e:
         logger.warning(f"Could not get face metrics: {str(e)}")
@@ -138,9 +145,9 @@ async def detect_faces(
         faces_data = []
         for idx, face in enumerate(detected_faces):
             embedding = face["embedding"]
-            
-            person_id, confidence = await face_service.recognize_face(embedding, confidence_threshold=0.0)
-            
+
+            # v6.1.2: Removed unused recognize_face call (P3)
+            # Recognition is done via _get_face_metrics which returns top_matches
             distance_to_nearest, top_matches = _get_face_metrics(face_service, supabase_client, embedding)
             
             face_data = {

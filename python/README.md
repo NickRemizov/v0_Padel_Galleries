@@ -91,60 +91,15 @@ POST /cluster-unknown-faces?gallery_id=xxx
 POST /rebuild-index
 \`\`\`
 
-### Training API
+### Indexing API
 
 \`\`\`bash
 # Конфигурация
 GET /api/v2/config
 PUT /api/v2/config
 
-# История обучений
-GET /api/v2/train/history?limit=10
-
-# Подготовка датасета
-POST /api/v2/train/prepare
-
-# Запуск обучения
-POST /api/v2/train/execute
-\`\`\`
-
-## 🔗 Интеграция с Vercel (Next.js)
-
-### Environment Variables
-
-\`\`\`env
-FASTAPI_URL=http://vlcpadel.com:8001
-NEXT_PUBLIC_FASTAPI_URL=http://vlcpadel.com:8001
-\`\`\`
-
-### On-Demand Revalidation
-
-После изменений в админке ISR кеш сбрасывается автоматически:
-
-\`\`\`typescript
-// app/api/revalidate/route.ts
-POST /api/revalidate
-Body: { paths: ["/players", "/gallery"] }
-\`\`\`
-
-### Auth Headers (для защищённых операций)
-
-\`\`\`typescript
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (session?.access_token) {
-    return { "Authorization": `Bearer ${session.access_token}` }
-  }
-  return {}
-}
-
-// Использование
-const result = await apiFetch("/api/people", {
-  method: "POST",
-  body: JSON.stringify(data),
-  headers: await getAuthHeaders(),
-})
+# Пакетное распознавание
+POST /api/v2/recognize/batch
 \`\`\`
 
 ## 📦 Установка

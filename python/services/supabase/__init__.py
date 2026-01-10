@@ -194,27 +194,9 @@ class SupabaseService:
     def update_recognition_config(self, settings: Dict) -> bool:
         """Legacy: Delegate to config repository."""
         return self.config.update_recognition_config(settings)
-    
-    def create_training_session(self, session_data: Dict) -> str:
-        """Legacy: Delegate to training repository."""
-        return self.training.create_training_session(session_data)
-    
-    def update_training_session(self, session_id: str, updates: Dict) -> bool:
-        """Legacy: Delegate to training repository."""
-        return self.training.update_training_session(session_id, updates)
-    
-    def get_training_session(self, session_id: str) -> Optional[Dict]:
-        """Legacy: Delegate to training repository."""
-        return self.training.get_training_session(session_id)
-    
-    def get_training_history(self, limit: int = 10, offset: int = 0) -> List[Dict]:
-        """Legacy: Delegate to training repository."""
-        return self.training.get_training_history(limit, offset)
-    
-    def get_training_sessions_count(self) -> int:
-        """Legacy: Delegate to training repository."""
-        return self.training.get_training_sessions_count()
-    
+
+    # NOTE: Session methods removed in v4.4 (face_training_sessions table deleted)
+
     async def get_verified_faces(self, **kwargs) -> List[Dict]:
         """Legacy: Delegate to training repository."""
         return await self.training.get_verified_faces(**kwargs)

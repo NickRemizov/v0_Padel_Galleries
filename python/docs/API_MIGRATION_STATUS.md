@@ -13,22 +13,16 @@
 - [x] `infrastructure/supabase.py` - Unified client
 - [x] `infrastructure/storage.py` - Photo cache, image utils
 
-### Phase 3: Domain Models
-- [x] `models/domain/face.py` - Face, BoundingBox, FaceQuality
-- [x] `models/domain/person.py` - Person, PersonSummary
-- [x] `models/domain/gallery.py` - Gallery, GalleryImage
-- [x] `models/domain/training.py` - TrainingSession, TrainingConfig (legacy)
-- [x] `models/requests/` - Request DTOs
-- [x] `models/responses/` - Response DTOs
+### Phase 3: Services (Data Access)
+- [x] `services/supabase/` - Unified data access layer (facade pattern)
+  - `base.py` - Supabase client singleton
+  - `config.py` - ConfigRepository
+  - `embeddings.py` - EmbeddingsRepository
+  - `faces.py` - FacesRepository
+  - `people.py` - PeopleRepository
+  - `training.py` - TrainingRepository (verified faces, descriptors)
 
-### Phase 4: Repositories
-- [x] `repositories/base.py` - BaseRepository with generic CRUD
-- [x] `repositories/people_repo.py` - PeopleRepository
-- [x] `repositories/galleries_repo.py` - GalleriesRepository
-- [x] `repositories/config_repo.py` - ConfigRepository
-- [x] ~~`repositories/training_repo.py`~~ - REMOVED (table deleted)
-
-### Phase 5-6: Router Migration
+### Phase 4: Router Migration
 - [x] `routers/config.py` - ApiResponse + custom exceptions
 - [x] `routers/cities.py` - ApiResponse + custom exceptions
 - [x] `routers/locations.py` - ApiResponse + custom exceptions
@@ -55,8 +49,8 @@
 | /api/health | ✅ | ✅ | Done |
 | /api/recognition/* | ✅ | ✅ | Done |
 | /api/faces/* | ✅ | ✅ | Done |
-| /api/v2/training/* | ✅ | ✅ | Done |
 | /api/v2/config | ✅ | ✅ | Done |
+| /api/v2/recognize/batch | ✅ | ✅ | Done |
 | /api/images/* | ✅ | ✅ | Done |
 | /api/photographers/* | ✅ | ✅ | Done |
 | /api/people/* | ✅ | ✅ | Done |
@@ -66,16 +60,16 @@
 | /api/cities/* | ✅ | ✅ | Done |
 | /api/admin/* | ✅ | ✅ | Done |
 
-## Custom Exceptions Added
+## Custom Exceptions
 
 \`\`\`python
-# Recognition-specific exceptions (added Dec 21, 2025)
+# Recognition-specific exceptions
 DetectionError      # Face detection failed
-DescriptorError     # Descriptor generation/regeneration failed  
+DescriptorError     # Descriptor generation/regeneration failed
 ClusteringError     # Face clustering failed
 IndexRebuildError   # Index rebuild failed
 
-# Existing exceptions
+# Entity exceptions
 RecognitionError    # Base recognition error
 PhotoNotFoundError  # Photo not found
 FaceNotFoundError   # Face not found
@@ -97,15 +91,29 @@ python/
 ├── infrastructure/              # External systems
 │   ├── supabase.py             # Unified DB client
 │   └── storage.py              # Photo cache
-├── models/                      # Data structures
-│   ├── domain/                 # Core business entities
-│   ├── requests/               # API input DTOs
-│   └── responses/              # API output DTOs
-├── repositories/                # Data access layer
-├── services/                    # Business logic
+├── services/                    # Business logic + data access
+│   ├── supabase/               # Data access layer (repositories)
+│   ├── training/               # Indexing operations
+│   ├── face_recognition.py     # FaceRecognitionService facade
+│   ├── training_service.py     # TrainingService facade
+│   ├── hnsw_index.py           # HNSW index operations
+│   └── insightface_model.py    # InsightFace wrapper
+├── middleware/                  # Request/Response processing
+│   └── auth.py                 # Centralized authentication
 └── routers/                     # HTTP endpoints
-    └── recognition/            # Face recognition endpoints (migrated)
+    ├── recognition/            # Face recognition endpoints
+    ├── galleries/              # Gallery management
+    ├── images/                 # Image management
+    ├── people/                 # People management
+    └── admin/                  # Admin endpoints
 \`\`\`
+
+## Removed Components (v4.4)
+
+- ~~`repositories/`~~ - Replaced by `services/supabase/`
+- ~~`models/domain/`~~ - Never implemented (planned but not used)
+- ~~`face_training_sessions` table~~ - Deleted from database
+- ~~Training session endpoints~~ - Removed from `routers/training.py`
 
 ## Breaking Changes
 
@@ -116,7 +124,7 @@ New format: `{"success": true, "data": [...], "error": null, "meta": null}`
 
 ## Migration Completed
 
-All 15 routers now use:
+All routers now use:
 - ✅ `ApiResponse.ok()` / `ApiResponse.fail()` for responses
 - ✅ Custom exceptions from `core/exceptions.py`
 - ✅ Centralized logging from `core/logging.py`
