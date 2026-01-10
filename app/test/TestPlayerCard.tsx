@@ -258,29 +258,29 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
   // Delete button component
   const DeleteButton = ({ elementKey }: { elementKey: keyof LayoutConfig }) => (
     <div
-      onClick={() => hideElement(elementKey)}
-      onTouchEnd={(e) => {
-        e.preventDefault()
+      className="editor-control"
+      onPointerDown={(e) => {
         e.stopPropagation()
-        hideElement(elementKey)
       }}
+      onClick={() => hideElement(elementKey)}
       style={{
         position: "absolute",
-        top: -12,
-        right: -12,
-        width: 28,
-        height: 28,
+        top: -14,
+        right: -14,
+        width: 32,
+        height: 32,
         backgroundColor: "red",
         borderRadius: "50%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         color: "white",
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: "bold",
         cursor: "pointer",
         zIndex: 100,
         border: "2px solid white",
+        touchAction: "manipulation",
       }}
     >
       ×
@@ -290,39 +290,40 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
   // Alignment toggle for name
   const AlignmentToggle = () => (
     <div
+      className="editor-control"
+      onPointerDown={(e) => e.stopPropagation()}
       style={{
         position: "absolute",
-        top: -40,
+        top: -44,
         left: 0,
         display: "flex",
-        gap: 6,
-        backgroundColor: "rgba(0,0,0,0.9)",
-        borderRadius: 6,
-        padding: 6,
+        gap: 8,
+        backgroundColor: "rgba(0,0,0,0.95)",
+        borderRadius: 8,
+        padding: 8,
         zIndex: 100,
+        touchAction: "manipulation",
       }}
     >
       {(["left", "center", "right"] as TextAlign[]).map((align) => (
         <div
           key={align}
+          className="editor-control"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={() => setLayout((prev) => ({ ...prev, name: { ...prev.name, align } }))}
-          onTouchEnd={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            setLayout((prev) => ({ ...prev, name: { ...prev.name, align } }))
-          }}
           style={{
-            width: 36,
-            height: 36,
-            border: layout.name.align === align ? "2px solid yellow" : "1px solid #666",
-            borderRadius: 6,
-            backgroundColor: layout.name.align === align ? "rgba(255,255,0,0.3)" : "transparent",
+            width: 40,
+            height: 40,
+            border: layout.name.align === align ? "3px solid yellow" : "2px solid #666",
+            borderRadius: 8,
+            backgroundColor: layout.name.align === align ? "rgba(255,255,0,0.4)" : "rgba(255,255,255,0.1)",
             color: "white",
             cursor: "pointer",
-            fontSize: 16,
+            fontSize: 18,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            touchAction: "manipulation",
           }}
         >
           {align === "left" ? "◀" : align === "center" ? "◆" : "▶"}
@@ -416,6 +417,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             onStop={handleDragStop}
             nodeRef={nameRef}
             bounds="parent"
+            cancel=".editor-control"
           >
             <div
               ref={nameRef}
@@ -474,6 +476,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             onStop={handleDragStop}
             nodeRef={levelRef}
             bounds="parent"
+            cancel=".editor-control"
           >
             <div
               ref={levelRef}
@@ -532,6 +535,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             onStop={handleDragStop}
             nodeRef={tournamentsRef}
             bounds="parent"
+            cancel=".editor-control"
           >
             <div
               ref={tournamentsRef}
@@ -590,6 +594,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             onStop={handleDragStop}
             nodeRef={photosRef}
             bounds="parent"
+            cancel=".editor-control"
           >
             <div
               ref={photosRef}
@@ -648,6 +653,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             onStop={handleDragStop}
             nodeRef={galleriesRef}
             bounds="parent"
+            cancel=".editor-control"
           >
             <div
               ref={galleriesRef}
