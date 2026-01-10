@@ -11,7 +11,7 @@ export function IntegritySummary({ stats, checksPerformed }: IntegritySummaryPro
         <CardDescription>Общая информация о количестве записей в базе</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <div className="text-sm text-muted-foreground">Галереи</div>
             <div className="text-2xl font-bold">{stats.totalGalleries}</div>
@@ -31,14 +31,6 @@ export function IntegritySummary({ stats, checksPerformed }: IntegritySummaryPro
           <div className="space-y-1">
             <div className="text-sm text-muted-foreground">Настройки</div>
             <div className="text-2xl font-bold">{stats.totalConfigs}</div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-sm text-muted-foreground">Игроки событий</div>
-            <div className="text-2xl font-bold">{stats.totalEventPlayers}</div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-sm text-muted-foreground">Telegram боты</div>
-            <div className="text-2xl font-bold">{stats.totalTelegramBots}</div>
           </div>
           <div className="space-y-1">
             <div className="text-sm text-muted-foreground">Проверок</div>

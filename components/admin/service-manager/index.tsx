@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Shield, Bug } from "lucide-react"
-import { DatabaseIntegrityChecker } from "@/components/admin/database-integrity-checker"
+import { DatabaseIntegrityChecker } from "@/components/admin/database-integrity"
 import { DebugPersonPhotos } from "@/components/admin/debug-person-photos"
 import { BatchProcessingCard } from "./BatchProcessingCard"
 import { DatabaseMaintenanceCard } from "./DatabaseMaintenanceCard"

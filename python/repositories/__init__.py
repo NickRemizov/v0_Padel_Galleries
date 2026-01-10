@@ -15,12 +15,10 @@ from repositories.base import BaseRepository
 from repositories.people_repo import PeopleRepository
 from repositories.galleries_repo import GalleriesRepository
 from repositories.config_repo import ConfigRepository
-from repositories.training_repo import TrainingRepository
 
 __all__ = [
     'BaseRepository',
     'PeopleRepository',
     'GalleriesRepository',
     'ConfigRepository',
-    'TrainingRepository',
 ]

@@ -1,4 +1,4 @@
-import { FaceTrainingManager } from "@/components/admin/face-training-manager"
+import { FaceTrainingManager } from "@/components/admin/face-training"
 import { WelcomeEditor } from "@/components/admin/welcome-editor"
 
 export default function SettingsPage() {

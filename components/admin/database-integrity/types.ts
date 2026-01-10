@@ -63,8 +63,6 @@ export interface IntegritySummaryProps {
     totalPhotoFaces: number
     totalPeople: number
     totalConfigs: number
-    totalEventPlayers: number
-    totalTelegramBots: number
   }
   checksPerformed: number
 }

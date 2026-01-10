@@ -26,16 +26,12 @@ export async function checkDatabaseIntegrityFullAction(): Promise<IntegrityActio
       { count: totalPhotoFaces },
       { count: totalPeople },
       { count: totalConfigs },
-      { count: totalEventPlayers },
-      { count: totalTelegramBots },
     ] = await Promise.all([
       supabase.from("galleries").select("*", { count: "exact", head: true }),
       supabase.from("gallery_images").select("*", { count: "exact", head: true }),
       supabase.from("photo_faces").select("*", { count: "exact", head: true }),
       supabase.from("people").select("*", { count: "exact", head: true }),
       supabase.from("face_recognition_config").select("*", { count: "exact", head: true }),
-      supabase.from("event_players").select("*", { count: "exact", head: true }),
-      supabase.from("telegram_bots").select("*", { count: "exact", head: true }),
     ])
 
     const stats = {
@@ -44,8 +40,6 @@ export async function checkDatabaseIntegrityFullAction(): Promise<IntegrityActio
       totalPhotoFaces: totalPhotoFaces || 0,
       totalPeople: totalPeople || 0,
       totalConfigs: totalConfigs || 0,
-      totalEventPlayers: totalEventPlayers || 0,
-      totalTelegramBots: totalTelegramBots || 0,
     }
 
     const photoFaces = {

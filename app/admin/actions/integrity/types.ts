@@ -10,8 +10,6 @@ export interface IntegrityReport {
     totalPhotoFaces: number
     totalPeople: number
     totalConfigs: number
-    totalEventPlayers: number
-    totalTelegramBots: number
   }
   photoFaces: {
     verifiedWithoutPerson: number

@@ -1,20 +1,6 @@
 /**
- * Face Training Manager Types
+ * Face Recognition Configuration Types
  */
-
-export interface TrainingSession {
-  id: string
-  created_at: string
-  training_mode: string
-  faces_count: number
-  people_count: number
-  metrics: {
-    accuracy?: number
-    precision?: number
-    recall?: number
-  }
-  status: string
-}
 
 export interface Config {
   confidence_thresholds: {
@@ -31,15 +17,4 @@ export interface Config {
     min_face_size: number
     min_blur_score: number
   }
-}
-
-export interface DatasetStats {
-  total_people: number
-  total_faces: number
-  faces_per_person: {
-    min: number
-    max: number
-    avg: number
-  }
-  people_by_face_count: Record<string, number>
 }

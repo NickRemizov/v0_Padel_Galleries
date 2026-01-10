@@ -1,17 +1,16 @@
 """
-TrainingService - Facade for face recognition model training.
-Coordinates dataset preparation, training execution, and metrics calculation.
+TrainingService - Facade for face recognition indexing operations.
+Coordinates dataset preparation and batch recognition.
 
 Delegates to specialized modules in services/training/:
 - dataset.py - Dataset preparation
 - metrics.py - Metrics calculation
 - session.py - Session management
-- pipeline.py - Background training process
-- storage.py - HNSW index save/load
 - batch.py - Batch recognition
 
 v4.1: Migrated to SupabaseService (modular architecture)
 v4.2: Refactored to delegate to training/ submodules
+v4.3: Removed deprecated pipeline.py and storage.py
 """
 
 from typing import List, Dict, Optional
@@ -23,7 +22,6 @@ from services.training import (
     create_session,
     get_status,
     get_history,
-    run_training_pipeline,
     batch_recognize as _batch_recognize
 )
 
@@ -108,27 +106,6 @@ class TrainingService:
         self.current_session_id = session_id
         
         return session_id
-    
-    async def _train_background(
-        self,
-        session_id: str,
-        mode: str,
-        filters: Dict,
-        options: Dict
-    ):
-        """
-        Background training process.
-        Delegates to training.pipeline module.
-        """
-        await run_training_pipeline(
-            session_id=session_id,
-            mode=mode,
-            filters=filters,
-            options=options,
-            face_service=self.face_service,
-            training_repo=self._training,
-            progress_tracker=self.current_progress
-        )
     
     # ==================== Status & History ====================
     
