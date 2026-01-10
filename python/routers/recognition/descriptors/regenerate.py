@@ -6,7 +6,7 @@ Endpoints:
 - POST /regenerate-single-descriptor
 - POST /regenerate-unknown-descriptors
 
-v2.0: Variant C architecture
+v2.0: all-faces-indexed architecture
 - regenerate-missing: add_faces_to_index (faces had no descriptor = weren't in index)
 - regenerate-single: remove + add (embedding changes, face might be in index)
 - regenerate-unknown: add_faces_to_index (faces had no descriptor = weren't in index)
@@ -243,7 +243,7 @@ async def regenerate_unknown_descriptors(
     Regenerate insightface_descriptor for unknown faces that don't have one.
     This fixes faces that were saved without descriptors during batch recognition.
 
-    v2.0: Adds regenerated faces to index (Variant C).
+    v2.0: Adds regenerated faces to index (all faces indexed).
     """
     supabase_client = get_supabase_client()
     try:
@@ -340,7 +340,7 @@ async def regenerate_unknown_descriptors(
         logger.info(f"[v{VERSION}] ===== REGENERATION COMPLETE =====")
         logger.info(f"[v{VERSION}] Total: {total_faces}, Already had: {already_had_descriptor}, Regenerated: {regenerated}, Failed: {failed}")
 
-        # v2.0: Add regenerated faces to index (Variant C - all faces with descriptors)
+        # v2.0: Add regenerated faces to index (all faces with descriptors indexed)
         index_rebuilt = False
         if regenerated_face_ids:
             try:

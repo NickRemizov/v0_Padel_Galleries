@@ -2,7 +2,7 @@
 
 Полное описание всех API endpoints в системе.
 
-> **v6.0 Variant C**: HNSW индекс содержит ВСЕ лица с дескрипторами.
+> **v6.0 (all-faces-indexed)**: HNSW индекс содержит ВСЕ лица с дескрипторами.
 > Изменение person_id не требует rebuild - используется `update_metadata()`.
 
 ## Next.js API Routes
@@ -19,7 +19,7 @@
 
 ---
 
-### Admin Training
+### Admin Indexing
 
 #### POST /api/admin/training/*
 Операции обучения через FastAPI proxy.
@@ -115,7 +115,7 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 
 ---
 
-### Training
+### Indexing
 
 #### POST /api/v2/training/cluster-unverified-faces
 Кластеризация неизвестных лиц.
@@ -155,7 +155,7 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 ---
 
 #### POST /api/recognition/rebuild-index
-Перестроение HNSWLIB индекса (v6.0 Variant C).
+Перестроение HNSWLIB индекса (v6.0 (all-faces-indexed)).
 
 **Request:** (пустой)
 

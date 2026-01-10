@@ -3,7 +3,7 @@ Photo Faces Router
 
 User operations on their photo faces (verify, reject, hide, unhide).
 
-v2.0: Variant C architecture
+v2.0: all-faces-indexed architecture
 - verify/reject use update_face_metadata (face already in index)
 - hide/unhide do NOT sync index (hidden_by_user is display-only, not recognition-related)
 
@@ -123,7 +123,7 @@ async def verify_photo_face(
 
     logger.info(f"User {user_id or 'unknown'} verified photo_face {photo_face_id}")
 
-    # v2.0: Update index metadata (face already in index from Variant C)
+    # v2.0: Update index metadata (face already in index (all faces indexed))
     try:
         idx_result = await face_service.update_face_metadata(
             photo_face_id,

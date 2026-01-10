@@ -157,7 +157,7 @@ async def auto_recognize_faces(image_id: str):
                         "recognition_confidence": confidence
                     }).eq("id", face_id).execute()
 
-                    # v6.1: Sync index metadata (face already in index from Variant C)
+                    # v6.1: Sync index metadata (face already in index (all faces indexed))
                     try:
                         await face_service.update_face_metadata(
                             face_id,

@@ -14,7 +14,7 @@ v4.2: Face size filter uses max(width, height)
 v5.0: Incremental index operations (add_item, mark_deleted)
       - Reduces full rebuilds by using incremental updates
       - Auto-rebuild when deleted >= 5% or capacity >= 95%
-v6.0: Variant C - ALL faces with descriptors in index
+v6.0: All faces with descriptors in index
       - person_id can be None (unassigned faces)
       - excluded_from_index is metadata, not filter
       - update_metadata() for changing person_id without rebuild
@@ -404,7 +404,7 @@ class FaceRecognitionService:
         """
         Update metadata for a face WITHOUT rebuilding the index.
 
-        v6.0: Key method for Variant C architecture.
+        v6.0: Key method for all-faces-indexed architecture.
         Use this when person_id, verified, confidence, or excluded changes
         but the embedding itself is unchanged.
 

@@ -17,7 +17,7 @@ v2.3: Separate search_threshold (for finding candidates) and save_threshold (for
       - search_threshold: 0.30 without filters, config with filters
       - save_threshold: ALWAYS config value (e.g. 0.60)
       - Boxes saved always, person_id only if confidence >= save_threshold
-v3.0: Variant C architecture
+v3.0: all-faces-indexed architecture
       - ALL faces added to index (not just those with person_id)
       - Use update_face_metadata() when person_id changes
       - Skip excluded faces in top_matches
@@ -325,7 +325,7 @@ async def process_photo(
             
             logger.info(f"[v{VERSION}] Saved {len(saved_faces)} faces")
 
-            # v3.0: Add ALL faces to index (Variant C architecture)
+            # v3.0: Add ALL faces to index (all-faces-indexed architecture)
             # Faces without person_id are added with person_id=None in metadata
             index_rebuilt = False
             if saved_faces:
@@ -368,7 +368,7 @@ async def process_photo(
         # ========================================================================
         # CASE 2: Existing faces - recognize unverified faces
         # v2.3: Also uses save_threshold for DB updates
-        # v3.0: Use update_face_metadata (faces already in index from Variant C)
+        # v3.0: Use update_face_metadata (faces already in index (all faces indexed))
         # ========================================================================
         logger.info(f"[v{VERSION}] Case 2: Existing faces - recognizing unverified")
 
@@ -416,7 +416,7 @@ async def process_photo(
                             "recognition_confidence": rec_confidence
                         }).eq("id", face_id).execute()
 
-                        # v3.0: Update index metadata (face already in index from Variant C)
+                        # v3.0: Update index metadata (face already in index (all faces indexed))
                         try:
                             await face_service.update_face_metadata(
                                 face_id,

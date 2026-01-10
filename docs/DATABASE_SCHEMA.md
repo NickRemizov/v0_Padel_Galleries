@@ -193,7 +193,7 @@ WHERE g.id = 'gallery_uuid';
 **Типичные запросы:**
 
 \`\`\`sql
--- [v6.0 Variant C] Получить все эмбеддинги для индекса
+-- [v6.0 (all-faces-indexed)] Получить все эмбеддинги для индекса
 -- ВСЕ лица с дескрипторами попадают в индекс (включая без person_id)
 -- excluded_from_index — метаданные в индексе, не фильтр при загрузке
 SELECT
@@ -802,7 +802,7 @@ VALUES
 
 ### v4.2 (10.01.2026) — Dead code cleanup ✅
 - **УДАЛЕНЫ колонки из `photo_faces`:** `training_used`, `training_context` (писались, но никогда не читались)
-- **УДАЛЕНА таблица:** `face_training_sessions` (Training UI отключен, API недоступен)
+- **УДАЛЕНА таблица:** `face_training_sessions` (Indexing UI отключен, API недоступен)
 - **УДАЛЕНА таблица:** `gallery_co_occurrence` (никогда не была реализована)
 - **УДАЛЕНЫ backup таблицы:** `_backup_telegram_profile_url`, `photo_faces_backup_*`
 - **ДОБАВЛЕНА колонка:** `photo_faces.hidden_by_user`
@@ -812,8 +812,8 @@ VALUES
 - **ОБНОВЛЕНЫ поля `users`:** добавлено `welcome_version_seen`
 - **СОХРАНЕНА таблица:** `tournament_results` (будет использоваться)
 
-### v4.1 (10.01.2026) — Variant C HNSW Index ✅
-- **ИЗМЕНЕНО:** SQL примеры для индекса обновлены под Variant C
+### v4.1 (10.01.2026) — HNSW Index (all-faces-indexed) ✅
+- **ИЗМЕНЕНО:** SQL примеры для индекса обновлены под v6.0+ архитектуру
 - **ПРИМЕЧАНИЕ:** Теперь ВСЕ лица с дескрипторами попадают в индекс
 - **ПРИМЕЧАНИЕ:** excluded_from_index — метаданные в индексе, не фильтр при загрузке
 

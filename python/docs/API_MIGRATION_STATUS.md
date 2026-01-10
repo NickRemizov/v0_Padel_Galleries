@@ -17,7 +17,7 @@
 - [x] `models/domain/face.py` - Face, BoundingBox, FaceQuality
 - [x] `models/domain/person.py` - Person, PersonSummary
 - [x] `models/domain/gallery.py` - Gallery, GalleryImage
-- [x] `models/domain/training.py` - TrainingSession, TrainingConfig
+- [x] `models/domain/training.py` - TrainingSession, TrainingConfig (legacy)
 - [x] `models/requests/` - Request DTOs
 - [x] `models/responses/` - Response DTOs
 
@@ -26,7 +26,7 @@
 - [x] `repositories/people_repo.py` - PeopleRepository
 - [x] `repositories/galleries_repo.py` - GalleriesRepository
 - [x] `repositories/config_repo.py` - ConfigRepository
-- [x] `repositories/training_repo.py` - TrainingRepository
+- [x] ~~`repositories/training_repo.py`~~ - REMOVED (table deleted)
 
 ### Phase 5-6: Router Migration
 - [x] `routers/config.py` - ApiResponse + custom exceptions

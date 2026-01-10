@@ -6,7 +6,7 @@ Extracted from supabase_database.py. Handles:
 - Audit operations (get all embeddings for person)
 - Exclusion management (outliers)
 
-v6.0: Variant C architecture - loads ALL faces with descriptors:
+v6.0: all-faces-indexed architecture - loads ALL faces with descriptors:
 - Faces without person_id are included (person_id can be None)
 - excluded_from_index is returned as metadata, not filtered
 - Recognition logic handles exclusion in FaceRecognitionService
@@ -32,7 +32,7 @@ class EmbeddingsRepository:
         """
         Load InsightFace embeddings from photo_faces table for HNSW index.
 
-        v6.0 Variant C: Loads ALL faces with descriptors:
+        v6.0: Loads ALL faces with descriptors:
         - Faces without person_id are included (person_id will be None)
         - excluded_from_index is returned as metadata, not filtered out
         - Recognition logic will skip faces where person_id is None OR excluded is True
@@ -41,7 +41,7 @@ class EmbeddingsRepository:
             Tuple of (face_ids, person_ids, embeddings, verified_flags, confidences, excluded_flags)
             - person_ids can contain None for unassigned faces
         """
-        logger.info("Loading ALL embeddings from Supabase (Variant C)...")
+        logger.info("Loading ALL embeddings from Supabase (all faces indexed)...")
 
         try:
             all_data = []

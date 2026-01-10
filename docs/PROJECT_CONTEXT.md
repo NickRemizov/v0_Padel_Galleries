@@ -1,7 +1,7 @@
 # VLC Padel Photo Portal — Project Context
 
 > **Последнее обновление:** 10 января 2026
-> **Версия:** 6.1 (Variant C Architecture)
+> **Версия:** 6.1 (All-Faces-Indexed Architecture)
 
 ---
 
@@ -117,7 +117,7 @@ python/
 - **verified=true** — Человек подтвердил привязку вручную
 - **verified=false** — AI распознал автоматически
 
-### HNSW Index (Variant C — v6.0+)
+### HNSW Index (v6.0+)
 - **ВСЕ лица с дескрипторами** попадают в индекс (включая без person_id)
 - Изменение person_id **НЕ требует rebuild** индекса — используется `update_metadata()`
 - `excluded_from_index=true` — лицо в индексе, но пропускается при распознавании

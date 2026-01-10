@@ -3,7 +3,7 @@ Faces API - Batch Operations
 Batch operations: batch-verify, batch-assign
 
 v5.0: Cleaned up - removed unused batch-save endpoint
-v6.0: Variant C architecture
+v6.0: all-faces-indexed architecture
       - Faces are already in index when created
       - Use update_face_metadata instead of add/remove for person_id changes
       - Only mark_deleted when faces are actually deleted from DB
@@ -45,7 +45,7 @@ async def batch_assign_faces(
     """
     Batch assign multiple faces to a person.
 
-    v6.0: Faces are already in index (Variant C), use update_face_metadata.
+    v6.0: Faces are already in index (all faces indexed), use update_face_metadata.
     """
     try:
         logger.info(f"[batch-assign] START: {len(request.face_ids)} faces -> person {request.person_id}")
@@ -80,7 +80,7 @@ async def batch_assign_faces(
                     if update_response.data:
                         updated_count += 1
 
-                        # v6.0: Update index metadata (face already in index from Variant C)
+                        # v6.0: Update index metadata (face already in index (all faces indexed))
                         if has_descriptor:
                             try:
                                 await face_service.update_face_metadata(
@@ -121,7 +121,7 @@ async def batch_verify_faces(
     Batch verify faces: update kept faces and delete removed ones.
 
     v4.8: Optimized - rebuild index ONLY when person_id changes or faces deleted.
-    v6.0: Variant C - use update_face_metadata for person_id changes, mark_deleted only for DB deletes.
+    v6.0: All faces indexed - use update_face_metadata for person_id changes, mark_deleted only for DB deletes.
     """
     try:
         logger.info(f"[batch-verify] START photo={request.photo_id}, faces={len(request.kept_faces)}")

@@ -89,21 +89,18 @@ services/
 │   ├── embeddings.py           # EmbeddingsRepository
 │   ├── faces.py                # FacesRepository
 │   ├── people.py               # PeopleRepository
-│   └── training.py             # TrainingRepository
+│   └── training.py             # TrainingRepository (legacy name)
 │
-├── training/                    # Training operations
+├── training/                    # Indexing operations (legacy name)
 │   ├── __init__.py             # Exports
 │   ├── dataset.py              # Dataset preparation
 │   ├── metrics.py              # Metrics calculation
-│   ├── session.py              # Session management
-│   ├── pipeline.py             # Background training
-│   ├── storage.py              # HNSW index save/load
 │   └── batch.py                # Batch recognition
 │
 ├── face_recognition.py          # FaceRecognitionService (facade)
-├── training_service.py          # TrainingService (thin facade)
+├── training_service.py          # TrainingService (thin facade, legacy name)
 ├── insightface_model.py         # InsightFace wrapper
-├── hnsw_index.py                # HNSW operations (Variant C)
+├── hnsw_index.py                # HNSW operations (v6.0+)
 ├── quality_filters.py           # Face quality checks
 └── grouping.py                  # Face clustering
 \`\`\`

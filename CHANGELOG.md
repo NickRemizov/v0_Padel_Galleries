@@ -63,7 +63,7 @@
 
 ## [6.0.0] - Январь 2026
 
-### 🚀 Variant C Architecture - HNSW Index Redesign
+### 🚀 All-Faces-Indexed Architecture - HNSW Index Redesign
 
 #### Изменено
 - **ВСЕ лица с дескрипторами теперь в индексе** (независимо от person_id)

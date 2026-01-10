@@ -32,7 +32,7 @@ class HNSWIndex:
     - mark_deleted for removing faces
     - Automatic rebuild when deleted >= 5% or capacity >= 95%
 
-    v6.0: Variant C - ALL faces in index:
+    v6.0: All faces in index:
     - Faces without person_id are in index (person_id can be None)
     - excluded_map tracks excluded_from_index status
     - update_metadata() for changing person_id/verified/confidence/excluded without rebuild
@@ -377,7 +377,7 @@ class HNSWIndex:
         """
         Update metadata for a face WITHOUT rebuilding the index.
 
-        v6.0: Key method for Variant C architecture.
+        v6.0: Key method for all-faces-indexed architecture.
         Allows changing person_id, verified, confidence, excluded without touching HNSW.
 
         Args:

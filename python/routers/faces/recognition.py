@@ -166,7 +166,7 @@ async def recognize_unknown_faces(
                     "verified": False
                 }).eq("id", face_id).execute()
 
-                # v6.1: Update index metadata (face already in index from Variant C)
+                # v6.1: Update index metadata (face already in index (all faces indexed))
                 try:
                     await face_service.update_face_metadata(
                         face_id,
@@ -203,7 +203,7 @@ async def recognize_unknown_faces(
         if skipped_count > 0:
             logger.warning(f"[recognize-unknown] Skipped {skipped_count} faces with invalid descriptors")
 
-        # v6.1: Metadata already updated in loop above (Variant C - faces already in index)
+        # v6.1: Metadata already updated in loop above (faces already indexed)
         
         by_person_list = [
             {"person_id": pid, "name": data["name"], "count": data["count"]}
@@ -261,7 +261,7 @@ async def clear_face_descriptor(
 
         logger.info(f"[clear-descriptor] Descriptor cleared for face {face_id}")
 
-        # v6.1: Remove from index if had descriptor (Variant C - all faces with descriptors in index)
+        # v6.1: Remove from index if had descriptor (all faces with descriptors are indexed)
         index_updated = False
         if had_descriptor:
             try:
@@ -316,7 +316,7 @@ async def set_face_excluded(
         if not person_id and excluded:
             logger.info(f"[set-excluded] Deleting unrecognized face {face_id}")
 
-            # v6.1: Remove from index BEFORE deleting from DB (Variant C - all faces in index)
+            # v6.1: Remove from index BEFORE deleting from DB (all faces are indexed)
             try:
                 await face_service.remove_face_from_index(face_id)
                 logger.info(f"[set-excluded] Removed face {face_id} from index")
@@ -348,7 +348,7 @@ async def set_face_excluded(
 
         logger.info(f"[set-excluded] Updated face {face_id}: excluded_from_index={excluded}")
 
-        # v6.1: Use update_metadata instead of remove/add (Variant C - all faces stay in index)
+        # v6.1: Use update_metadata instead of remove/add (all faces stay indexed)
         metadata_updated = False
         try:
             await face_service.update_face_metadata(face_id, excluded=excluded)
