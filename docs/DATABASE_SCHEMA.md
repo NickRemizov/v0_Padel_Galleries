@@ -1,7 +1,7 @@
 # Схема базы данных Padel Galleries
 
 **Дата обновления:** 10.01.2026
-**Версия:** 4.1 (Variant C HNSW Index)
+**Версия:** 4.2 (Dead code cleanup)
 
 ---
 
@@ -104,6 +104,8 @@ cities
 | `organizer_id` | uuid | YES | FK → organizers.id |
 | `sort_order` | text | YES | Порядок сортировки фото (default: 'filename') |
 | `external_gallery_url` | text | YES | Внешняя ссылка на галерею |
+| `is_public` | boolean | YES | Публичная галерея (default: false) |
+| `created_by` | uuid | YES | FK → admins.id |
 | `created_at` | timestamptz | YES | Дата создания |
 | `updated_at` | timestamptz | YES | Дата обновления |
 
@@ -111,6 +113,7 @@ cities
 - `location_id` → `locations.id` → `cities.id` (через location)
 - `photographer_id` → `photographers.id`
 - `organizer_id` → `organizers.id`
+- `created_by` → `admins.id`
 
 **Получение города галереи:**
 \`\`\`sql
@@ -169,10 +172,9 @@ WHERE g.id = 'gallery_uuid';
 | `blur_score` | double precision | YES | Оценка размытия (0-100+, выше = резче) |
 | `excluded_from_index` | boolean | YES | **Исключён из HNSW индекса** (default: false) |
 | `face_category` | face_category | YES | Категория лица (default: 'unknown') |
+| `hidden_by_user` | boolean | NO | Скрыто пользователем (default: false) |
 | `verified_at` | timestamptz | YES | Дата верификации |
 | `verified_by` | uuid | YES | UUID верифицировавшего пользователя |
-| `training_used` | boolean | YES | Использовано в обучении (default: false) |
-| `training_context` | jsonb | YES | Контекст обучения |
 | `created_at` | timestamptz | YES | Дата создания |
 | `updated_at` | timestamptz | YES | Дата обновления |
 
@@ -222,12 +224,13 @@ WHERE person_id = 'xxx'
 |------|-----|------|----------|
 | `id` | uuid | NO | Первичный ключ |
 | `real_name` | text | NO | Имя игрока |
-| `slug` | varchar(255) | YES | URL-slug (🔜 планируется NOT NULL) |
+| `slug` | varchar(255) | YES | URL-slug |
 | `category` | person_category | YES | Категория (default: 'player') |
-| `gmail` | text | YES | **Gmail для OAuth авторизации** (формат: user@gmail.com) |
-| `telegram_name` | text | YES | Имя в Telegram (отображаемое) |
-| `telegram_nickname` | text | YES | **Ник в Telegram** (формат: @username), используется для ссылок |
-| `telegram_profile_url` | text | YES | **URL профиля Telegram** (формат: tg://user?id=...), заполняется ботом автоматически |
+| `gmail` | text | YES | **Gmail для OAuth авторизации** |
+| `telegram_id` | bigint | YES | **ID в Telegram** (для связи с users) |
+| `telegram_full_name` | text | YES | Полное имя в Telegram |
+| `telegram_username` | text | YES | **Username в Telegram** (@username) |
+| `telegram_profile_url` | text | YES | **URL профиля Telegram** (tg://user?id=...) |
 | `facebook_profile_url` | text | YES | URL Facebook профиля |
 | `instagram_profile_url` | text | YES | URL Instagram профиля |
 | `avatar_url` | text | YES | URL аватара |
@@ -235,15 +238,15 @@ WHERE person_id = 'xxx'
 | `tournament_results` | jsonb | YES | Результаты турниров (default: '[]') |
 | `show_in_players_gallery` | boolean | YES | Показывать в галерее игроков (default: true) |
 | `show_photos_in_galleries` | boolean | YES | Показывать фото в галереях (default: true) |
+| `create_personal_gallery` | boolean | YES | Создать персональную галерею (default: true) |
+| `show_name_on_photos` | boolean | YES | Показывать имя на фото (default: true) |
+| `show_telegram_username` | boolean | YES | Показывать Telegram username (default: true) |
+| `show_social_links` | boolean | YES | Показывать соцсети (default: true) |
 | `custom_confidence_threshold` | double precision | YES | Индивидуальный порог уверенности |
 | `use_custom_confidence` | boolean | YES | Использовать индивидуальный порог (default: false) |
+| `created_by` | text | YES | Кем создан ('auto_login', 'admin:email') |
 | `created_at` | timestamptz | YES | Дата создания |
 | `updated_at` | timestamptz | YES | Дата обновления |
-
-**Telegram поля:**
-- `telegram_name` — отображаемое имя (например "Иван Петров"), не трогаем
-- `telegram_nickname` — ник для ссылок (@username → https://t.me/username)
-- `telegram_profile_url` — заполняется **автоматически ботом** после авторизации игрока (формат: `tg://user?id=123456`), disabled в UI
 
 **Примечание:** Город игрока определяется через `person_city_cache`.
 
@@ -299,6 +302,7 @@ WHERE person_id = 'xxx'
 | `last_name` | text | YES | Фамилия |
 | `photo_url` | text | YES | URL фото профиля |
 | `person_id` | uuid | YES | FK → people.id (ON DELETE SET NULL) |
+| `welcome_version_seen` | integer | YES | Версия Welcome-диалога (default: 0) |
 | `created_at` | timestamptz | YES | Дата создания |
 | `updated_at` | timestamptz | YES | Дата обновления |
 
@@ -373,6 +377,83 @@ WHERE person_id = 'xxx'
 
 ---
 
+## Администрирование
+
+### admins (Администраторы)
+Администраторы системы.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `email` | text | NO | Email, UNIQUE |
+| `name` | text | YES | Имя |
+| `avatar_url` | text | YES | URL аватара |
+| `role` | text | NO | Роль: 'owner', 'global_admin', 'local_admin', 'moderator' |
+| `is_active` | boolean | YES | Активен (default: true) |
+| `last_login_at` | timestamptz | YES | Последний вход |
+| `created_at` | timestamptz | YES | Дата создания |
+
+**Ограничения:**
+- CHECK (role IN ('owner', 'global_admin', 'local_admin', 'moderator'))
+
+---
+
+### admin_activity (Активность админов)
+Лог действий администраторов.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `event_type` | text | NO | Тип события |
+| `user_id` | uuid | YES | FK → users.id |
+| `person_id` | uuid | YES | FK → people.id |
+| `metadata` | jsonb | YES | Дополнительные данные |
+| `created_at` | timestamptz | YES | Дата создания |
+
+---
+
+### user_activity (Активность пользователей)
+Лог действий пользователей.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `person_id` | uuid | NO | FK → people.id |
+| `activity_type` | text | NO | Тип активности |
+| `image_id` | uuid | YES | FK → gallery_images.id |
+| `gallery_id` | uuid | YES | FK → galleries.id |
+| `metadata` | jsonb | YES | Дополнительные данные |
+| `created_at` | timestamptz | YES | Дата создания |
+
+---
+
+### selfie_searches (Поиск по селфи)
+Запросы поиска по фото.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `id` | uuid | NO | Первичный ключ |
+| `user_id` | uuid | NO | FK → users.id |
+| `image_url` | text | NO | URL загруженного фото |
+| `descriptor` | vector(512) | YES | Эмбеддинг лица |
+| `status` | text | YES | 'pending', 'matched', 'no_match', 'collision' |
+| `matched_person_id` | uuid | YES | FK → people.id |
+| `matches_count` | integer | YES | Количество совпадений (default: 0) |
+| `created_at` | timestamptz | YES | Дата создания |
+
+---
+
+### site_content (Контент сайта)
+Настройки и контент сайта.
+
+| Поле | Тип | NULL | Описание |
+|------|-----|------|----------|
+| `key` | text | NO | Ключ, PRIMARY KEY |
+| `value` | jsonb | NO | Значение (default: '{}') |
+| `updated_at` | timestamptz | YES | Дата обновления |
+
+---
+
 ## Распознавание лиц (служебные таблицы)
 
 ### face_recognition_config (Конфигурация)
@@ -384,30 +465,6 @@ WHERE person_id = 'xxx'
 | `key` | text | NO | Ключ параметра, UNIQUE |
 | `value` | jsonb | NO | Значение параметра |
 | `updated_at` | timestamptz | YES | Дата обновления |
-
----
-
-### face_training_sessions (Сессии обучения)
-История сессий обучения модели распознавания.
-
-| Поле | Тип | NULL | Описание |
-|------|-----|------|----------|
-| `id` | uuid | NO | Первичный ключ |
-| `created_at` | timestamptz | YES | Дата создания |
-| `completed_at` | timestamptz | YES | Дата завершения |
-| `model_version` | text | NO | Версия модели |
-| `training_mode` | text | NO | Режим: 'full' или 'incremental' |
-| `faces_count` | integer | NO | Количество лиц |
-| `people_count` | integer | NO | Количество людей |
-| `context_weight` | double precision | YES | Вес контекста (default: 0.1) |
-| `min_faces_per_person` | integer | YES | Минимум лиц на человека (default: 3) |
-| `metrics` | jsonb | YES | Метрики обучения |
-| `status` | text | NO | Статус: 'running', 'completed', 'failed' |
-| `error_message` | text | YES | Сообщение об ошибке |
-
-**Ограничения:**
-- CHECK (training_mode IN ('full', 'incremental'))
-- CHECK (status IN ('running', 'completed', 'failed'))
 
 ---
 
@@ -426,25 +483,6 @@ WHERE person_id = 'xxx'
 
 **Ограничения:**
 - CHECK (vector_dims(descriptor) = 512)
-
----
-
-### gallery_co_occurrence (Совместные появления)
-Статистика совместных появлений людей в галереях.
-
-| Поле | Тип | NULL | Описание |
-|------|-----|------|----------|
-| `id` | uuid | NO | Первичный ключ |
-| `person_id_1` | uuid | NO | FK → people.id |
-| `person_id_2` | uuid | NO | FK → people.id |
-| `gallery_id` | uuid | NO | FK → galleries.id |
-| `co_occurrence_count` | integer | YES | Счётчик (default: 1) |
-| `last_seen_at` | timestamptz | YES | Последнее появление |
-
-**Связи:**
-- `person_id_1` → `people.id`
-- `person_id_2` → `people.id`
-- `gallery_id` → `galleries.id`
 
 ---
 
@@ -762,6 +800,18 @@ VALUES
 
 ## История изменений
 
+### v4.2 (10.01.2026) — Dead code cleanup ✅
+- **УДАЛЕНЫ колонки из `photo_faces`:** `training_used`, `training_context` (писались, но никогда не читались)
+- **УДАЛЕНА таблица:** `face_training_sessions` (Training UI отключен, API недоступен)
+- **УДАЛЕНА таблица:** `gallery_co_occurrence` (никогда не была реализована)
+- **УДАЛЕНЫ backup таблицы:** `_backup_telegram_profile_url`, `photo_faces_backup_*`
+- **ДОБАВЛЕНА колонка:** `photo_faces.hidden_by_user`
+- **ДОБАВЛЕНЫ таблицы:** `admins`, `admin_activity`, `user_activity`, `selfie_searches`, `site_content`
+- **ОБНОВЛЕНЫ поля `people`:** добавлены `telegram_id`, `created_by`, настройки приватности
+- **ОБНОВЛЕНЫ поля `galleries`:** добавлены `is_public`, `created_by`
+- **ОБНОВЛЕНЫ поля `users`:** добавлено `welcome_version_seen`
+- **СОХРАНЕНА таблица:** `tournament_results` (будет использоваться)
+
 ### v4.1 (10.01.2026) — Variant C HNSW Index ✅
 - **ИЗМЕНЕНО:** SQL примеры для индекса обновлены под Variant C
 - **ПРИМЕЧАНИЕ:** Теперь ВСЕ лица с дескрипторами попадают в индекс
@@ -798,9 +848,7 @@ VALUES
   - `likes` — лайки
   - `favorites` — избранное
   - `face_recognition_config` — конфигурация распознавания
-  - `face_training_sessions` — сессии обучения
   - `rejected_faces` — отклонённые лица
-  - `gallery_co_occurrence` — совместные появления
   - `tournament_results` — результаты турниров
 - **ДОБАВЛЕНЫ поля в `people`:** `category`, `custom_confidence_threshold`, `use_custom_confidence`
 - **ДОБАВЛЕНЫ поля в `photo_faces`:** `insightface_det_score`, `face_category`
