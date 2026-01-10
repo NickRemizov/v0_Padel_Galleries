@@ -6,9 +6,10 @@ Endpoints for updating avatar and visibility settings
 from fastapi import APIRouter, Query, Body
 from uuid import UUID
 from typing import Optional
-import numpy as np
-import json
 import httpx
+import io
+
+from PIL import Image
 
 from core.responses import ApiResponse
 from core.exceptions import NotFoundError, ValidationError, DatabaseError
@@ -181,23 +182,32 @@ async def update_visibility(identifier: UUID, data: VisibilityUpdate):
 @router.post("/{identifier:uuid}/generate-avatar")
 async def generate_avatar(
     identifier: UUID,
-    face_id: Optional[str] = Body(None, description="Face ID to use (if not provided, uses best face)"),
-    source_url: Optional[str] = Body(None, description="Direct image URL (alternative to face_id)")
+    face_id: Optional[str] = Body(None, description="Face ID to use for cropping"),
+    source_url: Optional[str] = Body(None, description="Direct image URL (full body/portrait)"),
+    width: Optional[int] = Body(None, description="Target width (default: original)"),
+    height: Optional[int] = Body(None, description="Target height (default: original)"),
+    padding: Optional[float] = Body(0.3, description="Padding around face (0.3 = 30%)")
 ):
     """
     Generate avatar with transparent background using BiRefNet.
 
-    Either provide:
-    - face_id: Uses the photo and bbox from this face
-    - source_url: Uses this image directly (full body/portrait)
-    - Neither: Auto-selects best face (closest to centroid)
+    REQUIRED: Either face_id OR source_url must be provided.
+    User explicitly chooses the source image.
+
+    Args:
+        face_id: Uses the photo and bbox from this face (crops around face with padding)
+        source_url: Uses this image directly (full body/portrait, no cropping)
+        width: Target output width in pixels (optional)
+        height: Target output height in pixels (optional)
+        padding: Padding ratio around face when using face_id (default 0.3 = 30%)
 
     Process:
     1. Get source image (from face bbox or URL)
     2. Remove background with BiRefNet
-    3. Save PNG to MinIO (avatars bucket)
-    4. Create record in person_avatars table
-    5. Update people.avatar_url to new avatar
+    3. Resize to target dimensions (if specified)
+    4. Save PNG to MinIO (avatars bucket)
+    5. Create record in person_avatars table
+    6. Update people.avatar_url to new avatar
 
     Returns:
         Avatar URL and metadata
@@ -220,12 +230,16 @@ async def generate_avatar(
         person = person_result.data[0]
         person_name = person.get("real_name") or person.get("telegram_full_name") or "user"
 
+        # Require explicit source selection
+        if not face_id and not source_url:
+            raise ValidationError("Either face_id or source_url must be provided")
+
         source_face_id = None
         source_photo_id = None
         image_bytes = None
 
         if source_url:
-            # Direct URL provided
+            # Direct URL provided - use full image
             logger.info(f"Generating avatar from URL: {source_url}")
             async with httpx.AsyncClient() as client:
                 response = await client.get(source_url, timeout=30)
@@ -233,7 +247,7 @@ async def generate_avatar(
                 image_bytes = response.content
 
         elif face_id:
-            # Use specific face
+            # Use specific face with bbox cropping
             face_result = supabase_db.client.table("photo_faces").select(
                 "id, photo_id, insightface_bbox, gallery_images(image_url)"
             ).eq("id", face_id).execute()
@@ -250,81 +264,19 @@ async def generate_avatar(
             if not image_url:
                 raise ValidationError("Face has no associated image")
 
-            # Download and crop face
+            # Download image
             async with httpx.AsyncClient() as client:
                 response = await client.get(image_url, timeout=30)
                 response.raise_for_status()
                 full_image = response.content
 
+            # Crop around face with specified padding
             if bbox:
-                image_bytes = birefnet.crop_face_from_image(full_image, bbox, padding=0.5)
+                image_bytes = birefnet.crop_face_from_image(full_image, bbox, padding=padding or 0.3)
             else:
                 image_bytes = full_image
 
-        else:
-            # Auto-select best face (closest to centroid)
-            faces_result = supabase_db.client.table("photo_faces").select(
-                "id, photo_id, insightface_bbox, insightface_descriptor, gallery_images(image_url)"
-            ).eq("person_id", person_id).eq("verified", True).execute()
-
-            faces = faces_result.data or []
-            if not faces:
-                raise ValidationError("No verified faces found for this person")
-
-            # Find best face (closest to centroid)
-            valid_faces = []
-            embeddings = []
-
-            for face in faces:
-                descriptor = face.get("insightface_descriptor")
-                image_url = face.get("gallery_images", {}).get("image_url") if face.get("gallery_images") else None
-                bbox = face.get("insightface_bbox")
-
-                if not descriptor or not image_url:
-                    continue
-
-                if isinstance(descriptor, str):
-                    try:
-                        embedding = np.array(json.loads(descriptor), dtype=np.float32)
-                    except:
-                        continue
-                elif isinstance(descriptor, list):
-                    embedding = np.array(descriptor, dtype=np.float32)
-                else:
-                    continue
-
-                valid_faces.append({
-                    "id": face["id"],
-                    "photo_id": face["photo_id"],
-                    "image_url": image_url,
-                    "bbox": bbox,
-                    "embedding": embedding
-                })
-                embeddings.append(embedding)
-
-            if not valid_faces:
-                raise ValidationError("No valid faces with descriptors found")
-
-            # Calculate centroid and find closest
-            centroid = np.mean(np.array(embeddings), axis=0)
-            best_face = min(valid_faces, key=lambda f: float(np.linalg.norm(f["embedding"] - centroid)))
-
-            source_face_id = best_face["id"]
-            source_photo_id = best_face["photo_id"]
-            bbox = convert_bbox_to_array(best_face["bbox"])
-
-            # Download and crop
-            async with httpx.AsyncClient() as client:
-                response = await client.get(best_face["image_url"], timeout=30)
-                response.raise_for_status()
-                full_image = response.content
-
-            if bbox:
-                image_bytes = birefnet.crop_face_from_image(full_image, bbox, padding=0.5)
-            else:
-                image_bytes = full_image
-
-            logger.info(f"Auto-selected best face {source_face_id} for avatar")
+            logger.info(f"Using face {face_id} with padding {padding}")
 
         if not image_bytes:
             raise ValidationError("Could not get source image")
@@ -335,6 +287,30 @@ async def generate_avatar(
 
         if not avatar_bytes:
             raise DatabaseError("Background removal failed", operation="birefnet")
+
+        # Get original dimensions and resize if needed
+        img = Image.open(io.BytesIO(avatar_bytes))
+        orig_w, orig_h = img.size
+        final_w, final_h = orig_w, orig_h
+
+        if width or height:
+            if width and height:
+                # Both specified - resize to exact dimensions
+                final_w, final_h = width, height
+            elif width:
+                # Only width - maintain aspect ratio
+                ratio = width / orig_w
+                final_w, final_h = width, int(orig_h * ratio)
+            else:
+                # Only height - maintain aspect ratio
+                ratio = height / orig_h
+                final_w, final_h = int(orig_w * ratio), height
+
+            img = img.resize((final_w, final_h), Image.LANCZOS)
+            output = io.BytesIO()
+            img.save(output, format='PNG')
+            avatar_bytes = output.getvalue()
+            logger.info(f"Resized avatar from {orig_w}x{orig_h} to {final_w}x{final_h}")
 
         # Upload to MinIO
         from core.slug import to_slug
@@ -350,6 +326,11 @@ async def generate_avatar(
 
         avatar_url = upload_result["url"]
         object_name = upload_result["object_name"]
+
+        # Set existing primary avatars to non-primary
+        supabase_db.client.table("person_avatars").update({
+            "is_primary": False
+        }).eq("person_id", person_id).eq("is_primary", True).execute()
 
         # Create person_avatars record
         avatar_record = supabase_db.client.table("person_avatars").insert({
@@ -372,7 +353,9 @@ async def generate_avatar(
             "avatar_url": avatar_url,
             "avatar_id": avatar_record.data[0]["id"] if avatar_record.data else None,
             "source_face_id": source_face_id,
-            "source_photo_id": source_photo_id
+            "source_photo_id": source_photo_id,
+            "width": final_w,
+            "height": final_h
         })
 
     except (NotFoundError, ValidationError):
