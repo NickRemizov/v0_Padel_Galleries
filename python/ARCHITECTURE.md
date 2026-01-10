@@ -1,4 +1,4 @@
-# Backend Architecture v5.2
+# Backend Architecture v6.1
 
 ## Overview
 
@@ -103,10 +103,77 @@ services/
 ├── face_recognition.py          # FaceRecognitionService (facade)
 ├── training_service.py          # TrainingService (thin facade)
 ├── insightface_model.py         # InsightFace wrapper
-├── hnsw_index.py                # HNSW operations
+├── hnsw_index.py                # HNSW operations (Variant C)
 ├── quality_filters.py           # Face quality checks
 └── grouping.py                  # Face clustering
 \`\`\`
+
+## HNSW Index Architecture (v6.0 - Variant C)
+
+### Принципы Variant C
+
+**Все лица с дескрипторами попадают в индекс**, независимо от наличия person_id:
+
+\`\`\`
+┌─────────────────────────────────────────────────────────────┐
+│                    HNSW Index                               │
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │ Face A      │  │ Face B      │  │ Face C      │   ...   │
+│  │ person: X   │  │ person: Y   │  │ person: null│         │
+│  │ verified: ✓ │  │ verified: ✗ │  │ excluded: ✓ │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+│                                                             │
+│  Metadata Maps (можно обновлять без rebuild):               │
+│  - ids_map[label] → person_id (может быть None)             │
+│  - verified_map[label] → bool                               │
+│  - confidence_map[label] → float                            │
+│  - excluded_map[label] → bool                               │
+│  - face_id_map[label] → face_id                             │
+└─────────────────────────────────────────────────────────────┘
+\`\`\`
+
+### Ключевые методы HNSWIndex
+
+| Метод | Описание |
+|-------|----------|
+| `load_from_embeddings()` | Полная загрузка индекса из БД |
+| `initialize_empty()` | Создание пустого индекса (v6.1) |
+| `add_item()` | Инкрементальное добавление лица |
+| `mark_deleted()` | Пометка лица как удалённого |
+| `update_metadata()` | Обновление person_id/verified/excluded БЕЗ rebuild |
+| `query()` | Поиск k ближайших соседей |
+
+### Логика распознавания (recognize_face)
+
+\`\`\`python
+# 1. Query index for candidates
+person_ids, similarities, verified_flags, source_confidences, excluded_flags = index.query(embedding, k=50)
+
+# 2. For each candidate:
+for i in range(len(person_ids)):
+    # Skip faces without person_id or excluded
+    if person_id is None or is_excluded:
+        continue
+
+    # Early exit when no better candidate possible
+    if similarity < best_final_confidence:
+        break
+
+    # Calculate final confidence (chain multiplication)
+    final_confidence = source_confidence × similarity
+\`\`\`
+
+### Когда какой метод использовать
+
+| Сценарий | Метод |
+|----------|-------|
+| Новое лицо детектировано | `add_face_to_index()` |
+| Пользователь verify/reject | `update_face_metadata()` |
+| Админ меняет person_id | `update_face_metadata()` |
+| Дескриптор пересчитан | `remove_face_from_index()` + `add_face_to_index()` |
+| Лицо удалено из БД | `remove_face_from_index()` |
+| Полная перестройка | `rebuild_players_index()` |
 
 ## Key Patterns
 
@@ -224,6 +291,8 @@ ADMIN_EMAILS=admin@example.com
 
 ## Version History
 
+- v6.1.0 - Audit fixes: singleton in user router, auto-recognize sync, empty index handling
+- v6.0.0 - **Variant C architecture**: ALL faces with descriptors in index, `update_metadata()` for person_id changes without rebuild, `excluded_map` for exclusions
 - v5.2.0 - Modular routers (galleries/, images/, admin/debug/, recognition/descriptors/), training/ package refactoring
 - v5.1.0 - AuthMiddleware, for_gallery optimization, On-Demand Revalidation
 - v5.0.0 - All routers migrated to ApiResponse + custom exceptions

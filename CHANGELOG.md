@@ -17,6 +17,53 @@
 
 ---
 
+## [6.1.0] - 10 Января 2026
+
+### 🔧 Audit Fixes
+
+#### Исправлено
+- **Singleton в user router**: `photo_faces.py` теперь использует инжектированный `face_service_instance` вместо создания нового экземпляра на каждый запрос
+- **auto-recognize sync**: `processing.py` теперь вызывает `update_face_metadata()` после обновления person_id в БД
+- **Empty index handling**: `HNSWIndex.initialize_empty()` для graceful старта с пустой БД
+- **k=0 в query()**: Добавлена проверка на пустой индекс в `query()` для предотвращения crash
+
+#### Добавлено
+- `user.set_services(face_service)` в `main.py`
+- `face_service_instance` и `set_services()` в `routers/user/__init__.py`
+
+---
+
+## [6.0.0] - Январь 2026
+
+### 🚀 Variant C Architecture - HNSW Index Redesign
+
+#### Изменено
+- **ВСЕ лица с дескрипторами теперь в индексе** (независимо от person_id)
+- `excluded_from_index` теперь метаданные в индексе, не фильтр при загрузке
+- `hidden_by_user` НЕ влияет на индекс (hidden фото используются для распознавания)
+
+#### Добавлено
+- `HNSWIndex.update_metadata()` - обновление person_id/verified/excluded БЕЗ rebuild
+- `HNSWIndex.excluded_map` - карта исключённых лиц
+- `FaceRecognitionService.update_face_metadata()` - высокоуровневый метод
+- `EmbeddingsRepository` возвращает 6-tuple с excluded_flags
+
+#### Преимущества
+- Изменение person_id не требует rebuild индекса
+- Быстрее: `update_metadata()` вместо remove+add
+- Консистентность: один индекс, метаданные обновляются отдельно
+
+#### Файлы изменены
+- `services/hnsw_index.py` - excluded_map, update_metadata()
+- `services/supabase/embeddings.py` - 6-tuple, без фильтров
+- `services/face_recognition.py` - recognize_face скипает None/excluded
+- `routers/recognition/detect.py` - add all faces, use update_metadata
+- `routers/user/photo_faces.py` - verify/reject через update_metadata
+- `routers/faces/batch_operations.py` - batch-assign/verify через update_metadata
+- `routers/images/processing.py` - auto-recognize с index sync
+
+---
+
 ## [1.1.0] - Декабрь 2025
 
 ### 🔴 КРИТИЧЕСКИЙ РЕФАКТОРИНГ - ФАЗА 1 ГИБРИДНОЙ АРХИТЕКТУРЫ

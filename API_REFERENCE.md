@@ -1,6 +1,9 @@
-# API Reference - Galeries v0.8.2
+# API Reference - Galeries v6.1
 
 Полное описание всех API endpoints в системе.
+
+> **v6.0 Variant C**: HNSW индекс содержит ВСЕ лица с дескрипторами.
+> Изменение person_id не требует rebuild - используется `update_metadata()`.
 
 ## Next.js API Routes
 
@@ -238,8 +241,8 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 
 ---
 
-#### POST /rebuild-index
-Перестроение HNSWLIB индекса.
+#### POST /api/recognition/rebuild-index
+Перестроение HNSWLIB индекса (v6.0 Variant C).
 
 **Request:** (пустой)
 
@@ -247,12 +250,41 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 \`\`\`json
 {
   "success": true,
-  "message": "Index rebuilt successfully",
-  "indexed_faces": 150
+  "data": {
+    "old_descriptor_count": 7500,
+    "new_descriptor_count": 7871,
+    "verified_count": 5200,
+    "unique_people_count": 212
+  }
 }
 \`\`\`
 
-**Файл:** `python/routers/training.py`
+**v6.0 Note:** Теперь индексирует ВСЕ лица с дескрипторами, включая те, у которых person_id = NULL.
+
+**Файл:** `python/routers/recognition/maintenance.py`
+
+---
+
+#### POST /api/faces/{face_id}/update-metadata (NEW in v6.0)
+Обновление метаданных лица БЕЗ перестроения индекса.
+
+**Query Parameters:**
+- `person_id` (optional): Новый person_id (пустая строка = null)
+- `verified` (optional): Новый статус верификации
+- `confidence` (optional): Новая уверенность
+- `excluded` (optional): Исключить из распознавания
+
+**Response:**
+\`\`\`json
+{
+  "success": true,
+  "data": {
+    "success": true
+  }
+}
+\`\`\`
+
+**Файл:** `python/services/face_recognition.py`
 
 ---
 

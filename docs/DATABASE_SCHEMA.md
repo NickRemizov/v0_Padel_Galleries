@@ -1,7 +1,7 @@
 # Схема базы данных Padel Galleries
 
-**Дата обновления:** 04.01.2026
-**Версия:** 4.0 (Dropped deprecated fields from database)
+**Дата обновления:** 10.01.2026
+**Версия:** 4.1 (Variant C HNSW Index)
 
 ---
 
@@ -191,13 +191,18 @@ WHERE g.id = 'gallery_uuid';
 **Типичные запросы:**
 
 \`\`\`sql
--- Получить все эмбеддинги для индекса (исключая excluded)
-SELECT person_id, insightface_descriptor 
-FROM photo_faces 
-WHERE verified = true 
-  AND insightface_descriptor IS NOT NULL 
-  AND person_id IS NOT NULL
-  AND (excluded_from_index IS NULL OR excluded_from_index = false);
+-- [v6.0 Variant C] Получить все эмбеддинги для индекса
+-- ВСЕ лица с дескрипторами попадают в индекс (включая без person_id)
+-- excluded_from_index — метаданные в индексе, не фильтр при загрузке
+SELECT
+  id as face_id,
+  person_id,              -- может быть NULL
+  insightface_descriptor,
+  verified,
+  recognition_confidence,
+  excluded_from_index     -- передаётся как excluded_flags
+FROM photo_faces
+WHERE insightface_descriptor IS NOT NULL;
 
 -- Подсчитать дескрипторы для человека (включая excluded)
 SELECT 
@@ -756,6 +761,11 @@ VALUES
 ---
 
 ## История изменений
+
+### v4.1 (10.01.2026) — Variant C HNSW Index ✅
+- **ИЗМЕНЕНО:** SQL примеры для индекса обновлены под Variant C
+- **ПРИМЕЧАНИЕ:** Теперь ВСЕ лица с дескрипторами попадают в индекс
+- **ПРИМЕЧАНИЕ:** excluded_from_index — метаданные в индексе, не фильтр при загрузке
 
 ### v4.0 (04.01.2026) — DROP deprecated fields ✅
 - **УДАЛЕНА таблица:** `face_descriptors_DEPRECATED` (все эмбеддинги в photo_faces)
