@@ -3,6 +3,7 @@
 import { useState, useRef } from "react"
 import Image from "next/image"
 import Draggable from "react-draggable"
+import { Resizable } from "re-resizable"
 import { RowsPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 
@@ -23,17 +24,19 @@ interface Photo {
   gallery_title: string
 }
 
-interface Position {
+interface ElementConfig {
   x: number
   y: number
+  width: number
+  height: number
 }
 
 interface LayoutConfig {
-  name: Position
-  level: Position
-  tournaments: Position
-  photos: Position
-  galleries: Position
+  name: ElementConfig
+  level: ElementConfig
+  tournaments: ElementConfig
+  photos: ElementConfig
+  galleries: ElementConfig
 }
 
 interface TestPlayerCardProps {
@@ -48,11 +51,11 @@ interface TestPlayerCardProps {
 }
 
 const DEFAULT_LAYOUT: LayoutConfig = {
-  name: { x: 16, y: 400 },
-  level: { x: 250, y: 50 },
-  tournaments: { x: 270, y: 180 },
-  photos: { x: 270, y: 290 },
-  galleries: { x: 270, y: 400 },
+  name: { x: 16, y: 400, width: 300, height: 180 },
+  level: { x: 250, y: 50, width: 137, height: 125 },
+  tournaments: { x: 270, y: 180, width: 117, height: 105 },
+  photos: { x: 270, y: 290, width: 117, height: 105 },
+  galleries: { x: 270, y: 400, width: 117, height: 105 },
 }
 
 export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
@@ -60,7 +63,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
   const [layout, setLayout] = useState<LayoutConfig>(DEFAULT_LAYOUT)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Refs for draggable elements (react-draggable requires them)
+  // Refs for draggable elements
   const nameRef = useRef<HTMLDivElement>(null)
   const levelRef = useRef<HTMLDivElement>(null)
   const tournamentsRef = useRef<HTMLDivElement>(null)
@@ -70,12 +73,22 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
   const handleDrag = (key: keyof LayoutConfig) => (_: any, data: { x: number; y: number }) => {
     setLayout((prev) => ({
       ...prev,
-      [key]: { x: data.x, y: data.y },
+      [key]: { ...prev[key], x: data.x, y: data.y },
+    }))
+  }
+
+  const handleResize = (key: keyof LayoutConfig) => (_: any, __: any, ref: HTMLElement) => {
+    setLayout((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        width: ref.offsetWidth,
+        height: ref.offsetHeight,
+      },
     }))
   }
 
   const handleSave = () => {
-    // TODO: Save to database
     console.log("Layout saved:", layout)
     setIsEditing(false)
     alert("Позиции сохранены!\n\n" + JSON.stringify(layout, null, 2))
@@ -92,6 +105,12 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
     height: p.height,
     key: p.id,
   }))
+
+  const editBorder = "2px dashed yellow"
+  const resizeHandleStyle = {
+    background: "yellow",
+    borderRadius: "50%",
+  }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#0A0F1C" }}>
@@ -146,10 +165,10 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
           draggable={false}
         />
 
-        {/* Draggable Name */}
+        {/* Draggable & Resizable Name */}
         <Draggable
           disabled={!isEditing}
-          position={layout.name}
+          position={{ x: layout.name.x, y: layout.name.y }}
           onDrag={handleDrag("name")}
           nodeRef={nameRef}
           bounds="parent"
@@ -157,209 +176,256 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
           <div
             ref={nameRef}
             className="absolute"
-            style={{
-              top: 0,
-              left: 0,
-              cursor: isEditing ? "move" : "default",
-              backgroundColor: "rgba(255, 255, 255, 0.3)",
-              borderRadius: "20px",
-              padding: "16px 24px",
-              border: isEditing ? "2px dashed yellow" : "none",
-            }}
+            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
           >
-            <h1
+            <Resizable
+              size={{ width: layout.name.width, height: layout.name.height }}
+              onResizeStop={handleResize("name")}
+              enable={isEditing ? undefined : false}
+              handleStyles={isEditing ? {
+                bottomRight: { ...resizeHandleStyle, width: 12, height: 12, right: -6, bottom: -6 },
+              } : {}}
               style={{
-                fontFamily: "var(--font-lobster), cursive",
-                fontSize: "clamp(48px, 12vw, 96px)",
-                color: "white",
-                textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
-                lineHeight: 1.1,
-                margin: 0,
+                backgroundColor: "rgba(255, 255, 255, 0.3)",
+                borderRadius: "20px",
+                padding: "16px 24px",
+                border: isEditing ? editBorder : "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              {player.real_name.split(" ").map((word, i) => (
-                <span key={i}>
-                  {word}
-                  {i === 0 && <br />}
-                </span>
-              ))}
-            </h1>
+              <h1
+                style={{
+                  fontFamily: "var(--font-lobster), cursive",
+                  fontSize: `${Math.min(layout.name.width / 4, layout.name.height / 2.5)}px`,
+                  color: "white",
+                  textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
+                  lineHeight: 1.1,
+                  margin: 0,
+                  textAlign: "center",
+                }}
+              >
+                {player.real_name.split(" ").map((word, i) => (
+                  <span key={i}>
+                    {word}
+                    {i === 0 && <br />}
+                  </span>
+                ))}
+              </h1>
+            </Resizable>
           </div>
         </Draggable>
 
-        {/* Draggable Level Badge */}
+        {/* Draggable & Resizable Level Badge */}
         <Draggable
           disabled={!isEditing}
-          position={layout.level}
+          position={{ x: layout.level.x, y: layout.level.y }}
           onDrag={handleDrag("level")}
           nodeRef={levelRef}
           bounds="parent"
         >
           <div
             ref={levelRef}
-            className="absolute text-center flex flex-col justify-center"
-            style={{
-              top: 0,
-              left: 0,
-              cursor: isEditing ? "move" : "default",
-              border: isEditing ? "2px dashed yellow" : "4px solid white",
-              borderRadius: "24px",
-              width: "clamp(100px, 20vw, 137px)",
-              height: "clamp(90px, 18vw, 125px)",
-            }}
+            className="absolute"
+            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
           >
-            <div
+            <Resizable
+              size={{ width: layout.level.width, height: layout.level.height }}
+              onResizeStop={handleResize("level")}
+              enable={isEditing ? undefined : false}
+              handleStyles={isEditing ? {
+                bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
+              } : {}}
               style={{
-                fontFamily: "var(--font-oswald), sans-serif",
-                fontSize: "clamp(18px, 4vw, 24px)",
-                color: "white",
+                border: isEditing ? editBorder : "4px solid white",
+                borderRadius: "24px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              Уровень
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-oswald), sans-serif",
-                fontSize: "clamp(36px, 8vw, 56px)",
-                fontWeight: 600,
-                color: "white",
-                lineHeight: 1,
-              }}
-            >
-              {stats.level}
-            </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-oswald), sans-serif",
+                  fontSize: `${Math.max(14, layout.level.height / 5)}px`,
+                  color: "white",
+                }}
+              >
+                Уровень
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-oswald), sans-serif",
+                  fontSize: `${Math.max(24, layout.level.height / 2.2)}px`,
+                  fontWeight: 600,
+                  color: "white",
+                  lineHeight: 1,
+                }}
+              >
+                {stats.level}
+              </div>
+            </Resizable>
           </div>
         </Draggable>
 
-        {/* Draggable Tournaments Badge */}
+        {/* Draggable & Resizable Tournaments Badge */}
         <Draggable
           disabled={!isEditing}
-          position={layout.tournaments}
+          position={{ x: layout.tournaments.x, y: layout.tournaments.y }}
           onDrag={handleDrag("tournaments")}
           nodeRef={tournamentsRef}
           bounds="parent"
         >
           <div
             ref={tournamentsRef}
-            className="absolute text-center flex flex-col justify-center"
-            style={{
-              top: 0,
-              left: 0,
-              cursor: isEditing ? "move" : "default",
-              border: isEditing ? "2px dashed yellow" : "4px solid white",
-              borderRadius: "24px",
-              width: "clamp(85px, 17vw, 117px)",
-              height: "clamp(75px, 15vw, 105px)",
-            }}
+            className="absolute"
+            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
           >
-            <div
+            <Resizable
+              size={{ width: layout.tournaments.width, height: layout.tournaments.height }}
+              onResizeStop={handleResize("tournaments")}
+              enable={isEditing ? undefined : false}
+              handleStyles={isEditing ? {
+                bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
+              } : {}}
               style={{
-                fontFamily: "var(--font-oswald), sans-serif",
-                fontSize: "clamp(14px, 3vw, 20px)",
-                color: "white",
+                border: isEditing ? editBorder : "4px solid white",
+                borderRadius: "24px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              Турниры
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-oswald), sans-serif",
-                fontSize: "clamp(28px, 6vw, 48px)",
-                fontWeight: 600,
-                color: "white",
-                lineHeight: 1,
-              }}
-            >
-              {stats.tournaments}
-            </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-oswald), sans-serif",
+                  fontSize: `${Math.max(12, layout.tournaments.height / 5)}px`,
+                  color: "white",
+                }}
+              >
+                Турниры
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-oswald), sans-serif",
+                  fontSize: `${Math.max(20, layout.tournaments.height / 2.2)}px`,
+                  fontWeight: 600,
+                  color: "white",
+                  lineHeight: 1,
+                }}
+              >
+                {stats.tournaments}
+              </div>
+            </Resizable>
           </div>
         </Draggable>
 
-        {/* Draggable Photos Badge */}
+        {/* Draggable & Resizable Photos Badge */}
         <Draggable
           disabled={!isEditing}
-          position={layout.photos}
+          position={{ x: layout.photos.x, y: layout.photos.y }}
           onDrag={handleDrag("photos")}
           nodeRef={photosRef}
           bounds="parent"
         >
           <div
             ref={photosRef}
-            className="absolute text-center flex flex-col justify-center"
-            style={{
-              top: 0,
-              left: 0,
-              cursor: isEditing ? "move" : "default",
-              border: isEditing ? "2px dashed yellow" : "4px solid white",
-              borderRadius: "24px",
-              width: "clamp(85px, 17vw, 117px)",
-              height: "clamp(75px, 15vw, 105px)",
-            }}
+            className="absolute"
+            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
           >
-            <div
+            <Resizable
+              size={{ width: layout.photos.width, height: layout.photos.height }}
+              onResizeStop={handleResize("photos")}
+              enable={isEditing ? undefined : false}
+              handleStyles={isEditing ? {
+                bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
+              } : {}}
               style={{
-                fontFamily: "var(--font-oswald), sans-serif",
-                fontSize: "clamp(14px, 3vw, 20px)",
-                color: "white",
+                border: isEditing ? editBorder : "4px solid white",
+                borderRadius: "24px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              Фото
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-oswald), sans-serif",
-                fontSize: "clamp(24px, 5.5vw, 42px)",
-                fontWeight: 600,
-                color: "white",
-                lineHeight: 1,
-              }}
-            >
-              {stats.photosCount}
-            </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-oswald), sans-serif",
+                  fontSize: `${Math.max(12, layout.photos.height / 5)}px`,
+                  color: "white",
+                }}
+              >
+                Фото
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-oswald), sans-serif",
+                  fontSize: `${Math.max(20, layout.photos.height / 2.2)}px`,
+                  fontWeight: 600,
+                  color: "white",
+                  lineHeight: 1,
+                }}
+              >
+                {stats.photosCount}
+              </div>
+            </Resizable>
           </div>
         </Draggable>
 
-        {/* Draggable Galleries Badge */}
+        {/* Draggable & Resizable Galleries Badge */}
         <Draggable
           disabled={!isEditing}
-          position={layout.galleries}
+          position={{ x: layout.galleries.x, y: layout.galleries.y }}
           onDrag={handleDrag("galleries")}
           nodeRef={galleriesRef}
           bounds="parent"
         >
           <div
             ref={galleriesRef}
-            className="absolute text-center flex flex-col justify-center"
-            style={{
-              top: 0,
-              left: 0,
-              cursor: isEditing ? "move" : "default",
-              border: isEditing ? "2px dashed yellow" : "4px solid white",
-              borderRadius: "24px",
-              width: "clamp(85px, 17vw, 117px)",
-              height: "clamp(75px, 15vw, 105px)",
-            }}
+            className="absolute"
+            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
           >
-            <div
+            <Resizable
+              size={{ width: layout.galleries.width, height: layout.galleries.height }}
+              onResizeStop={handleResize("galleries")}
+              enable={isEditing ? undefined : false}
+              handleStyles={isEditing ? {
+                bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
+              } : {}}
               style={{
-                fontFamily: "var(--font-oswald), sans-serif",
-                fontSize: "clamp(14px, 3vw, 20px)",
-                color: "white",
+                border: isEditing ? editBorder : "4px solid white",
+                borderRadius: "24px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              Галереи
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-oswald), sans-serif",
-                fontSize: "clamp(28px, 6vw, 48px)",
-                fontWeight: 600,
-                color: "white",
-                lineHeight: 1,
-              }}
-            >
-              {stats.galleriesCount}
-            </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-oswald), sans-serif",
+                  fontSize: `${Math.max(12, layout.galleries.height / 5)}px`,
+                  color: "white",
+                }}
+              >
+                Галереи
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-oswald), sans-serif",
+                  fontSize: `${Math.max(20, layout.galleries.height / 2.2)}px`,
+                  fontWeight: 600,
+                  color: "white",
+                  lineHeight: 1,
+                }}
+              >
+                {stats.galleriesCount}
+              </div>
+            </Resizable>
           </div>
         </Draggable>
       </div>
