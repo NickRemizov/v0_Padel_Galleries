@@ -247,36 +247,45 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
   )
 
   // Alignment toggle for name
+  const handleAlignChange = (align: TextAlign) => {
+    setLayout((prev) => ({ ...prev, name: { ...prev.name, align } }))
+  }
+
   const AlignmentToggle = () => (
     <div
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
       style={{
         position: "absolute",
-        top: -32,
+        top: -36,
         left: "50%",
         transform: "translateX(-50%)",
         display: "flex",
-        gap: 2,
-        backgroundColor: "rgba(0,0,0,0.8)",
-        borderRadius: 4,
-        padding: 2,
+        gap: 4,
+        backgroundColor: "rgba(0,0,0,0.9)",
+        borderRadius: 6,
+        padding: 4,
+        zIndex: 100,
       }}
     >
       {(["left", "center", "right"] as TextAlign[]).map((align) => (
         <button
           key={align}
-          onClick={(e) => {
+          type="button"
+          onMouseDown={(e) => {
             e.stopPropagation()
-            setLayout((prev) => ({ ...prev, name: { ...prev.name, align } }))
+            e.preventDefault()
+            handleAlignChange(align)
           }}
           style={{
-            width: 24,
-            height: 24,
-            border: "none",
-            borderRadius: 2,
-            backgroundColor: layout.name.align === align ? "yellow" : "transparent",
-            color: layout.name.align === align ? "black" : "white",
+            width: 28,
+            height: 28,
+            border: layout.name.align === align ? "2px solid yellow" : "1px solid #666",
+            borderRadius: 4,
+            backgroundColor: layout.name.align === align ? "rgba(255,255,0,0.3)" : "transparent",
+            color: "white",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: 14,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -401,7 +410,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               <h1
                 style={{
                   fontFamily: "var(--font-lobster), cursive",
-                  fontSize: `${Math.min(layout.name.width / 6, layout.name.height / 1.8)}px`,
+                  fontSize: `${Math.min(layout.name.width / 8, layout.name.height / 2.5)}px`,
                   color: "white",
                   textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
                   lineHeight: 1.1,
