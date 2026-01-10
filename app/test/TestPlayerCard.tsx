@@ -31,6 +31,7 @@ interface ElementConfig {
   y: number
   width: number
   height: number
+  hidden?: boolean
 }
 
 type TextAlign = "left" | "center" | "right"
@@ -246,54 +247,86 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
     </div>
   )
 
-  // Alignment toggle for name
-  const handleAlignChange = (align: TextAlign) => {
-    setLayout((prev) => ({ ...prev, name: { ...prev.name, align } }))
+  // Hide element
+  const hideElement = (key: keyof LayoutConfig) => {
+    setLayout((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], hidden: true },
+    }))
   }
 
-  const AlignmentToggle = () => (
+  // Delete button component
+  const DeleteButton = ({ elementKey }: { elementKey: keyof LayoutConfig }) => (
     <div
-      onMouseDown={(e) => e.stopPropagation()}
-      onTouchStart={(e) => e.stopPropagation()}
+      onClick={() => hideElement(elementKey)}
+      onTouchEnd={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        hideElement(elementKey)
+      }}
       style={{
         position: "absolute",
-        top: -36,
-        left: "50%",
-        transform: "translateX(-50%)",
+        top: -12,
+        right: -12,
+        width: 28,
+        height: 28,
+        backgroundColor: "red",
+        borderRadius: "50%",
         display: "flex",
-        gap: 4,
+        alignItems: "center",
+        justifyContent: "center",
+        color: "white",
+        fontSize: 18,
+        fontWeight: "bold",
+        cursor: "pointer",
+        zIndex: 100,
+        border: "2px solid white",
+      }}
+    >
+      ×
+    </div>
+  )
+
+  // Alignment toggle for name
+  const AlignmentToggle = () => (
+    <div
+      style={{
+        position: "absolute",
+        top: -40,
+        left: 0,
+        display: "flex",
+        gap: 6,
         backgroundColor: "rgba(0,0,0,0.9)",
         borderRadius: 6,
-        padding: 4,
+        padding: 6,
         zIndex: 100,
       }}
     >
       {(["left", "center", "right"] as TextAlign[]).map((align) => (
-        <button
+        <div
           key={align}
-          type="button"
-          onMouseDown={(e) => {
-            e.stopPropagation()
+          onClick={() => setLayout((prev) => ({ ...prev, name: { ...prev.name, align } }))}
+          onTouchEnd={(e) => {
             e.preventDefault()
-            handleAlignChange(align)
+            e.stopPropagation()
+            setLayout((prev) => ({ ...prev, name: { ...prev.name, align } }))
           }}
           style={{
-            width: 28,
-            height: 28,
+            width: 36,
+            height: 36,
             border: layout.name.align === align ? "2px solid yellow" : "1px solid #666",
-            borderRadius: 4,
+            borderRadius: 6,
             backgroundColor: layout.name.align === align ? "rgba(255,255,0,0.3)" : "transparent",
             color: "white",
             cursor: "pointer",
-            fontSize: 14,
+            fontSize: 16,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
-          title={align === "left" ? "Слева" : align === "center" ? "По центру" : "Справа"}
         >
           {align === "left" ? "◀" : align === "center" ? "◆" : "▶"}
-        </button>
+        </div>
       ))}
     </div>
   )
@@ -375,279 +408,294 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
         ))}
 
         {/* Draggable & Resizable Name */}
-        <Draggable
-          disabled={!isEditing}
-          position={{ x: layout.name.x, y: layout.name.y }}
-          onDrag={handleDrag("name")}
-          onStop={handleDragStop}
-          nodeRef={nameRef}
-          bounds="parent"
-        >
-          <div
-            ref={nameRef}
-            className="absolute"
-            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
+        {!layout.name.hidden && (
+          <Draggable
+            disabled={!isEditing}
+            position={{ x: layout.name.x, y: layout.name.y }}
+            onDrag={handleDrag("name")}
+            onStop={handleDragStop}
+            nodeRef={nameRef}
+            bounds="parent"
           >
-            <Resizable
-              size={{ width: layout.name.width, height: layout.name.height }}
-              onResizeStop={handleResize("name")}
-              enable={isEditing ? undefined : false}
-              handleStyles={isEditing ? {
-                bottomRight: { ...resizeHandleStyle, width: 12, height: 12, right: -6, bottom: -6 },
-              } : {}}
-              style={{
-                backgroundColor: "rgba(255, 255, 255, 0.3)",
-                borderRadius: "20px",
-                padding: "12px 20px",
-                border: isEditing ? editBorder : "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: layout.name.align === "left" ? "flex-start" : layout.name.align === "right" ? "flex-end" : "center",
-              }}
+            <div
+              ref={nameRef}
+              className="absolute"
+              style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
             >
-              {isEditing && <AlignmentToggle />}
-              {isEditing && <SizeIndicator width={layout.name.width} height={layout.name.height} />}
-              <h1
+              <Resizable
+                size={{ width: layout.name.width, height: layout.name.height }}
+                onResizeStop={handleResize("name")}
+                enable={isEditing ? undefined : false}
+                handleStyles={isEditing ? {
+                  bottomRight: { ...resizeHandleStyle, width: 12, height: 12, right: -6, bottom: -6 },
+                } : {}}
                 style={{
-                  fontFamily: "var(--font-lobster), cursive",
-                  fontSize: `${Math.min(layout.name.width / 8, layout.name.height / 2.5)}px`,
-                  color: "white",
-                  textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
-                  lineHeight: 1.1,
-                  margin: 0,
-                  textAlign: layout.name.align,
+                  backgroundColor: "rgba(255, 255, 255, 0.3)",
+                  borderRadius: "20px",
+                  padding: "12px 20px",
+                  border: isEditing ? editBorder : "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: layout.name.align === "left" ? "flex-start" : layout.name.align === "right" ? "flex-end" : "center",
                 }}
               >
-                {player.real_name.split(" ").map((word, i) => (
-                  <span key={i}>
-                    {word}
-                    {i === 0 && <br />}
-                  </span>
-                ))}
-              </h1>
-            </Resizable>
-          </div>
-        </Draggable>
+                {isEditing && <DeleteButton elementKey="name" />}
+                {isEditing && <AlignmentToggle />}
+                {isEditing && <SizeIndicator width={layout.name.width} height={layout.name.height} />}
+                <h1
+                  style={{
+                    fontFamily: "var(--font-lobster), cursive",
+                    fontSize: `${Math.min(layout.name.width / 8, layout.name.height / 2.5)}px`,
+                    color: "white",
+                    textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
+                    lineHeight: 1.1,
+                    margin: 0,
+                    textAlign: layout.name.align,
+                  }}
+                >
+                  {player.real_name.split(" ").map((word, i) => (
+                    <span key={i}>
+                      {word}
+                      {i === 0 && <br />}
+                    </span>
+                  ))}
+                </h1>
+              </Resizable>
+            </div>
+          </Draggable>
+        )}
 
         {/* Draggable & Resizable Level Badge */}
-        <Draggable
-          disabled={!isEditing}
-          position={{ x: layout.level.x, y: layout.level.y }}
-          onDrag={handleDrag("level")}
-          onStop={handleDragStop}
-          nodeRef={levelRef}
-          bounds="parent"
-        >
-          <div
-            ref={levelRef}
-            className="absolute"
-            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
+        {!layout.level.hidden && (
+          <Draggable
+            disabled={!isEditing}
+            position={{ x: layout.level.x, y: layout.level.y }}
+            onDrag={handleDrag("level")}
+            onStop={handleDragStop}
+            nodeRef={levelRef}
+            bounds="parent"
           >
-            <Resizable
-              size={{ width: layout.level.width, height: layout.level.height }}
-              onResizeStop={handleResize("level")}
-              enable={isEditing ? undefined : false}
-              handleStyles={isEditing ? {
-                bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
-              } : {}}
-              style={{
-                border: isEditing ? editBorder : "4px solid white",
-                borderRadius: "24px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+            <div
+              ref={levelRef}
+              className="absolute"
+              style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
             >
-              {isEditing && <SizeIndicator width={layout.level.width} height={layout.level.height} />}
-              <div
+              <Resizable
+                size={{ width: layout.level.width, height: layout.level.height }}
+                onResizeStop={handleResize("level")}
+                enable={isEditing ? undefined : false}
+                handleStyles={isEditing ? {
+                  bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
+                } : {}}
                 style={{
-                  fontFamily: "var(--font-oswald), sans-serif",
-                  fontSize: `${Math.max(14, layout.level.height / 5)}px`,
-                  color: "white",
+                  border: isEditing ? editBorder : "4px solid white",
+                  borderRadius: "24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                Уровень
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-oswald), sans-serif",
-                  fontSize: `${Math.max(24, layout.level.height / 2.2)}px`,
-                  fontWeight: 600,
-                  color: "white",
-                  lineHeight: 1,
-                }}
-              >
-                {stats.level}
-              </div>
-            </Resizable>
-          </div>
-        </Draggable>
+                {isEditing && <DeleteButton elementKey="level" />}
+                {isEditing && <SizeIndicator width={layout.level.width} height={layout.level.height} />}
+                <div
+                  style={{
+                    fontFamily: "var(--font-oswald), sans-serif",
+                    fontSize: `${Math.max(14, layout.level.height / 5)}px`,
+                    color: "white",
+                  }}
+                >
+                  Уровень
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-oswald), sans-serif",
+                    fontSize: `${Math.max(24, layout.level.height / 2.2)}px`,
+                    fontWeight: 600,
+                    color: "white",
+                    lineHeight: 1,
+                  }}
+                >
+                  {stats.level}
+                </div>
+              </Resizable>
+            </div>
+          </Draggable>
+        )}
 
         {/* Draggable & Resizable Tournaments Badge */}
-        <Draggable
-          disabled={!isEditing}
-          position={{ x: layout.tournaments.x, y: layout.tournaments.y }}
-          onDrag={handleDrag("tournaments")}
-          onStop={handleDragStop}
-          nodeRef={tournamentsRef}
-          bounds="parent"
-        >
-          <div
-            ref={tournamentsRef}
-            className="absolute"
-            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
+        {!layout.tournaments.hidden && (
+          <Draggable
+            disabled={!isEditing}
+            position={{ x: layout.tournaments.x, y: layout.tournaments.y }}
+            onDrag={handleDrag("tournaments")}
+            onStop={handleDragStop}
+            nodeRef={tournamentsRef}
+            bounds="parent"
           >
-            <Resizable
-              size={{ width: layout.tournaments.width, height: layout.tournaments.height }}
-              onResizeStop={handleResize("tournaments")}
-              enable={isEditing ? undefined : false}
-              handleStyles={isEditing ? {
-                bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
-              } : {}}
-              style={{
-                border: isEditing ? editBorder : "4px solid white",
-                borderRadius: "24px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+            <div
+              ref={tournamentsRef}
+              className="absolute"
+              style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
             >
-              {isEditing && <SizeIndicator width={layout.tournaments.width} height={layout.tournaments.height} />}
-              <div
+              <Resizable
+                size={{ width: layout.tournaments.width, height: layout.tournaments.height }}
+                onResizeStop={handleResize("tournaments")}
+                enable={isEditing ? undefined : false}
+                handleStyles={isEditing ? {
+                  bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
+                } : {}}
                 style={{
-                  fontFamily: "var(--font-oswald), sans-serif",
-                  fontSize: `${Math.max(12, layout.tournaments.height / 5)}px`,
-                  color: "white",
+                  border: isEditing ? editBorder : "4px solid white",
+                  borderRadius: "24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                Турниры
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-oswald), sans-serif",
-                  fontSize: `${Math.max(20, layout.tournaments.height / 2.2)}px`,
-                  fontWeight: 600,
-                  color: "white",
-                  lineHeight: 1,
-                }}
-              >
-                {stats.tournaments}
-              </div>
-            </Resizable>
-          </div>
-        </Draggable>
+                {isEditing && <DeleteButton elementKey="tournaments" />}
+                {isEditing && <SizeIndicator width={layout.tournaments.width} height={layout.tournaments.height} />}
+                <div
+                  style={{
+                    fontFamily: "var(--font-oswald), sans-serif",
+                    fontSize: `${Math.max(12, layout.tournaments.height / 5)}px`,
+                    color: "white",
+                  }}
+                >
+                  Турниры
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-oswald), sans-serif",
+                    fontSize: `${Math.max(20, layout.tournaments.height / 2.2)}px`,
+                    fontWeight: 600,
+                    color: "white",
+                    lineHeight: 1,
+                  }}
+                >
+                  {stats.tournaments}
+                </div>
+              </Resizable>
+            </div>
+          </Draggable>
+        )}
 
         {/* Draggable & Resizable Photos Badge */}
-        <Draggable
-          disabled={!isEditing}
-          position={{ x: layout.photos.x, y: layout.photos.y }}
-          onDrag={handleDrag("photos")}
-          onStop={handleDragStop}
-          nodeRef={photosRef}
-          bounds="parent"
-        >
-          <div
-            ref={photosRef}
-            className="absolute"
-            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
+        {!layout.photos.hidden && (
+          <Draggable
+            disabled={!isEditing}
+            position={{ x: layout.photos.x, y: layout.photos.y }}
+            onDrag={handleDrag("photos")}
+            onStop={handleDragStop}
+            nodeRef={photosRef}
+            bounds="parent"
           >
-            <Resizable
-              size={{ width: layout.photos.width, height: layout.photos.height }}
-              onResizeStop={handleResize("photos")}
-              enable={isEditing ? undefined : false}
-              handleStyles={isEditing ? {
-                bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
-              } : {}}
-              style={{
-                border: isEditing ? editBorder : "4px solid white",
-                borderRadius: "24px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+            <div
+              ref={photosRef}
+              className="absolute"
+              style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
             >
-              {isEditing && <SizeIndicator width={layout.photos.width} height={layout.photos.height} />}
-              <div
+              <Resizable
+                size={{ width: layout.photos.width, height: layout.photos.height }}
+                onResizeStop={handleResize("photos")}
+                enable={isEditing ? undefined : false}
+                handleStyles={isEditing ? {
+                  bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
+                } : {}}
                 style={{
-                  fontFamily: "var(--font-oswald), sans-serif",
-                  fontSize: `${Math.max(12, layout.photos.height / 5)}px`,
-                  color: "white",
+                  border: isEditing ? editBorder : "4px solid white",
+                  borderRadius: "24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                Фото
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-oswald), sans-serif",
-                  fontSize: `${Math.max(20, layout.photos.height / 2.2)}px`,
-                  fontWeight: 600,
-                  color: "white",
-                  lineHeight: 1,
-                }}
-              >
-                {stats.photosCount}
-              </div>
-            </Resizable>
-          </div>
-        </Draggable>
+                {isEditing && <DeleteButton elementKey="photos" />}
+                {isEditing && <SizeIndicator width={layout.photos.width} height={layout.photos.height} />}
+                <div
+                  style={{
+                    fontFamily: "var(--font-oswald), sans-serif",
+                    fontSize: `${Math.max(12, layout.photos.height / 5)}px`,
+                    color: "white",
+                  }}
+                >
+                  Фото
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-oswald), sans-serif",
+                    fontSize: `${Math.max(20, layout.photos.height / 2.2)}px`,
+                    fontWeight: 600,
+                    color: "white",
+                    lineHeight: 1,
+                  }}
+                >
+                  {stats.photosCount}
+                </div>
+              </Resizable>
+            </div>
+          </Draggable>
+        )}
 
         {/* Draggable & Resizable Galleries Badge */}
-        <Draggable
-          disabled={!isEditing}
-          position={{ x: layout.galleries.x, y: layout.galleries.y }}
-          onDrag={handleDrag("galleries")}
-          onStop={handleDragStop}
-          nodeRef={galleriesRef}
-          bounds="parent"
-        >
-          <div
-            ref={galleriesRef}
-            className="absolute"
-            style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
+        {!layout.galleries.hidden && (
+          <Draggable
+            disabled={!isEditing}
+            position={{ x: layout.galleries.x, y: layout.galleries.y }}
+            onDrag={handleDrag("galleries")}
+            onStop={handleDragStop}
+            nodeRef={galleriesRef}
+            bounds="parent"
           >
-            <Resizable
-              size={{ width: layout.galleries.width, height: layout.galleries.height }}
-              onResizeStop={handleResize("galleries")}
-              enable={isEditing ? undefined : false}
-              handleStyles={isEditing ? {
-                bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
-              } : {}}
-              style={{
-                border: isEditing ? editBorder : "4px solid white",
-                borderRadius: "24px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+            <div
+              ref={galleriesRef}
+              className="absolute"
+              style={{ top: 0, left: 0, cursor: isEditing ? "move" : "default" }}
             >
-              {isEditing && <SizeIndicator width={layout.galleries.width} height={layout.galleries.height} />}
-              <div
+              <Resizable
+                size={{ width: layout.galleries.width, height: layout.galleries.height }}
+                onResizeStop={handleResize("galleries")}
+                enable={isEditing ? undefined : false}
+                handleStyles={isEditing ? {
+                  bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
+                } : {}}
                 style={{
-                  fontFamily: "var(--font-oswald), sans-serif",
-                  fontSize: `${Math.max(12, layout.galleries.height / 5)}px`,
-                  color: "white",
+                  border: isEditing ? editBorder : "4px solid white",
+                  borderRadius: "24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                Галереи
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-oswald), sans-serif",
-                  fontSize: `${Math.max(20, layout.galleries.height / 2.2)}px`,
-                  fontWeight: 600,
-                  color: "white",
-                  lineHeight: 1,
-                }}
-              >
-                {stats.galleriesCount}
-              </div>
-            </Resizable>
-          </div>
-        </Draggable>
+                {isEditing && <DeleteButton elementKey="galleries" />}
+                {isEditing && <SizeIndicator width={layout.galleries.width} height={layout.galleries.height} />}
+                <div
+                  style={{
+                    fontFamily: "var(--font-oswald), sans-serif",
+                    fontSize: `${Math.max(12, layout.galleries.height / 5)}px`,
+                    color: "white",
+                  }}
+                >
+                  Галереи
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-oswald), sans-serif",
+                    fontSize: `${Math.max(20, layout.galleries.height / 2.2)}px`,
+                    fontWeight: 600,
+                    color: "white",
+                    lineHeight: 1,
+                  }}
+                >
+                  {stats.galleriesCount}
+                </div>
+              </Resizable>
+            </div>
+          </Draggable>
+        )}
       </div>
 
       {/* Photo Gallery */}
