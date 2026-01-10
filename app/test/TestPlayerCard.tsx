@@ -7,6 +7,11 @@ import { Resizable } from "re-resizable"
 import { RowsPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 
+const GRID_SIZE = 10 // Snap grid in pixels
+
+// Snap value to nearest grid
+const snap = (value: number) => Math.round(value / GRID_SIZE) * GRID_SIZE
+
 interface PlayerStats {
   level: string
   tournaments: number
@@ -51,11 +56,11 @@ interface TestPlayerCardProps {
 }
 
 const DEFAULT_LAYOUT: LayoutConfig = {
-  name: { x: 16, y: 400, width: 300, height: 180 },
-  level: { x: 250, y: 50, width: 137, height: 125 },
-  tournaments: { x: 270, y: 180, width: 117, height: 105 },
-  photos: { x: 270, y: 290, width: 117, height: 105 },
-  galleries: { x: 270, y: 400, width: 117, height: 105 },
+  name: { x: 20, y: 400, width: 300, height: 180 },
+  level: { x: 250, y: 50, width: 140, height: 130 },
+  tournaments: { x: 270, y: 190, width: 120, height: 110 },
+  photos: { x: 270, y: 310, width: 120, height: 110 },
+  galleries: { x: 270, y: 430, width: 120, height: 110 },
 }
 
 export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
@@ -73,7 +78,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
   const handleDrag = (key: keyof LayoutConfig) => (_: any, data: { x: number; y: number }) => {
     setLayout((prev) => ({
       ...prev,
-      [key]: { ...prev[key], x: data.x, y: data.y },
+      [key]: { ...prev[key], x: snap(data.x), y: snap(data.y) },
     }))
   }
 
@@ -82,8 +87,8 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
       ...prev,
       [key]: {
         ...prev[key],
-        width: ref.offsetWidth,
-        height: ref.offsetHeight,
+        width: snap(ref.offsetWidth),
+        height: snap(ref.offsetHeight),
       },
     }))
   }
@@ -111,6 +116,26 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
     background: "yellow",
     borderRadius: "50%",
   }
+
+  // Size indicator component
+  const SizeIndicator = ({ width, height }: { width: number; height: number }) => (
+    <div
+      style={{
+        position: "absolute",
+        bottom: -20,
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontSize: "10px",
+        color: "yellow",
+        backgroundColor: "rgba(0,0,0,0.7)",
+        padding: "2px 6px",
+        borderRadius: "4px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {width}×{height}
+    </div>
+  )
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#0A0F1C" }}>
@@ -165,6 +190,20 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
           draggable={false}
         />
 
+        {/* Grid overlay in edit mode */}
+        {isEditing && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: `
+                linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+              `,
+              backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
+            }}
+          />
+        )}
+
         {/* Draggable & Resizable Name */}
         <Draggable
           disabled={!isEditing}
@@ -182,6 +221,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.name.width, height: layout.name.height }}
               onResizeStop={handleResize("name")}
               enable={isEditing ? undefined : false}
+              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 12, height: 12, right: -6, bottom: -6 },
               } : {}}
@@ -195,6 +235,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
                 justifyContent: "center",
               }}
             >
+              {isEditing && <SizeIndicator width={layout.name.width} height={layout.name.height} />}
               <h1
                 style={{
                   fontFamily: "var(--font-lobster), cursive",
@@ -234,6 +275,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.level.width, height: layout.level.height }}
               onResizeStop={handleResize("level")}
               enable={isEditing ? undefined : false}
+              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
               } : {}}
@@ -246,6 +288,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
                 justifyContent: "center",
               }}
             >
+              {isEditing && <SizeIndicator width={layout.level.width} height={layout.level.height} />}
               <div
                 style={{
                   fontFamily: "var(--font-oswald), sans-serif",
@@ -287,6 +330,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.tournaments.width, height: layout.tournaments.height }}
               onResizeStop={handleResize("tournaments")}
               enable={isEditing ? undefined : false}
+              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
               } : {}}
@@ -299,6 +343,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
                 justifyContent: "center",
               }}
             >
+              {isEditing && <SizeIndicator width={layout.tournaments.width} height={layout.tournaments.height} />}
               <div
                 style={{
                   fontFamily: "var(--font-oswald), sans-serif",
@@ -340,6 +385,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.photos.width, height: layout.photos.height }}
               onResizeStop={handleResize("photos")}
               enable={isEditing ? undefined : false}
+              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
               } : {}}
@@ -352,6 +398,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
                 justifyContent: "center",
               }}
             >
+              {isEditing && <SizeIndicator width={layout.photos.width} height={layout.photos.height} />}
               <div
                 style={{
                   fontFamily: "var(--font-oswald), sans-serif",
@@ -393,6 +440,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.galleries.width, height: layout.galleries.height }}
               onResizeStop={handleResize("galleries")}
               enable={isEditing ? undefined : false}
+              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
               } : {}}
@@ -405,6 +453,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
                 justifyContent: "center",
               }}
             >
+              {isEditing && <SizeIndicator width={layout.galleries.width} height={layout.galleries.height} />}
               <div
                 style={{
                   fontFamily: "var(--font-oswald), sans-serif",
