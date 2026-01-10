@@ -1,16 +1,13 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useMemo } from "react"
 import Image from "next/image"
 import Draggable from "react-draggable"
 import { Resizable } from "re-resizable"
 import { RowsPhotoAlbum } from "react-photo-album"
 import "react-photo-album/rows.css"
 
-const GRID_SIZE = 10 // Snap grid in pixels
-
-// Snap value to nearest grid
-const snap = (value: number) => Math.round(value / GRID_SIZE) * GRID_SIZE
+const SNAP_THRESHOLD = 8 // Pixels to trigger snap
 
 interface PlayerStats {
   level: string
@@ -44,6 +41,11 @@ interface LayoutConfig {
   galleries: ElementConfig
 }
 
+interface SnapGuide {
+  type: "vertical" | "horizontal"
+  position: number
+}
+
 interface TestPlayerCardProps {
   player: {
     id: string
@@ -66,6 +68,7 @@ const DEFAULT_LAYOUT: LayoutConfig = {
 export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [layout, setLayout] = useState<LayoutConfig>(DEFAULT_LAYOUT)
+  const [guides, setGuides] = useState<SnapGuide[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Refs for draggable elements
@@ -75,20 +78,120 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
   const photosRef = useRef<HTMLDivElement>(null)
   const galleriesRef = useRef<HTMLDivElement>(null)
 
+  // Get all edges from other elements for snapping
+  const getOtherEdges = (currentKey: keyof LayoutConfig) => {
+    const edges = { x: [] as number[], y: [] as number[], widths: [] as number[], heights: [] as number[] }
+    const keys = Object.keys(layout) as (keyof LayoutConfig)[]
+
+    for (const key of keys) {
+      if (key === currentKey) continue
+      const el = layout[key]
+      // Left, center, right edges
+      edges.x.push(el.x, el.x + el.width / 2, el.x + el.width)
+      // Top, center, bottom edges
+      edges.y.push(el.y, el.y + el.height / 2, el.y + el.height)
+      // Sizes for matching
+      edges.widths.push(el.width)
+      edges.heights.push(el.height)
+    }
+    return edges
+  }
+
+  // Find snap position
+  const findSnap = (value: number, targets: number[]): { snapped: number; guide: number | null } => {
+    for (const target of targets) {
+      if (Math.abs(value - target) < SNAP_THRESHOLD) {
+        return { snapped: target, guide: target }
+      }
+    }
+    return { snapped: value, guide: null }
+  }
+
   const handleDrag = (key: keyof LayoutConfig) => (_: any, data: { x: number; y: number }) => {
+    const edges = getOtherEdges(key)
+    const el = layout[key]
+    const newGuides: SnapGuide[] = []
+
+    // Check left edge
+    let snapX = findSnap(data.x, edges.x)
+    if (snapX.guide !== null) {
+      newGuides.push({ type: "vertical", position: snapX.guide })
+    } else {
+      // Check right edge
+      const rightSnap = findSnap(data.x + el.width, edges.x)
+      if (rightSnap.guide !== null) {
+        snapX = { snapped: rightSnap.guide - el.width, guide: rightSnap.guide }
+        newGuides.push({ type: "vertical", position: rightSnap.guide })
+      } else {
+        // Check center
+        const centerSnap = findSnap(data.x + el.width / 2, edges.x)
+        if (centerSnap.guide !== null) {
+          snapX = { snapped: centerSnap.guide - el.width / 2, guide: centerSnap.guide }
+          newGuides.push({ type: "vertical", position: centerSnap.guide })
+        }
+      }
+    }
+
+    // Check top edge
+    let snapY = findSnap(data.y, edges.y)
+    if (snapY.guide !== null) {
+      newGuides.push({ type: "horizontal", position: snapY.guide })
+    } else {
+      // Check bottom edge
+      const bottomSnap = findSnap(data.y + el.height, edges.y)
+      if (bottomSnap.guide !== null) {
+        snapY = { snapped: bottomSnap.guide - el.height, guide: bottomSnap.guide }
+        newGuides.push({ type: "horizontal", position: bottomSnap.guide })
+      } else {
+        // Check center
+        const centerSnap = findSnap(data.y + el.height / 2, edges.y)
+        if (centerSnap.guide !== null) {
+          snapY = { snapped: centerSnap.guide - el.height / 2, guide: centerSnap.guide }
+          newGuides.push({ type: "horizontal", position: centerSnap.guide })
+        }
+      }
+    }
+
+    setGuides(newGuides)
     setLayout((prev) => ({
       ...prev,
-      [key]: { ...prev[key], x: snap(data.x), y: snap(data.y) },
+      [key]: { ...prev[key], x: snapX.snapped, y: snapY.snapped },
     }))
   }
 
+  const handleDragStop = () => {
+    setGuides([])
+  }
+
   const handleResize = (key: keyof LayoutConfig) => (_: any, __: any, ref: HTMLElement) => {
+    const edges = getOtherEdges(key)
+    let newWidth = ref.offsetWidth
+    let newHeight = ref.offsetHeight
+    const newGuides: SnapGuide[] = []
+
+    // Snap width to other elements' widths
+    for (const w of edges.widths) {
+      if (Math.abs(newWidth - w) < SNAP_THRESHOLD) {
+        newWidth = w
+        break
+      }
+    }
+
+    // Snap height to other elements' heights
+    for (const h of edges.heights) {
+      if (Math.abs(newHeight - h) < SNAP_THRESHOLD) {
+        newHeight = h
+        break
+      }
+    }
+
+    setGuides(newGuides)
     setLayout((prev) => ({
       ...prev,
       [key]: {
         ...prev[key],
-        width: snap(ref.offsetWidth),
-        height: snap(ref.offsetHeight),
+        width: newWidth,
+        height: newHeight,
       },
     }))
   }
@@ -190,25 +293,35 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
           draggable={false}
         />
 
-        {/* Grid overlay in edit mode */}
-        {isEditing && (
+        {/* Snap guide lines */}
+        {isEditing && guides.map((guide, i) => (
           <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
-              `,
-              backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
+            key={i}
+            className="absolute pointer-events-none"
+            style={guide.type === "vertical" ? {
+              left: guide.position,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              backgroundColor: "cyan",
+              boxShadow: "0 0 4px cyan",
+            } : {
+              top: guide.position,
+              left: 0,
+              right: 0,
+              height: 1,
+              backgroundColor: "cyan",
+              boxShadow: "0 0 4px cyan",
             }}
           />
-        )}
+        ))}
 
         {/* Draggable & Resizable Name */}
         <Draggable
           disabled={!isEditing}
           position={{ x: layout.name.x, y: layout.name.y }}
           onDrag={handleDrag("name")}
+          onStop={handleDragStop}
           nodeRef={nameRef}
           bounds="parent"
         >
@@ -221,7 +334,6 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.name.width, height: layout.name.height }}
               onResizeStop={handleResize("name")}
               enable={isEditing ? undefined : false}
-              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 12, height: 12, right: -6, bottom: -6 },
               } : {}}
@@ -263,6 +375,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
           disabled={!isEditing}
           position={{ x: layout.level.x, y: layout.level.y }}
           onDrag={handleDrag("level")}
+          onStop={handleDragStop}
           nodeRef={levelRef}
           bounds="parent"
         >
@@ -275,7 +388,6 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.level.width, height: layout.level.height }}
               onResizeStop={handleResize("level")}
               enable={isEditing ? undefined : false}
-              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
               } : {}}
@@ -318,6 +430,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
           disabled={!isEditing}
           position={{ x: layout.tournaments.x, y: layout.tournaments.y }}
           onDrag={handleDrag("tournaments")}
+          onStop={handleDragStop}
           nodeRef={tournamentsRef}
           bounds="parent"
         >
@@ -330,7 +443,6 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.tournaments.width, height: layout.tournaments.height }}
               onResizeStop={handleResize("tournaments")}
               enable={isEditing ? undefined : false}
-              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
               } : {}}
@@ -373,6 +485,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
           disabled={!isEditing}
           position={{ x: layout.photos.x, y: layout.photos.y }}
           onDrag={handleDrag("photos")}
+          onStop={handleDragStop}
           nodeRef={photosRef}
           bounds="parent"
         >
@@ -385,7 +498,6 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.photos.width, height: layout.photos.height }}
               onResizeStop={handleResize("photos")}
               enable={isEditing ? undefined : false}
-              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
               } : {}}
@@ -428,6 +540,7 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
           disabled={!isEditing}
           position={{ x: layout.galleries.x, y: layout.galleries.y }}
           onDrag={handleDrag("galleries")}
+          onStop={handleDragStop}
           nodeRef={galleriesRef}
           bounds="parent"
         >
@@ -440,7 +553,6 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               size={{ width: layout.galleries.width, height: layout.galleries.height }}
               onResizeStop={handleResize("galleries")}
               enable={isEditing ? undefined : false}
-              grid={[GRID_SIZE, GRID_SIZE]}
               handleStyles={isEditing ? {
                 bottomRight: { ...resizeHandleStyle, width: 10, height: 10, right: -5, bottom: -5 },
               } : {}}
