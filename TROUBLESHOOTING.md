@@ -376,8 +376,8 @@ console.log("[v0] Face metrics:", {
 
 3. **Обратитесь к документации:**
    - README.md
-   - ARCHITECTURE.md
-   - RECOGNITION_PROCESS_DOCUMENTATION.md
+   - python/ARCHITECTURE.md
+   - docs/RECOGNITION_SUMMARY.md
 \`\`\`
 
 \`\`\`md file="AUTO-DEPLOY-README.md" isDeleted="true"

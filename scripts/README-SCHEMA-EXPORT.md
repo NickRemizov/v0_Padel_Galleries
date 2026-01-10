@@ -40,9 +40,9 @@ psql $DATABASE_URL -f scripts/export-database-schema.sql > schema-export.txt
 ## Результат
 
 После выполнения всех скриптов у тебя будет полная информация для обновления:
-- `DATABASE_SCHEMA.md` - описание всех таблиц и полей
+- `docs/DATABASE_SCHEMA.md` - описание всех таблиц и полей
 - `API_REFERENCE.md` - endpoints на основе структуры БД
-- `ARCHITECTURE.md` - связи между таблицами
+- `python/ARCHITECTURE.md` - связи между таблицами
 
 ## Следующие шаги
 

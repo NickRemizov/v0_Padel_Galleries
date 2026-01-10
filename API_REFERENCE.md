@@ -7,115 +7,24 @@
 
 ## Next.js API Routes
 
-### Face Detection
+> **Note:** Большинство операций с распознаванием теперь идут напрямую через FastAPI.
+> Next.js API Routes используются для проксирования и специфичных frontend-операций.
 
-#### POST /api/face-detection/detect
-Детекция лиц на изображении с помощью InsightFace.
+### Faces
 
-**Request Body:**
-\`\`\`typescript
-{
-  imageUrl: string;              // URL изображения в Blob Storage
-  applyQualityFilters: boolean;  // Применять ли фильтры качества
-}
-\`\`\`
+#### GET/POST /api/faces/[faceId]/*
+Операции с конкретными лицами (детали, обновление и т.д.)
 
-**Response:**
-\`\`\`typescript
-{
-  faces: Array<{
-    embedding: number[];         // 512-мерный вектор
-    bbox: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    };
-    det_score: number;           // Уверенность детекции (0-1)
-    blur_score: number;          // Резкость лица (Laplacian)
-    face_size: number;           // Размер лица в пикселях
-  }>;
-}
-\`\`\`
-
-**Файл:** `app/api/face-detection/detect/route.ts`
+**Файл:** `app/api/faces/[faceId]/`
 
 ---
 
-#### POST /api/face-detection/recognize
-Распознавание лица по эмбеддингу.
+### Admin Training
 
-**Request Body:**
-\`\`\`typescript
-{
-  embedding: number[];           // 512-мерный вектор лица
-  galleryId?: string;            // ID галереи для контекстного поиска
-}
-\`\`\`
+#### POST /api/admin/training/*
+Операции обучения через FastAPI proxy.
 
-**Response:**
-\`\`\`typescript
-{
-  personId: string | null;       // ID найденного игрока или null
-  confidence: number;            // Уверенность распознавания (0-1)
-  matchType: 'verified' | 'unverified' | 'none';
-}
-\`\`\`
-
-**Файл:** `app/api/face-detection/recognize/route.ts`
-
----
-
-### Training
-
-#### POST /api/training/cluster-unverified-faces
-Кластеризация неизвестных лиц в галерее с помощью HDBSCAN.
-
-**Request Body:**
-\`\`\`typescript
-{
-  galleryId: string;             // ID галереи
-}
-\`\`\`
-
-**Response:**
-\`\`\`typescript
-{
-  clusters: Array<{
-    cluster_id: number;          // ID кластера (-1 для шума)
-    faces: Array<{
-      face_id: string;
-      image_id: string;
-      image_url: string;
-      bbox: object;
-    }>;
-    size: number;                // Количество лиц в кластере
-  }>;
-  total_faces: number;
-  clustered_faces: number;
-  noise_faces: number;
-}
-\`\`\`
-
-**Файл:** `app/api/training/cluster-unverified-faces/route.ts`
-
----
-
-#### POST /api/training/rebuild-index
-Перестроение HNSWLIB индекса для быстрого поиска лиц.
-
-**Request Body:** (пустой)
-
-**Response:**
-\`\`\`typescript
-{
-  success: boolean;
-  message: string;
-  indexed_faces: number;         // Количество проиндексированных лиц
-}
-\`\`\`
-
-**Файл:** `app/api/training/rebuild-index/route.ts`
+**Файл:** `app/api/admin/training/`
 
 ---
 
@@ -143,7 +52,7 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 
 ### Recognition
 
-#### POST /detect-faces
+#### POST /api/recognition/detect-faces
 Детекция лиц на изображении.
 
 **Request:**
@@ -174,31 +83,35 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 }
 \`\`\`
 
-**Файл:** `python/routers/recognition.py`
+**Файл:** `python/routers/recognition/detect.py`
 
 ---
 
-#### POST /recognize-face
+#### POST /api/recognition/recognize-face
 Распознавание лица по эмбеддингу.
 
 **Request:**
 \`\`\`json
 {
   "embedding": [0.123, 0.456, ...],
-  "gallery_id": "uuid" // optional
+  "confidence_threshold": 0.6
 }
 \`\`\`
 
 **Response:**
 \`\`\`json
 {
-  "person_id": "uuid",
-  "confidence": 0.85,
-  "match_type": "verified"
+  "success": true,
+  "data": {
+    "person_id": "uuid",
+    "confidence": 0.85
+  }
 }
 \`\`\`
 
-**Файл:** `python/routers/recognition.py`
+**v6.0 Note:** `confidence` = `source_confidence × similarity` (confidence chain).
+
+**Файл:** `python/routers/recognition/recognize.py`
 
 ---
 
@@ -290,7 +203,12 @@ Base URL: `http://your-server-ip:8001` (или `FASTAPI_URL` env variable)
 
 ## Server Actions (Next.js)
 
-Все Server Actions находятся в `app/admin/actions.ts`.
+Server Actions организованы по модулям в `app/admin/actions/`:
+- `faces/` — операции с лицами (photo-processing.ts, index-operations.ts)
+- `people/` — операции с игроками
+- `integrity/` — проверки целостности
+- `galleries.ts` — операции с галереями
+- `cleanup.ts` — очистка данных
 
 ### uploadAction
 Загрузка фото в галерею.

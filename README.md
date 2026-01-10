@@ -60,9 +60,8 @@ NickRemizov/v0_Padel_Galleries
 | [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) | **Главный контекст для разработки** |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | План работ и задачи |
 | [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Схема базы данных |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Архитектура проекта |
-| [RECOGNITION_PROCESS_DOCUMENTATION.md](RECOGNITION_PROCESS_DOCUMENTATION.md) | Система распознавания (детально) |
-| [docs/RECOGNITION_SUMMARY.md](docs/RECOGNITION_SUMMARY.md) | Система распознавания (кратко) |
+| [python/ARCHITECTURE.md](python/ARCHITECTURE.md) | Архитектура backend (v6.1) |
+| [docs/RECOGNITION_SUMMARY.md](docs/RECOGNITION_SUMMARY.md) | Система распознавания (v6.1) |
 | [python/DEPLOYMENT.md](python/DEPLOYMENT.md) | Деплой FastAPI на Hetzner |
 
 ---
