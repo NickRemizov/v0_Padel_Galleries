@@ -158,6 +158,8 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             ref={nameRef}
             className="absolute"
             style={{
+              top: 0,
+              left: 0,
               cursor: isEditing ? "move" : "default",
               backgroundColor: "rgba(255, 255, 255, 0.3)",
               borderRadius: "20px",
@@ -197,6 +199,8 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             ref={levelRef}
             className="absolute text-center flex flex-col justify-center"
             style={{
+              top: 0,
+              left: 0,
               cursor: isEditing ? "move" : "default",
               border: isEditing ? "2px dashed yellow" : "4px solid white",
               borderRadius: "24px",
@@ -239,6 +243,8 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             ref={tournamentsRef}
             className="absolute text-center flex flex-col justify-center"
             style={{
+              top: 0,
+              left: 0,
               cursor: isEditing ? "move" : "default",
               border: isEditing ? "2px dashed yellow" : "4px solid white",
               borderRadius: "24px",
@@ -281,6 +287,8 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             ref={photosRef}
             className="absolute text-center flex flex-col justify-center"
             style={{
+              top: 0,
+              left: 0,
               cursor: isEditing ? "move" : "default",
               border: isEditing ? "2px dashed yellow" : "4px solid white",
               borderRadius: "24px",
@@ -323,6 +331,8 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
             ref={galleriesRef}
             className="absolute text-center flex flex-col justify-center"
             style={{
+              top: 0,
+              left: 0,
               cursor: isEditing ? "move" : "default",
               border: isEditing ? "2px dashed yellow" : "4px solid white",
               borderRadius: "24px",
