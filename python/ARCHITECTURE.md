@@ -105,9 +105,9 @@ services/
 └── grouping.py                  # Face clustering
 \`\`\`
 
-## HNSW Index Architecture (v6.0 - Variant C)
+## HNSW Index Architecture (v6.0+)
 
-### Принципы Variant C
+### Принципы архитектуры
 
 **Все лица с дескрипторами попадают в индекс**, независимо от наличия person_id:
 
@@ -289,7 +289,7 @@ ADMIN_EMAILS=admin@example.com
 ## Version History
 
 - v6.1.0 - Audit fixes: singleton in user router, auto-recognize sync, empty index handling
-- v6.0.0 - **Variant C architecture**: ALL faces with descriptors in index, `update_metadata()` for person_id changes without rebuild, `excluded_map` for exclusions
+- v6.0.0 - all-faces-indexed architecture: ALL faces with descriptors in index, `update_metadata()` for person_id changes without rebuild, `excluded_map` for exclusions
 - v5.2.0 - Modular routers (galleries/, images/, admin/debug/, recognition/descriptors/), training/ package refactoring
 - v5.1.0 - AuthMiddleware, for_gallery optimization, On-Demand Revalidation
 - v5.0.0 - All routers migrated to ApiResponse + custom exceptions

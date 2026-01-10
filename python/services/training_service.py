@@ -10,7 +10,7 @@ Delegates to specialized modules in services/training/:
 v4.1: Migrated to SupabaseService (modular architecture)
 v4.2: Refactored to delegate to training/ submodules
 v4.3: Removed deprecated pipeline.py and storage.py
-v4.4: Removed session management (face_training_sessions table deleted)
+v4.4: Removed session management (table deleted)
 """
 
 from typing import List, Dict, Optional

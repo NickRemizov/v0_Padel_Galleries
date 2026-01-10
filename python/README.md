@@ -9,7 +9,7 @@
 - ✅ **auto-recognize sync** — индекс синхронизируется при автоматическом распознавании
 - ✅ **Empty index handling** — graceful старт с пустой БД
 
-### v6.0.0 — Variant C Architecture
+### v6.0.0 — All-Faces-Indexed Architecture
 - ✅ **ВСЕ лица в индексе** — включая без person_id и excluded
 - ✅ **update_metadata()** — изменение person_id БЕЗ rebuild индекса
 - ✅ **excluded_map** — исключённые лица в индексе, но пропускаются при распознавании
@@ -187,7 +187,7 @@ tail -f server.log
 - ✅ Empty index graceful handling
 - ✅ k=0 protection в query()
 
-### v6.0.0 — Variant C
+### v6.0.0 — All-Faces-Indexed
 - ✅ ВСЕ лица с дескрипторами в индексе
 - ✅ update_metadata() для изменения person_id без rebuild
 - ✅ excluded_map для исключённых лиц
