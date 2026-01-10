@@ -33,8 +33,14 @@ interface ElementConfig {
   height: number
 }
 
+type TextAlign = "left" | "center" | "right"
+
+interface NameConfig extends ElementConfig {
+  align: TextAlign
+}
+
 interface LayoutConfig {
-  name: ElementConfig
+  name: NameConfig
   level: ElementConfig
   tournaments: ElementConfig
   photos: ElementConfig
@@ -58,11 +64,11 @@ interface TestPlayerCardProps {
 }
 
 const DEFAULT_LAYOUT: LayoutConfig = {
-  name: { x: 20, y: 400, width: 300, height: 180 },
-  level: { x: 250, y: 50, width: 140, height: 130 },
-  tournaments: { x: 270, y: 190, width: 120, height: 110 },
-  photos: { x: 270, y: 310, width: 120, height: 110 },
-  galleries: { x: 270, y: 430, width: 120, height: 110 },
+  name: { x: 24, y: 408, width: 366, height: 112, align: "left" },
+  level: { x: 250, y: 10, width: 140, height: 130 },
+  tournaments: { x: 284, y: 148, width: 106, height: 76 },
+  photos: { x: 284, y: 232, width: 106, height: 76 },
+  galleries: { x: 284, y: 316, width: 106, height: 76 },
 }
 
 export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
@@ -240,6 +246,49 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
     </div>
   )
 
+  // Alignment toggle for name
+  const AlignmentToggle = () => (
+    <div
+      style={{
+        position: "absolute",
+        top: -32,
+        left: "50%",
+        transform: "translateX(-50%)",
+        display: "flex",
+        gap: 2,
+        backgroundColor: "rgba(0,0,0,0.8)",
+        borderRadius: 4,
+        padding: 2,
+      }}
+    >
+      {(["left", "center", "right"] as TextAlign[]).map((align) => (
+        <button
+          key={align}
+          onClick={(e) => {
+            e.stopPropagation()
+            setLayout((prev) => ({ ...prev, name: { ...prev.name, align } }))
+          }}
+          style={{
+            width: 24,
+            height: 24,
+            border: "none",
+            borderRadius: 2,
+            backgroundColor: layout.name.align === align ? "yellow" : "transparent",
+            color: layout.name.align === align ? "black" : "white",
+            cursor: "pointer",
+            fontSize: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          title={align === "left" ? "Слева" : align === "center" ? "По центру" : "Справа"}
+        >
+          {align === "left" ? "◀" : align === "center" ? "◆" : "▶"}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#0A0F1C" }}>
       {/* Edit mode toggle */}
@@ -340,23 +389,24 @@ export function TestPlayerCard({ player, photos, stats }: TestPlayerCardProps) {
               style={{
                 backgroundColor: "rgba(255, 255, 255, 0.3)",
                 borderRadius: "20px",
-                padding: "16px 24px",
+                padding: "12px 20px",
                 border: isEditing ? editBorder : "none",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
+                justifyContent: layout.name.align === "left" ? "flex-start" : layout.name.align === "right" ? "flex-end" : "center",
               }}
             >
+              {isEditing && <AlignmentToggle />}
               {isEditing && <SizeIndicator width={layout.name.width} height={layout.name.height} />}
               <h1
                 style={{
                   fontFamily: "var(--font-lobster), cursive",
-                  fontSize: `${Math.min(layout.name.width / 4, layout.name.height / 2.5)}px`,
+                  fontSize: `${Math.min(layout.name.width / 6, layout.name.height / 1.8)}px`,
                   color: "white",
                   textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
                   lineHeight: 1.1,
                   margin: 0,
-                  textAlign: "center",
+                  textAlign: layout.name.align,
                 }}
               >
                 {player.real_name.split(" ").map((word, i) => (
