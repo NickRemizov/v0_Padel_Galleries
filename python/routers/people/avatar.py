@@ -18,7 +18,7 @@ from infrastructure.minio_storage import get_minio_storage
 from services.birefnet_service import get_birefnet_service
 
 from .models import VisibilityUpdate
-from .helpers import get_supabase_db, convert_bbox_to_array
+from .helpers import get_supabase_db
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -182,35 +182,30 @@ async def update_visibility(identifier: UUID, data: VisibilityUpdate):
 @router.post("/{identifier:uuid}/generate-avatar")
 async def generate_avatar(
     identifier: UUID,
-    face_id: Optional[str] = Body(None, description="Face ID to use for cropping"),
-    source_url: Optional[str] = Body(None, description="Direct image URL (full body/portrait)"),
     width: Optional[int] = Body(None, description="Target width (default: original)"),
-    height: Optional[int] = Body(None, description="Target height (default: original)"),
-    padding: Optional[float] = Body(0.3, description="Padding around face (0.3 = 30%)")
+    height: Optional[int] = Body(None, description="Target height (default: original)")
 ):
     """
-    Generate avatar with transparent background using BiRefNet.
+    Generate transparent avatar from user's current avatar_url.
 
-    REQUIRED: Either face_id OR source_url must be provided.
-    User explicitly chooses the source image.
+    Takes the person's existing avatar_url, removes background with BiRefNet,
+    optionally resizes, and saves as PNG with transparency.
 
     Args:
-        face_id: Uses the photo and bbox from this face (crops around face with padding)
-        source_url: Uses this image directly (full body/portrait, no cropping)
         width: Target output width in pixels (optional)
         height: Target output height in pixels (optional)
-        padding: Padding ratio around face when using face_id (default 0.3 = 30%)
 
     Process:
-    1. Get source image (from face bbox or URL)
-    2. Remove background with BiRefNet
-    3. Resize to target dimensions (if specified)
-    4. Save PNG to MinIO (avatars bucket)
-    5. Create record in person_avatars table
-    6. Update people.avatar_url to new avatar
+    1. Get person's current avatar_url
+    2. Download the image
+    3. Remove background with BiRefNet
+    4. Resize to target dimensions (if specified)
+    5. Save PNG to MinIO (avatars bucket)
+    6. Create record in person_avatars table
+    7. Update people.avatar_url to new transparent avatar
 
     Returns:
-        Avatar URL and metadata
+        Avatar URL and dimensions
     """
     supabase_db = get_supabase_db()
     minio = get_minio_storage()
@@ -219,9 +214,9 @@ async def generate_avatar(
     try:
         person_id = _get_person_id_from_uuid(supabase_db, identifier)
 
-        # Get person info
+        # Get person info including current avatar
         person_result = supabase_db.client.table("people").select(
-            "id, real_name, telegram_full_name"
+            "id, real_name, telegram_full_name, avatar_url"
         ).eq("id", person_id).execute()
 
         if not person_result.data:
@@ -229,54 +224,17 @@ async def generate_avatar(
 
         person = person_result.data[0]
         person_name = person.get("real_name") or person.get("telegram_full_name") or "user"
+        current_avatar_url = person.get("avatar_url")
 
-        # Require explicit source selection
-        if not face_id and not source_url:
-            raise ValidationError("Either face_id or source_url must be provided")
+        if not current_avatar_url:
+            raise ValidationError("Person has no avatar_url set")
 
-        source_face_id = None
-        source_photo_id = None
-        image_bytes = None
-
-        if source_url:
-            # Direct URL provided - use full image
-            logger.info(f"Generating avatar from URL: {source_url}")
-            async with httpx.AsyncClient() as client:
-                response = await client.get(source_url, timeout=30)
-                response.raise_for_status()
-                image_bytes = response.content
-
-        elif face_id:
-            # Use specific face with bbox cropping
-            face_result = supabase_db.client.table("photo_faces").select(
-                "id, photo_id, insightface_bbox, gallery_images(image_url)"
-            ).eq("id", face_id).execute()
-
-            if not face_result.data:
-                raise NotFoundError("Face", face_id)
-
-            face = face_result.data[0]
-            source_face_id = face["id"]
-            source_photo_id = face["photo_id"]
-            image_url = face.get("gallery_images", {}).get("image_url") if face.get("gallery_images") else None
-            bbox = convert_bbox_to_array(face.get("insightface_bbox"))
-
-            if not image_url:
-                raise ValidationError("Face has no associated image")
-
-            # Download image
-            async with httpx.AsyncClient() as client:
-                response = await client.get(image_url, timeout=30)
-                response.raise_for_status()
-                full_image = response.content
-
-            # Crop around face with specified padding
-            if bbox:
-                image_bytes = birefnet.crop_face_from_image(full_image, bbox, padding=padding or 0.3)
-            else:
-                image_bytes = full_image
-
-            logger.info(f"Using face {face_id} with padding {padding}")
+        # Download current avatar
+        logger.info(f"Generating transparent avatar from: {current_avatar_url}")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(current_avatar_url, timeout=30)
+            response.raise_for_status()
+            image_bytes = response.content
 
         if not image_bytes:
             raise ValidationError("Could not get source image")
@@ -337,8 +295,6 @@ async def generate_avatar(
             "person_id": person_id,
             "avatar_url": avatar_url,
             "object_name": object_name,
-            "source_photo_id": source_photo_id,
-            "source_face_id": source_face_id,
             "is_primary": True
         }).execute()
 
@@ -347,13 +303,11 @@ async def generate_avatar(
             "avatar_url": avatar_url
         }).eq("id", person_id).execute()
 
-        logger.info(f"Generated avatar for person {person_id}: {avatar_url}")
+        logger.info(f"Generated transparent avatar for person {person_id}: {avatar_url}")
 
         return ApiResponse.ok({
             "avatar_url": avatar_url,
             "avatar_id": avatar_record.data[0]["id"] if avatar_record.data else None,
-            "source_face_id": source_face_id,
-            "source_photo_id": source_photo_id,
             "width": final_w,
             "height": final_h
         })
