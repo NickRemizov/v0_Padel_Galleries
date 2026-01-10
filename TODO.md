@@ -24,3 +24,29 @@
 7. Опционально: сохранять preferred_language в профиле пользователя
 
 **Админка остаётся на русском.**
+
+---
+
+## HNSW Index - Low Priority (Future)
+
+### Параллельные обновления метаданных
+
+**Проблема:** `update_metadata()` в `hnsw_index.py` не использует `threading.Lock`. При высоком параллелизме теоретически возможны race conditions.
+
+**Текущий статус:** Не критично для текущего масштаба. GIL + атомарность присваивания в список защищают от большинства проблем.
+
+**Решение (когда понадобится):**
+```python
+import threading
+
+class HNSWIndex:
+    def __init__(self):
+        self._metadata_lock = threading.Lock()
+        ...
+
+    def update_metadata(self, face_id: str, ...):
+        with self._metadata_lock:
+            # existing code
+```
+
+**Когда делать:** При масштабировании до высоконагруженного сервиса (>100 RPS на update_metadata).

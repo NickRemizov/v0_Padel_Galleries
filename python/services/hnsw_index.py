@@ -482,6 +482,10 @@ class HNSWIndex:
             # Ensure k doesn't exceed index size
             k = min(k, self.get_count())
 
+            # v6.1: Handle empty index gracefully
+            if k == 0:
+                return [], [], [], [], []
+
             labels, distances = self.index.knn_query(
                 embedding.reshape(1, -1),
                 k=k
