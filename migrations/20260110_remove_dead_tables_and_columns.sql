@@ -12,9 +12,8 @@
 -- PHASE 1: Remove unused columns from photo_faces
 -- ============================================
 
-ALTER TABLE photo_faces
-DROP COLUMN IF EXISTS training_used,
-DROP COLUMN IF EXISTS training_context;
+ALTER TABLE photo_faces DROP COLUMN IF EXISTS training_used;
+ALTER TABLE photo_faces DROP COLUMN IF EXISTS training_context;
 
 -- ============================================
 -- PHASE 2: Drop unused tables
