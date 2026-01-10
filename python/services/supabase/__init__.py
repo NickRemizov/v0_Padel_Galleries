@@ -232,12 +232,11 @@ class SupabaseService:
         face_id: str,
         descriptor: np.ndarray,
         det_score: float,
-        bbox: Dict,
-        training_context: Dict
+        bbox: Dict
     ) -> bool:
         """Legacy: Delegate to training repository."""
         return await self.training.update_face_descriptor(
-            face_id, descriptor, det_score, bbox, training_context
+            face_id, descriptor, det_score, bbox
         )
 
 

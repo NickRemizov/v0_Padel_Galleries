@@ -1,9 +1,8 @@
 """
-Supabase Training Repository - Training session and verified faces operations.
+Supabase Training Repository - Verified faces and descriptor operations.
 
 Extracted from supabase_client.py. Handles:
-- Training sessions (create, update, get, history)
-- Verified faces loading for training
+- Verified faces loading
 - Co-occurring people analysis
 - Face descriptor updates
 """
@@ -19,78 +18,11 @@ logger = get_logger(__name__)
 
 
 class TrainingRepository:
-    """Repository for training operations."""
-    
+    """Repository for face operations (legacy name kept for compatibility)."""
+
     def __init__(self):
         self._client = get_supabase_client()
-    
-    # ==================== Training Sessions ====================
-    
-    def create_training_session(self, session_data: Dict) -> str:
-        """
-        Create a training session record.
-        
-        Returns:
-            session_id
-        """
-        try:
-            response = self._client.table("face_training_sessions").insert(session_data).execute()
-            session_id = response.data[0]["id"]
-            logger.info(f"Created training session: {session_id}")
-            return session_id
-            
-        except Exception as e:
-            logger.error(f"Error creating training session: {e}")
-            raise
-    
-    def update_training_session(self, session_id: str, updates: Dict) -> bool:
-        """Update a training session."""
-        try:
-            self._client.table("face_training_sessions").update(updates).eq("id", session_id).execute()
-            return True
-        except Exception as e:
-            logger.error(f"Error updating training session: {e}")
-            return False
-    
-    def get_training_session(self, session_id: str) -> Optional[Dict]:
-        """Get training session by ID."""
-        try:
-            response = self._client.table("face_training_sessions").select(
-                "*"
-            ).eq("id", session_id).execute()
-            
-            return response.data[0] if response.data else None
-            
-        except Exception as e:
-            logger.error(f"Error getting training session: {e}")
-            return None
-    
-    def get_training_history(self, limit: int = 10, offset: int = 0) -> List[Dict]:
-        """Get training history."""
-        try:
-            response = self._client.table("face_training_sessions").select(
-                "*"
-            ).order("created_at", desc=True).limit(limit).offset(offset).execute()
-            
-            return response.data or []
-            
-        except Exception as e:
-            logger.error(f"Error getting training history: {e}")
-            return []
-    
-    def get_training_sessions_count(self) -> int:
-        """Get total training sessions count."""
-        try:
-            response = self._client.table("face_training_sessions").select(
-                "id", count="exact"
-            ).execute()
-            
-            return response.count or 0
-            
-        except Exception as e:
-            logger.error(f"Error getting training sessions count: {e}")
-            return 0
-    
+
     # ==================== Verified Faces ====================
     
     async def get_verified_faces(
@@ -355,12 +287,11 @@ class TrainingRepository:
         face_id: str,
         descriptor: np.ndarray,
         det_score: float,
-        bbox: Dict,
-        training_context: Dict
+        bbox: Dict
     ) -> bool:
         """
         Update face descriptor and related fields.
-        
+
         Returns:
             True if successful
         """
@@ -368,33 +299,22 @@ class TrainingRepository:
             # Convert numpy types to Python types
             descriptor_list = descriptor.tolist() if isinstance(descriptor, np.ndarray) else descriptor
             det_score_float = float(det_score)
-            
+
             bbox_clean = {}
             for key, value in bbox.items():
                 if isinstance(value, (np.integer, np.floating)):
                     bbox_clean[key] = float(value)
                 else:
                     bbox_clean[key] = value
-            
-            context_clean = {}
-            for key, value in training_context.items():
-                if isinstance(value, (np.integer, np.floating)):
-                    context_clean[key] = float(value)
-                elif isinstance(value, np.ndarray):
-                    context_clean[key] = value.tolist()
-                else:
-                    context_clean[key] = value
-            
+
             self._client.table("photo_faces").update({
                 "insightface_descriptor": descriptor_list,
                 "insightface_det_score": det_score_float,
-                "insightface_bbox": bbox_clean,
-                "training_used": True,
-                "training_context": context_clean
+                "insightface_bbox": bbox_clean
             }).eq("id", face_id).execute()
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error updating face descriptor: {e}")
             return False

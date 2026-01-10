@@ -147,7 +147,7 @@ async def _extract_single_descriptor(
         
         if best_match and best_iou > 0.3:
             descriptor = best_match.embedding
-            
+
             await training_repo.update_face_descriptor(
                 face_id=face_data['id'],
                 descriptor=descriptor,
@@ -157,13 +157,9 @@ async def _extract_single_descriptor(
                     'y': float(best_match.bbox[1]),
                     'width': float(best_match.bbox[2] - best_match.bbox[0]),
                     'height': float(best_match.bbox[3] - best_match.bbox[1])
-                },
-                training_context={
-                    'batch_recognition': True,
-                    'bbox_iou': best_iou
                 }
             )
-            
+
             return descriptor
         
         return None

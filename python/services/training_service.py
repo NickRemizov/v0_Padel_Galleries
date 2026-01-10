@@ -5,12 +5,12 @@ Coordinates dataset preparation and batch recognition.
 Delegates to specialized modules in services/training/:
 - dataset.py - Dataset preparation
 - metrics.py - Metrics calculation
-- session.py - Session management
 - batch.py - Batch recognition
 
 v4.1: Migrated to SupabaseService (modular architecture)
 v4.2: Refactored to delegate to training/ submodules
 v4.3: Removed deprecated pipeline.py and storage.py
+v4.4: Removed session management (face_training_sessions table deleted)
 """
 
 from typing import List, Dict, Optional
@@ -19,9 +19,6 @@ from services.supabase import SupabaseService, get_supabase_service
 from services.face_recognition import FaceRecognitionService
 from services.training import (
     prepare_dataset as _prepare_dataset,
-    create_session,
-    get_status,
-    get_history,
     batch_recognize as _batch_recognize
 )
 
@@ -34,11 +31,11 @@ logger = logging.getLogger(__name__)
 class TrainingService:
     """
     Facade for training operations.
-    Manages training sessions and coordinates training pipeline.
-    
-    v4.2: Now delegates to modular training/ subpackage.
+    Coordinates dataset preparation and batch recognition.
+
+    v4.4: Session management removed (table deleted).
     """
-    
+
     def __init__(
         self,
         face_service: 'FaceRecognitionService' = None,
@@ -47,14 +44,14 @@ class TrainingService:
     ):
         """
         Initialize training service with dependencies.
-        
+
         Args:
             face_service: FaceRecognitionService instance
             supabase_service: New SupabaseService instance (preferred)
             supabase_client: Legacy SupabaseClient (deprecated)
         """
         self.face_service = face_service if face_service else FaceRecognitionService()
-        
+
         # v4.1: Use SupabaseService
         if supabase_service is not None:
             self._supabase = supabase_service
@@ -63,67 +60,28 @@ class TrainingService:
             self._supabase = get_supabase_service()
         else:
             self._supabase = get_supabase_service()
-        
+
         # Shortcut accessors to repositories
         self._training = self._supabase.training
         self._config = self._supabase.config
         self._faces = self._supabase.faces
-        
+
         # Legacy compatibility alias
         self.supabase = self._supabase
-        
-        self.current_session_id = None
-        self.current_progress = {'current': 0, 'total': 0, 'step': ''}
-        logger.info("[TrainingService] Initialized v4.2")
-    
+
+        logger.info("[TrainingService] Initialized v4.4")
+
     # ==================== Dataset Preparation ====================
-    
+
     async def prepare_dataset(self, filters: Dict, options: Dict) -> Dict:
         """
         Prepare dataset for training (without starting training).
         Delegates to training.dataset module.
         """
         return await _prepare_dataset(self._supabase, filters, options)
-    
-    # ==================== Training Execution ====================
-    
-    async def execute_training(
-        self,
-        mode: str,
-        filters: Dict,
-        options: Dict
-    ) -> str:
-        """
-        Start model training.
-        
-        Returns:
-            session_id for tracking progress
-        """
-        logger.info(f"[TrainingService] Starting training in {mode} mode...")
-        
-        # Create session using session module
-        session_id = create_session(self._training, mode, options)
-        self.current_session_id = session_id
-        
-        return session_id
-    
-    # ==================== Status & History ====================
-    
-    def get_training_status(self, session_id: str) -> Dict:
-        """Get training status by session ID."""
-        return get_status(
-            training_repo=self._training,
-            session_id=session_id,
-            current_session_id=self.current_session_id,
-            current_progress=self.current_progress
-        )
-    
-    def get_training_history(self, limit: int = 10, offset: int = 0) -> Dict:
-        """Get training history from Supabase."""
-        return get_history(self._training, limit, offset)
-    
+
     # ==================== Batch Recognition ====================
-    
+
     async def batch_recognize(
         self,
         gallery_ids: Optional[List[str]] = None,
